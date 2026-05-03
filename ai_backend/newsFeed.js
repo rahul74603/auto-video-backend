@@ -1,7 +1,7 @@
 require("dotenv").config();
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-const { GoogleGenerativeAI } = require("@google/generative-ai"); // ✅ Gemini AI Added
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // ✅ GitHub Secrets + Firebase Cloud Compatible Initialization
 if (!admin.apps.length) {
@@ -19,15 +19,29 @@ if (!admin.apps.length) {
     }
 }
 
+// ✅ 1. XML URL Safety Helper (इसे यहाँ जोड़ दिया है)
+const escapeXml = (unsafe) => {
+    if (!unsafe) return '';
+    return unsafe.replace(/[<>&"']/g, (c) => {
+        switch (c) {
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '&': return '&amp;';
+            case '"': return '&quot;';
+            case "'": return '&apos;';
+            default: return c;
+        }
+    });
+};
+
 exports.rssFeed = functions.https.onRequest(async (req, res) => {
     try {
         const db = admin.firestore();
         
-        // 1. वो सारे Collections जहाँ से डेटा उठाना है
         const collections = [
             'jobs', 
-            'blogs',         // Auto-blogs
-            'fast_track',    // Fast Track
+            'blogs', 
+            'fast_track', 
             'mock_tests', 
             'study_materials', 
             'admit_cards', 
@@ -36,13 +50,10 @@ exports.rssFeed = functions.https.onRequest(async (req, res) => {
         ];
         
         let allItems = [];
-
-        // 2. हर कलेक्शन से डेटा निकालने का प्रोसेस
+        const seenIds = new Set();
         const fetchPromises = collections.map(async (colName) => {
             try {
-                // Blogs के लिए 'date' और बाकी के लिए 'createdAt'
                 const timeField = (colName === 'blogs') ? 'date' : 'createdAt';
-
                 const snapshot = await db.collection(colName)
                     .orderBy(timeField, 'desc') 
                     .limit(20)
@@ -52,21 +63,26 @@ exports.rssFeed = functions.https.onRequest(async (req, res) => {
                     const data = doc.data();
                     const status = (data.status || '').toLowerCase();
                     const type = (data.type || '');
-                    
-                    // Status Check (published, active, approved etc.)
                     const isExplicitlyLive = data.isLive === true || status === 'published' || status === 'publish' || status === 'approved' || status === 'active';
-                    
-                    // Auto-Blogs handling
                     const isAutoBlog = (colName === 'blogs' && (!data.status || type === 'auto-blog'));
 
                     if (isExplicitlyLive || isAutoBlog) {
-                        allItems.push({
-                            id: doc.id,
-                            ...data,
-                            universalTime: data[timeField], 
-                            collectionName: colName 
-                        });
-                    }
+
+    // 👉 duplicate check
+    if (!seenIds.has(doc.id)) {
+
+        seenIds.add(doc.id);
+
+        allItems.push({
+            id: doc.id,
+            ...data,
+            universalTime: data[timeField], 
+            collectionName: colName 
+        });
+
+    }
+
+}
                 });
             } catch (err) {
                 console.warn(`Skipping collection ${colName}:`, err.message);
@@ -74,63 +90,84 @@ exports.rssFeed = functions.https.onRequest(async (req, res) => {
         });
 
         await Promise.all(fetchPromises);
+allItems.forEach(item => {
+    let boost = 0;
 
-        // 3. लेटेस्ट फर्स्ट सॉर्टिंग
+    const title = (item.title || '').toLowerCase();
+
+    if (title.includes('result')) boost += 5;
+    if (title.includes('admit')) boost += 4;
+    if (title.includes('answer')) boost += 3;
+
+    item.priorityScore = boost;
+});
         allItems.sort((a, b) => {
-            const dateA = a.universalTime ? (typeof a.universalTime.toDate === 'function' ? a.universalTime.toDate() : new Date(a.universalTime)) : new Date(0);
-            const dateB = b.universalTime ? (typeof b.universalTime.toDate === 'function' ? b.universalTime.toDate() : new Date(b.universalTime)) : new Date(0);
-            return dateB.getTime() - dateA.getTime();
-        });
+    const dateA = a.universalTime?.toDate ? a.universalTime.toDate() : new Date(a.universalTime);
+    const dateB = b.universalTime?.toDate ? b.universalTime.toDate() : new Date(b.universalTime);
 
-        // 4. टॉप 30 आइटम्स
+    return (b.priorityScore || 0) - (a.priorityScore || 0) ||
+           dateB - dateA;
+});
+
         const finalItems = allItems.slice(0, 30);
 
-        // 🚀 5. AI MAGIC: BULK TITLE REWRITE LOGIC
+        // 🚀 AI MAGIC: BULK TITLE REWRITE LOGIC
         try {
             const apiKey = process.env.GEMINI_NEWS_API_KEY;
             if (apiKey) {
                 const genAI = new GoogleGenerativeAI(apiKey);
                 const model = genAI.getGenerativeModel({ 
-                    model: "gemini-2.5-flash-lite", // Fast & Free Tier Friendly
-                    generationConfig: { responseMimeType: "application/json" } // Force JSON output
+                    model: "gemini-2.5-flash-lite", 
+                    generationConfig: { responseMimeType: "application/json" } 
                 });
 
-                // Prepare short data to save tokens
                 const itemsForAI = finalItems.map(item => ({
                     id: item.id,
-                    type: item.collectionName,
                     title: item.title || item.post_name || item.jobTitle || 'New Update'
                 }));
 
-                const prompt = `You are a professional Hindi News Editor. Rewrite the following titles into catchy, clickable "Breaking News" style Hindi headlines (e.g., "SSC CGL 2026 Notification Out: यहाँ से करें डायरेक्ट अप्लाई एक क्लिक में"). Keep the core information true. Return ONLY a JSON array of objects with exactly two keys: 'id' and 'newsTitle'. Data: ${JSON.stringify(itemsForAI)}`;
+                const prompt = `
+You are a viral Hindi news content creator.
+
+Rewrite each title into:
+- Highly clickable
+- Add emoji (🚨🔥📢)
+- Add urgency words like "अभी देखें", "जल्दी करें"
+- Add year if possible (2026)
+- Make it SEO optimized
+
+Return JSON:
+[{ "id": "...", "newsTitle": "...", "summary": "..."}]
+
+Data:
+${JSON.stringify(itemsForAI)}
+`;
 
                 const result = await model.generateContent(prompt);
                 const aiResponse = JSON.parse(result.response.text());
 
-                // Merge new titles back to finalItems
                 aiResponse.forEach(aiItem => {
                     const index = finalItems.findIndex(i => i.id === aiItem.id);
                     if (index !== -1) {
                         finalItems[index].aiNewsTitle = aiItem.newsTitle;
+                        finalItems[index].aiSummary = aiItem.summary || '';
                     }
                 });
                 console.log("✅ AI Title Rewrite Successful");
-            } else {
-                console.log("⚠️ GEMINI_NEWS_API_KEY not found. Skipping AI rewrite.");
             }
         } catch (aiError) {
-            console.error("❌ AI Rewrite Failed (Using normal titles):", aiError.message);
+            console.error("❌ AI Rewrite Failed:", aiError.message);
         }
 
-        // ✅ 6. XML Structure
+        // ✅ 2. XML Structure (यहाँ बदलाव किए गए हैं)
         let xml = `<?xml version="1.0" encoding="UTF-8" ?>
-        <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/">
-        <channel>
-            <title>StudyGyaan | Latest Govt Jobs, Admit Cards &amp; Results</title>
-            <link>https://studygyaan.in</link>
-            <description>Get the fastest updates on all Sarkari Naukri, Exams and Blogs.</description>
-            <language>hi-IN</language>
-            <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>`;
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/">
+<channel>
+    <title>StudyGyaan | Latest Govt Jobs, Admit Cards &amp; Results</title>
+    <link>https://studygyaan.in</link>
+    <description>Get the fastest updates on all Sarkari Naukri, Exams and Blogs.</description>
+    <language>hi-IN</language>
+    <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>`;
 
         finalItems.forEach(item => {
             let routeType = item.collectionName;
@@ -138,39 +175,41 @@ exports.rssFeed = functions.https.onRequest(async (req, res) => {
             if (routeType === 'blogs') routeType = 'blog';
             if (routeType === 'fast_track') routeType = 'update';
             
-            const postUrl = `https://studygyaan.in/${routeType}/${item.id}`;
+            // ✅ URL को escapeXml के अंदर डाला गया है
+            const rawPostUrl = `https://studygyaan.in/${routeType}/${item.id}`;
+            const postUrl = escapeXml(rawPostUrl);
             const pubDate = item.universalTime ? (typeof item.universalTime.toDate === 'function' ? item.universalTime.toDate().toUTCString() : new Date(item.universalTime).toUTCString()) : new Date().toUTCString();
             
-            const author = item.author || 'StudyGyaan';
-            const imageUrl = item.imageUrl || item.image || item.thumbnail || item.featuredImage || '';
-            let imageTag = '';
+            const rawImageUrl = item.imageUrl || item.image || item.thumbnail || item.featuredImage || 'https://studygyaan.in/default.jpg';
+            const imageUrl = escapeXml(rawImageUrl);
             
-            if (imageUrl) {
-                imageTag = `<media:content url="${imageUrl}" medium="image"/>`;
-            }
-
-            // AI Title इस्तेमाल करें, अगर फेल हुआ तो पुराना टाइटल
+            const author = item.author || 'StudyGyaan';
+            const safeContent = escapeXml(item.content || item.description || '');
             const finalDisplayTitle = item.aiNewsTitle || item.title || item.post_name || item.jobTitle || 'New Update';
 
+const finalDescription = item.aiSummary || item.shortDescription || item.description || 'Latest update available, check now!';
+
             xml += `
-            <item>
-                <title><![CDATA[${finalDisplayTitle}]]></title>
-                <link>${postUrl}</link>
-                <guid isPermaLink="false">${postUrl}</guid>
-                <pubDate>${pubDate}</pubDate>
-                <category><![CDATA[${item.collectionName.toUpperCase()}]]></category>
-                <dc:creator><![CDATA[${author}]]></dc:creator>
-                <description><![CDATA[${item.shortDescription || item.description || 'Read more details on StudyGyaan'}]]></description>
-                <content:encoded><![CDATA[${item.content || item.shortDescription || item.description || ''}]]></content:encoded>
-                ${imageTag}
-            </item>`;
+    <item>
+        <title><![CDATA[${finalDisplayTitle}]]></title>
+        <link>${postUrl}</link>
+        <guid isPermaLink="false">${postUrl}</guid>
+        <pubDate>${pubDate}</pubDate>
+        <category><![CDATA[${item.collectionName.toUpperCase()}]]></category>
+        <dc:creator><![CDATA[${author}]]></dc:creator>
+        <description><![CDATA[${finalDescription}]]></description>
+        <content:encoded><![CDATA[${safeContent}]]></content:encoded>
+        ${imageUrl ? `<media:content url="${imageUrl}" medium="image"/>` : ''}
+        <media:title><![CDATA[${finalDisplayTitle}]]></media:title>
+<media:description><![CDATA[${finalDescription}]]></media:description>
+    </item>`;
         });
 
-        xml += `</channel></rss>`;
+        xml += `\n</channel></rss>`;
 
-        res.set('Cache-Control', 'public, max-age=300, s-maxage=600');
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=1200, stale-while-revalidate=300');
         res.set('Content-Type', 'text/xml; charset=utf-8');
-        res.status(200).send(xml);
+        res.status(200).send(xml.trim());
 
     } catch (error) {
         console.error("❌ Multi-Category Feed Error:", error.message);
