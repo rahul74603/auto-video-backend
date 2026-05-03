@@ -6,12 +6,28 @@ const { google } = require("googleapis");
 const xml2js = require("xml2js");
 require("dotenv").config();
 
-// ✅ Firebase Initialization (Default Auth - No Crash)
+// ✅ Firebase Initialization (लोकल और सर्वर दोनों के लिए सही तरीका)
 if (!admin.apps.length) {
-    admin.initializeApp({ 
-        projectId: "studymaterial-406ad" 
-    });
-    console.log("✅ Firebase initialized with Default Auth");
+    const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
+    
+    if (serviceAccountVar) {
+        try {
+            // .env से क्रेडेंशियल उठाएगा
+            const serviceAccount = JSON.parse(serviceAccountVar);
+            admin.initializeApp({
+                credential: admin.credential.cert(serviceAccount),
+                projectId: "studymaterial-406ad"
+            });
+            console.log("✅ Firebase initialized with Secrets from .env");
+        } catch (err) {
+            console.error("❌ JSON Parsing Error:", err.message);
+            process.exit(1);
+        }
+    } else {
+        // सर्वर पर अपने आप चलेगा
+        admin.initializeApp({ projectId: "studymaterial-406ad" });
+        console.log("✅ Firebase initialized with Default Auth");
+    }
 }
 const db = admin.firestore();
 const WEBSITE_URL = "https://studygyaan.in";
