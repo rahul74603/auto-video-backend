@@ -19,7 +19,7 @@ if (!admin.apps.length) {
     }
 }
 
-// ✅ 1. XML URL Safety Helper (इसे यहाँ जोड़ दिया है)
+// ✅ 1. XML URL Safety Helper
 const escapeXml = (unsafe) => {
     if (!unsafe) return '';
     return unsafe.replace(/[<>&"']/g, (c) => {
@@ -67,22 +67,17 @@ exports.rssFeed = functions.https.onRequest(async (req, res) => {
                     const isAutoBlog = (colName === 'blogs' && (!data.status || type === 'auto-blog'));
 
                     if (isExplicitlyLive || isAutoBlog) {
-
-    // 👉 duplicate check
-    if (!seenIds.has(doc.id)) {
-
-        seenIds.add(doc.id);
-
-        allItems.push({
-            id: doc.id,
-            ...data,
-            universalTime: data[timeField], 
-            collectionName: colName 
-        });
-
-    }
-
-}
+                        // 👉 duplicate check
+                        if (!seenIds.has(doc.id)) {
+                            seenIds.add(doc.id);
+                            allItems.push({
+                                id: doc.id,
+                                ...data,
+                                universalTime: data[timeField], 
+                                collectionName: colName 
+                            });
+                        }
+                    }
                 });
             } catch (err) {
                 console.warn(`Skipping collection ${colName}:`, err.message);
@@ -90,24 +85,21 @@ exports.rssFeed = functions.https.onRequest(async (req, res) => {
         });
 
         await Promise.all(fetchPromises);
-allItems.forEach(item => {
-    let boost = 0;
 
-    const title = (item.title || '').toLowerCase();
+        allItems.forEach(item => {
+            let boost = 0;
+            const title = (item.title || '').toLowerCase();
+            if (title.includes('result')) boost += 5;
+            if (title.includes('admit')) boost += 4;
+            if (title.includes('answer')) boost += 3;
+            item.priorityScore = boost;
+        });
 
-    if (title.includes('result')) boost += 5;
-    if (title.includes('admit')) boost += 4;
-    if (title.includes('answer')) boost += 3;
-
-    item.priorityScore = boost;
-});
         allItems.sort((a, b) => {
-    const dateA = a.universalTime?.toDate ? a.universalTime.toDate() : new Date(a.universalTime);
-    const dateB = b.universalTime?.toDate ? b.universalTime.toDate() : new Date(b.universalTime);
-
-    return (b.priorityScore || 0) - (a.priorityScore || 0) ||
-           dateB - dateA;
-});
+            const dateA = a.universalTime?.toDate ? a.universalTime.toDate() : new Date(a.universalTime);
+            const dateB = b.universalTime?.toDate ? b.universalTime.toDate() : new Date(b.universalTime);
+            return (b.priorityScore || 0) - (a.priorityScore || 0) || dateB - dateA;
+        });
 
         const finalItems = allItems.slice(0, 30);
 
@@ -144,7 +136,11 @@ ${JSON.stringify(itemsForAI)}
 `;
 
                 const result = await model.generateContent(prompt);
-                const aiResponse = JSON.parse(result.response.text());
+                
+                // ✅ AI JSON Parse Bug Fix (Remove markdown formatting)
+                let aiText = result.response.text();
+                aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
+                const aiResponse = JSON.parse(aiText);
 
                 aiResponse.forEach(aiItem => {
                     const index = finalItems.findIndex(i => i.id === aiItem.id);
@@ -159,7 +155,7 @@ ${JSON.stringify(itemsForAI)}
             console.error("❌ AI Rewrite Failed:", aiError.message);
         }
 
-        // ✅ 2. XML Structure (यहाँ बदलाव किए गए हैं)
+        // ✅ 2. XML Structure
         let xml = `<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/">
 <channel>
@@ -178,16 +174,25 @@ ${JSON.stringify(itemsForAI)}
             // ✅ URL को escapeXml के अंदर डाला गया है
             const rawPostUrl = `https://studygyaan.in/${routeType}/${item.id}`;
             const postUrl = escapeXml(rawPostUrl);
-            const pubDate = item.universalTime ? (typeof item.universalTime.toDate === 'function' ? item.universalTime.toDate().toUTCString() : new Date(item.universalTime).toUTCString()) : new Date().toUTCString();
+            
+            // ✅ Date Fallback Fix (ताकि Invalid Date से XML क्रैश न हो)
+            let pubDate = new Date().toUTCString();
+            if (item.universalTime) {
+                const parsedDate = typeof item.universalTime.toDate === 'function' ? item.universalTime.toDate() : new Date(item.universalTime);
+                if (!isNaN(parsedDate.getTime())) {
+                    pubDate = parsedDate.toUTCString();
+                }
+            }
             
             const rawImageUrl = item.imageUrl || item.image || item.thumbnail || item.featuredImage || 'https://studygyaan.in/default.jpg';
             const imageUrl = escapeXml(rawImageUrl);
             
             const author = item.author || 'StudyGyaan';
-            const safeContent = escapeXml(item.content || item.description || '');
+            
+            // ✅ HTML Content को CDATA के लिए सुरक्षित रखा (बिना escapeXml के)
+            const rawContent = item.content || item.description || '';
             const finalDisplayTitle = item.aiNewsTitle || item.title || item.post_name || item.jobTitle || 'New Update';
-
-const finalDescription = item.aiSummary || item.shortDescription || item.description || 'Latest update available, check now!';
+            const finalDescription = item.aiSummary || item.shortDescription || item.description || 'Latest update available, check now!';
 
             xml += `
     <item>
@@ -198,10 +203,10 @@ const finalDescription = item.aiSummary || item.shortDescription || item.descrip
         <category><![CDATA[${item.collectionName.toUpperCase()}]]></category>
         <dc:creator><![CDATA[${author}]]></dc:creator>
         <description><![CDATA[${finalDescription}]]></description>
-        <content:encoded><![CDATA[${safeContent}]]></content:encoded>
+        <content:encoded><![CDATA[${rawContent}]]></content:encoded>
         ${imageUrl ? `<media:content url="${imageUrl}" medium="image"/>` : ''}
         <media:title><![CDATA[${finalDisplayTitle}]]></media:title>
-<media:description><![CDATA[${finalDescription}]]></media:description>
+        <media:description><![CDATA[${finalDescription}]]></media:description>
     </item>`;
         });
 
