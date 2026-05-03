@@ -10,6 +10,22 @@ const ffmpegPath = require('ffmpeg-static');
 const admin = require("firebase-admin");
 const FormData = require('form-data');
 require("dotenv").config();
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+async function sendTelegramUpdate(message) {
+    if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+    try {
+        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            chat_id: TELEGRAM_CHAT_ID,
+            text: message,
+            parse_mode: 'HTML'
+        });
+        console.log('✅ टेलीग्राम पर मैसेज भेज दिया गया!');
+    } catch (err) {
+        console.error('❌ टेलीग्राम एरर:', err.message);
+    }
+}
 // =========================================================
 // 🔐 0. FIREBASE INITIALIZATION (GitHub Secrets से)
 // =========================================================
@@ -278,8 +294,8 @@ let script = `${hook} ⚠️ ध्यान से सुनो! ${jobData.titl
 ctx.font = 'bold 90px sans-serif';
 ctx.fillText("🔥 IMPORTANT 🔥", width / 2, 450);
 ctx.fillStyle = "#FF0000";
-ctx.font = 'bold 80px sans-serif';
-ctx.fillText("APPLY NOW", width / 2, 600);
+ctx.font = 'bold 60px sans-serif'; // Text thoda chota kiya taaki mix na ho
+ctx.fillText("APPLY NOW", width / 2, 680); // 600 se niche shift kiya
 
         function wrapText(context, text, x, y, maxWidth, lineHeight) {
             let words = text.split(' '), line = '';
@@ -399,6 +415,7 @@ let finalTitle = `${randomPower} ${cleanTitle.substring(0,40)} ${jobCat !== 'Def
         });
         
         console.log('✅ यूट्यूब वीडियो लाइव! URL: https://youtu.be/' + res.data.id);
+        await sendTelegramUpdate(`🚀 <b>New Video Live!</b>\n\n📌 ${finalTitle}\n🔗 <a href="https://youtu.be/${res.data.id}">Watch Here</a>\n\n✅ Uploaded on YouTube & Facebook.`);
 
         // --- 🚀 FACEBOOK & REELS (Call the function) ---
         await uploadToFacebook(videoPath, seoData.description);
