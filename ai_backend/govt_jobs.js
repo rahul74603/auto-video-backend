@@ -267,67 +267,65 @@ exports.fetchLatestGovtJobs = onRequest({
 /* 2️⃣ MANUAL PUBLISH TRIGGER (SOCIALS + VIDEO) */
 /* ========================================== */
 
-// ✅ FIX: Wapas onDocumentCreated kiya gaya. Jab Admin Panel 'job_drafts' se 'jobs' me publish karega, tab ye chalega.
-exports.onJobApprovedSendTelegram = onDocumentCreated({
+// ✅ सुधार: onDocumentWritten इस्तेमाल किया ताकि Update होने पर भी मैसेज जाए
+exports.onJobApprovedSendTelegram = onDocumentWritten({
     document: "jobs/{jobId}",
     secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON", "GMAIL_CREDENTIALS", "YOUTUBE_TOKEN", "TTS_KEY_JSON"],
     timeoutSeconds: 540, 
     memory: "2GiB", 
     cpu: 1 
 }, async (event) => {
-    const newJob = event.data.data();
-    if (!newJob) return null;
+    // अगर डेटा डिलीट हुआ है तो कुछ न करें
+    if (!event.data.after.exists) return null;
 
-    try {
+    const newJob = event.data.after.data();
+    const previousJob = event.data.before.exists ? event.data.before.data() : null;
+
+    // ✅ लॉजिक: अगर स्टेटस पहली बार 'published' हुआ हो तभी मैसेज भेजें
+    const isNowPublished = newJob.status && newJob.status.toLowerCase() === 'published';
+    const wasPublished = previousJob && previousJob.status && previousJob.status.toLowerCase() === 'published';
+
+    if (isNowPublished && !wasPublished) {
         console.log(`🚀 Processing Job: ${newJob.title}`);
-        const blogUrl = `https://studygyaan.in/job/${event.params.jobId}`;
-        
-        // 1. Google Indexing
-        await notifyGoogle(blogUrl);
-        
-        // 2. टेलीग्राम (HTML Format फिक्स & Token Check)
-        const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
-        const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID; 
+        try {
+            const blogUrl = `https://studygyaan.in/job/${event.params.jobId}`;
+            
+            // 1. Google Indexing
+            await notifyGoogle(blogUrl);
+            
+            // 2. टेलीग्राम अलर्ट
+            const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
+            const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID; 
 
-        if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
-            const telegramMessage = `<b>🚨 New Govt Job Alert! 🚨</b>\n\n` +
-                                   `📌 <b>Post:</b> ${newJob.title}\n` +
-                                   `🏢 <b>Dept:</b> ${newJob.organization || 'Govt Dept'}\n` +
-                                   `🎓 <b>Qualification:</b> ${newJob.qualification || 'Check Details'}\n` +
-                                   `⏳ <b>Last Date:</b> ${newJob.lastDate || 'Apply Soon'}\n\n` +
-                                   `📖 <b>पूरा विवरण यहाँ देखें:</b>\n${blogUrl}\n\n` +
-                                   `🚀 <i>Join @studygyaan_official for fastest updates!</i>`;
+            if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+                const telegramMessage = `<b>🚨 New Govt Job Alert! 🚨</b>\n\n` +
+                    `📌 <b>Post:</b> ${newJob.title}\n` +
+                    `🏢 <b>Dept:</b> ${newJob.organization || 'Govt Dept'}\n` +
+                    `🎓 <b>Qualification:</b> ${newJob.qualification || 'Check Details'}\n` +
+                    `⏳ <b>Last Date:</b> ${newJob.lastDate || 'Apply Soon'}\n\n` +
+                    `📖 <b>पूरा विवरण यहाँ देखें:</b>\n${blogUrl}\n\n` +
+                    `🚀 <i>Join @studygyaan_official for fastest updates!</i>`;
 
-            try {
                 await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
                     chat_id: TELEGRAM_CHAT_ID,
                     text: telegramMessage, 
                     parse_mode: 'HTML'
                 });
                 console.log("✅ Telegram Sent!");
-            } catch (tgErr) {
-                console.error("❌ Telegram Error:", tgErr.message);
             }
-        } else {
-            console.log("⚠️ TELEGRAM SKIPPED: Token or Chat ID not found.");
-        }
 
-        // 3. व्हाट्सएप
-        const whatsappMessage = `🚨 *New Govt Job Alert!* 🚨\n\n📌 *Post:* ${newJob.title}\n🔗 *Full Details:* ${blogUrl}`;
-        await axios.post(`http://34.58.150.88:3000/send-job`, { 
-            targetId: "120363425475163322@newsletter", 
-            messageText: whatsappMessage 
-        }).catch(e => console.log("WhatsApp skip"));
+            // 3. व्हाट्सएप (Optional)
+            const whatsappMessage = `🚨 *New Govt Job Alert!* 🚨\n\n📌 *Post:* ${newJob.title}\n🔗 *Full Details:* ${blogUrl}`;
+            await axios.post(`http://34.58.150.88:3000/send-job`, { 
+                targetId: "120363425475163322@newsletter", 
+                messageText: whatsappMessage 
+            }).catch(() => console.log("WhatsApp skip"));
 
-        // 4. वीडियो इंजन (Duplicate Check के साथ)
-        if (!newJob.videoSent) {
-            const videoSuccess = await generateAndUploadVideo({ ...newJob, id: event.params.jobId });
-            if (videoSuccess) {
-                await admin.firestore().collection("jobs").doc(event.params.jobId).update({ videoSent: true });
-            }
+        } catch (error) {
+            console.error("❌ Trigger Error:", error.message);
         }
-    } catch (error) {
-        console.error("❌ Trigger Error:", error.message);
+    } else {
+        console.log(`⏭️ Trigger Skipped: Status is ${newJob.status}`);
     }
     return null;
 });
