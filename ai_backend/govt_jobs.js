@@ -1,6 +1,6 @@
 require("dotenv").config();
 const { onRequest } = require("firebase-functions/v2/https");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 const axios = require("axios");
 const { google } = require("googleapis");
