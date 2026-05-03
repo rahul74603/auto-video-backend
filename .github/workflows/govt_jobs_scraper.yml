@@ -1,0 +1,38 @@
+name: Govt Jobs Scraper
+
+on:
+  schedule:
+    - cron: '0 4 * * *' # रोज़ाना सुबह 9:30 AM IST
+  workflow_dispatch: # बटन से चलाने के लिए (Manual Run)
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    # 👇 यह सुनिश्चित करता है कि सभी कमांड्स ai_backend फोल्डर के अंदर चलें
+    defaults:
+      run:
+        working-directory: ai_backend
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Create Service Account File
+        run: echo '${{ secrets.SERVICE_ACCOUNT_JSON }}' > service-account.json
+
+      - name: Run Govt Jobs Scraper
+        run: node -e 'require("./govt_jobs.js").runJobScraper().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); })'
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

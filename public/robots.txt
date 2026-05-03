@@ -1,0 +1,22 @@
+User-agent: *
+Allow: /
+
+# 🛑 Private Routes
+Disallow: /secret-admin/
+Disallow: /admin/
+Disallow: /write-blog-secret/
+Disallow: /admin-stories-secret/
+Disallow: /redirect
+
+# 🤖 Block AI Crawlers (Correct way to replace line 29)
+User-agent: GPTBot
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+# 🗺️ Sitemap Link
+Sitemap: https://studygyaan.in/sitemap.xml

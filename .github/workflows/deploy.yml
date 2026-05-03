@@ -1,0 +1,33 @@
+name: Manual Deploy Firebase Functions
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    # 👇 यह Actions को ai_backend फोल्डर के अंदर काम करने को कहेगा
+    defaults:
+      run:
+        working-directory: ai_backend
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Deploy to Firebase Functions
+        run: firebase deploy --only functions --project studymaterial-406ad
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

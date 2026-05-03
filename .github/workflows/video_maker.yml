@@ -1,0 +1,52 @@
+name: Auto Video Generator (Free Server)
+
+on:
+  repository_dispatch:
+    types: [generate_video]
+
+jobs:
+  render-video:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ai_backend
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+
+      - name: Clean workspace
+        run: |
+          rm -rf node_modules
+          rm -rf ai_backend/node_modules
+          rm -f package-lock.json
+          rm -f ai_backend/package-lock.json
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Video Engine
+        env:
+          # 🔐 नया GitHub टोकन यहाँ मैप कर दिया है
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          
+          # 🧠 बाकी सभी सीक्रेट्स सीधे env से (फाइल बनाने की ज़रूरत नहीं)
+          JOB_DATA: ${{ toJson(github.event.client_payload.jobData) }}
+          GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
+          YOUTUBE_TOKEN: ${{ secrets.YOUTUBE_TOKEN }}
+          TTS_KEY_JSON: ${{ secrets.TTS_KEY_JSON }}
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
+        run: node autoVideo.js

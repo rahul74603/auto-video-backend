@@ -1,0 +1,125 @@
+{
+  "hosting": {
+    "public": "dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "redirects": [
+      {
+        "source": "/feed",
+        "destination": "/feed.xml",
+        "type": 301
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "/sitemap.xml",
+        "function": "generateSitemap"
+      },
+      {
+        "source": "/web-stories-sitemap.xml",
+        "run": {
+          "serviceId": "generatestoriessitemap",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/generateSitemap",
+        "function": "generateSitemap"
+      },
+      {
+        "source": "/forcePushSitemap",
+        "function": "forcePushSitemap"
+      },
+      {
+        "source": "/generateRss",
+        "function": "generateRss"
+      },
+      {
+        "source": "/feed.xml",
+        "function": "rssFeed"
+      },
+      {
+        "source": "/web-stories/**",
+        "run": {
+          "serviceId": "serversidemetatags",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/job/**",
+        "run": {
+          "serviceId": "serversidemetatags",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/jobs/**",
+        "run": {
+          "serviceId": "serversidemetatags",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/blog/**",
+        "run": {
+          "serviceId": "serversidemetatags",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/blogs/**",
+        "run": {
+          "serviceId": "serversidemetatags",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/admit_cards/**",
+        "run": {
+          "serviceId": "serversidemetatags",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/results/**",
+        "run": {
+          "serviceId": "serversidemetatags",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "functions": [
+    {
+      "source": "ai_backend",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "disallowLegacyRuntimeConfig": true
+    }
+  ],
+  "emulators": {
+    "functions": {
+      "port": 5001
+    },
+    "hosting": {
+      "port": 5000
+    },
+    "ui": {
+      "enabled": true
+    },
+    "singleProjectMode": true
+  }
+}

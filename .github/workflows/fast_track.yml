@@ -1,0 +1,34 @@
+name: Fast Track Scraper
+
+on:
+  schedule:
+    - cron: '30 3 * * *' 
+  workflow_dispatch: 
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    # 👇 यह सुनिश्चित करेगा कि सारे कमांड्स ai_backend फोल्डर में चलें
+    defaults:
+      run:
+        working-directory: ai_backend
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Scraper
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+        # working-directory की वजह से यह फाइल अपने आप मिल जाएगी
+        run: node -e 'require("./fast_track_updates.js").runFastTrackLogic().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); })'

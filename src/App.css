@@ -1,0 +1,78 @@
+/* ✅ 1. बेस रिसेट और फॉन्ट स्टेबिलिटी */
+:root {
+  font-family: 'Hind', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-display: swap; 
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scrollbar-gutter: stable; /* स्क्रॉल बार आने पर पेज हिलेगा नहीं */
+}
+
+/* ✅ 2. CLS FIX: इन डब्बों की जगह पहले से फिक्स कर दी है */
+#materials-page {
+  min-height: 100vh;
+  contain: content; /* लेआउट को आइसोलेट करता है ताकि शिफ्ट न हो */
+}
+
+#fast-track-section {
+  min-height: 180px; /* मोबाइल पर रेंडर होने से पहले जगह घेर लेगा */
+}
+
+/* ✅ 3. इमेज स्टेबिलिटी (The CLS Killer) */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  content-visibility: auto; /* सिर्फ स्क्रीन पर आने पर रेंडर होगी */
+  /* ब्राउज़र को इमेज साइज का अंदाज़ा देने के लिए */
+  aspect-ratio: auto; 
+}
+
+/* ✅ 4. मुख्य कंटेनर सेटअप (Vite Cleanup) */
+#root {
+  margin: 0 auto;
+  width: 100%;
+}
+
+body {
+  margin: 0;
+  display: block; /* Flexbox से होने वाले शुरुआती लेआउट शिफ्ट को रोकने के लिए */
+  min-width: 320px;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+/* ✅ 5. मोबाइल पर TBT और CLS फिक्स */
+@media (max-width: 768px) {
+  * {
+    /* मोबाइल पर भारी एनीमेशन और ट्रांजिशन बंद करने से TBT स्कोर बढ़ेगा */
+    transition-property: none !important;
+    transform: none !important;
+    animation-duration: 0.001s !important;
+    animation-iteration-count: 1 !important;
+  }
+  
+  /* सिर्फ जरूरी हेडलाइन या न्यूज़ पट्टी को चलने दें */
+  .animate-marquee {
+    animation: marquee 30s linear infinite !important;
+  }
+}
+
+/* ✅ 6. यूटिलिटी क्लासेस */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* एनीमेशन की जगह को रिजर्व करना */
+.animate-pulse {
+  background-color: #f1f5f9;
+  border-radius: 0.5rem;
+}

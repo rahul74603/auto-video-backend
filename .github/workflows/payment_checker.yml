@@ -1,0 +1,35 @@
+name: Automatic Payment Checker
+
+on:
+  schedule:
+    - cron: '0 0 */2 * *'
+  workflow_dispatch:
+
+jobs:
+  verify_payments:
+    runs-on: ubuntu-latest
+
+    # 👇 यह सुनिश्चित करता है कि GitHub Actions ai_backend फोल्डर के अंदर काम करे
+    defaults:
+      run:
+        working-directory: ai_backend
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Run Payment Checker
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
+          PAYMENT_GMAIL_TOKEN: ${{ secrets.PAYMENT_GMAIL_TOKEN }}
+        # working-directory की वजह से ./payment_checker.js अपने आप मिल जाएगी
+        run: node -e 'require("./payment_checker.js").checkPayments().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); })'

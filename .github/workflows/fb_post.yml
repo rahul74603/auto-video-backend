@@ -1,0 +1,28 @@
+name: Auto Post to Facebook
+
+on:
+  workflow_dispatch:
+
+jobs:
+  post_to_fb:
+    runs-on: ubuntu-latest
+
+    # 👇 यह लाइन GitHub को ai_backend फोल्डर के अंदर काम करने को कहेगा
+    defaults:
+      run:
+        working-directory: ai_backend
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Run Facebook Poster Script
+        env:
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
+        run: node fb_poster.js
