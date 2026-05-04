@@ -277,21 +277,17 @@ exports.onJobApprovedSendTelegram = onDocumentWritten({
     if (!event.data.after.exists) return null;
 
     const newJob = event.data.after.data();
-    const previousJob = event.data.before.exists ? event.data.before.data() : null;
 
-    const currentStatus = (newJob.status || "").toString().toLowerCase().trim();
-    const previousStatus = (previousJob?.status || "").toString().toLowerCase().trim();
-
-    // ✅ सिर्फ तब चलेगा जब स्टेटस 'published' होगा
-    if (currentStatus === 'published' && previousStatus !== 'published') {
-        console.log(`🚀 Processing Started: ${newJob.title}`);
+    // 🔥 MAHA-JUGAD: Status ki spelling ka jhanjhat hi khatam!
+    // Agar telegramSent 'true' nahi hai, to msg bhej do aur lock lagado.
+    if (newJob.telegramSent !== true) {
+        console.log(`🚀 Processing Started (Maha-Jugad Activated): ${newJob.title}`);
         const blogUrl = `https://studygyaan.in/job/${event.params.jobId}`;
 
-        // --- 1. Google Indexing (Parallel) ---
+        // 1. Google Indexing
         notifyGoogle(blogUrl).catch(e => console.log("Indexing Skip"));
 
-        // --- 2. वीडियो इंजन और सोशल मीडिया ---
-        // इसे पहले चला रहे हैं जैसा आपने कहा
+        // 2. Video Engine
         let videoDetails = "Video process initiated...";
         try {
             if (!newJob.videoSent) {
@@ -306,7 +302,7 @@ exports.onJobApprovedSendTelegram = onDocumentWritten({
             videoDetails = "⚠️ Video/FB Failed but sending Telegram...";
         }
 
-        // --- 3. टेलीग्राम (जुगाड़: वीडियो के बाद पक्का मैसेज) ---
+        // 3. Telegram Alert
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
         const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID; 
 
@@ -326,13 +322,17 @@ exports.onJobApprovedSendTelegram = onDocumentWritten({
                     text: telegramMessage, 
                     parse_mode: 'HTML'
                 });
-                console.log("✅ Telegram Sent after Video Process!");
+                console.log("✅ Telegram Sent!");
+
+                // 🔥 Lock: Ab dobara edit hone par msg nahi jayega
+                await admin.firestore().collection("jobs").doc(event.params.jobId).update({ telegramSent: true });
+
             } catch (tgErr) {
                 console.error("❌ Telegram Error:", tgErr.message);
             }
         }
 
-        // --- 4. व्हाट्सएप ---
+        // 4. WhatsApp
         const whatsappMessage = `🚨 *New Govt Job Alert!* 🚨\n\n📌 *Post:* ${newJob.title}\n🔗 *Full Details:* ${blogUrl}`;
         axios.post(`http://34.58.150.88:3000/send-job`, { 
             targetId: "120363425475163322@newsletter", 
@@ -340,7 +340,7 @@ exports.onJobApprovedSendTelegram = onDocumentWritten({
         }).catch(() => console.log("WhatsApp skip"));
 
     } else {
-        console.log(`⏭️ Trigger Skipped: Status is ${currentStatus}`);
+        console.log(`⏭️ Skipped: Iska Telegram pehle hi ja chuka hai (telegramSent === true).`);
     }
     return null;
 });
