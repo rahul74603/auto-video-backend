@@ -3,7 +3,7 @@ const admin = require("firebase-admin");
 const { google } = require("googleapis");
 require("dotenv").config();
 
-// ✅ Firebase Admin Initialization using Secrets
+// ✅ Firebase Admin Initialization
 if (!admin.apps.length) {
     const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
     if (serviceAccountVar) {
@@ -21,19 +21,17 @@ const db = admin.firestore();
 exports.checkPayments = async () => {
     console.log("🚀 Starting Automatic Payment Checker...");
     
-    // ✅ OAuth2 Setup using Combined Secrets
     const credentialsVar = process.env.GMAIL_CREDENTIALS;
     const tokenVar = process.env.PAYMENT_GMAIL_TOKEN;
 
     if (!credentialsVar || !tokenVar) {
         console.error("❌ Missing GMAIL_CREDENTIALS or PAYMENT_GMAIL_TOKEN in Secrets!");
-        return; // अब यह सिर्फ फंक्शन को रोकेगा, ऐप क्रैश नहीं करेगा
+        return;
     }
 
     try {
         const creds = JSON.parse(credentialsVar);
         const token = JSON.parse(tokenVar);
-
         const { client_secret, client_id, redirect_uris } = creds.installed || creds.web;
 
         const oAuth2Client = new google.auth.OAuth2(
@@ -42,7 +40,6 @@ exports.checkPayments = async () => {
             redirect_uris ? redirect_uris[0] : "https://developers.google.com/oauthplayground"
         );
 
-        // ✅ Token object includes the refresh_token we generated
         oAuth2Client.setCredentials(token);
         const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
 
@@ -52,7 +49,6 @@ exports.checkPayments = async () => {
             return;
         }
 
-      // ✅ 1. Email Limit 15 से 50 कर दी गई है
         const res = await gmail.users.messages.list({
             userId: "me",
             q: "from:alert@mail.uco.bank.in",
@@ -64,10 +60,9 @@ exports.checkPayments = async () => {
         
         for (const msg of messages) {
             const emailData = await gmail.users.messages.get({ userId: "me", id: msg.id });
+            let fullText = "";
             
-           let fullText = "";
-            
-            // ✅ Smart Recursive Function: ईमेल की हर अंदरूनी लेयर (Banners/Images के पीछे) से टेक्स्ट निकालने के लिए
+            // ✅ Recursive Scraper: विज्ञापन और बैनर के पीछे छिपे टेक्स्ट को निकालने के लिए
             const extractText = (part) => {
                 if (part.parts) {
                     part.parts.forEach(extractText);
@@ -83,22 +78,25 @@ exports.checkPayments = async () => {
                 extractText(emailData.data.payload);
             }
             
-            // ✅ HTML टैग्स को हटा रहे हैं ताकि Regex को अमाउंट ढूँढने में दिक्कत ना हो
+            // ✅ HTML टैग्स हटाना और क्लीन टेक्स्ट बनाना
             fullText = fullText.replace(/<[^>]*>?/gm, ' ') || emailData.data.snippet || "";
 
             bankTransactions.push({ 
-                id: msg.id, // ✅ 2. Message ID सेव कर रहे हैं
+                id: msg.id, 
                 text: fullText, 
                 time: parseInt(emailData.data.internalDate),
-                isUsed: false // डुप्लीकेट प्रोटेक्शन के लिए
+                isUsed: false 
             });
         }
-    for (const doc of pendingSnapshot.docs) {
+
+        for (const doc of pendingSnapshot.docs) {
             const purchase = doc.data();
             const expectedAmount = Number(purchase.amount).toFixed(2);
-            let purchaseTime = (typeof purchase.timestamp.toDate === 'function') ? purchase.timestamp.toDate().getTime() : new Date(purchase.timestamp).getTime();
+            let purchaseTime = (typeof purchase.timestamp.toDate === 'function') ? 
+                               purchase.timestamp.toDate().getTime() : 
+                               new Date(purchase.timestamp).getTime();
 
-            // ✅ 3. Junk Cleanup: 2 घंटे (7200000 ms) से पुराना फेक/पेंडिंग पेमेंट डिलीट करें
+            // ✅ Junk Cleanup: 2 घंटे से पुराने फेक रिक्वेस्ट हटाना
             const currentTime = Date.now();
             if (currentTime - purchaseTime > 2 * 60 * 60 * 1000) {
                 await db.collection("purchases").doc(doc.id).delete();
@@ -109,16 +107,17 @@ exports.checkPayments = async () => {
             let isMatchFound = false;
 
             for (const tx of bankTransactions) {
-                // ✅ 4. Strict Amount Match (सिर्फ 199.01 को पकड़ेगा, 1199.01 को नहीं)
+                // ✅ Flexible Regex: 'Rs.28.55' जैसे फॉर्मेट को पकड़ने के लिए
                 const strictExpectedAmount = expectedAmount.replace('.', '\\.');
-                const amountRegex = new RegExp(`\\b${strictExpectedAmount}\\b`, "i");
+                const amountRegex = new RegExp(`${strictExpectedAmount}`, "i");
                 const isAmountMatch = amountRegex.test(tx.text);
 
+                // ✅ Time Match: 120 मिनट (2 घंटे) का बफर
                 const timeDifference = Math.abs(tx.time - purchaseTime);
-                const isTimeMatch = timeDifference <= 60 * 60 * 1000;
+                const isTimeMatch = timeDifference <= 120 * 60 * 1000;
 
                 if (isAmountMatch && isTimeMatch) {
-                    // ✅ 5. Duplicate Protection: चेक करें कि ये ईमेल पहले यूज़ तो नहीं हुआ
+                    // ✅ Duplicate Protection
                     if (tx.isUsed) continue;
                     const usedCheck = await db.collection("purchases").where("emailMessageId", "==", tx.id).get();
                     if (!usedCheck.empty) {
@@ -127,11 +126,12 @@ exports.checkPayments = async () => {
                     }
 
                     console.log(`✅ MATCH FOUND! Amount: ${expectedAmount}`);
+                    console.log(`🔍 Email Found: ${tx.text.substring(0, 50)}...`);
                     tx.isUsed = true;
                     
                     await db.collection("purchases").doc(doc.id).update({
                         status: "completed",
-                        emailMessageId: tx.id, // Email का ID सेव कर दिया
+                        emailMessageId: tx.id,
                         unlockedAt: admin.firestore.FieldValue.serverTimestamp()
                     });
 
