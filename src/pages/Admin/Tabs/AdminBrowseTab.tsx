@@ -194,6 +194,42 @@ const AdminBrowseTab = () => {
         } catch (err) { console.error("❌ Telegram Jugad Failed:", err); }
     };
 
+    // 🚀 NEW: GitHub Action Trigger specifically for Telegram
+    const triggerTelegramViaGitHub = async (jobData, docId, type) => {
+        const GITHUB_PAT = import.meta.env.VITE_GITHUB_PAT;
+        const GITHUB_OWNER = import.meta.env.VITE_GITHUB_OWNER; 
+        const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO;   
+
+        if (!GITHUB_PAT || !GITHUB_OWNER || !GITHUB_REPO) {
+            console.warn("⚠️ GitHub Credentials missing in .env, Telegram via GitHub skipped.");
+            return;
+        }
+
+        const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/dispatches`;
+
+        try {
+            await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Authorization': `token ${GITHUB_PAT}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    event_type: 'send_telegram_alert', // 👈 Yeh naam YAML file se match kar raha hai
+                    client_payload: { 
+                        jobData: jobData,
+                        docId: docId,
+                        type: type 
+                    }
+                })
+            });
+            console.log("✅ GitHub Action Triggered for Telegram!");
+        } catch (err) {
+            console.error("❌ GitHub Action for Telegram Failed:", err);
+        }
+    };
+
     // 🚀 NEW: GitHub Actions Webhook Trigger
     const triggerGitHubVideoRender = async (jobData) => {
         const GITHUB_PAT = import.meta.env.VITE_GITHUB_PAT;
@@ -260,10 +296,11 @@ const AdminBrowseTab = () => {
                     createdAt: new Date().toISOString() 
                 });
 
-                if (postType === 'JOB') {
-                    // Telegram Pe Message
-                    await sendTelegramJugad(cleanPayload, docRef.id);
-                    // GitHub Actions se Video aur Pinterest Trigger
+               if (postType === 'JOB' || postType === 'FAST_TRACK') {
+                    // 🔥 Firebase ko bypass karke direct GitHub ko Telegram bhejne ka order
+                    await triggerTelegramViaGitHub(cleanPayload, docRef.id, postType);
+                    
+                    // Video Trigger (Sirf Job ke liye, ya jaise aapki requirement ho)
                     await triggerGitHubVideoRender(cleanPayload);
                 }
 
