@@ -153,5 +153,3 @@ exports.checkPayments = async () => {
         console.error("❌ Payment Checker Error:", error.message);
     }
 };
-
-checkPayments();
