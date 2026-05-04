@@ -96,37 +96,41 @@ exports.checkPayments = async () => {
                                purchase.timestamp.toDate().getTime() : 
                                new Date(purchase.timestamp).getTime();
 
-            // ✅ Junk Cleanup: 2 घंटे से पुराने फेक रिक्वेस्ट हटाना
-            const currentTime = Date.now();
-            if (currentTime - purchaseTime > 2 * 60 * 60 * 1000) {
+            console.log(`\n🔎 CHECKING: Amount ${expectedAmount} for User ${purchase.userEmail}`);
+
+            // ✅ Junk Cleanup: 2 घंटे से पुराना डेटा हटाना
+            if (Date.now() - purchaseTime > 2 * 60 * 60 * 1000) {
                 await db.collection("purchases").doc(doc.id).delete();
-                console.log(`🗑️ Deleted expired junk request for Amount: ${expectedAmount}`);
+                console.log(`🗑️ Deleted junk request: ${expectedAmount}`);
                 continue;
             }
 
             let isMatchFound = false;
 
             for (const tx of bankTransactions) {
-                // ✅ Flexible Regex: 'Rs.28.55' जैसे फॉर्मेट को पकड़ने के लिए
+                // ✅ Regex Match
                 const strictExpectedAmount = expectedAmount.replace('.', '\\.');
                 const amountRegex = new RegExp(`${strictExpectedAmount}`, "i");
                 const isAmountMatch = amountRegex.test(tx.text);
 
-                // ✅ Time Match: 120 मिनट (2 घंटे) का बफर
+                // ✅ Time Match (120 min buffer)
                 const timeDifference = Math.abs(tx.time - purchaseTime);
                 const isTimeMatch = timeDifference <= 120 * 60 * 1000;
 
+                // 🔴 DEBUG LOGS: यहाँ से पता चलेगा गड़बड़ कहाँ है
+                if (isAmountMatch || timeDifference < 180 * 60 * 1000) {
+                    console.log(`--- Potential Match Found ---`);
+                    console.log(`💰 Expected: ${expectedAmount} | In Email: ${isAmountMatch ? 'YES' : 'NO'}`);
+                    console.log(`⏰ Time Diff: ${Math.round(timeDifference / 60000)} mins | Match: ${isTimeMatch ? 'YES' : 'NO'}`);
+                    console.log(`📧 Email Snippet: ${tx.text.substring(0, 150).replace(/\n/g, ' ')}`);
+                }
+
                 if (isAmountMatch && isTimeMatch) {
-                    // ✅ Duplicate Protection
                     if (tx.isUsed) continue;
                     const usedCheck = await db.collection("purchases").where("emailMessageId", "==", tx.id).get();
-                    if (!usedCheck.empty) {
-                        tx.isUsed = true;
-                        continue;
-                    }
+                    if (!usedCheck.empty) { tx.isUsed = true; continue; }
 
-                    console.log(`✅ MATCH FOUND! Amount: ${expectedAmount}`);
-                    console.log(`🔍 Email Found: ${tx.text.substring(0, 50)}...`);
+                    console.log(`✅ SUCCESS! Matching Email Found.`);
                     tx.isUsed = true;
                     
                     await db.collection("purchases").doc(doc.id).update({
@@ -136,12 +140,10 @@ exports.checkPayments = async () => {
                     });
 
                     if (purchase.userId && purchase.courseId) {
-                        const userRef = db.collection("users").doc(purchase.userId);
-                        await userRef.set({
+                        await db.collection("users").doc(purchase.userId).set({
                             [`purchased_${purchase.courseId}`]: true,
                             lastPurchaseDate: new Date().toISOString()
                         }, { merge: true });
-                        console.log(`🎉 Course ${purchase.courseId} auto-unlocked for User: ${purchase.userId}`);
                     }
 
                     isMatchFound = true;
@@ -150,7 +152,7 @@ exports.checkPayments = async () => {
             }
 
             if (!isMatchFound) {
-                console.log(`⏳ No match for Amount: ${expectedAmount}`);
+                console.log(`❌ Still No Match for ${expectedAmount}`);
             }
         }
     } catch (error) {
