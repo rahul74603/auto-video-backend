@@ -65,22 +65,26 @@ exports.checkPayments = async () => {
         for (const msg of messages) {
             const emailData = await gmail.users.messages.get({ userId: "me", id: msg.id });
             
-            let fullText = "";
-            const payload = emailData.data.payload;
+           let fullText = "";
             
-            if (payload) {
-                if (payload.parts) {
-                    for (let part of payload.parts) {
-                        if ((part.mimeType === 'text/plain' || part.mimeType === 'text/html') && part.body && part.body.data) {
-                            fullText += Buffer.from(part.body.data, 'base64').toString('utf-8');
-                        }
-                    }
-                } else if (payload.body && payload.body.data) {
-                    fullText = Buffer.from(payload.body.data, 'base64').toString('utf-8');
+            // ✅ Smart Recursive Function: ईमेल की हर अंदरूनी लेयर (Banners/Images के पीछे) से टेक्स्ट निकालने के लिए
+            const extractText = (part) => {
+                if (part.parts) {
+                    part.parts.forEach(extractText);
                 }
+                if (part.mimeType === 'text/plain' || part.mimeType === 'text/html') {
+                    if (part.body && part.body.data) {
+                        fullText += Buffer.from(part.body.data, 'base64').toString('utf-8') + " ";
+                    }
+                }
+            };
+
+            if (emailData.data.payload) {
+                extractText(emailData.data.payload);
             }
             
-            fullText = fullText || emailData.data.snippet || "";
+            // ✅ HTML टैग्स को हटा रहे हैं ताकि Regex को अमाउंट ढूँढने में दिक्कत ना हो
+            fullText = fullText.replace(/<[^>]*>?/gm, ' ') || emailData.data.snippet || "";
 
             bankTransactions.push({ 
                 id: msg.id, // ✅ 2. Message ID सेव कर रहे हैं
