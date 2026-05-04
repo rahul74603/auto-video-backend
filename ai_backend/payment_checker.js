@@ -115,7 +115,8 @@ exports.checkPayments = async () => {
 
                 // ✅ Time Match (120 min buffer)
                 const timeDifference = Math.abs(tx.time - purchaseTime);
-                const isTimeMatch = timeDifference <= 120 * 60 * 1000;
+                // ✅ टाइम बफर को बढ़ाकर 24 घंटे (1440 मिनट) कर दिया है ताकि UTC/IST का फर्क खत्म हो जाए
+                 const isTimeMatch = timeDifference <= 24 * 60 * 60 * 1000;
 
                 // 🔴 DEBUG LOGS: यहाँ से पता चलेगा गड़बड़ कहाँ है
                 if (isAmountMatch || timeDifference < 180 * 60 * 1000) {
