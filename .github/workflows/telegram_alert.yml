@@ -1,0 +1,72 @@
+name: Send Telegram Alert
+
+on:
+  repository_dispatch:
+    types: [send_telegram_alert]
+
+jobs:
+  send_message:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram Message via GitHub Script
+        uses: actions/github-script@v7
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        with:
+          script: |
+            const payload = context.payload.client_payload;
+            const jobData = payload.jobData;
+            const docId = payload.docId;
+            const type = payload.type; // 'JOB' or 'FAST_TRACK'
+
+            const botToken = process.env.BOT_TOKEN;
+            const chatId = process.env.CHAT_ID;
+
+            if (!botToken || !chatId) {
+                console.error("❌ GitHub Secrets (BOT_TOKEN or CHAT_ID) are missing!");
+                return;
+            }
+
+            let title = jobData.title || 'Official Update';
+            let url = `https://studygyaan.in/${type === 'JOB' ? 'job' : 'update'}/${docId}`;
+
+            let message = `🚨 <b>New Update Alert!</b> 🚨\n\n` +
+                          `📌 <b>Title:</b> ${title}\n`;
+
+            if (type === 'JOB') {
+                message += `🏢 <b>Dept:</b> ${jobData.organization || 'Govt Dept'}\n` +
+                           `🎓 <b>Qualification:</b> ${jobData.qualification || 'Check Details'}\n` +
+                           `⏳ <b>Last Date:</b> ${jobData.lastDate || 'Apply Soon'}\n\n`;
+            } else {
+                message += `\n`; // Fast Track formatting
+            }
+
+            message += `📖 <b>Full Details Here:</b>\n${url}\n\n` +
+                       `🚀 <i>Join @studygyaan_official for updates!</i>`;
+
+            const apiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
+
+            console.log(`Sending message for: ${title}`);
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        text: message,
+                        parse_mode: 'HTML',
+                        disable_web_page_preview: false
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.ok) {
+                    console.log("✅ Telegram Message Sent Successfully via GitHub Actions!");
+                } else {
+                    console.error("❌ Telegram API Error:", result);
+                }
+            } catch(error) {
+                console.error("❌ Fetch failed:", error);
+            }
