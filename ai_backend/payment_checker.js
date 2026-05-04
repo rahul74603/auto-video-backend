@@ -52,11 +52,11 @@ exports.checkPayments = async () => {
             return;
         }
 
-        // पिछले 15 ईमेल्स मंगा रहे हैं
+      // ✅ 1. Email Limit 15 से 50 कर दी गई है
         const res = await gmail.users.messages.list({
             userId: "me",
             q: "from:alert@mail.uco.bank.in",
-            maxResults: 15,
+            maxResults: 50,
         });
 
         const messages = res.data.messages || [];
@@ -65,7 +65,6 @@ exports.checkPayments = async () => {
         for (const msg of messages) {
             const emailData = await gmail.users.messages.get({ userId: "me", id: msg.id });
             
-            // ✅ Full Email Body Extraction Logic
             let fullText = "";
             const payload = emailData.data.payload;
             
@@ -81,41 +80,57 @@ exports.checkPayments = async () => {
                 }
             }
             
-            // अगर बॉडी न मिले तो बैकअप के लिए स्निपेट इस्तेमाल करेंगे
             fullText = fullText || emailData.data.snippet || "";
 
             bankTransactions.push({ 
+                id: msg.id, // ✅ 2. Message ID सेव कर रहे हैं
                 text: fullText, 
-                time: parseInt(emailData.data.internalDate) 
+                time: parseInt(emailData.data.internalDate),
+                isUsed: false // डुप्लीकेट प्रोटेक्शन के लिए
             });
         }
-
-        for (const doc of pendingSnapshot.docs) {
+    for (const doc of pendingSnapshot.docs) {
             const purchase = doc.data();
-            const expectedAmount = Number(purchase.amount).toFixed(2); 
+            const expectedAmount = Number(purchase.amount).toFixed(2);
             let purchaseTime = (typeof purchase.timestamp.toDate === 'function') ? purchase.timestamp.toDate().getTime() : new Date(purchase.timestamp).getTime();
+
+            // ✅ 3. Junk Cleanup: 2 घंटे (7200000 ms) से पुराना फेक/पेंडिंग पेमेंट डिलीट करें
+            const currentTime = Date.now();
+            if (currentTime - purchaseTime > 2 * 60 * 60 * 1000) {
+                await db.collection("purchases").doc(doc.id).delete();
+                console.log(`🗑️ Deleted expired junk request for Amount: ${expectedAmount}`);
+                continue;
+            }
 
             let isMatchFound = false;
 
             for (const tx of bankTransactions) {
-                // ✅ Amount Match: Rs.5.49 या सिर्फ 5.49 को ढूंढना
-                const amountRegex = new RegExp(`${expectedAmount}`, "i");
+                // ✅ 4. Strict Amount Match (सिर्फ 199.01 को पकड़ेगा, 1199.01 को नहीं)
+                const strictExpectedAmount = expectedAmount.replace('.', '\\.');
+                const amountRegex = new RegExp(`\\b${strictExpectedAmount}\\b`, "i");
                 const isAmountMatch = amountRegex.test(tx.text);
 
-                // ✅ Time Match: बफर 60 मिनट (60 * 60 * 1000 ms)
                 const timeDifference = Math.abs(tx.time - purchaseTime);
                 const isTimeMatch = timeDifference <= 60 * 60 * 1000;
 
                 if (isAmountMatch && isTimeMatch) {
+                    // ✅ 5. Duplicate Protection: चेक करें कि ये ईमेल पहले यूज़ तो नहीं हुआ
+                    if (tx.isUsed) continue;
+                    const usedCheck = await db.collection("purchases").where("emailMessageId", "==", tx.id).get();
+                    if (!usedCheck.empty) {
+                        tx.isUsed = true;
+                        continue;
+                    }
+
                     console.log(`✅ MATCH FOUND! Amount: ${expectedAmount}`);
+                    tx.isUsed = true;
                     
-                    // 1. Purchase का स्टेटस अपडेट करें
                     await db.collection("purchases").doc(doc.id).update({
                         status: "completed",
+                        emailMessageId: tx.id, // Email का ID सेव कर दिया
                         unlockedAt: admin.firestore.FieldValue.serverTimestamp()
                     });
 
-                    // 2. यूजर के अकाउंट में कोर्स अनलॉक करें
                     if (purchase.userId && purchase.courseId) {
                         const userRef = db.collection("users").doc(purchase.userId);
                         await userRef.set({
@@ -126,12 +141,12 @@ exports.checkPayments = async () => {
                     }
 
                     isMatchFound = true;
-                    break; 
+                    break;
                 }
             }
 
             if (!isMatchFound) {
-                console.log(`⏳ No match for Amount: ${expectedAmount} (Check if email received in last 60 mins)`);
+                console.log(`⏳ No match for Amount: ${expectedAmount}`);
             }
         }
     } catch (error) {
