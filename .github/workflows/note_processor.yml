@@ -1,0 +1,32 @@
+name: AI Note Processor
+
+on:
+  schedule:
+    - cron: '*/10 * * * *' # ✅ हर 10 मिनट में रन होगा
+  workflow_dispatch: # मैन्युअल रन करने के लिए
+
+jobs:
+  process_notes:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ai_backend
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Run AI Note Processor
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node -e 'require("./note_processor.js").processNotes().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); })'
