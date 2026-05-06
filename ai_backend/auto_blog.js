@@ -393,11 +393,13 @@ STRICT FORMAT (JSON ONLY):
         blogData.title = "🔥 " + blogData.title + " (2026 Latest Update)";
         
         // 🔥 ADD URL TO CONTENT FOR SCHEMA
-        const blogUrl = `https://studygyaan.in/blog/${createSlug(blogData.title)}`;
-        blogData.url = blogUrl;
+        
+        // 🔥 CREATE SEO URL
 
 const slug = createSlug(blogData.title);
 const blogUrl = `https://studygyaan.in/blog/${slug}`;
+
+blogData.url = blogUrl;
 
 await db.collection("blogs").doc(slug).set({
     title: blogData.title,
