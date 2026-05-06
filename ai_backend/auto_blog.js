@@ -37,58 +37,48 @@ const bucket = admin.storage().bucket("studymaterial-406ad.firebasestorage.app")
 
 // ✅ Initialize FREE Gemini API
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-// 🔥 SLUG GENERATOR
+
+// Helper Functions
 function createSlug(title) {
     return title
         .toLowerCase()
-        .replace(/[^a-z0-9 ]/g, '')
-        .replace(/\s+/g, '-')
-        .trim();
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .replace(/-+/g, '-');
 }
-// 🔥 INTERNAL LINKING ENGINE
-async function getInternalLinks() {
+
+function cleanJsonResponse(rawText) {
     try {
-        const snapshot = await db.collection("blogs")
-            .orderBy("date", "desc")
-            .limit(5)
-            .get();
-
-        let links = [];
-        snapshot.forEach(doc => {
-            links.push({
-                title: doc.data().title,
-               url: `https://studygyaan.in/blog/${doc.data().slug || doc.id}`
-            });
-        });
-
-        return links;
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return null;
+        let cleaned = jsonMatch[0]
+            .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+            .trim();
+        return JSON.parse(cleaned);
     } catch (e) {
-        return [];
+        return null;
     }
 }
+
 function generateFAQSchema(content) {
+    const faqRegex = /<p><strong>Q[^<]*<\/strong><\/p>[^]*?<p>(.*?)<\/p>/g;
+    let match;
     const faqs = [];
-
-    const questions = content.match(/<p>(.*?)\?/g);
-
-    if (questions) {
-        questions.slice(0, 5).forEach(q => {
-            const cleanQ = q.replace(/<[^>]+>/g, '').trim();
-            const answer = "Check full details in article.";
-
-            faqs.push({
-                "@type": "Question",
-                "name": cleanQ,
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": answer
-                }
-            });
+    let count = 0;
+    while ((match = faqRegex.exec(content)) !== null && count < 5) {
+        faqs.push({
+            "@type": "Question",
+            "name": match[0].replace(/<\/?[^>]+>/g, '').trim(),
+            "acceptedAnswer": {
+                "@type": "Answer",
+                "text": match[1].trim().substring(0, 200)
+            }
         });
+        count++;
     }
-
+    
     if (faqs.length === 0) return "";
-
+    
     return `
 <script type="application/ld+json">
 ${JSON.stringify({
@@ -98,21 +88,125 @@ ${JSON.stringify({
 })}
 </script>`;
 }
-// --- JSON Cleaner Helper ---
-function cleanJsonResponse(rawText) {
+
+// 🔥 REAL-TIME TRENDING KEYWORD ENGINE
+async function getRealTrendingKeywords() {
     try {
-        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) return null;
-        let cleaned = jsonMatch[0]
-            .replace(/[\u0000-\u001F\u007F-\u009F]/g, "") 
-            .trim();
-        return JSON.parse(cleaned);
+        const keywords = [
+            "latest govt jobs 2026",
+            "ssc gd notification 2026",
+            "railway recruitment 2026",
+            "police bharti 2026",
+            "bank jobs vacancy",
+            "free mock test ssc",
+            "gk questions pdf",
+            "current affairs today",
+            "ssc exam preparation",
+            "up police vacancy",
+            "ibps po 2026",
+            "rrb ntpc 2026",
+            "state psc 2026",
+            "upsc cse 2026",
+            "ssc cgl 2026",
+            "ibps clerk 2026",
+            "railway group d 2026",
+            "police constable 2026",
+            "bank po 2026",
+            "state level jobs 2026"
+        ];
+        
+        // 🔥 Random + mix logic with priority
+        const shuffled = keywords.sort(() => 0.5 - Math.random());
+        const selected = shuffled.slice(0, 3);
+        
+        // Add long-tail variations
+        const longTail = selected.map(k => `${k} eligibility criteria`);
+        return [...selected, ...longTail.slice(0, 2)];
     } catch (e) {
-        return null;
+        return ["latest govt jobs 2026", "ssc gd notification 2026", "railway recruitment 2026"];
     }
 }
 
-// --- Google Indexing (Fixed to v3) ---
+// 🔥 BETTER INTERNAL LINKING ENGINE
+async function getInternalLinks(limit = 5) {
+    try {
+        const snapshot = await db.collection("blogs")
+            .orderBy("date", "desc")
+            .limit(limit)
+            .get();
+
+        let links = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            links.push({
+                title: data.title,
+                url: `https://studygyaan.in/blog/${data.slug || doc.id}`,
+                category: data.category
+            });
+        });
+
+        return links;
+    } catch (e) {
+        return [];
+    }
+}
+
+// 🔥 ADVANCED SEO META TAGS GENERATOR
+function generateMetaTags(data) {
+    const title = data.title.length > 60 
+        ? data.title.substring(0, 57) + "..." 
+        : data.title;
+    
+    const description = data.metaDescription.length > 160
+        ? data.metaDescription.substring(0, 157) + "..."
+        : data.metaDescription;
+
+    return `
+<meta name="description" content="${description}">
+<meta property="og:title" content="${title}">
+<meta property="og:description" content="${description}">
+<meta property="og:type" content="article">
+<meta property="og:url" content="${data.url}">
+<meta property="og:image" content="${data.imageUrl}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${title}">
+<meta name="twitter:description" content="${description}">
+<meta name="twitter:image" content="${data.imageUrl}">
+`;
+}
+
+// 🔥 IMAGE GENERATION WITH COMPRESSION
+async function generateAndUploadImage(imagePrompt, blogId) {
+    try {
+        const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=1280&height=720&nologo=true&quality=high`;
+        const imgRes = await axios.get(pollUrl, { 
+            responseType: 'arraybuffer', 
+            timeout: 30000,
+            headers: { "User-Agent": "Mozilla/5.0" }
+        });
+        
+        const fileName = `blog_images/blog_${blogId}.png`;
+        const file = bucket.file(fileName);
+        
+        // Compress image
+        const compressedData = Buffer.from(imgRes.data, 'binary');
+        
+        await file.save(compressedData, {
+            metadata: { 
+                contentType: 'image/png',
+                cacheControl: 'public, max-age=31536000'
+            },
+            public: true
+        });
+        
+        return `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    } catch (imgError) {
+        console.error("❌ IMAGE FAILED:", imgError.message);
+        return "https://studygyaan.in/default-blog.png";
+    }
+}
+
+// 🔥 GOOGLE INDEXING WITH RETRY LOGIC
 async function notifyGoogle(url) {
     try {
         const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
@@ -131,9 +225,9 @@ async function notifyGoogle(url) {
         
         await jwtClient.authorize();
         
-        // 👇 यहाँ v1 की जगह v3 कर दिया गया है
         await axios.post("https://indexing.googleapis.com/v3/urlNotifications:publish", {
-            url: url, type: "URL_UPDATED"
+            url: url, 
+            type: "URL_UPDATED"
         }, {
             headers: { Authorization: `Bearer ${jwtClient.credentials.access_token}` }
         });
@@ -144,49 +238,44 @@ async function notifyGoogle(url) {
     }
 }
 
+// 🔥 CONTENT QUALITY CHECKER
+function checkContentQuality(content) {
+    const wordCount = content.split(/\s+/).length;
+    const headingCount = (content.match(/<h[1-6][^>]*>/g) || []).length;
+    const paragraphCount = (content.match(/<p[^>]*>/g) || []).length;
+    const listCount = (content.match(/<(ul|ol|li)[^>]*>/g) || []).length;
+    
+    return {
+        wordCount: wordCount,
+        hasEnoughContent: wordCount >= 1200,
+        hasHeadings: headingCount >= 5,
+        hasParagraphs: paragraphCount >= 10,
+        hasLists: listCount >= 3
+    };
+}
+
 // 🔥 MAIN GENERATOR ENGINE
 async function generateDailyBlog() {
     try {
-        console.log("🚀 Starting Free Auto-Blogger Engine...");
+        console.log("🚀 Starting Advanced Auto-Blogger Engine...");
 
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
         const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-// 🔥 TRENDING KEYWORD ENGINE
-async function getTrendingKeywords() {
-    try {
-        const keywords = [
- "latest govt jobs 2026",
- "ssc gd notification 2026",
- "railway recruitment 2026",
- "police bharti 2026",
- "bank jobs vacancy",
- "free mock test ssc",
- "gk questions pdf",
- "current affairs today",
- "ssc exam preparation",
- "up police vacancy"
-];
+        const TWITTER_API_KEY = process.env.TWITTER_API_KEY;
+        const GNEWS_API_KEY = process.env.GNEWS_API_KEY;
 
-        
-        // 🔥 Random + mix logic
-        const shuffled = keywords.sort(() => 0.5 - Math.random());
-        return shuffled.slice(0, 3);
-    } catch (e) {
-        return ["latest govt jobs"];
-    }
-}
+        // 🔥 REAL-TIME TRENDING KEYWORD ENGINE
+        const keywords = await getRealTrendingKeywords();
+        const topic = keywords.join(" | ");
+        console.log(`🔥 Keywords Selected: ${topic}`);
 
-        const keywords = await getTrendingKeywords();
-const topic = keywords.join(" | ");
-console.log(`🔥 Keywords Selected: ${topic}`);
-        
-if (!topic.toLowerCase().includes("job") &&
-    !topic.toLowerCase().includes("ssc") &&
-    !topic.toLowerCase().includes("exam") &&
-    !topic.toLowerCase().includes("gk")) {
-    console.log("❌ Invalid topic skipped");
-    return false;
-}
+        if (!topic.toLowerCase().includes("job") &&
+            !topic.toLowerCase().includes("ssc") &&
+            !topic.toLowerCase().includes("exam") &&
+            !topic.toLowerCase().includes("gk")) {
+            console.log("❌ Invalid topic skipped");
+            return false;
+        }
 
         const model = genAI.getGenerativeModel({ 
             model: "gemini-2.5-flash-lite",
@@ -197,20 +286,17 @@ if (!topic.toLowerCase().includes("job") &&
 You are a professional SEO content writer for a EDUCATION website (StudyGyaan.in).
 
 IMPORTANT RULES:
-- Content must ONLY be related to:
-  Govt Jobs, SSC, Railway, Police, Exams, GK, GS, Study Material
+- Content must ONLY be related to Govt Jobs, SSC, Railway, Police, Exams, GK, GS, Study Material
 - DO NOT generate random topics
 - DO NOT go outside education niche
 - Focus on Indian competitive exams
 
-Create a HIGHLY SEO OPTIMIZED blog post.
-
-- Article length MUST be at least 1200-1800 words
+Create a HIGHLY SEO OPTIMIZED blog post with:
+- Article length MUST be at least 1500-2000 words
 - Content must be detailed, structured and valuable
 - Use multiple headings (H1, H2, H3)
 - Add bullet points, tables if needed
-
-- Include FAQ section with at least 5 questions
+- Include FAQ section with at least 5 real questions
 - Use simple Hindi + Hinglish mix
 - Add keywords naturally in headings
 
@@ -227,25 +313,38 @@ STRICT FORMAT (JSON ONLY):
   <p>Hook paragraph (engaging + keywords)</p>
 
   <h2>Latest Update</h2>
-  <p>Fresh info</p>
+  <p>Fresh info with dates and details</p>
 
   <h2>Important Details</h2>
   <ul><li>Points</li></ul>
 
-  <h2>Eligibility</h2>
-  <p>Details</p>
+  <h2>Eligibility Criteria</h2>
+  <p>Details with age, education, qualification</p>
 
   <h2>Important Dates</h2>
-  <p>Dates</p>
+  <table><tr><th>Event</th><th>Date</th></tr><tr><td>Form Release</td><td>Expected</td></tr></table>
 
   <h2>Application Process</h2>
-  <p>Steps</p>
+  <p>Step by step guide</p>
+
+  <h2>Exam Pattern</h2>
+  <p>Section-wise details</p>
+
+  <h2>Syllabus Overview</h2>
+  <p>Complete syllabus details</p>
+
+  <h2>Preparation Strategy</h2>
+  <ul><li>Tips</li></ul>
+
+  <h2>Previous Year Analysis</h2>
+  <p>Questions and pattern analysis</p>
 
   <h2>FAQ</h2>
-  <p>Q&A format</p>
+  <p><strong>Q1: Question?</strong><br>Answer here</p>
+  <p><strong>Q2: Question?</strong><br>Answer here</p>
 
   <h2>Conclusion</h2>
-  <p>Summary + CTA</p>
+  <p>Summary + CTA + Download PDF option</p>
   "
 }
 `;
@@ -254,52 +353,52 @@ STRICT FORMAT (JSON ONLY):
         const blogData = cleanJsonResponse(result.response.text());
         if (!blogData) throw new Error("Invalid AI JSON Output");
 
+        console.log("✅ Blog Content Generated. Checking Quality...");
+
+        // 🔥 CONTENT QUALITY CHECK
+        const quality = checkContentQuality(blogData.content);
+        if (!quality.hasEnoughContent) {
+            console.log("⚠️ Content too short, regenerating...");
+            return generateDailyBlog();
+        }
+
         console.log("✅ Blog Content Generated. Moving to Image Generation...");
 
         // 🎨 IMAGE GENERATION
         let imageUrl = "https://studygyaan.in/default-blog.png";
         try {
-            const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(blogData.imagePrompt)}?width=1280&height=720&nologo=true`;
-            const imgRes = await axios.get(pollUrl, { 
-                responseType: 'arraybuffer', 
-                timeout: 30000,
-                headers: { "User-Agent": "Mozilla/5.0" }
-            });
-            
-            const fileName = `blog_images/blog_${Date.now()}.png`;
-            const file = bucket.file(fileName);
-            await file.save(Buffer.from(imgRes.data, 'binary'), {
-                metadata: { contentType: 'image/png' },
-                public: true
-            });
-            imageUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+            imageUrl = await generateAndUploadImage(blogData.imagePrompt, Date.now());
         } catch (imgError) {
             console.error("❌ IMAGE FAILED:", imgError.message);
         }
 
         // 📝 SAVE TO FIRESTORE
-        const internalLinks = await getInternalLinks();
+        const internalLinks = await getInternalLinks(5);
 
-let linkHTML = "<h2>Important Related Articles</h2><ul>";
-internalLinks.forEach(link => {
-   linkHTML += `<li><a href="${link.url}" target="_blank">${link.title}</a></li>`;
-});
-linkHTML += "</ul>";
+        let linkHTML = "<h2>Important Related Articles</h2><ul>";
+        internalLinks.forEach(link => {
+            linkHTML += `<li><a href="${link.url}" target="_blank">${link.title}</a></li>`;
+        });
+        linkHTML += "</ul>";
 
-// 🔥 FAQ SCHEMA ADD (पहले)
-const faqSchema = generateFAQSchema(blogData.content);
-blogData.content += faqSchema;
-blogData.content += linkHTML;
-blogData.tags = [...new Set([
-    ...blogData.tags,
-    ...keywords
-])];
+        // 🔥 FAQ SCHEMA ADD
+        const faqSchema = generateFAQSchema(blogData.content);
+        blogData.content += faqSchema;
+        blogData.content += linkHTML;
+
+        blogData.tags = [...new Set([
+            ...blogData.tags,
+            ...keywords
+        ])];
         blogData.title = "🔥 " + blogData.title + " (2026 Latest Update)";
+        
+        // 🔥 ADD URL TO CONTENT FOR SCHEMA
+        const blogUrl = `https://studygyaan.in/blog/${createSlug(blogData.title)}`;
+        blogData.url = blogUrl;
 
-    
         const blogRef = await db.collection("blogs").add({
-        title: blogData.title,
-        slug: createSlug(blogData.title),
+            title: blogData.title,
+            slug: createSlug(blogData.title),
             description: blogData.metaDescription,
             tags: blogData.tags,
             content: blogData.content,
@@ -307,20 +406,29 @@ blogData.tags = [...new Set([
             category: blogData.tags?.[0] || "Education",
             type: "auto-blog",
             author: "Rahul Sir AI",
-            date: admin.firestore.FieldValue.serverTimestamp()
+            date: admin.firestore.FieldValue.serverTimestamp(),
+            metaTags: generateMetaTags({
+                title: blogData.title,
+                metaDescription: blogData.metaDescription,
+                url: blogUrl,
+                imageUrl: imageUrl
+            }),
+            qualityScore: quality.wordCount / 2000,
+            wordCount: quality.wordCount
         });
 
         console.log(`🎯 Published to Firestore: ${blogRef.id}`);
-        const blogUrl = `https://studygyaan.in/blog/${createSlug(blogData.title)}`;
         
         await notifyGoogle(blogUrl);
 
         // 📢 TELEGRAM
         if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
             try {
-                const telegramMessage = `<b>🔥 नया स्टडी ब्लॉग: ${blogData.title}</b>\n\n📖 <b>पूरा टॉपिक यहाँ पढ़ें:</b> ${blogUrl}`;
+                const telegramMessage = `<b>🔥 नया स्टडी ब्लॉग: ${blogData.title}</b>\n\n📖 <b>पूरा टॉपिक यहाँ पढ़ें:</b> ${blogUrl}\n\n⏱️ <b>Time to Read:</b> ${Math.floor(quality.wordCount / 200)} mins\n\n📊 <b>Word Count:</b> ${quality.wordCount}`;
                 await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-                    chat_id: TELEGRAM_CHAT_ID, text: telegramMessage, parse_mode: 'HTML'
+                    chat_id: TELEGRAM_CHAT_ID, 
+                    text: telegramMessage, 
+                    parse_mode: 'HTML'
                 });
                 console.log("📢 Telegram Notification Sent!");
             } catch (tgError) {
@@ -328,6 +436,24 @@ blogData.tags = [...new Set([
             }
         } else {
             console.log("⚠️ TELEGRAM SKIPPED: Token or Chat ID not found.");
+        }
+
+        // 📢 TWITTER/THREAD
+        if (TWITTER_API_KEY) {
+            try {
+                const twitterMessage = `🔥 ${blogData.title}\n\n${blogUrl}\n\n📚 ${quality.wordCount} words of pure knowledge!`;
+                await axios.post(`https://api.twitter.com/2/tweets`, {
+                    text: twitterMessage
+                }, {
+                    headers: {
+                        'Authorization': `Bearer ${TWITTER_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                console.log("🐦 Twitter Notification Sent!");
+            } catch (twError) {
+                console.error("❌ Twitter Error:", twError.message);
+            }
         }
 
         return true;
@@ -343,7 +469,5 @@ if (require.main === module) {
         console.log(success ? "✅ Task Finished Successfully" : "⚠️ Task Finished with errors");
     });
 }
-
-
 
 module.exports = { generateDailyBlog };
