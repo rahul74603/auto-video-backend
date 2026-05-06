@@ -396,28 +396,33 @@ STRICT FORMAT (JSON ONLY):
         const blogUrl = `https://studygyaan.in/blog/${createSlug(blogData.title)}`;
         blogData.url = blogUrl;
 
-        const blogRef = await db.collection("blogs").add({
-            title: blogData.title,
-            slug: createSlug(blogData.title),
-            description: blogData.metaDescription,
-            tags: blogData.tags,
-            content: blogData.content,
-            imageUrl: imageUrl, 
-            category: blogData.tags?.[0] || "Education",
-            type: "auto-blog",
-            author: "Rahul Sir AI",
-            date: admin.firestore.FieldValue.serverTimestamp(),
-            metaTags: generateMetaTags({
-                title: blogData.title,
-                metaDescription: blogData.metaDescription,
-                url: blogUrl,
-                imageUrl: imageUrl
-            }),
-            qualityScore: quality.wordCount / 2000,
-            wordCount: quality.wordCount
-        });
+const slug = createSlug(blogData.title);
+const blogUrl = `https://studygyaan.in/blog/${slug}`;
 
-        console.log(`🎯 Published to Firestore: ${blogRef.id}`);
+await db.collection("blogs").doc(slug).set({
+    title: blogData.title,
+    slug: slug,
+    description: blogData.metaDescription,
+    tags: blogData.tags,
+    content: blogData.content,
+    imageUrl: imageUrl,
+    category: blogData.tags?.[0] || "Education",
+    type: "auto-blog",
+    author: "Rahul Sir AI",
+    date: admin.firestore.FieldValue.serverTimestamp(),
+
+    metaTags: generateMetaTags({
+        title: blogData.title,
+        metaDescription: blogData.metaDescription,
+        url: blogUrl,
+        imageUrl: imageUrl
+    }),
+
+    qualityScore: quality.wordCount / 2000,
+    wordCount: quality.wordCount
+});
+
+        console.log(`🎯 Published to Firestore: ${slug}`);
         
         await notifyGoogle(blogUrl);
 
