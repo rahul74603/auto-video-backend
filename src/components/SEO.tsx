@@ -5,15 +5,22 @@ import { useLocation } from 'react-router-dom';
 
 const SEO = ({ customTitle, customDescription, customImage, customUrl, ogType = "website" }) => {
   const location = useLocation();
+  const baseUrl = "https://studygyaan.in";
   
-  // ✅ Canonical Duplicate Fix: Trailing slash (/) हटा रहे हैं (Root '/' को छोड़कर)
+  // ✅ 1. URL Cleanup: Trailing slash (/) और Query Params को हटा रहे हैं ताकि GSC में Duplicate Error न आए
   const cleanPathname = location.pathname.endsWith('/') && location.pathname.length > 1 
                         ? location.pathname.slice(0, -1) 
                         : location.pathname;
   
   const siteName = "StudyGyaan";
-  const defaultImage = "https://studygyaan.in/og-image.jpg"; // डिफ़ॉल्ट इमेज
-  const defaultUrl = `https://studygyaan.in${cleanPathname}`;
+  const defaultImage = `${baseUrl}/og-image.jpg`;
+  const defaultUrl = `${baseUrl}${cleanPathname}`;
+
+  // ✅ 2. Bulletproof Canonical URL: अगर customUrl में भी गलती से '/' आ गया, तो उसे भी साफ करेगा
+  let finalUrl = customUrl || defaultUrl;
+  if (finalUrl !== baseUrl && finalUrl.endsWith('/')) {
+      finalUrl = finalUrl.slice(0, -1);
+  }
 
   const [dynamicTitle, setDynamicTitle] = useState('StudyGyaan 2026');
   const [dynamicDesc, setDynamicDesc] = useState("StudyGyaan provides free study materials, latest govt jobs, mock tests and premium notes for all competitive exams 2026.");
@@ -22,7 +29,7 @@ const SEO = ({ customTitle, customDescription, customImage, customUrl, ogType = 
     // 🛑 अगर किसी डायनामिक पेज (जैसे Job या Blog) ने खुद का टाइटल भेजा है, तो ऑटोमैटिक काम रोक दो
     if (customTitle) return;
 
-    // 🏠 1. सबसे पहले होम पेज को चेक करो (Strict Check)
+    // 🏠 सबसे पहले होम पेज को चेक करो (Strict Check)
     if (cleanPathname === '/' || cleanPathname === '/home') {
       setDynamicTitle("Free Study Materials & Govt Jobs 2026 | StudyGyaan");
       return;
@@ -31,7 +38,7 @@ const SEO = ({ customTitle, customDescription, customImage, customUrl, ogType = 
     const pathParts = cleanPathname.split('/').filter(Boolean);
     const lastPart = pathParts[pathParts.length - 1];
 
-    // 🚀 2. डायनामिक पेजों के लिए (Jobs, Courses, etc.)
+    // 🚀 डायनामिक पेजों के लिए (Jobs, Courses, etc.)
     const isDynamicPage = pathParts.includes('job') || 
                           pathParts.includes('course') || 
                           pathParts.includes('material') || 
@@ -44,7 +51,7 @@ const SEO = ({ customTitle, customDescription, customImage, customUrl, ogType = 
       return; 
     }
 
-    // 📚 3. बाकी बचे हुए Static Pages (जैसे /govt-jobs या /mock-tests की लिस्ट)
+    // 📚 बाकी बचे हुए Static Pages के लिए
     const cleanName = lastPart 
       ? lastPart.replace(/-/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') 
       : "StudyGyaan";
@@ -53,11 +60,10 @@ const SEO = ({ customTitle, customDescription, customImage, customUrl, ogType = 
 
   }, [cleanPathname, customTitle]);
 
-  // फाइनल वैल्यू: अगर कस्टम डेटा आया है तो वो दिखाओ, वरना ऑटोमैटिक वाला दिखाओ
+  // फाइनल वैल्यू
   const finalTitle = customTitle || dynamicTitle;
   const finalDesc = customDescription || dynamicDesc;
   const finalImage = customImage || defaultImage;
-  const finalUrl = customUrl || defaultUrl;
 
   return (
     <>
@@ -65,10 +71,11 @@ const SEO = ({ customTitle, customDescription, customImage, customUrl, ogType = 
         {/* Standard Meta Tags */}
         <title>{finalTitle}</title>
         <meta name="description" content={finalDesc} />
-        {/* ✅ Unified Canonical URL */}
+        
+        {/* 🔥 THE ULTIMATE CANONICAL FIX FOR GSC */}
         <link rel="canonical" href={finalUrl} />
 
-        {/* 🚀 Facebook / WhatsApp / Telegram (Open Graph) Tags - INCOMPLETE FIX APPLIED */}
+        {/* 🚀 Open Graph / Facebook / WhatsApp Tags */}
         <meta property="og:locale" content="en_US" />
         <meta property="og:type" content={ogType} />
         <meta property="og:title" content={finalTitle} />
@@ -86,7 +93,7 @@ const SEO = ({ customTitle, customDescription, customImage, customUrl, ogType = 
         <meta name="twitter:image:alt" content={finalTitle} />
       </Helmet>
 
-      {/* ✅ H1 Missing Error Fix: हर पेज पर डायनामिक H1 ऑटोमैटिक लगेगा */}
+      {/* ✅ H1 Missing Error Fix */}
       <h1 style={{ position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px', overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', border: 0 }}>
         {finalTitle}
       </h1>
