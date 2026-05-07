@@ -8,7 +8,7 @@ const xml2js = require("xml2js");
 const db = admin.firestore();
 const WEBSITE_URL = "https://studygyaan.in";
 
-// 1. Dynamic Sitemap Generator
+// 1. Dynamic Sitemap Generator (Optimized for Priority & Changefreq)
 exports.generateSitemap = onRequest({ 
     timeoutSeconds: 540, 
     memory: "1GiB", 
@@ -19,15 +19,16 @@ exports.generateSitemap = onRequest({
         const staticPages = ["", "/govt-jobs", "/free-study-material", "/e-books", "/premium-notes", "/contact-us", "/about-us", "/privacy-policy", "/terms-conditions", "/blog", "/test", "/web-stories", "/fasttrack"];
         const now = new Date().toISOString();
 
+        // Static Pages - High Priority
         staticPages.forEach(p => {
-            xml += `  <url><loc>${WEBSITE_URL}${p}</loc><lastmod>${now}</lastmod><priority>0.8</priority></url>\n`;
+            xml += `  <url>\n    <loc>${WEBSITE_URL}${p}</loc>\n    <lastmod>${now}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
         });
 
         const collections = [
-            { name: "blogs", route: "blog" }, 
-            { name: "mock_tests", route: "test" }, 
-            { name: "web_stories", route: "web-stories" }, 
-            { name: "fasttrack", route: "fasttrack" }
+            { name: "blogs", route: "blog", priority: "0.9", freq: "daily" }, 
+            { name: "mock_tests", route: "test", priority: "0.7", freq: "weekly" }, 
+            { name: "web_stories", route: "web-stories", priority: "0.6", freq: "daily" }, 
+            { name: "fasttrack", route: "fasttrack", priority: "0.5", freq: "monthly" }
         ];
 
         for (const config of collections) {
@@ -36,17 +37,21 @@ exports.generateSitemap = onRequest({
                 const data = doc.data();
                 const updateTime = data.updatedAt ? (data.updatedAt.toDate ? data.updatedAt.toDate().toISOString() : new Date(data.updatedAt).toISOString()) : now;
                 const safeId = doc.id.replace(/&/g, '&amp;');
-                xml += `  <url><loc>${WEBSITE_URL}/${config.route}/${safeId}</loc><lastmod>${updateTime}</lastmod></url>\n`;
+                xml += `  <url>\n    <loc>${WEBSITE_URL}/${config.route}/${safeId}</loc>\n    <lastmod>${updateTime}</lastmod>\n    <changefreq>${config.freq}</changefreq>\n    <priority>${config.priority}</priority>\n  </url>\n`;
             });
         }
 
+        // Jobs Collection - Dynamic Route Fix
         const jobsSnap = await db.collection("jobs").select("type", "updatedAt").get();
         jobsSnap.forEach(doc => {
             const data = doc.data();
-            const route = data.type === 'JOB' ? 'job' : 'course'; 
+            // ✅ Case-insensitive check and default fallback to 'job'
+            const typeValue = (data.type || "").toUpperCase();
+            const route = typeValue === 'COURSE' ? 'course' : 'job'; 
+            
             const updateTime = data.updatedAt ? (data.updatedAt.toDate ? data.updatedAt.toDate().toISOString() : new Date(data.updatedAt).toISOString()) : now;
             const safeId = doc.id.replace(/&/g, '&amp;');
-            xml += `  <url><loc>${WEBSITE_URL}/${route}/${safeId}</loc><lastmod>${updateTime}</lastmod></url>\n`;
+            xml += `  <url>\n    <loc>${WEBSITE_URL}/${route}/${safeId}</loc>\n    <lastmod>${updateTime}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n`;
         });
 
         xml += `</urlset>`;
@@ -58,7 +63,7 @@ exports.generateSitemap = onRequest({
 exports.generateRss = onRequest(async (req, res) => {
     try {
         const now = new Date().toUTCString();
-        let rss = `<?xml version="1.0" encoding="UTF-8" ?>\n<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">\n<channel>\n<title>StudyGyaan</title>\n<link>${WEBSITE_URL}</link>\n<description>Latest Updates</description>\n<lastBuildDate>${now}</lastBuildDate>\n`;
+        let rss = `<?xml version="1.0" encoding="UTF-8" ?>\n<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">\n<channel>\n<title>StudyGyaan</title>\n<link>${WEBSITE_URL}</link>\n<description>Latest Updates for Govt Jobs & Study Materials</description>\n<lastBuildDate>${now}</lastBuildDate>\n`;
 
         const blogsSnap = await db.collection("blogs").orderBy("createdAt", "desc").limit(50).select("title", "createdAt").get();
         blogsSnap.forEach(doc => {
@@ -72,7 +77,7 @@ exports.generateRss = onRequest(async (req, res) => {
     } catch (error) { res.status(500).send("Error"); }
 });
 
-// 3. 🔥 GOOGLE INDEXING API (Force Push - OPTIMIZED)
+// 3. GOOGLE INDEXING API (Optimized Logic)
 exports.forcePushSitemap = onRequest({ 
     timeoutSeconds: 540, 
     memory: "1GiB" 
@@ -86,7 +91,6 @@ exports.forcePushSitemap = onRequest({
         });
         const indexing = google.indexing({ version: "v3", auth });
 
-        // ✅ Firebase से डायरेक्ट लिंक्स निकाल रहे हैं (बिना XML को पार्स किये)
         const allUrls = [
             WEBSITE_URL, 
             `${WEBSITE_URL}/govt-jobs`, 
@@ -113,11 +117,12 @@ exports.forcePushSitemap = onRequest({
 
         const jobsSnap = await db.collection("jobs").select("type").get();
         jobsSnap.forEach(doc => {
-            const route = doc.data().type === 'JOB' ? 'job' : 'course'; 
+            const typeValue = (doc.data().type || "").toUpperCase();
+            const route = typeValue === 'COURSE' ? 'course' : 'job'; 
             allUrls.push(`${WEBSITE_URL}/${route}/${doc.id}`);
         });
 
-        // ✅ गूगल की लिमिट के हिसाब से सिर्फ 200 लिंक्स ले रहे हैं
+        // Push top 200 URLs to Google
         const urlsToPush = allUrls.slice(0, 200); 
 
         let count = 0;
