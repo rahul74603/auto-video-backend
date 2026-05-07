@@ -1,4 +1,5 @@
 // @ts-nocheck
+import SEO from '../components/SEO';
 import { useEffect, useState } from 'react';
 import { db, auth } from '../firebase/config';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
@@ -8,9 +9,6 @@ import {
   BookOpen, ArrowRight, Loader2, ShoppingBag, Sparkles, 
   Tag, ExternalLink, Flame, ShoppingCart, Zap, CheckCircle2, GraduationCap, ArrowLeft
 } from 'lucide-react';
-import { Helmet } from 'react-helmet-async';
-import SEO from '../components/SEO'; 
-
 const MyCourses = () => {
   const [myCourses, setMyCourses] = useState<any[]>([]);
   const [globalSettings, setGlobalSettings] = useState<any>(null);
@@ -92,15 +90,12 @@ const MyCourses = () => {
 
   return (
     <div className="pt-16 md:pt-20 pb-16 md:pb-24 bg-[#F8FAFC] min-h-screen font-hindi antialiased">
-      
+      {/* ✅ NEW SEO COMPONENT */}
       <SEO 
-        customTitle="My Study Material & Purchased Courses | StudyGyaan"
+        customTitle="My Courses & Study Material | StudyGyaan"
         customDescription="Access your purchased premium notes and courses on StudyGyaan."
+        customUrl="https://studygyaan.in/my-courses"
       />
-      
-      <Helmet>
-        <meta name="robots" content="noindex, nofollow" />
-      </Helmet>
 
       <div className="max-w-7xl mx-auto px-2 md:px-8">
         
