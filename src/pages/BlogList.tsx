@@ -1,11 +1,10 @@
 // @ts-nocheck
+import SEO from '../components/SEO';
 import { useEffect, useState } from 'react';
 import { db } from '../firebase/config';
 import { collection, query, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Sparkles, Clock, Flame, TrendingUp, BookOpen, Tag, ExternalLink, ShoppingCart } from 'lucide-react';
-import { Helmet } from 'react-helmet-async'; // ✅ Helmet Import
-
 const BlogList = () => {
   const [blogs, setBlogs] = useState<any[]>([]);
   const [globalSettings, setGlobalSettings] = useState<any>(null);
@@ -14,7 +13,6 @@ const BlogList = () => {
 
   useEffect(() => {
     // 🚀 पेज लोड होते ही डिफ़ॉल्ट टाइटल सेट करें
-    document.title = "StudyGyaan Hub - Latest Updates & Notes 2026";
 
     const loadAllData = async () => {
       try {
@@ -65,14 +63,12 @@ const BlogList = () => {
   return (
     <div className="bg-[#F8FAFC] min-h-screen pb-16 font-hindi antialiased">
       
-      {/* ✅ SEO HELMET: ब्राउज़र टैब और गूगल के लिए */}
-      <Helmet>
-        <title>StudyGyaan Hub - Latest Educational Blogs & Notes 2026</title>
-        <meta name="description" content="Stay updated with the latest educational news, exam tips, and free study materials on StudyGyaan Hub." />
-        <meta property="og:title" content="StudyGyaan Hub - Educational Updates" />
-        <meta property="og:type" content="website" />
-      </Helmet>
-
+     {/* ✅ NEW SEO COMPONENT */}
+      <SEO 
+        customTitle="StudyGyaan Hub - Latest Educational Blogs & Notes 2026" 
+        customDescription="Stay updated with the latest educational news, exam tips, and free study materials on StudyGyaan Hub."
+        customUrl="https://studygyaan.in/blog" 
+      />
       <div className="bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900 text-white py-4 md:py-8 px-2 text-center mb-3 shadow-lg relative overflow-hidden">
         <div className="relative z-10">
           <h1 className="text-[15px] md:text-3xl font-black mb-0.5 flex items-center justify-center gap-1.5">
