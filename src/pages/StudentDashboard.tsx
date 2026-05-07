@@ -5,7 +5,6 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, query, where, getDocs } from 'firebase/firestore'; 
 import { BookOpen, LogOut, Download, PlayCircle, Lock, ChevronRight, Crown } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { Helmet } from 'react-helmet-async';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 
 const StudentDashboard = () => {
@@ -90,11 +89,7 @@ const StudentDashboard = () => {
         customTitle={selectedCourse ? `${selectedCourse.title} - Learning Hub | StudyGyaan` : "My Dashboard - StudyGyaan 2026"}
         customDescription="Access your purchased study materials and premium courses on StudyGyaan Learning Dashboard."
       />
-      
-      {/* 🔐 सुरक्षा: डैशबोर्ड को गूगल से गुप्त (Private) रखने के लिए */}
-      <Helmet>
-        <meta name="robots" content="noindex, nofollow" />
-      </Helmet>
+    
 
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-4 md:mb-8 bg-white p-4 md:p-6 rounded-lg md:rounded-xl shadow-sm border border-slate-100">
