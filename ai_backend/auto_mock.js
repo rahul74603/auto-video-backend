@@ -1,6 +1,6 @@
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
-const { VertexAI } = require("@google-cloud/vertexai");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 const axios = require("axios");
 require("dotenv").config();
 
@@ -19,15 +19,7 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
-const vertex_ai = new VertexAI({
-    project: "studymaterial-406ad",
-    location: "us-central1",
-});
 
-const model = vertex_ai.getGenerativeModel({
-    model: "gemini-2.5-flash-lite",
-    generationConfig: { maxOutputTokens: 8000, temperature: 0.4, responseMimeType: "application/json" },
-});
 
 const TOPICS_POOL = [
     // --- 1. EXAM SPECIAL MIXED (Full Syllabus) ---
@@ -106,6 +98,12 @@ exports.generateDailyMocks = onSchedule({
     const randomTopic = TOPICS_POOL[Math.floor(Math.random() * TOPICS_POOL.length)];
     
     console.log(`🚀 Starting Scheduled Mock Generation for: ${randomTopic}`);
+    // ✅ Google AI Studio (Free API) Initialization inside function to avoid Timeout
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({
+        model: "gemini-2.5-flash",
+        generationConfig: { maxOutputTokens: 8000, temperature: 0.4, responseMimeType: "application/json" },
+    });
 
     const prompt = `
 Act as a Senior Paper Setter for Indian Competitive Exams.
