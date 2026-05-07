@@ -1,29 +1,23 @@
 // @ts-nocheck
 import React, { useEffect } from 'react';
 import { Truck, Zap, CloudDownload, ShieldCheck, Clock, Smartphone, Mail, Globe } from 'lucide-react';
-import { Helmet } from 'react-helmet-async';
-import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
+import SEO from '../components/SEO';
 
 const ShippingPolicy = () => {
   useEffect(() => {
-    // टैब टाइटल और पेज पोजीशन फिक्स
     window.scrollTo(0, 0);
   }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 pt-16 md:pt-24 pb-16 px-3 md:px-4 font-hindi antialiased">
       
-      {/* 🔥 नया डायनामिक SEO टैग जो शिपिंग पॉलिसी की डिटेल Google/WhatsApp को देगा */}
+      {/* ✅ NEW SEO COMPONENT */}
       <SEO 
-        customTitle="Shipping & Delivery Policy - StudyGyaan Digital Delivery 2026"
+        customTitle="Shipping & Delivery Policy - StudyGyaan"
         customDescription="Official Shipping and Delivery policy for StudyGyaan digital products. Learn about instant delivery of Premium Notes and Mock Tests."
         customUrl="https://studygyaan.in/shipping-policy"
         customImage="https://studygyaan.in/og-image.jpg"
       />
-
-      <Helmet>
-        <meta name="keywords" content="StudyGyaan Delivery, Digital Product Shipping, Instant PDF Access, Govt Job Notes Fulfillment" />
-      </Helmet>
 
       <div className="max-w-5xl mx-auto bg-white shadow-2xl rounded-2xl md:rounded-[3rem] overflow-hidden border border-gray-200 text-left">
         
@@ -126,7 +120,7 @@ const ShippingPolicy = () => {
                   <Mail className="text-blue-400" size={32} />
                   <div>
                     <p className="text-[10px] uppercase font-black opacity-50">Email Support</p>
-                    <p className="text-lg font-black">studygyaan.help@gmail.com</p>
+                    <p className="text-lg font-black">contact@studygyaan.in</p>
                   </div>
                </div>
                <div className="flex items-center gap-4 bg-white/5 p-6 rounded-2xl border border-white/10 hover:bg-white/10 transition-all">
