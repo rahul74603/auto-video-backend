@@ -109,6 +109,15 @@ Format: JSON with "questions" array containing qText, options, correctOption, an
         let cleanedText = text.replace(/```json/g, "").replace(/```/g, "").trim();
         const json = JSON.parse(cleanedText);
 
+        // ✅ सिर्फ Options को स्ट्रिंग से Array में बदलने का बैकअप (आपका बाकी लॉजिक सेम रहेगा)
+        if (json.questions) {
+            json.questions.forEach(q => {
+                if (typeof q.options === 'string') {
+                    q.options = q.options.split(',').map(s => s.trim());
+                }
+            });
+        }
+
         if (json.questions && json.questions.length > 0) {
             // 2. Firestore में सेव करना
             const docRef = await db.collection("mock_tests").add({
