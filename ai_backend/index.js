@@ -1,7 +1,7 @@
 const { onRequest } = require("firebase-functions/v2/https");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const admin = require("firebase-admin");
-const { VertexAI } = require("@google-cloud/vertexai");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
@@ -23,20 +23,20 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
-const vertex_ai = new VertexAI({
-  project: "studymaterial-406ad",
-  location: "us-central1",
-});
-
 /* ================= AI MODEL CONFIG ================= */
-
 const AI_MODELS = {
-  MOCK_TEST: "gemgemini-2.5-flash-lite",
+  MOCK_TEST: "gemini-2.5-flash-lite", // gemgemini की टाइपिंग मिस्टेक भी सही कर दी है
   BLOG: "gemini-2.5-flash-lite",
 };
 
+let genAI_instance = null;
+
 function getModel(modelName, config) {
-  return vertex_ai.getGenerativeModel({
+  if (!genAI_instance) {
+    // .env या Secrets से आपकी GEMINI_API_KEY उठाएगा
+    genAI_instance = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  }
+  return genAI_instance.getGenerativeModel({
     model: modelName,
     generationConfig: config,
   });
