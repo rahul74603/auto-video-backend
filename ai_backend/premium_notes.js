@@ -1,8 +1,7 @@
 require("dotenv").config();
 const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
-const { VertexAI } = require("@google-cloud/vertexai");
-
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 // ✅ GitHub Secrets + Firebase Compatible Initialization
 if (!admin.apps.length) {
     const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
@@ -21,10 +20,6 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-const vertex_ai = new VertexAI({
-    project: "studymaterial-406ad",
-    location: "us-central1"
-});
 
 exports.generatePremiumNote = onRequest(
 {
@@ -93,7 +88,9 @@ async (req, res) => {
             }
         });
 
-        const model = vertex_ai.getGenerativeModel({
+        // ✅ Google AI Studio (Free API) Lazy Load
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({
             model: "gemini-2.0-flash",
             generationConfig: {
                 temperature: 0.8,
