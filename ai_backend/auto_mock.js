@@ -1,4 +1,3 @@
-const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const axios = require("axios");
@@ -82,18 +81,8 @@ const TOPICS_POOL = [
     "General English: Grammatical Errors & Fillers",
     "General English: Synonyms, Antonyms & One Word Substitution"
 ];
-
-/* ================= SCHEDULED FUNCTION (1 Test Every 3 Hours) ================= */
-exports.generateDailyMocks = onSchedule({
-    // 🕒 यह दिन में 5 बार चलेगा: सुबह 9:00, दोपहर 12:00, 3:00, शाम 6:00, और रात 9:00
-    schedule: "0 9,12,15,18,21 * * *", 
-    timeZone: "Asia/Kolkata",
-    memory: "2GiB",
-    timeoutSeconds: 540,
-    // ✅ Secrets add kiye gaye hain taaki logic leak na ho
-    secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "SERVICE_ACCOUNT_JSON"]
-}, async (event) => {
-    
+/* ================= GITHUB ACTIONS SCRIPT ================= */
+const generateDailyMocks = async () => {
     // 1. रैंडम एक टॉपिक चुनना
     const randomTopic = TOPICS_POOL[Math.floor(Math.random() * TOPICS_POOL.length)];
     
@@ -154,4 +143,7 @@ Format: JSON with "questions" array containing qText, options, correctOption, an
     } catch (err) {
         console.error("❌ Auto-Mock Error:", err.message);
     }
-});
+    };
+
+// ✅ GitHub Actions के लिए फंक्शन को तुरंत रन करने का कमांड
+generateDailyMocks();
