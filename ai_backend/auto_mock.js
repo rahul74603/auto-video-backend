@@ -90,7 +90,7 @@ const generateDailyMocks = async () => {
     // ✅ Google AI Studio (Free API) Initialization inside function to avoid Timeout
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-flash-lite",
         generationConfig: { maxOutputTokens: 8000, temperature: 0.4, responseMimeType: "application/json" },
     });
 
