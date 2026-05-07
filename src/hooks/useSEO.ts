@@ -127,7 +127,7 @@ export const generateSchemas = {
     sameAs: [
       'https://facebook.com/studygyaan',
       'https://twitter.com/studygyaan',
-      'hhttps://www.youtube.com/@StudyGyaan_Official',
+      'https://www.youtube.com/@StudyGyaan_Official', // ✅ FIX: Extra 'h' removed from link
     ],
     contactPoint: {
       '@type': 'ContactPoint',
