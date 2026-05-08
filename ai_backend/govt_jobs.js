@@ -31,6 +31,13 @@ const db = admin.firestore();
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// 🔥 URL Slug Generator (Missing Function Added)
+function createSlug(title) {
+    return title ? title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-') : "govt-job";
+}
+
+// ✅ notifyGoogle function updated for v3 (From auto_blog.js)
+
 // ✅ notifyGoogle function updated for v3 (From auto_blog.js)
 async function notifyGoogle(url) {
     try {
@@ -79,6 +86,15 @@ async function scrapeGovtJobsLogic() {
     });
 
     let addedCount = 0;
+
+    // 🔥 UNIQUE SLUG के लिए Current Month-Year
+    const now = new Date();
+    const dateSuffix = now.toLocaleString('en-IN', { month: 'short', year: 'numeric' }).toLowerCase().replace(' ', '-');
+
+    // 🔥 SEO के लिए पुराने ब्लॉग्स के लिंक उठाना
+    const relatedBlogs = await db.collection("blogs").orderBy("createdAt", "desc").limit(2).get();
+    let internalLinks = [];
+    relatedBlogs.forEach(b => internalLinks.push({ title: b.data().title, slug: b.data().slug || b.id }));
 
     for (const item of latestItems) {
         const titleText = item.title || "";
@@ -160,6 +176,8 @@ ${finalScrapedData}
 STRICT JSON SCHEMA:
 {
   "title": "",
+  "slug": "seo-friendly-slug-url",
+  "metaDesc": "160 char meta description for SEO",
   "category": "Identify: ssc, banking, railway, upsc, defense, teaching, state, engineering, or other",
   "organization": "",
   "advtNo": "",
@@ -205,8 +223,16 @@ STRICT JSON SCHEMA:
             }
 
             // ✅ FIX: Admin Panel के लिए 'job_drafts' कलेक्शन में 'pending' स्टेटस के साथ सेव कर रहा है
-            await db.collection("job_drafts").add({
+            // 🔥 UNIQUE SLUG: Base Slug में Date Suffix जोड़ दिया ताकि Canonical Error न आए
+            const baseSlug = getVal("slug") || createSlug(finalTitle);
+            const seoSlug = `${baseSlug}-${dateSuffix}`;
+
+            // ✅ FIX: Admin Panel के लिए 'job_drafts' कलेक्शन में 'pending' स्टेटस के साथ सेव कर रहा है
+            await db.collection("job_drafts").doc(seoSlug).set({
                 title: finalTitle,
+                slug: seoSlug,
+                internalLinks: internalLinks, // ✅ Internal links
+                description: getVal("metaDesc") || getVal("description"), // ✅ SEO Meta Description
                 category: getVal("category") || "other",
                 organization: getVal("organization"),
                 advtNo: getVal("advtNo"),
@@ -283,6 +309,49 @@ exports.onJobApprovedSendTelegram = onDocumentWritten({
     if (newJob.telegramSent !== true) {
         console.log(`🚀 Processing Started (Maha-Jugad Activated): ${newJob.title}`);
         const blogUrl = `https://studygyaan.in/job/${event.params.jobId}`;
+
+        // 🔥 Google Jobs Widget के लिए 100% Valid 'JobPosting' Schema (Crash-Proof)
+        let publishTime = new Date().toISOString();
+        if (newJob.createdAt && typeof newJob.createdAt.toDate === 'function') {
+            publishTime = newJob.createdAt.toDate().toISOString();
+        }
+
+       const jsonLd = {
+            "@context": "https://schema.org/",
+            "@type": "JobPosting",
+            "title": newJob.title,
+            "description": newJob.description || newJob.title,
+            "datePosted": publishTime,
+            "employmentType": "FULL_TIME",
+            "hiringOrganization": {
+                "@type": "Organization",
+                "name": newJob.organization || "Govt Department",
+                "sameAs": "https://studygyaan.in",
+                "logo": "https://studygyaan.in/logo.png"
+            },
+            "jobLocation": {
+                "@type": "Place",
+                "address": {
+                    "@type": "PostalAddress",
+                    "addressRegion": newJob.location || "India",
+                    "addressCountry": "IN"
+                }
+            }
+        };
+
+        // 🔥 Google Jobs Widget के लिए Salary Add (अगर AI ने निकाली है)
+        if (newJob.salary && newJob.salary.length > 2) {
+            jsonLd.baseSalary = {
+                "@type": "MonetaryAmount",
+                "currency": "INR",
+                "value": {
+                    "@type": "QuantitativeValue",
+                    "value": newJob.salary
+                }
+            };
+        }
+
+        await admin.firestore().collection("jobs").doc(event.params.jobId).update({ schemaMarkup: JSON.stringify(jsonLd) });
 
         // 1. Google Indexing
         notifyGoogle(blogUrl).catch(e => console.log("Indexing Skip"));
