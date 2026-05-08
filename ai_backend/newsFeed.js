@@ -155,24 +155,32 @@ ${JSON.stringify(itemsForAI)}
             console.error("❌ AI Rewrite Failed:", aiError.message);
         }
 
-        // ✅ 2. XML Structure
+       // ✅ 2. XML Structure (Strict RSS 2.0 & Google News Valid)
         let xml = `<?xml version="1.0" encoding="UTF-8" ?>
-<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/">
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/" xmlns:atom="http://www.w3.org/2005/Atom">
 <channel>
     <title>StudyGyaan | Latest Govt Jobs, Admit Cards &amp; Results</title>
     <link>https://studygyaan.in</link>
+    <atom:link href="https://studygyaan.in/rss" rel="self" type="application/rss+xml" />
     <description>Get the fastest updates on all Sarkari Naukri, Exams and Blogs.</description>
     <language>hi-IN</language>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>`;
 
-        finalItems.forEach(item => {
+       finalItems.forEach(item => {
+            // 🔥 ALL ROUTES MAPPED TO AVOID 404 ERRORS
             let routeType = item.collectionName;
             if (routeType === 'jobs') routeType = 'job';
-            if (routeType === 'blogs') routeType = 'blog';
-            if (routeType === 'fast_track') routeType = 'update';
+            else if (routeType === 'blogs') routeType = 'blog';
+            else if (routeType === 'fast_track') routeType = 'update';
+            else if (routeType === 'mock_tests') routeType = 'test';
+            else if (routeType === 'study_materials') routeType = 'free-study-material';
+            else if (routeType === 'admit_cards') routeType = 'admit-card';
+            else if (routeType === 'results') routeType = 'result';
+            else if (routeType === 'answer_keys') routeType = 'answer-key';
             
-            // ✅ URL को escapeXml के अंदर डाला गया है
-            const rawPostUrl = `https://studygyaan.in/${routeType}/${item.id}`;
+            // 🔥 Slug Fallback: अगर 'slug' है तो वो यूज़ करो, वरना 'id'
+            const slugOrId = item.slug ? item.slug : item.id;
+            const rawPostUrl = `https://studygyaan.in/${routeType}/${slugOrId}`;
             const postUrl = escapeXml(rawPostUrl);
             
             // ✅ Date Fallback Fix (ताकि Invalid Date से XML क्रैश न हो)
@@ -184,10 +192,10 @@ ${JSON.stringify(itemsForAI)}
                 }
             }
             
-            const rawImageUrl = item.imageUrl || item.image || item.thumbnail || item.featuredImage || 'https://studygyaan.in/default.jpg';
+            const rawImageUrl = item.imageUrl || item.image || item.thumbnail || item.featuredImage || 'https://studygyaan.in/og-image.jpg';
             const imageUrl = escapeXml(rawImageUrl);
             
-            const author = item.author || 'StudyGyaan';
+            const author = item.author || 'Rahul Sir';
             
             // ✅ HTML Content को CDATA के लिए सुरक्षित रखा (बिना escapeXml के)
             const rawContent = item.content || item.description || '';
@@ -204,7 +212,7 @@ ${JSON.stringify(itemsForAI)}
         <dc:creator><![CDATA[${author}]]></dc:creator>
         <description><![CDATA[${finalDescription}]]></description>
         <content:encoded><![CDATA[${rawContent}]]></content:encoded>
-        ${imageUrl ? `<media:content url="${imageUrl}" medium="image"/>` : ''}
+        ${imageUrl ? `<enclosure url="${imageUrl}" length="0" type="image/jpeg" />\n        <media:content url="${imageUrl}" medium="image"/>` : ''}
         <media:title><![CDATA[${finalDisplayTitle}]]></media:title>
         <media:description><![CDATA[${finalDescription}]]></media:description>
     </item>`;
