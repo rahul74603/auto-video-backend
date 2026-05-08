@@ -8,28 +8,48 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 const renderWebStory = async (req, res) => {
-    // URL se story ki ID nikalna
-    const storyId = req.params.id;
+    // URL se story ki ID ya Slug nikalna
+    const identifier = req.params.id;
 
-    if (!storyId) {
-        return res.status(400).send("Story ID is required");
+    if (!identifier) {
+        return res.status(400).send("Story ID or Slug is required");
     }
 
     try {
-        const storyDoc = await db.collection("web_stories").doc(storyId).get();
+        let storyData = null;
+        let storyId = identifier;
 
-        if (!storyDoc.exists) {
+        // 🛠️ 1. SMART URL LOGIC: Pehle Slug se dhoondho
+        const slugQuery = await db.collection("web_stories").where("slug", "==", identifier).limit(1).get();
+        
+        if (!slugQuery.empty) {
+            storyData = slugQuery.docs[0].data();
+            storyId = slugQuery.docs[0].id;
+        } else {
+            // Agar slug nahi mila, toh Document ID se dhoondho
+            const idDoc = await db.collection("web_stories").doc(identifier).get();
+            if (idDoc.exists) {
+                storyData = idDoc.data();
+                // 🔥 SEO REDIRECTION: Agar doc mein slug hai aur user ID se aaya hai, toh Slug wale URL par 301 Redirect karo
+                if (storyData.slug && storyData.slug !== identifier) {
+                    return res.redirect(301, `https://studygyaan.in/web-stories/${storyData.slug}`);
+                }
+            }
+        }
+
+        if (!storyData) {
             return res.status(404).send("<h2>Web Story Not Found</h2><p>Ye story delete ho chuki hai ya link galat hai.</p>");
         }
 
-        const data = storyDoc.data();
+        const data = storyData;
         
-        // 🛠️ 1. STORY TYPE IDENTIFICATION (Mocktest or Blog)
+        // 🛠️ 2. STORY TYPE IDENTIFICATION (Mocktest or Blog)
         const storyType = String(data.storyType || 'mocktest').toLowerCase(); 
 
         // Common Fields
         const title = data.title || "StudyGyaan Update";
-        const pageUrl = `https://studygyaan.in/web-stories/${storyId}`;
+        const slug = data.slug || storyId;
+        const pageUrl = `https://studygyaan.in/web-stories/${slug}`;
         
         // 🔥 Smart Exam Background Image Fallback
         let coverImage = data.coverImage || "https://studygyaan.in/og-image.jpg";
@@ -41,10 +61,22 @@ const renderWebStory = async (req, res) => {
         const publisher = "StudyGyaan";
         const publisherLogo = "https://studygyaan.in/logo.png";
         
-        // Date Formatting for SEO (Fallback to current time if missing)
+        // Date Formatting for SEO
         const publishedDate = data.createdAt && data.createdAt.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString();
 
-        // 🔥 2. DYNAMIC CONTENT LOGIC (Badges, Rows & Button Text)
+        // 🔥 3. SMART INTERNAL LINKS FETCHING
+        const blogSnap = await db.collection("blogs").orderBy("date", "desc").limit(2).get();
+        let internalLinksHtml = "";
+        if (!blogSnap.empty) {
+            internalLinksHtml += `<div class="related-box"><strong>🔥 Read Also:</strong><ul>`;
+            blogSnap.forEach(doc => {
+                const blog = doc.data();
+                internalLinksHtml += `<li><a href="https://studygyaan.in/blog/${blog.slug || doc.id}">${blog.title}</a></li>`;
+            });
+            internalLinksHtml += `</ul></div>`;
+        }
+
+        // 🔥 4. DYNAMIC CONTENT LOGIC (Badges, Rows & Button Text)
         let badgeText = "";
         let badgeColor = "";
         let detailsHtml = "";
@@ -62,6 +94,7 @@ const renderWebStory = async (req, res) => {
                 <p class="story-desc">${desc}</p>
                 <div class="detail-row"><span class="highlight" style="color:#6ee7b7;">📁 Category:</span> ${data.category || 'Education'}</div>
                 <div class="detail-row"><span class="highlight" style="color:#6ee7b7;">✍️ By:</span> ${data.author || 'Rahul Sir'}</div>
+                ${internalLinksHtml}
             `;
         } else {
             // 🎯 NEW MOCK TEST SETTINGS (Exam Dashboard Look)
@@ -69,7 +102,6 @@ const renderWebStory = async (req, res) => {
             badgeColor = "#2563eb"; // Blue Theme
             outlinkText = "Attempt Test Now";
             
-            // Smart Description Title ke hisab se
             const smartDesc = `Check your preparation level! Attempt this high-level '${title}' with real exam-like questions and negative marking.`;
             metaDescription = smartDesc;
 
@@ -80,13 +112,14 @@ const renderWebStory = async (req, res) => {
                     <div class="stat-box"><span class="stat-icon">⏱️</span><span class="stat-val">${data.duration || '30'}</span><span class="stat-label">Minutes</span></div>
                     <div class="stat-box"><span class="stat-icon">🏆</span><span class="stat-val">FREE</span><span class="stat-label">Test</span></div>
                 </div>
+                ${internalLinksHtml}
             `;
         }
 
-        // 🔥 JSON-LD SCHEMA FOR GOOGLE DISCOVER/SEARCH 🔥
+        // 🔥 5. ADVANCED JSON-LD SCHEMA FOR GOOGLE DISCOVER/SEARCH 🔥
         const jsonLdMarkup = JSON.stringify({
             "@context": "https://schema.org",
-            "@type": "Article",
+            "@type": "NewsArticle",
             "mainEntityOfPage": {
                 "@type": "WebPage",
                 "@id": pageUrl
@@ -107,16 +140,18 @@ const renderWebStory = async (req, res) => {
                     "@type": "ImageObject",
                     "url": publisherLogo
                 }
-            }
+            },
+            "description": metaDescription
         });
 
-        // 🔥 3. GOOGLE AMP WEB STORY HTML 🔥
+        // 🔥 6. GOOGLE AMP WEB STORY HTML 🔥
         const html = `<!doctype html>
 <html amp lang="hi">
 <head>
     <meta charset="utf-8">
     <script async src="https://cdn.ampproject.org/v0.js"></script>
     <script async custom-element="amp-story" src="https://cdn.ampproject.org/v0/amp-story-1.0.js"></script>
+    <script async custom-element="amp-analytics" src="https://cdn.ampproject.org/v0/amp-analytics-0.1.js"></script>
     <title>${title}</title>
     <meta name="description" content="${metaDescription}">
     <link rel="canonical" href="${pageUrl}">
@@ -229,6 +264,13 @@ const renderWebStory = async (req, res) => {
         font-weight: bold; 
         letter-spacing: 1px;
       }
+
+      /* INTERNAL LINKS CSS */
+      .related-box { margin-top: 15px; font-size: 0.95rem; color: #e2e8f0; background: rgba(0,0,0,0.4); padding: 10px; border-radius: 12px; }
+      .related-box ul { padding-left: 20px; margin-top: 5px; margin-bottom: 0; }
+      .related-box li { margin-bottom: 5px; }
+      .related-box a { color: #60a5fa; text-decoration: none; font-weight: bold; }
+      .related-box a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -279,7 +321,7 @@ const renderWebStory = async (req, res) => {
     }
 };
 
-// 🚀 NEW: WEB STORIES SITEMAP GENERATOR 
+// 🚀 7. WEB STORIES SITEMAP GENERATOR (With Slug Support) 
 const generateStoriesSitemap = onRequest({ cors: true, timeoutSeconds: 60, memory: "256MiB" }, async (req, res) => {
     try {
         const snapshot = await db.collection("web_stories")
@@ -293,7 +335,9 @@ const generateStoriesSitemap = onRequest({ cors: true, timeoutSeconds: 60, memor
         snapshot.forEach(doc => {
             const data = doc.data();
             const storyId = doc.id;
-            const pageUrl = `https://studygyaan.in/web-stories/${storyId}`;
+            // Sitemap me hamesha Slug use karein (agar available ho)
+            const slug = data.slug || storyId;
+            const pageUrl = `https://studygyaan.in/web-stories/${slug}`;
             
             // Fix Image URL and Title for XML safety
             let coverImage = data.coverImage || "https://studygyaan.in/og-image.jpg";
