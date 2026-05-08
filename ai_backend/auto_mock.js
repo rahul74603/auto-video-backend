@@ -1,146 +1,190 @@
 const admin = require("firebase-admin");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const axios = require("axios");
+const { google } = require("googleapis");
 require("dotenv").config();
 
-// ✅ Initialize Admin using SERVICE_ACCOUNT_JSON from Environment Variables
+// =========================================================
+// 🔐 1. FIREBASE & GOOGLE INDEXING AUTH
+// =========================================================
 if (!admin.apps.length) {
     const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
     if (serviceAccountVar) {
-        const serviceAccount = JSON.parse(serviceAccountVar);
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
-            projectId: "studymaterial-406ad"
-        });
+        try {
+            const serviceAccount = JSON.parse(serviceAccountVar);
+            admin.initializeApp({
+                credential: admin.credential.cert(serviceAccount),
+                projectId: "studymaterial-406ad"
+            });
+        } catch (e) {
+            console.error("❌ Firebase Init Error:", e.message);
+            admin.initializeApp();
+        }
     } else {
         admin.initializeApp();
     }
 }
 const db = admin.firestore();
 
+// =========================================================
+// 🛠️ 2. SEO HELPERS (SLUG, INDEXING, LINKS)
+// =========================================================
 
+// ✅ Slug Generator
+function createSlug(title) {
+    return title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .replace(/-+/g, '-');
+}
+
+// ✅ Google Indexing API (Auto Indexing)
+async function notifyGoogle(url) {
+    try {
+        const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
+        if (!serviceAccountVar) return;
+
+        const key = JSON.parse(serviceAccountVar);
+        const jwtClient = new google.auth.JWT(
+            key.client_email,
+            null,
+            key.private_key,
+            ["https://www.googleapis.com/auth/indexing"],
+            null
+        );
+
+        await jwtClient.authorize();
+        const response = await axios.post(
+            "https://indexing.googleapis.com/v3/urlNotifications:publish",
+            { url: url, type: "URL_UPDATED" },
+            { headers: { Authorization: `Bearer ${jwtClient.credentials.access_token}` } }
+        );
+        console.log("🚀 Google Indexing Success:", url);
+    } catch (err) {
+        console.error("❌ Indexing Error:", err.message);
+    }
+}
+
+// ✅ Internal Linking Engine (Blogs से लिंक उठाना)
+async function getInternalLinks() {
+    try {
+        const snapshot = await db.collection("blogs")
+            .orderBy("date", "desc")
+            .limit(3)
+            .get();
+
+        let links = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            links.push(`<a href="https://studygyaan.in/blog/${data.slug || doc.id}">${data.title}</a>`);
+        });
+        return links.join(" | ");
+    } catch (e) {
+        return "StudyGyaan.in Free Study Material";
+    }
+}
 
 const TOPICS_POOL = [
-    // --- 1. EXAM SPECIAL MIXED (Full Syllabus) ---
     "SSC CGL Tier-1: Full Mock Test (Math, Reasoning, English, GK)",
     "Railway RRB NTPC: Combined CBT-1 Level Paper",
     "SSC CHSL: Previous Year Based Full Mock",
     "UP Police Constable: Samanya Gyan aur Hindi Special",
-    "Delhi Police: Computer + GK + Reasoning Mix",
-    "SSC GD Constable: Full Syllabus Practice Set",
-    "Railway Group D: Science & Math Focused Paper",
-    "Bihar State Exams: Special History & Static GK Mock",
-    "IBPS/SBI Clerk: Quantitative Aptitude & Reasoning Mix",
-
-    // --- 2. GENERAL KNOWLEDGE (Static & Dynamic) ---
     "Indian Constitution: Important Articles, Parts & Schedules",
-    "Modern Indian History: 1857 Revolt to Independence Era",
-    "Ancient India: Indus Valley, Vedic Period & Maurya Empire",
-    "Medieval India: Delhi Sultanate & Mughal Empire",
     "Indian Geography: Rivers, Mountains, and National Parks",
-    "World Geography: Continents, Oceans & Solar System",
-    "Indian Economy: Five Year Plans, RBI & Banking Terms",
-    "Art & Culture: Classical Dances, Festivals & Awards",
-    "Famous Personalities, Books, and Authors (History to Now)",
-    "List of Firsts in India: Male, Female & Technology",
-
-    // --- 3. GENERAL SCIENCE (Everyday Science) ---
     "Biology: Human Body, Vitamins, Diseases & Nutrition",
     "Physics: Units, Motion, Light, Sound & Electricity",
-    "Chemistry: Periodic Table, Chemical Formulas & Metals",
-    "Environment & Ecology: Pollution, Climate Change & Summits",
-    "Scientific Instruments and Discoveries",
-    "Space & Defense: ISRO, DRDO & Missile Systems of India",
-
-    // --- 4. MATHEMATICS (Arithmetic & Advance) ---
-    "Math: Number System, HCF & LCM",
     "Math: Percentage, Profit, Loss & Discount",
-    "Math: Simple Interest & Compound Interest",
-    "Math: Ratio, Proportion, and Partnership",
-    "Math: Time, Work, and Pipe & Cistern",
-    "Math: Time, Speed, Distance & Train Problems",
-    "Math: Average, Age Problems & Mixture Allegation",
-    "Advance Math: Geometry & Mensuration (2D/3D)",
-    "Advance Math: Algebra & Trigonometry Basics",
-    "Data Interpretation (DI): Pie Chart & Bar Graph Special",
-
-    // --- 5. REASONING (Logical Ability) ---
     "Reasoning: Coding-Decoding & Letter Series",
-    "Reasoning: Blood Relations & Direction Sense",
-    "Reasoning: Syllogism (Statement & Conclusion)",
-    "Reasoning: Calendar, Clock & Dice Problems",
-    "Reasoning: Sitting Arrangement & Ranking",
-    "Reasoning: Non-Verbal (Image, Mirror & Paper Folding)",
-    "Reasoning: Analogy and Classification (Odd One Out)",
-
-    // --- 6. CURRENT AFFAIRS & COMPUTER (Generic) ---
-    "Current Affairs: Last 6 Months Sports & Appointments",
-    "Current Affairs: Government Schemes & New Portals",
-    "Computer Basics: MS Office, Internet & Networking",
-    "Computer History: Generations, Hardware & Shortcut Keys",
-    "General English: Grammatical Errors & Fillers",
-    "General English: Synonyms, Antonyms & One Word Substitution"
+    "Scientific Instruments and Discoveries",
+    "Computer Basics: MS Office, Internet & Networking"
 ];
-/* ================= GITHUB ACTIONS SCRIPT ================= */
+
+// =========================================================
+// 🚀 3. MAIN ENGINE
+// =========================================================
 const generateDailyMocks = async () => {
-    // 1. रैंडम एक टॉपिक चुनना
     const randomTopic = TOPICS_POOL[Math.floor(Math.random() * TOPICS_POOL.length)];
-    
-    console.log(`🚀 Starting Scheduled Mock Generation for: ${randomTopic}`);
-    // ✅ Google AI Studio (Free API) Initialization inside function to avoid Timeout
+    console.log(`🔥 SEO Generation Started: ${randomTopic}`);
+
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
         model: "gemini-2.5-flash-lite",
         generationConfig: { maxOutputTokens: 8000, temperature: 0.4, responseMimeType: "application/json" },
     });
 
+    // ✅ SEO Optimized Prompt
     const prompt = `
-Act as a Senior Paper Setter for Indian Competitive Exams.
-Generate EXACTLY 25 UNIQUE and HIGH-LEVEL questions for the topic: "${randomTopic}".
-Language: Bilingual (Hindi\\nEnglish).
-Format: JSON with "questions" array containing qText, options, correctOption, and qLogic.
+Act as a Senior SEO Expert and Paper Setter. 
+Generate a HIGH-LEVEL Mock Test for: "${randomTopic}".
+
+Format ONLY JSON:
+{
+  "seoTitle": "High CTR Title with Keywords",
+  "metaDescription": "160 chars SEO description",
+  "tags": ["keyword1", "keyword2"],
+  "questions": [
+    {
+      "qText": "Hindi\\nEnglish",
+      "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+      "correctOption": 0,
+      "qLogic": "Detailed explanation in Hindi & English"
+    }
+  ]
+}
+Generate exactly 25 bilingual questions.
 `;
 
     try {
         const resp = await model.generateContent(prompt);
         const text = resp.response?.candidates?.[0]?.content?.parts?.[0]?.text;
-        
-        // JSON साफ़ करने के लिए हेल्पर (जैसा index.js में था)
         let cleanedText = text.replace(/```json/g, "").replace(/```/g, "").trim();
         const json = JSON.parse(cleanedText);
 
-        // ✅ सिर्फ Options को स्ट्रिंग से Array में बदलने का बैकअप (आपका बाकी लॉजिक सेम रहेगा)
-        if (json.questions) {
-            json.questions.forEach(q => {
-                if (typeof q.options === 'string') {
-                    q.options = q.options.split(',').map(s => s.trim());
-                }
-            });
-        }
+        if (json.questions && Array.isArray(json.questions)) {
+            
+            // 🛠️ Data Sanitizer (Options Array Fix)
+            const sanitizedQuestions = json.questions.map((q, index) => ({
+                qText: q.qText || `Question ${index + 1}`,
+                options: Array.isArray(q.options) ? q.options : ["A", "B", "C", "D"],
+                correctOption: Number.isInteger(q.correctOption) ? q.correctOption : 0,
+                qLogic: q.qLogic || "Explanation available on StudyGyaan.in"
+            }));
 
-        if (json.questions && json.questions.length > 0) {
-            // 2. Firestore में सेव करना
-            const docRef = await db.collection("mock_tests").add({
-                title: `Daily Live: ${randomTopic}`,
-                questions: json.questions,
-                totalQuestions: json.questions.length,
-                durationMinutes: json.questions.length,
+            // 🛠️ SEO URL (Slug)
+            const slug = createSlug(json.seoTitle || randomTopic);
+            const testUrl = `https://studygyaan.in/test/${slug}`;
+
+            // 🛠️ Internal Links Fetch
+            const relatedLinks = await getInternalLinks();
+
+            // 💾 Save to Firestore
+            await db.collection("mock_tests").doc(slug).set({
+                title: json.seoTitle || randomTopic,
+                slug: slug,
+                metaDescription: json.metaDescription || "Attempt free mock test.",
+                tags: json.tags || ["mock test", "exam preparation"],
+                questions: sanitizedQuestions,
+                totalQuestions: sanitizedQuestions.length,
+                durationMinutes: sanitizedQuestions.length,
                 negativeMarking: 0.25,
                 requestedTopic: randomTopic,
                 type: "auto_generated",
+                internalLinks: relatedLinks,
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
 
-            console.log("✅ Auto Mock Saved:", docRef.id);
+            console.log("✅ Saved to Firestore with Slug:", slug);
 
-            // 3. 📢 Telegram Alert
+            // 🌐 Auto Indexing
+            await notifyGoogle(testUrl);
+
+            // 📢 Telegram Notification
             const botToken = process.env.TELEGRAM_BOT_TOKEN;
             const chatId = process.env.TELEGRAM_CHAT_ID;
 
             if (botToken && chatId) {
-                const testUrl = `https://studygyaan.in/test/${docRef.id}`;
-                const msg = `🔔 <b>नया लाइव मॉक टेस्ट तैयार है!</b>\n\n📝 <b>Topic:</b> ${randomTopic}\n📊 <b>Sawal:</b> 25 High Level\n\n👇 <b>अभी टेस्ट शुरू करें:</b>\n<a href="${testUrl}">${testUrl}</a>\n\n🚀 <i>Join @studygyaan_official for more!</i>`;
-
+                const msg = `🚀 <b>New Live Mock Test!</b>\n\n📝 <b>Topic:</b> ${json.seoTitle}\n📊 <b>Q:</b> 25 Questions\n\n🔗 <b>Attempt Now:</b>\n<a href="${testUrl}">${testUrl}</a>\n\n📚 <b>Related:</b> ${relatedLinks}`;
                 await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
                     chat_id: chatId,
                     text: msg,
@@ -148,11 +192,17 @@ Format: JSON with "questions" array containing qText, options, correctOption, an
                 });
                 console.log("📢 Telegram Notification Sent!");
             }
+            return true;
         }
     } catch (err) {
         console.error("❌ Auto-Mock Error:", err.message);
+        return false;
     }
-    };
+};
 
-// ✅ GitHub Actions के लिए फंक्शन को तुरंत रन करने का कमांड
-generateDailyMocks();
+// ✅ Trigger
+if (require.main === module) {
+    generateDailyMocks().then(success => {
+        process.exit(success ? 0 : 1);
+    });
+}
