@@ -18,17 +18,16 @@ if (!admin.apps.length) {
     }
 }
 const db = admin.firestore();
+const bucket = admin.storage().bucket("studymaterial-406ad.firebasestorage.app"); // 🔥 Storage Bucket Add Kiya
 
 // ==========================================
-// 🛠️ SEO HELPERS
+// 🛠️ SEO & IMAGE HELPERS
 // ==========================================
 
-// 1. Slug Generator for SEO URLs
 function createSlug(title) {
     return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-');
 }
 
-// 2. Google Indexing API (Discover Traffic)
 async function notifyGoogle(url) {
     try {
         const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
@@ -47,6 +46,37 @@ async function notifyGoogle(url) {
         console.log("🚀 Web Story Indexed for Discover:", url);
     } catch (err) {
         console.error("❌ Story Indexing Error:", err.message);
+    }
+}
+
+// 🔥 NEW: 9:16 VERTICAL IMAGE GENERATOR (For GSC Error Fix)
+async function generateVerticalStoryImage(title, category) {
+    try {
+        console.log("🎨 Generating Vertical Image for Story...");
+        const imagePrompt = `Vertical 9:16 portrait educational poster for ${category}: ${title}, vibrant, no text, clean UI background`;
+        
+        // 720x1280 is perfect 9:16 ratio for Web Stories
+        const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=720&height=1280&nologo=true&quality=high`;
+        
+        const imgRes = await axios.get(pollUrl, { 
+            responseType: 'arraybuffer', 
+            timeout: 30000,
+            headers: { "User-Agent": "Mozilla/5.0" }
+        });
+        
+        const fileName = `web_stories_images/story_${Date.now()}.png`;
+        const file = bucket.file(fileName);
+        
+        await file.save(Buffer.from(imgRes.data, 'binary'), {
+            metadata: { contentType: 'image/png', cacheControl: 'public, max-age=31536000' },
+            public: true
+        });
+        
+        return `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    } catch (imgError) {
+        console.error("❌ Story Image Generation Failed:", imgError.message);
+        // Fallback: Default High-Quality Vertical Image
+        return "https://images.unsplash.com/photo-1532012197267-da84d127e765?q=80&w=720&h=1280&auto=format&fit=crop";
     }
 }
 
@@ -78,11 +108,14 @@ async function createStoryFromOldest(collectionName, storyType) {
 
         // 🔥 SMART SEO URL LOGIC
         const originalSlug = data.slug || doc.id; 
-        const storySlug = data.slug || createSlug(finalTitle); // Original slug use karega ya naya banayega
+        const storySlug = data.slug || createSlug(finalTitle);
 
         const path = storyType === 'mocktest' ? 'test' : 'blog';
         const applyLink = `https://studygyaan.in/${path}/${originalSlug}`;
         const storyUrl = `https://studygyaan.in/web-stories/${storySlug}`;
+
+        // 🔥 GENERATE VERTICAL POSTER
+        const verticalCoverImage = await generateVerticalStoryImage(finalTitle, data.category || storyType);
 
         // 🔥 FULL SEO DATA MERGE
         await db.collection("web_stories").doc(storySlug).set({
@@ -90,7 +123,7 @@ async function createStoryFromOldest(collectionName, storyType) {
             slug: storySlug,
             description: data.metaDescription || data.description || `Attempt this free ${storyType} on StudyGyaan.`,
             tags: data.tags || ["studygyaan", storyType, "education"],
-            coverImage: data.imageUrl || data.image || data.thumbnail || "https://studygyaan.in/og-image.jpg",
+            coverImage: verticalCoverImage, // ✅ Nayi 9:16 Vertical Image use hogi
             applyLink: applyLink,
             organization: data.organization || "StudyGyaan",
             vacancies: data.vacancies || "Check Now",
@@ -108,12 +141,12 @@ async function createStoryFromOldest(collectionName, storyType) {
             isStoryCreated: true
         });
 
-        console.log(`✅ Story created with SEO Slug: ${storySlug}`);
+        console.log(`✅ Story created with SEO Slug & Vertical Image: ${storySlug}`);
 
         // 🌐 AUTO INDEXING
         await notifyGoogle(storyUrl);
 
-        // 📢 TELEGRAM ALERT (Initial Traffic Boost)
+        // 📢 TELEGRAM ALERT
         const botToken = process.env.TELEGRAM_BOT_TOKEN;
         const chatId = process.env.TELEGRAM_CHAT_ID;
         if (botToken && chatId) {
