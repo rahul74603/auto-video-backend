@@ -468,7 +468,6 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
 exports.rssFeed = onRequest({ memory: "1GiB" }, (req, res) => require("./newsFeed").rssFeed(req, res));
 exports.generateSitemap = onRequest({ memory: "512MiB" }, (req, res) => require("./seo_functions").generateSitemap(req, res));
 exports.generateRss = onRequest({ memory: "512MiB" }, (req, res) => require("./seo_functions").generateRss(req, res));
-exports.forcePushSitemap = onRequest({ memory: "256MiB" }, (req, res) => require("./seo_functions").forcePushSitemap(req, res));
 
 // 4. Web Stories
 exports.renderWebStory = onRequest({ cors: true }, (req, res) => {
@@ -494,4 +493,6 @@ exports.generatePremiumNote = onRequest({ timeoutSeconds: 300, memory: "1GiB" },
     (req, res) => require("./premium_notes").generatePremiumNote(req, res));
 
 // ✅ NOTE: generateDailyMocks अब GitHub Actions पर है, इसलिए इसे यहाँ से हटा दिया गया है। 
+exports.autoImageJobDrafts = require('./autoImage').autoImageJobDrafts;
+exports.autoImageFastTrack = require('./autoImage').autoImageFastTrack;
 // अगली बार डिप्लॉयमेंट में इसे Delete (y) कर देना।
