@@ -1,4 +1,6 @@
 const { onRequest } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
@@ -424,8 +426,9 @@ async function handleMetaTags(req, res) {
         return res.status(500).send("Backend Crash: " + e.message);
     }
 }
-/* ================= EXPORTS ================= */
-// Express based API with Secrets and CORS Enabled
+/* ================= FINAL EXPORTS (TIMEOUT FIX & VISIBLE) ================= */
+
+// 0. API Core & Meta Tags (Working)
 exports.api = onRequest({
  secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GEMINI_API_KEY", "GMAIL_CREDENTIALS", "SERVICE_ACCOUNT_JSON"],
   maxInstances: 10,
@@ -434,71 +437,61 @@ exports.api = onRequest({
   cors: true
 }, app);
 
-/// Separate Cloud Functions
-const govtJobs = require("./govt_jobs");
-exports.onJobApprovedSendTelegram = govtJobs.onJobApprovedSendTelegram;
-exports.fetchLatestGovtJobs = govtJobs.fetchLatestGovtJobs; // 🚀 YAHAN YE NAYI LINE ADD HUI HAI
-
-const premiumNotes = require("./premium_notes");
-exports.generatePremiumNote = premiumNotes.generatePremiumNote;
-
-const autoBlog = require("./auto_blog");
-exports.generateDailyBlog = autoBlog.generateDailyBlog;
-
-const fastTrack = require("./fast_track_updates");
-exports.fetchFastTrackUpdates = fastTrack.fetchFastTrackUpdates;
-exports.scheduledFastTrackUpdates = fastTrack.scheduledFastTrackUpdates;
-// index.js के अंत में इसे जोड़ें
-const autoMock = require("./auto_mock");
-exports.generateDailyMocks = autoMock.generateDailyMocks;
-
-// 🔥 FAST TRACK TRIGGER EXPORT
-exports.onFastTrackApprovedSendTelegram = fastTrack.onFastTrackApprovedSendTelegram;
-
-// newsFeed.js से फंक्शन मंगाओ
-const { rssFeed } = require('./newsFeed');
-
-// इसे एक्सपोर्ट करो ताकि यह लाइव हो सके
-exports.rssFeed = rssFeed;
-
 exports.serverSideMetaTags = onRequest({ memory: "1GiB" }, (req, res) => handleMetaTags(req, res));
-// 🔥 WEB STORIES DIRECT URL EXPORT (FRONTEND KE LIYE)
-const { renderWebStory, generateStoriesSitemap } = require("./web_stories");
+
+// 1. Govt Jobs
+exports.onJobApprovedSendTelegram = onDocumentWritten({
+    document: "jobs/{jobId}",
+    secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON", "GMAIL_CREDENTIALS", "YOUTUBE_TOKEN", "TTS_KEY_JSON"],
+    timeoutSeconds: 540, memory: "2GiB"
+}, (event) => require("./govt_jobs").onJobApprovedSendTelegram(event));
+
+exports.fetchLatestGovtJobs = onRequest({ timeoutSeconds: 300, memory: "1GiB" }, 
+    (req, res) => require("./govt_jobs").fetchLatestGovtJobs(req, res));
+
+// 2. Fast Track Updates
+exports.fetchFastTrackUpdates = onRequest({ timeoutSeconds: 300, memory: "1GiB" }, 
+    (req, res) => require("./fast_track_updates").fetchFastTrackUpdates(req, res));
+
+exports.scheduledFastTrackUpdates = onSchedule({
+    schedule: "0 2 * * *", timeZone: "Asia/Kolkata", timeoutSeconds: 300, memory: "1GiB",
+    secrets: ["GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON"]
+}, (event) => require("./fast_track_updates").scheduledFastTrackUpdates(event));
+
+exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
+    document: "fast_track/{docId}",
+    secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON", "GMAIL_CREDENTIALS", "YOUTUBE_TOKEN", "TTS_KEY_JSON", "FB_PAGE_ID", "FB_PAGE_TOKEN"],
+    timeoutSeconds: 540, memory: "2GiB"
+}, (event) => require("./fast_track_updates").onFastTrackApprovedSendTelegram(event));
+
+// 3. News, RSS & SEO
+exports.rssFeed = onRequest({ memory: "1GiB" }, (req, res) => require("./newsFeed").rssFeed(req, res));
+exports.generateSitemap = onRequest({ memory: "512MiB" }, (req, res) => require("./seo_functions").generateSitemap(req, res));
+exports.generateRss = onRequest({ memory: "512MiB" }, (req, res) => require("./seo_functions").generateRss(req, res));
+exports.forcePushSitemap = onRequest({ memory: "256MiB" }, (req, res) => require("./seo_functions").forcePushSitemap(req, res));
+
+// 4. Web Stories
 exports.renderWebStory = onRequest({ cors: true }, (req, res) => {
-    // URL से ID निकालने का स्मार्ट तरीका (क्योंकि यह Express नहीं है)
     const storyId = req.path.split('/').filter(Boolean)[0];
     req.params = { id: storyId }; 
-    return renderWebStory(req, res);
+    return require("./web_stories").renderWebStory(req, res);
 });
-exports.generateStoriesSitemap = generateStoriesSitemap;
+exports.generateStoriesSitemap = onRequest({ memory: "256MiB" }, (req, res) => require("./web_stories").generateStoriesSitemap(req, res));
 
-// AUTO STORIES EXPORTS
-const autoStories = require("./auto_stories");
-exports.scheduledBlogStoryNoon = autoStories.scheduledBlogStoryNoon;
-exports.scheduledBlogStoryNight = autoStories.scheduledBlogStoryNight;
-exports.scheduledMockStoryMorning = autoStories.scheduledMockStoryMorning;
+// 5. Auto Stories (Scheduled)
+const storyConfig = { schedule: "30 13 * * *", timeZone: "Asia/Kolkata", memory: "1GiB" };
+exports.scheduledBlogStoryNoon = onSchedule(storyConfig, (event) => require("./auto_stories").scheduledBlogStoryNoon(event));
+exports.scheduledBlogStoryNight = onSchedule({ ...storyConfig, schedule: "30 21 * * *" }, (event) => require("./auto_stories").scheduledBlogStoryNight(event));
+exports.scheduledMockStoryMorning = onSchedule({ ...storyConfig, schedule: "30 9 * * *" }, (event) => require("./auto_stories").scheduledMockStoryMorning(event));
 
-// ============================================================================
-// 🚀 SEO, ALERTS & INDEXING (Clean & Divided Logic)
-// ============================================================================
-
-const seo = require("./seo_functions");
-const dailyAlert = require("./daily_alert");
-const { onSchedule } = require("firebase-functions/v2/scheduler");
-
-// 1. Sitemap, RSS & Google Indexing (seo_functions.js से आ रहे हैं)
-exports.generateSitemap = seo.generateSitemap;
-exports.generateRss = seo.generateRss;
-exports.forcePushSitemap = seo.forcePushSitemap;
-
-// 2. Daily Telegram Alert (सुबह 8:30 बजे - daily_alert.js से)
+// 6. Daily Alert & Others
 exports.scheduledDailyJobAlert = onSchedule({
-    schedule: "30 8 * * *",
-    timeZone: "Asia/Kolkata",
-    memory: "1GiB",
+    schedule: "30 8 * * *", timeZone: "Asia/Kolkata", memory: "1GiB",
     secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]
-}, async (event) => {
-    await dailyAlert.runDailyAlert();
-});
+}, (event) => require("./daily_alert").runDailyAlert(event));
 
-// ✅ Payment Webhook को आपके कहे अनुसार हटा दिया गया है।
+exports.generatePremiumNote = onRequest({ timeoutSeconds: 300, memory: "1GiB" }, 
+    (req, res) => require("./premium_notes").generatePremiumNote(req, res));
+
+// ✅ NOTE: generateDailyMocks अब GitHub Actions पर है, इसलिए इसे यहाँ से हटा दिया गया है। 
+// अगली बार डिप्लॉयमेंट में इसे Delete (y) कर देना।
