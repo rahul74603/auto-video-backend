@@ -19,6 +19,7 @@ if (!admin.apps.length) {
     }
 }
 
+const db = admin.firestore(); // 🔥 डेटाबेस इनिशियलाइज़ किया
 const WEBSITE_URL = "https://studygyaan.in";
 
 // ✅ Google Indexing API Setup using Secrets
@@ -38,10 +39,10 @@ if (serviceAccountVar) {
 }
 
 /**
- * 🔥 Force Push Sitemap URLs to Google Indexing API
+ * 🔥 Smart Sitemap Indexing (Only Unindexed URLs)
  */
 const runSitemapIndexing = async () => {
-    console.log("🚀 Starting Google Indexing Process...");
+    console.log("🚀 Starting Smart Google Indexing Process...");
     
     try {
         if (!indexing) {
@@ -53,21 +54,36 @@ const runSitemapIndexing = async () => {
         console.log(`📡 Fetching Sitemap: ${sitemapUrl}`);
         
         const response = await axios.get(sitemapUrl, { timeout: 30000 });
-        
         const parser = new xml2js.Parser();
         const result = await parser.parseStringPromise(response.data);
         
-        // 2. Extract URLs
         if (!result.urlset || !result.urlset.url) {
             throw new Error("Invalid Sitemap format or no URLs found.");
         }
 
         const allUrls = result.urlset.url.map(u => u.loc[0]);
-        console.log(`✅ Total URLs found in Sitemap: ${allUrls.length}`);
+        console.log(`📊 Total URLs in Sitemap: ${allUrls.length}`);
 
-        // 3. Process URLs (Daily Limit check: Max 200)
+        // 2. 🔥 Memory System: Firestore से पुरानी हिस्ट्री मंगाना
+        const historyRef = db.collection("system_configs").doc("indexing_history");
+        const historyDoc = await historyRef.get();
+        let alreadyIndexedUrls = historyDoc.exists ? historyDoc.data().urls || [] : [];
+
+        // 3. 🔥 Filter: सिर्फ वो लिंक्स निकालो जो पहले कभी नहीं भेजे गए
+        const newUnindexedUrls = allUrls.filter(url => !alreadyIndexedUrls.includes(url));
+        console.log(`🔍 Found ${newUnindexedUrls.length} NEW URLs that need indexing.`);
+
+        if (newUnindexedUrls.length === 0) {
+            console.log("✅ All URLs are already submitted. No new links to index today.");
+            return 0; // काम खत्म, कोई कोटा बर्बाद नहीं
+        }
+
+        // 4. Process URLs (Daily Limit set to 150)
         let count = 0;
-        const urlsToProcess = allUrls.slice(0, 200); 
+        let successfulUrls = [];
+        const urlsToProcess = newUnindexedUrls.slice(0, 150); 
+
+        console.log(`⚙️ Pushing ${urlsToProcess.length} URLs to Google...`);
 
         for (const url of urlsToProcess) { 
             try {
@@ -78,14 +94,29 @@ const runSitemapIndexing = async () => {
                     },
                 });
                 count++;
-                // Small delay to avoid rate hitting limits too fast
+                successfulUrls.push(url); // सफल हुए लिंक्स को लिस्ट में डालो
+                
+                // Rate limit बचाने के लिए 500ms का ब्रेक
                 await new Promise(resolve => setTimeout(resolve, 500));
             } catch (err) {
                 console.error(`❌ Error pushing ${url}:`, err.message);
             }
         }
 
-        console.log(`🎯 Indexing Task Completed! ${count} URLs pushed to Google.`);
+        // 5. 🔥 Update Memory: जो लिंक्स आज भेजे गए, उन्हें हिस्ट्री में सेव कर दो
+        if (successfulUrls.length > 0) {
+            let updatedHistory = [...alreadyIndexedUrls, ...successfulUrls];
+            
+            // Firestore डॉक्यूमेंट साइज़ (1MB) न भरे, इसलिए सिर्फ ताज़ा 5000 लिंक्स याद रखेंगे
+            if (updatedHistory.length > 5000) {
+                updatedHistory = updatedHistory.slice(updatedHistory.length - 5000);
+            }
+            
+            await historyRef.set({ urls: updatedHistory }, { merge: true });
+            console.log("💾 Indexing History updated in Database.");
+        }
+
+        console.log(`🎯 Indexing Task Completed! ${count} NEW URLs pushed to Google.`);
         return count;
 
     } catch (error) {
@@ -96,7 +127,7 @@ const runSitemapIndexing = async () => {
 
 // GitHub Actions या Manual Run के लिए
 if (require.main === module) {
-    runSitemapIndexing();
+    runSitemapIndexing().then(() => process.exit(0)).catch(() => process.exit(1));
 }
 
 module.exports = { runSitemapIndexing };
