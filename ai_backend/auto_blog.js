@@ -4,7 +4,9 @@ const axios = require("axios");
 const { google } = require("googleapis");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// ✅ GitHub Secrets + Local Deployment Safe Initialization
+// =========================================================
+// 🔐 1. FIREBASE & AUTH INITIALIZATION
+// =========================================================
 let serviceAccount = null;
 const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
 
@@ -34,11 +36,40 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 const bucket = admin.storage().bucket("studymaterial-406ad.firebasestorage.app");
-
-// ✅ Initialize FREE Gemini API
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Helper Functions
+// =========================================================
+// 📚 2. MASTER TOPICS POOL (Diverse Categories)
+// =========================================================
+const MASTER_POOL = {
+    "Job_Alerts": [
+        "Upcoming Railway Recruitment Vacancies", "SSC GD vs State Police: Career Comparison", "High Salary Govt Jobs After 12th", 
+        "Bank Exam Calendar Analysis", "Female Special Vacancies in Defense", "Latest Teaching Jobs in India"
+    ],
+    "Syllabus_Guide": [
+        "SSC CGL Tier-1 Detailed Syllabus", "UPSC Prelims Strategy for Beginners", "Railway Group D Math Important Topics",
+        "UP Police Constable Hindi Preparation Guide", "English Grammar Hacks for Competitive Exams"
+    ],
+    "Student_Life_Motivation": [
+        "How to handle Exam Stress and Anxiety", "Hostel Life vs Home Study: Honest Review", "Student Budget Management Tips",
+        "Success Story: From Zero to Govt Employee", "How to avoid distractions while studying", "Power of Consistency in Competition"
+    ],
+    "Academic_Deep_Dive": [
+        "Indian History: Important Dates of Modern Era", "General Science: Biology Human Body Facts", "Indian Economy: Understanding GDP & Inflation",
+        "World Geography: Major Continents and Oceans", "Computer Awareness for Govt Exams"
+    ],
+    "Trending_Education_News": [
+        "New Education Policy Major Changes", "Digital Revolution in Rural Education", "Impact of AI on Indian Job Market",
+        "New Rules for Online Recruitment Exams", "Future of Competitive Coaching in India"
+    ]
+};
+
+const POWER_WORDS = ["🔥 Breaking:", "🚨 Latest Update:", "⚡ Exclusive:", "📊 Complete Guide:", "🎯 Target 2026:", "📖 Special:"];
+
+// =========================================================
+// 🛠️ 3. SEO, LINKING & UTILITY HELPERS
+// =========================================================
+
 function createSlug(title) {
     return title
         .toLowerCase()
@@ -51,9 +82,7 @@ function cleanJsonResponse(rawText) {
     try {
         const jsonMatch = rawText.match(/\{[\s\S]*\}/);
         if (!jsonMatch) return null;
-        let cleaned = jsonMatch[0]
-            .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
-            .trim();
+        let cleaned = jsonMatch[0].replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim();
         return JSON.parse(cleaned);
     } catch (e) {
         return null;
@@ -76,58 +105,14 @@ function generateFAQSchema(content) {
         });
         count++;
     }
-    
     if (faqs.length === 0) return "";
-    
-    return `
-<script type="application/ld+json">
-${JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    "mainEntity": faqs
-})}
-</script>`;
+    return `\n<script type="application/ld+json">\n${JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": faqs
+    })}\n</script>`;
 }
 
-// 🔥 REAL-TIME TRENDING KEYWORD ENGINE
-async function getRealTrendingKeywords() {
-    try {
-        const keywords = [
-            "latest govt jobs 2026",
-            "ssc gd notification 2026",
-            "railway recruitment 2026",
-            "police bharti 2026",
-            "bank jobs vacancy",
-            "free mock test ssc",
-            "gk questions pdf",
-            "current affairs today",
-            "ssc exam preparation",
-            "up police vacancy",
-            "ibps po 2026",
-            "rrb ntpc 2026",
-            "state psc 2026",
-            "upsc cse 2026",
-            "ssc cgl 2026",
-            "ibps clerk 2026",
-            "railway group d 2026",
-            "police constable 2026",
-            "bank po 2026",
-            "state level jobs 2026"
-        ];
-        
-        // 🔥 Random + mix logic with priority
-        const shuffled = keywords.sort(() => 0.5 - Math.random());
-        const selected = shuffled.slice(0, 3);
-        
-        // Add long-tail variations
-        const longTail = selected.map(k => `${k} eligibility criteria`);
-        return [...selected, ...longTail.slice(0, 2)];
-    } catch (e) {
-        return ["latest govt jobs 2026", "ssc gd notification 2026", "railway recruitment 2026"];
-    }
-}
-
-// 🔥 BETTER INTERNAL LINKING ENGINE
 async function getInternalLinks(limit = 5) {
     try {
         const snapshot = await db.collection("blogs")
@@ -144,22 +129,15 @@ async function getInternalLinks(limit = 5) {
                 category: data.category
             });
         });
-
         return links;
     } catch (e) {
         return [];
     }
 }
 
-// 🔥 ADVANCED SEO META TAGS GENERATOR
 function generateMetaTags(data) {
-    const title = data.title.length > 60 
-        ? data.title.substring(0, 57) + "..." 
-        : data.title;
-    
-    const description = data.metaDescription.length > 160
-        ? data.metaDescription.substring(0, 157) + "..."
-        : data.metaDescription;
+    const title = data.title.length > 60 ? data.title.substring(0, 57) + "..." : data.title;
+    const description = data.metaDescription.length > 160 ? data.metaDescription.substring(0, 157) + "..." : data.metaDescription;
 
     return `
 <meta name="description" content="${description}">
@@ -175,7 +153,6 @@ function generateMetaTags(data) {
 `;
 }
 
-// 🔥 IMAGE GENERATION WITH COMPRESSION
 async function generateAndUploadImage(imagePrompt, blogId) {
     try {
         const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=1280&height=720&nologo=true&quality=high`;
@@ -187,15 +164,10 @@ async function generateAndUploadImage(imagePrompt, blogId) {
         
         const fileName = `blog_images/blog_${blogId}.png`;
         const file = bucket.file(fileName);
-        
-        // Compress image
         const compressedData = Buffer.from(imgRes.data, 'binary');
         
         await file.save(compressedData, {
-            metadata: { 
-                contentType: 'image/png',
-                cacheControl: 'public, max-age=31536000'
-            },
+            metadata: { contentType: 'image/png', cacheControl: 'public, max-age=31536000' },
             public: true
         });
         
@@ -206,17 +178,14 @@ async function generateAndUploadImage(imagePrompt, blogId) {
     }
 }
 
-// 🔥 GOOGLE INDEXING WITH RETRY LOGIC
-async function notifyGoogle(url) {
+async function notifyGoogle(url, retryCount = 0) {
     try {
         const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
         if (!serviceAccountVar || serviceAccountVar === "undefined") {
             console.log("⚠️ Skipping Google Indexing: SERVICE_ACCOUNT_JSON not found.");
             return;
         }
-        
         const key = JSON.parse(serviceAccountVar);
-        
         const jwtClient = new google.auth.JWT({
             email: key.client_email,
             key: key.private_key.replace(/\\n/g, '\n'),
@@ -224,21 +193,21 @@ async function notifyGoogle(url) {
         });
         
         await jwtClient.authorize();
-        
-        await axios.post("https://indexing.googleapis.com/v3/urlNotifications:publish", {
-            url: url, 
-            type: "URL_UPDATED"
-        }, {
-            headers: { Authorization: `Bearer ${jwtClient.credentials.access_token}` }
-        });
-        
+        await axios.post("https://indexing.googleapis.com/v3/urlNotifications:publish", 
+            { url: url, type: "URL_UPDATED" }, 
+            { headers: { Authorization: `Bearer ${jwtClient.credentials.access_token}` } }
+        );
         console.log("🚀 Indexing API Success:", url);
     } catch (err) {
+        if (err.response && err.response.status === 429 && retryCount < 3) {
+            console.log(`⚠️ Rate Limit Hit (429). Retrying in 30 seconds... (Attempt ${retryCount + 1})`);
+            await new Promise(resolve => setTimeout(resolve, 30000));
+            return notifyGoogle(url, retryCount + 1);
+        }
         console.error("❌ Indexing API Error:", err.message);
     }
 }
 
-// 🔥 CONTENT QUALITY CHECKER
 function checkContentQuality(content) {
     const wordCount = content.split(/\s+/).length;
     const headingCount = (content.match(/<h[1-6][^>]*>/g) || []).length;
@@ -254,7 +223,10 @@ function checkContentQuality(content) {
     };
 }
 
-// 🔥 MAIN GENERATOR ENGINE
+// =========================================================
+// 🚀 4. MAIN GENERATOR ENGINE
+// =========================================================
+
 async function generateDailyBlog() {
     try {
         console.log("🚀 Starting Advanced Auto-Blogger Engine...");
@@ -262,20 +234,17 @@ async function generateDailyBlog() {
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
         const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
         const TWITTER_API_KEY = process.env.TWITTER_API_KEY;
-        const GNEWS_API_KEY = process.env.GNEWS_API_KEY;
 
-        // 🔥 REAL-TIME TRENDING KEYWORD ENGINE
-        const keywords = await getRealTrendingKeywords();
-        const topic = keywords.join(" | ");
-        console.log(`🔥 Keywords Selected: ${topic}`);
+        // 🔥 Shuffling Logic: Random Category -> Random Topic
+        const categories = Object.keys(MASTER_POOL);
+        const randomCat = categories[Math.floor(Math.random() * categories.length)];
+        const rawTopic = MASTER_POOL[randomCat][Math.floor(Math.random() * MASTER_POOL[randomCat].length)];
 
-        if (!topic.toLowerCase().includes("job") &&
-            !topic.toLowerCase().includes("ssc") &&
-            !topic.toLowerCase().includes("exam") &&
-            !topic.toLowerCase().includes("gk")) {
-            console.log("❌ Invalid topic skipped");
-            return false;
-        }
+        const now = new Date();
+        const monthYear = now.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+        const powerPrefix = POWER_WORDS[Math.floor(Math.random() * POWER_WORDS.length)];
+
+        console.log(`🎬 Shuffled Category: ${randomCat} | Topic: ${rawTopic}`);
 
         const model = genAI.getGenerativeModel({ 
             model: "gemini-2.5-flash-lite",
@@ -283,71 +252,25 @@ async function generateDailyBlog() {
         });
 
         const prompt = `
-You are a professional SEO content writer for a EDUCATION website (StudyGyaan.in).
+You are a Premium SEO Writer for StudyGyaan.in. Write a DEEP and ENGAGING blog post.
+Category: "${randomCat}"
+Topic: "${rawTopic}"
 
-IMPORTANT RULES:
-- Content must ONLY be related to Govt Jobs, SSC, Railway, Police, Exams, GK, GS, Study Material
-- DO NOT generate random topics
-- DO NOT go outside education niche
-- Focus on Indian competitive exams
+SEO REQUIREMENTS:
+- Article length MUST be at least 1500-2000 words.
+- Structure: Use H1, H2, H3, HTML Tables for data, and Bullet Points.
+- Style: Mix of Hindi and Hinglish. 
+- Content Tone: If 'Student_Life', use emotional storytelling. If 'Job_Alerts', be factual with tables. If 'Academic', be educational.
+- Include a 5-question FAQ section at the end.
 
-Create a HIGHLY SEO OPTIMIZED blog post with:
-- Article length MUST be at least 1500-2000 words
-- Content must be detailed, structured and valuable
-- Use multiple headings (H1, H2, H3)
-- Add bullet points, tables if needed
-- Include FAQ section with at least 5 real questions
-- Use simple Hindi + Hinglish mix
-- Add keywords naturally in headings
-
-TARGET KEYWORDS: ${topic}
-
-STRICT FORMAT (JSON ONLY):
+FORMAT JSON:
 {
-  "title": "High CTR Hindi Hinglish Title (Power words + numbers)",
-  "metaDescription": "150 chars SEO description with keywords",
-  "tags": ["govt jobs", "ssc", "latest jobs"],
-  "imagePrompt": "Modern 3D educational thumbnail for ${topic}",
-  "content": "
-  <h1>Main SEO Title</h1>
-  <p>Hook paragraph (engaging + keywords)</p>
-
-  <h2>Latest Update</h2>
-  <p>Fresh info with dates and details</p>
-
-  <h2>Important Details</h2>
-  <ul><li>Points</li></ul>
-
-  <h2>Eligibility Criteria</h2>
-  <p>Details with age, education, qualification</p>
-
-  <h2>Important Dates</h2>
-  <table><tr><th>Event</th><th>Date</th></tr><tr><td>Form Release</td><td>Expected</td></tr></table>
-
-  <h2>Application Process</h2>
-  <p>Step by step guide</p>
-
-  <h2>Exam Pattern</h2>
-  <p>Section-wise details</p>
-
-  <h2>Syllabus Overview</h2>
-  <p>Complete syllabus details</p>
-
-  <h2>Preparation Strategy</h2>
-  <ul><li>Tips</li></ul>
-
-  <h2>Previous Year Analysis</h2>
-  <p>Questions and pattern analysis</p>
-
-  <h2>FAQ</h2>
-  <p><strong>Q1: Question?</strong><br>Answer here</p>
-  <p><strong>Q2: Question?</strong><br>Answer here</p>
-
-  <h2>Conclusion</h2>
-  <p>Summary + CTA + Download PDF option</p>
-  "
-}
-`;
+  "aiTitle": "Main Catchy Title (Without Date)",
+  "metaDescription": "160 char SEO snippet",
+  "keywords": ["keyword1", "keyword2", "LSI keyword"],
+  "imagePrompt": "High quality 3D educational thumbnail for ${randomCat}: ${rawTopic}",
+  "content": "Full HTML Content starting with an introduction."
+}`;
 
         const result = await model.generateContent(prompt);
         const blogData = cleanJsonResponse(result.response.text());
@@ -355,14 +278,14 @@ STRICT FORMAT (JSON ONLY):
 
         console.log("✅ Blog Content Generated. Checking Quality...");
 
-        // 🔥 CONTENT QUALITY CHECK
+        // 🔥 QUALITY CHECK
         const quality = checkContentQuality(blogData.content);
         if (!quality.hasEnoughContent) {
             console.log("⚠️ Content too short, regenerating...");
             return generateDailyBlog();
         }
 
-        console.log("✅ Blog Content Generated. Moving to Image Generation...");
+        console.log("✅ Quality Passed. Moving to Image Generation...");
 
         // 🎨 IMAGE GENERATION
         let imageUrl = "https://studygyaan.in/default-blog.png";
@@ -372,66 +295,56 @@ STRICT FORMAT (JSON ONLY):
             console.error("❌ IMAGE FAILED:", imgError.message);
         }
 
-        // 📝 SAVE TO FIRESTORE
-        const internalLinks = await getInternalLinks(5);
+        // 🔥 UNIQUE TITLE & SLUG
+        const finalTitle = `${powerPrefix} ${blogData.aiTitle} (${monthYear})`;
+        const slug = createSlug(finalTitle);
+        const blogUrl = `https://studygyaan.in/blog/${slug}`;
 
+        // 📝 INTERNAL LINKING (Appended to Content)
+        const internalLinks = await getInternalLinks(5);
         let linkHTML = "<h2>Important Related Articles</h2><ul>";
         internalLinks.forEach(link => {
             linkHTML += `<li><a href="${link.url}" target="_blank">${link.title}</a></li>`;
         });
         linkHTML += "</ul>";
 
-        // 🔥 FAQ SCHEMA ADD
+        // 🔥 MERGE CONTENT, FAQ SCHEMA & INTERNAL LINKS
         const faqSchema = generateFAQSchema(blogData.content);
-        blogData.content += faqSchema;
         blogData.content += linkHTML;
+        blogData.content += faqSchema;
 
-        blogData.tags = [...new Set([
-            ...blogData.tags,
-            ...keywords
-        ])];
-        blogData.title = "🔥 " + blogData.title + " (2026 Latest Update)";
-        
-        // 🔥 ADD URL TO CONTENT FOR SCHEMA
-        
-        // 🔥 CREATE SEO URL
-
-const slug = createSlug(blogData.title);
-const blogUrl = `https://studygyaan.in/blog/${slug}`;
-
-blogData.url = blogUrl;
-
-await db.collection("blogs").doc(slug).set({
-    title: blogData.title,
-    slug: slug,
-    description: blogData.metaDescription,
-    tags: blogData.tags,
-    content: blogData.content,
-    imageUrl: imageUrl,
-    category: blogData.tags?.[0] || "Education",
-    type: "auto-blog",
-    author: "Rahul Sir AI",
-    date: admin.firestore.FieldValue.serverTimestamp(),
-
-    metaTags: generateMetaTags({
-        title: blogData.title,
-        metaDescription: blogData.metaDescription,
-        url: blogUrl,
-        imageUrl: imageUrl
-    }),
-
-    qualityScore: quality.wordCount / 2000,
-    wordCount: quality.wordCount
-});
+        // 💾 SAVE TO FIRESTORE
+        await db.collection("blogs").doc(slug).set({
+            title: finalTitle,
+            slug: slug,
+            description: blogData.metaDescription,
+            tags: blogData.keywords,
+            content: blogData.content,
+            imageUrl: imageUrl,
+            category: randomCat,
+            type: "auto-blog",
+            author: "Rahul Sir AI",
+            date: admin.firestore.FieldValue.serverTimestamp(),
+            url: blogUrl,
+            metaTags: generateMetaTags({
+                title: finalTitle,
+                metaDescription: blogData.metaDescription,
+                url: blogUrl,
+                imageUrl: imageUrl
+            }),
+            qualityScore: quality.wordCount / 2000,
+            wordCount: quality.wordCount
+        });
 
         console.log(`🎯 Published to Firestore: ${slug}`);
         
+        // 🌐 AUTO INDEXING
         await notifyGoogle(blogUrl);
 
         // 📢 TELEGRAM
         if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
             try {
-                const telegramMessage = `<b>🔥 नया स्टडी ब्लॉग: ${blogData.title}</b>\n\n📖 <b>पूरा टॉपिक यहाँ पढ़ें:</b> ${blogUrl}\n\n⏱️ <b>Time to Read:</b> ${Math.floor(quality.wordCount / 200)} mins\n\n📊 <b>Word Count:</b> ${quality.wordCount}`;
+                const telegramMessage = `<b>🔥 नया ब्लॉग लाइव: ${finalTitle}</b>\n\n📖 <b>यहाँ पढ़ें:</b> ${blogUrl}\n\n⏱️ <b>Time to Read:</b> ${Math.floor(quality.wordCount / 200)} mins\n\n📊 <b>Category:</b> ${randomCat.replace(/_/g, ' ')}`;
                 await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
                     chat_id: TELEGRAM_CHAT_ID, 
                     text: telegramMessage, 
@@ -441,21 +354,14 @@ await db.collection("blogs").doc(slug).set({
             } catch (tgError) {
                 console.error("❌ Telegram Error:", tgError.message);
             }
-        } else {
-            console.log("⚠️ TELEGRAM SKIPPED: Token or Chat ID not found.");
         }
 
-        // 📢 TWITTER/THREAD
+        // 📢 TWITTER
         if (TWITTER_API_KEY) {
             try {
-                const twitterMessage = `🔥 ${blogData.title}\n\n${blogUrl}\n\n📚 ${quality.wordCount} words of pure knowledge!`;
-                await axios.post(`https://api.twitter.com/2/tweets`, {
-                    text: twitterMessage
-                }, {
-                    headers: {
-                        'Authorization': `Bearer ${TWITTER_API_KEY}`,
-                        'Content-Type': 'application/json'
-                    }
+                const twitterMessage = `🔥 ${finalTitle}\n\n${blogUrl}\n\n📚 Read this complete guide to boost your preparation!`;
+                await axios.post(`https://api.twitter.com/2/tweets`, { text: twitterMessage }, {
+                    headers: { 'Authorization': `Bearer ${TWITTER_API_KEY}`, 'Content-Type': 'application/json' }
                 });
                 console.log("🐦 Twitter Notification Sent!");
             } catch (twError) {
@@ -474,6 +380,7 @@ await db.collection("blogs").doc(slug).set({
 if (require.main === module) {
     generateDailyBlog().then(success => {
         console.log(success ? "✅ Task Finished Successfully" : "⚠️ Task Finished with errors");
+        process.exit(success ? 0 : 1);
     });
 }
 
