@@ -42,6 +42,10 @@ const { generateSyllabusPDF } = require("./autoPdf.js");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+function createSlug(title) {
+    return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-');
+}
+
 // ✅ Updated to Google Indexing v3 (from auto_blog.js)
 async function notifyGoogle(url) {
     try {
@@ -113,8 +117,13 @@ async function runFastTrackLogic() {
     }
 
     // डुप्लीकेट लिंक्स फिल्टर करना 
-    let uniqueItems = [];
+   let uniqueItems = [];
     let seenLinks = new Set();
+    
+    // 🔥 UNIQUE SLUG के लिए Current Month-Year
+    const now = new Date();
+    const dateSuffix = now.toLocaleString('en-IN', { month: 'short', year: 'numeric' }).toLowerCase().replace(' ', '-');
+
     for (let item of allItems) {
         if (!seenLinks.has(item.link)) {
             seenLinks.add(item.link);
@@ -166,24 +175,24 @@ async function runFastTrackLogic() {
                 }
             });
 
-            let finalLinksText = Array.from(extractedLinks).join("\n").substring(0, 3000); // AI को 3000 chars
+            let finalLinksText = Array.from(extractedLinks).join("\n").substring(0, 3000);
 
-            const prompt = `Extract the SINGLE most relevant OFFICIAL direct link for ${category}.
+// 🔥 SEO के लिए पुराने ब्लॉग्स के लिंक उठाना
+const relatedBlogs = await db.collection("blogs").orderBy("createdAt", "desc").limit(2).get();
+let internalLinks = [];
+relatedBlogs.forEach(b => internalLinks.push({ title: b.data().title, slug: b.data().slug || b.id }));
+
+const prompt = `Extract Info for ${category}.
 URL LIST:
 ${finalLinksText}
 
-STRICT INSTRUCTIONS:
-1. Identify the link that leads to a .gov.in, .nic.in, .edu.in, or a direct PDF/Portal.
-2. If multiple links exist, prioritize buttons like "Download Admit Card", "Check Result", "Click Here".
-3. IGNORE any link containing: sarkariexam, freejobalert, sarkariresult, facebook, telegram, youtube, instagram.
-4. If NO official link is found, strictly return empty string "" for directLink.
-
 Return ONLY valid JSON:
 {
-  "title": "Clean Job Name without 'Fast Track'",
-  "directLink": "The Official URL"
+  "title": "Clean Job Name for SEO",
+  "slug": "seo-friendly-slug-url",
+  "directLink": "The Official URL",
+  "metaDesc": "160 char meta description"
 }`;
-
             try {
                 const aiResult = await model.generateContent(prompt);
                 let rawText = aiResult.response.text();
@@ -197,14 +206,22 @@ Return ONLY valid JSON:
                     finalDirectLink = item.link; // Fallback
                 }
 
-                await db.collection("fast_track").add({
-                    title: finalTitle.replace(/Fast\s*Track/gi, "").trim(),
-                    directLink: finalDirectLink, 
-                    category, 
-                    originalLink: item.link, 
-                    status: "draft", 
-                    createdAt: admin.firestore.FieldValue.serverTimestamp()
-                });
+               // 🔥 UNIQUE SLUG: Base Slug में Date Suffix जोड़ दिया ताकि Canonical Error न आए
+               const baseSlug = cleanJson.slug || createSlug(cleanJson.title || item.title);
+               const seoSlug = `${baseSlug}-${dateSuffix}`;
+
+await db.collection("fast_track").doc(seoSlug).set({
+    title: (cleanJson.title || item.title).replace(/Fast\s*Track/gi, "").trim(),
+    slug: seoSlug,
+    directLink: cleanJson.directLink || item.link, 
+    description: cleanJson.metaDesc || "",
+    category, 
+    internalLinks: internalLinks, // ✅ Internal links save ho gaye
+    originalLink: item.link, 
+    status: "draft", 
+    telegramSent: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+});
                 
                 results.push({ title: finalTitle, category });
                 console.log(`✅ Saved Draft: ${finalTitle}`);
@@ -265,21 +282,48 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten(
         secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON", "GMAIL_CREDENTIALS", "YOUTUBE_TOKEN", "TTS_KEY_JSON", "FB_PAGE_ID", "FB_PAGE_TOKEN"] 
     }, 
     async (event) => {
+        // अगर डेटा डिलीट हुआ है तो रुक जाएं
         if (!event.data.after.exists) return null;
 
         const newValue = event.data.after.data();
         const previousValue = event.data.before.exists ? event.data.before.data() : null;
 
-        // ✅ FIX 3: Case-insensitive 'published' check (taaki Admin 'Published' likhe tab bhi trigger ho)
-        const isNowPublished = newValue.status && newValue.status.toLowerCase() === 'published';
-        const wasPublished = previousValue && previousValue.status && previousValue.status.toLowerCase() === 'published';
+        // ✅ DEBUG LOGS: ये बहुत जरूरी हैं
+        console.log(`🚀 Fast Track Triggered for: ${newValue.title}`);
+        
+        
+        
+    const currentStatus = (newValue.status || "").toString().toLowerCase().trim();
+        
+        // 🔥 MAHA-JUGAD: Status 'draft' nahi hona chahiye aur telegramSent false hona chahiye
+      if (currentStatus !== 'draft' && newValue.telegramSent !== true) {
+    
+    // 🔥 Google Discover के लिए 100% GSC Valid Schema (Crash-Proof)
+    let publishTime = new Date().toISOString();
+    if (newValue.createdAt && typeof newValue.createdAt.toDate === 'function') {
+        publishTime = newValue.createdAt.toDate().toISOString();
+    }
 
-        const isNewlyPublished = isNowPublished && !wasPublished;
+    const jsonLd = {
+        "@context": "https://schema.org",
+        "@type": "NewsArticle",
+        "headline": newValue.title,
+        "image": ["https://studygyaan.in/og-image.jpg"], 
+        "datePublished": publishTime,
+        "dateModified": new Date().toISOString(),
+        "description": newValue.description || newValue.title,
+        "author": { "@type": "Person", "name": "Rahul Sir", "url": "https://studygyaan.in" },
+        "publisher": { 
+            "@type": "Organization",
+            "name": "StudyGyaan",
+            "logo": { "@type": "ImageObject", "url": "https://studygyaan.in/logo.png" }
+        }
+    };
+    // डेटाबेस अपडेट
+    // डेटाबेस अपडेट
+    await admin.firestore().collection("fast_track").doc(event.params.docId).update({ schemaMarkup: JSON.stringify(jsonLd) });
 
-        if (isNewlyPublished) {
-            console.log(`🚀 Fast Track Live! Processing Services: ${newValue.title}`);
-            
-            const studyGyaanUrl = `https://studygyaan.in/update/${event.params.docId}`;
+    const studyGyaanUrl = `https://studygyaan.in/update/${event.params.docId}`;
             await notifyGoogle(studyGyaanUrl);
 
             let icon = "📌";
@@ -300,12 +344,14 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten(
                     await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
                         chat_id: TELEGRAM_CHAT_ID, text: message, parse_mode: 'HTML', disable_web_page_preview: false 
                     });
-                    console.log("✅ Telegram Sent!");
-                } catch (error) { 
-                    console.error("❌ Telegram failed:", error.message); 
+                    console.log("✅ Telegram Alert Sent Successfully!");
+                    
+                    // 🔥 Lock: Ab dobara nahi jayega
+                    await admin.firestore().collection("fast_track").doc(event.params.docId).update({ telegramSent: true });
+
+                } catch (error) {
+                    console.error("❌ Telegram API failed:", error.message); 
                 }
-            } else {
-                console.log("⚠️ TELEGRAM SKIPPED: Token or Chat ID not found.");
             }
 
             // --- 🟢 2. WHATSAPP ---
@@ -317,8 +363,8 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten(
                 console.log("✅ WhatsApp Alert Sent!");
             } catch (err) { console.error("❌ WhatsApp Error:", err.message); }
 
-            // --- 🎬 3. VIDEO & 📄 PDF ---
-            console.log("⏳ Starting Background Tasks...");
+            // --- 🎬 3. VIDEO & 📄 PDF (Background Tasks) ---
+            console.log("⏳ Running Background Video/PDF Engine...");
 
             let videoPromise = Promise.resolve();
             if (!newValue.videoSent) {
@@ -347,8 +393,8 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten(
 
             await Promise.all([videoPromise, pdfPromise]);
             console.log("🎯 All Fast Track Background Tasks Completed!");
-        } else {
-            console.log(`⏭️ Trigger Ignore (Status: ${newValue.status})`);
+       } else {
+            console.log(`⏭️ Trigger Ignored: Ya to yeh 'draft' hai ya msg pehle hi ja chuka hai.`);
         }
         return null;
     }
