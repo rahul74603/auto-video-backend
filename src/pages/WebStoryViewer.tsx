@@ -113,11 +113,10 @@ const WebStoryViewer = () => {
             </div>
           </div>
         </amp-story-grid-layer>
-        <amp-story-page-outlink layout="nodisplay" theme="custom">
-          <a href="${applyLink}">${outlinkText}</a>
+       <amp-story-page-outlink layout="nodisplay" theme="custom">
+          <a href="${applyLink}" target="_top">${outlinkText}</a>
         </amp-story-page-outlink>
       </amp-story-page>
-    </amp-story>
 </body>
 </html>`;
                     
@@ -152,11 +151,11 @@ const WebStoryViewer = () => {
                 customImage={storyData.coverImage || "https://studygyaan.in/og-image.jpg"}
             />
 
-            <iframe 
+           <iframe 
                 srcDoc={htmlContent} 
                 className="w-full h-full max-w-[450px] border-none bg-black shadow-2xl" 
                 title={storyData.title}
-                sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation allow-top-navigation-by-user-activation"
             />
 
             <button 
@@ -167,12 +166,13 @@ const WebStoryViewer = () => {
                 <X size={24} />
             </button>
             {/* ✅ SEO FIX: Visually Hidden Internal Links (Fixes 'No outgoing links' without breaking Full-Screen Story UI) */}
+           {/* ✅ SEO FIX: Visually Hidden Internal Links (Fixes 'No outgoing links' without breaking Full-Screen Story UI) */}
             <div style={{ position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px', overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', border: 0 }}>
                 <h2>Explore More on StudyGyaan</h2>
-                <a href="/govt-jobs">Latest Govt Jobs</a>
-                <a href="/free-study-material">Free Study Material</a>
-                <a href="/test">Free Mock Tests</a>
-                <a href="/blog">Sarkari Yojana & Blogs</a>
+                <a href="https://studygyaan.in/govt-jobs">Latest Govt Jobs</a>
+                <a href="https://studygyaan.in/free-study-material">Free Study Material</a>
+                <a href="https://studygyaan.in/mock_tests">Free Mock Tests</a>
+                <a href="https://studygyaan.in/blog">Sarkari Yojana & Blogs</a>
             </div>
         </div>
     );
