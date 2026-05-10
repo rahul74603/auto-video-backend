@@ -3,7 +3,6 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const admin = require("firebase-admin");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
@@ -34,6 +33,7 @@ const AI_MODELS = {
 let genAI_instance = null;
 
 function getModel(modelName, config) {
+  const { GoogleGenerativeAI } = require("@google/generative-ai");
   if (!genAI_instance) {
     // .env या Secrets से आपकी GEMINI_API_KEY उठाएगा
     genAI_instance = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -493,6 +493,23 @@ exports.generatePremiumNote = onRequest({ timeoutSeconds: 300, memory: "1GiB" },
     (req, res) => require("./premium_notes").generatePremiumNote(req, res));
 
 // ✅ NOTE: generateDailyMocks अब GitHub Actions पर है, इसलिए इसे यहाँ से हटा दिया गया है। 
-exports.autoImageJobDrafts = require('./autoImage').autoImageJobDrafts;
-exports.autoImageFastTrack = require('./autoImage').autoImageFastTrack;
-// अगली बार डिप्लॉयमेंट में इसे Delete (y) कर देना।
+
+exports.autoImageJobDrafts = onDocumentWritten("job_drafts/{docId}", (event) => {
+    return require('./autoImage').autoImageJobDrafts(event);
+});
+
+exports.autoImageFastTrack = onDocumentWritten("fast_track_drafts/{docId}", (event) => {
+    return require('./autoImage').autoImageFastTrack(event);
+});
+
+exports.autoPremiumNoteConverter = onDocumentWritten("premium_notes_requests/{docId}", (event) => {
+    return require('./generatePremiumNote').autoPremiumNoteConverter(event);
+});
+
+exports.processLinkToPdf = onDocumentWritten("pdf_conversions/{docId}", (event) => {
+    return require("./processLinkToPdf").processLinkToPdf(event);
+});
+
+exports.directPdf = onRequest({ memory: "2GiB", timeoutSeconds: 300, cors: true }, (req, res) => {
+    return require("./directPdf").directPdf(req, res);
+});
