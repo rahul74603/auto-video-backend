@@ -405,7 +405,49 @@ async function generateAndUploadVideo(jobData) {
         });
         
         console.log('✅ यूट्यूब वीडियो लाइव! URL: https://youtu.be/' + res.data.id);
+// --- 🖼️ 1. AUTO CUSTOM THUMBNAIL ---
+        try {
+            await youtube.thumbnails.set({
+                videoId: res.data.id,
+                media: { body: fs.createReadStream(posterPath) }
+            });
+            console.log('🖼️ ✅ कस्टम थंबनेल सेट कर दिया गया!');
+        } catch (thumbErr) {
+            console.log('⚠️ थंबनेल लगाने में दिक्कत आई (अकाउंट Verify होना चाहिए):', thumbErr.message);
+        }
 
+        // --- 📂 2. AUTO PLAYLIST SORTING ---
+        try {
+            let playlistTitle = jobCat !== 'Default' ? jobCat : 'Latest Govt Jobs';
+            
+            // चेक करें कि क्या यह प्लेलिस्ट पहले से मौजूद है
+            const playlistsRes = await youtube.playlists.list({ part: 'snippet', mine: true, maxResults: 50 });
+            let playlistId = null;
+            const existingPlaylist = (playlistsRes.data.items || []).find(p => p.snippet.title.toLowerCase() === playlistTitle.toLowerCase());
+            
+            if (existingPlaylist) {
+                playlistId = existingPlaylist.id;
+            } else {
+                // अगर नहीं है, तो नई प्लेलिस्ट बना लें
+                const newPlaylist = await youtube.playlists.insert({
+                    part: 'snippet,status',
+                    requestBody: { snippet: { title: playlistTitle }, status: { privacyStatus: 'public' } }
+                });
+                playlistId = newPlaylist.data.id;
+                console.log(`📂 नई प्लेलिस्ट '${playlistTitle}' बनाई गई!`);
+            }
+            
+            // वीडियो को प्लेलिस्ट में डालें
+            await youtube.playlistItems.insert({
+                part: 'snippet',
+                requestBody: {
+                    snippet: { playlistId: playlistId, resourceId: { kind: 'youtube#video', videoId: res.data.id } }
+                }
+            });
+            console.log(`✅ वीडियो को '${playlistTitle}' प्लेलिस्ट में जोड़ दिया गया!`);
+        } catch (pErr) {
+            console.log('⚠️ प्लेलिस्ट में जोड़ने में दिक्कत आई:', pErr.message);
+        }
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
         const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
         if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
