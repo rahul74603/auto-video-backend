@@ -8,9 +8,6 @@ const cheerio = require("cheerio");
 const Parser = require('rss-parser');
 const parser = new Parser();
 
-// ✅ autoVideo.js से वीडियो इंजन इम्पोर्ट किया
-const { generateAndUploadVideo } = require('./autoVideo');
-
 // ✅ Firebase Initialization with Secrets
 if (!admin.apps.length) {
     const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
@@ -356,20 +353,32 @@ exports.onJobApprovedSendTelegram = onDocumentWritten({
         // 1. Google Indexing
         notifyGoogle(blogUrl).catch(e => console.log("Indexing Skip"));
 
-        // 2. Video Engine
+        /        // 2. Video Engine
         let videoDetails = "Video process initiated...";
         try {
             if (!newJob.videoSent) {
-                const videoSuccess = await generateAndUploadVideo({ ...newJob, id: event.params.jobId });
+                // 🔥 Lazy Load: केवल ज़रूरत पड़ने पर भारी फाइल लोड करें
+                const { generateAndUploadVideo } = require('./autoVideo'); 
+                
+                // 🔥 Slug Fix: अगर डेटा में slug है तो वो भेजें, नहीं तो ID भेजें
+                const videoSuccess = await generateAndUploadVideo({ 
+                    ...newJob, 
+                    id: event.params.jobId,
+                    slug: newJob.slug || event.params.jobId // 👈 यह पक्का करेगा कि Slug वीडियो इंजन तक पहुँचे
+                });
+
                 if (videoSuccess) {
                     await admin.firestore().collection("jobs").doc(event.params.jobId).update({ videoSent: true });
                     videoDetails = "✅ Video & Facebook Uploaded!";
                 }
+            } else {
+                videoDetails = "✅ Video already processed.";
             }
         } catch (vErr) {
             console.error("❌ Video Engine Error:", vErr.message);
             videoDetails = "⚠️ Video/FB Failed but sending Telegram...";
         }
+
 
         // 3. Telegram Alert
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
