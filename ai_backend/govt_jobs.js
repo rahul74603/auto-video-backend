@@ -353,7 +353,7 @@ exports.onJobApprovedSendTelegram = onDocumentWritten({
         // 1. Google Indexing
         notifyGoogle(blogUrl).catch(e => console.log("Indexing Skip"));
 
-        /        // 2. Video Engine
+        
         let videoDetails = "Video process initiated...";
         try {
             if (!newJob.videoSent) {
