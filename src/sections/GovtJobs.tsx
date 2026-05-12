@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '@/context/LanguageContext';
 import { useNavigate } from 'react-router-dom'; 
 
-import { collection, getDocs, query, deleteDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase/config';
 import SEO from '../components/SEO'; 
 
@@ -19,6 +19,7 @@ interface Job {
   id: string; title: string; organization: string; vacancies: string; location: string;
   lastDate: string; salary: string; applyLink: string; category: string; type?: string; 
   advtNo?: string; qualification?: string; ageLimit?: string; updatedAt?: string; createdAt?: string;
+  isExpired?: boolean; // नया फ्लैग
 }
 
 const GovtJobs: React.FC = () => {
@@ -38,16 +39,13 @@ const GovtJobs: React.FC = () => {
     window.open(`https://wa.me/?text=${message}`, '_blank');
   };
 
-  const cleanupExpiredJobs = async (allJobs: any[]) => {
+  // 🔥 नया लॉजिक: डेट चेक करने के लिए
+  const checkIsExpired = (lastDateStr: string) => {
+    if (!lastDateStr || lastDateStr.toLowerCase() === 'soon' || lastDateStr.toLowerCase() === 'not specified') return false;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    for (const job of allJobs) {
-      if (!job.lastDate) continue; 
-      const jobDate = new Date(job.lastDate);
-      if (jobDate < today) {
-        try { await deleteDoc(doc(db, "jobs", job.id)); } catch (err) {}
-      }
-    }
+    const jobDate = new Date(lastDateStr);
+    return jobDate < today;
   };
 
   useEffect(() => {
@@ -56,28 +54,28 @@ const GovtJobs: React.FC = () => {
         const q = query(collection(db, "jobs")); 
         const querySnapshot = await getDocs(q);
         const fetchedJobs: Job[] = [];
-        const rawJobsForCleanup: any[] = []; 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
 
         querySnapshot.forEach((doc) => {
           const data = doc.data();
           const jobData = { ...data, id: doc.id } as Job;
           if (jobData.type && jobData.type !== 'JOB') return;
-          rawJobsForCleanup.push(jobData); 
-          const jobDate = new Date(jobData.lastDate);
-          if (jobData.lastDate && jobDate >= today) { fetchedJobs.push(jobData); } 
-          else if (!jobData.lastDate) { fetchedJobs.push(jobData); }
+          
+          // चेक करें कि जॉब एक्सपायर है या नहीं
+          jobData.isExpired = checkIsExpired(jobData.lastDate);
+          fetchedJobs.push(jobData);
         });
 
+        // 🔥 स्मार्ट सॉर्टिंग: पहले एक्टिव जॉब्स (नई से पुरानी), फिर एक्सपायर्ड जॉब्स
         fetchedJobs.sort((a, b) => {
-            const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
-            const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
-            return dateB - dateA; 
+            if (a.isExpired === b.isExpired) {
+                const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+                const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+                return dateB - dateA; 
+            }
+            return a.isExpired ? 1 : -1; 
         });
 
         setJobs(fetchedJobs);
-        if (rawJobsForCleanup.length > 0) cleanupExpiredJobs(rawJobsForCleanup);
 
         const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
         if (settingsSnap.exists()) setGlobalSettings(settingsSnap.data());
@@ -203,20 +201,24 @@ const GovtJobs: React.FC = () => {
                       initial={{ opacity: 0, scale: 0.95 }} 
                       animate={{ opacity: 1, scale: 1 }} 
                       exit={{ opacity: 0, scale: 0.9 }} 
-                      className="bg-white rounded-md md:rounded-xl p-1.5 md:p-6 border border-gray-100 hover:shadow-md transition-all relative overflow-hidden mb-2 h-full"
+                      className={`bg-white rounded-md md:rounded-xl p-1.5 md:p-6 border hover:shadow-md transition-all relative overflow-hidden mb-2 h-full ${job.isExpired ? 'border-red-100 opacity-80' : 'border-gray-100'}`}
                     >
-                      <div className="absolute left-0 top-0 bottom-0 w-0.5 md:w-1 bg-blue-600" />
+                      <div className={`absolute left-0 top-0 bottom-0 w-0.5 md:w-1 ${job.isExpired ? 'bg-red-500' : 'bg-blue-600'}`} />
                       <div className="flex flex-col gap-1 pl-1 md:pl-4 h-full">
                         <div className="flex items-center gap-1 mb-0.5">
-                          <Badge className="bg-blue-50 text-blue-700 text-[5px] md:text-[10px] px-1 py-0 shadow-none border-none font-black truncate max-w-[80%]">{job.organization}</Badge>
+                          {job.isExpired ? (
+                            <Badge className="bg-red-50 text-red-700 text-[5px] md:text-[10px] px-1 py-0 shadow-none border border-red-200 font-black truncate max-w-[80%]">CLOSED / EXPIRED</Badge>
+                          ) : (
+                            <Badge className="bg-blue-50 text-blue-700 text-[5px] md:text-[10px] px-1 py-0 shadow-none border-none font-black truncate max-w-[80%]">{job.organization}</Badge>
+                          )}
                           {job.advtNo && <span className="text-[5px] md:text-xs text-gray-400 hidden sm:flex items-center gap-0.5 truncate"><FileText size={8} aria-hidden="true" /> {job.advtNo}</span>}
                         </div>
                         <a href={`/job/${job.id}`} className="block">
-                          <h3 className="text-[10px] md:text-xl font-black text-gray-900 hover:text-blue-600 line-clamp-2 leading-tight">{job.title}</h3>
+                          <h3 className={`text-[10px] md:text-xl font-black line-clamp-2 leading-tight ${job.isExpired ? 'text-gray-500' : 'text-gray-900 hover:text-blue-600'}`}>{job.title}</h3>
                         </a>
                         <div className="grid grid-cols-1 gap-0.5 text-[7px] md:text-sm text-gray-500 md:flex md:flex-row md:gap-4 md:mt-2">
                           <div className="flex items-center gap-0.5"><MapPin size={8} className="md:w-4 md:h-4" aria-hidden="true" /> <span className="truncate">{job.location || 'All India'}</span></div>
-                          <div className="flex items-center gap-0.5 text-orange-600 font-bold"><Clock size={8} className="md:w-4 md:h-4" aria-hidden="true" /> <span className="truncate">Last Date: {job.lastDate}</span></div>
+                          <div className={`flex items-center gap-0.5 font-bold ${job.isExpired ? 'text-red-500' : 'text-orange-600'}`}><Clock size={8} className="md:w-4 md:h-4" aria-hidden="true" /> <span className="truncate">Last Date: {job.lastDate}</span></div>
                         </div>
                         <div className="flex items-center gap-1 mt-2 md:mt-4">
                           <button 
@@ -227,14 +229,20 @@ const GovtJobs: React.FC = () => {
                             <MessageCircle size={10} className="md:w-4 md:h-4" aria-hidden="true" /> <span className="text-[8px] md:text-xs font-bold">Share</span>
                           </button>
                           
-                          <a 
-                            href={`/redirect?url=${encodeURIComponent(job.applyLink)}`} 
-                            target="_blank" 
-                            rel="nofollow noopener noreferrer"
-                            className="bg-slate-900 text-white p-1 rounded md:px-4 md:py-1.5 flex items-center justify-center gap-0.5 flex-1 md:flex-none font-bold active:scale-95 transition-transform"
-                          >
-                            <span className="text-[8px] md:text-xs text-white">Apply Now</span> <ArrowRight size={10} className="md:w-4 md:h-4" aria-hidden="true" />
-                          </a>
+                          {job.isExpired ? (
+                            <button disabled className="bg-red-50 text-red-400 border border-red-100 p-1 rounded md:px-4 md:py-1.5 flex items-center justify-center gap-0.5 flex-1 md:flex-none font-bold cursor-not-allowed">
+                               <span className="text-[8px] md:text-xs">Expired</span>
+                            </button>
+                          ) : (
+                            <a 
+                              href={`/redirect?url=${encodeURIComponent(job.applyLink)}`} 
+                              target="_blank" 
+                              rel="nofollow noopener noreferrer"
+                              className="bg-slate-900 text-white p-1 rounded md:px-4 md:py-1.5 flex items-center justify-center gap-0.5 flex-1 md:flex-none font-bold active:scale-95 transition-transform"
+                            >
+                              <span className="text-[8px] md:text-xs text-white">Apply Now</span> <ArrowRight size={10} className="md:w-4 md:h-4" aria-hidden="true" />
+                            </a>
+                          )}
                         </div>
                       </div>
                     </motion.article>
@@ -263,7 +271,7 @@ const GovtJobs: React.FC = () => {
               <div className="flex flex-wrap gap-3">
                 <a href="/govt-jobs" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Latest Govt Jobs</a>
                 <a href="/free-study-material" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Study Material</a>
-                <a href="/test" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Mock Tests</a>
+                <a href="/mock-tests" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Mock Tests</a>
                 <a href="/blog" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Sarkari Yojana & Blogs</a>
               </div>
             </div>
@@ -337,7 +345,7 @@ const GovtJobs: React.FC = () => {
                                           <ExternalLink size={14} className="text-white" aria-hidden="true" />
                                        </div>
                                        <span className="font-black text-[12px] md:text-[15px] leading-snug tracking-wide pr-2">
-                                           {item.title || item.name}
+                                            {item.title || item.name}
                                        </span>
                                     </div>
                                     <ArrowRight size={16} className="text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0 ml-1 self-center" aria-hidden="true" />
