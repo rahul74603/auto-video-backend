@@ -291,21 +291,34 @@ const AdminBrowseTab = () => {
                 await setDoc(doc(db, "jobs", String(editingId)), cleanPayload, { merge: true });
                 alert("Updated Live Post Successfully! ✅");
             } else {
-                const docRef = await addDoc(collection(db, "jobs"), { 
-                    ...cleanPayload, 
-                    createdAt: new Date().toISOString() 
-                });
+                let liveJobId;
 
-               if (postType === 'JOB' || postType === 'FAST_TRACK') {
-                    // 🔥 Firebase ko bypass karke direct GitHub ko Telegram bhejne ka order
-                    await triggerTelegramViaGitHub(cleanPayload, docRef.id, postType);
+                // 🚀 MAHA-FIX: अगर AI ड्राफ्ट है, तो ड्राफ्ट की ID (जो कि स्लग है) को ही लाइव जॉब की ID बनाओ
+                if (currentDraftId) {
+                    liveJobId = String(currentDraftId);
+                    await setDoc(doc(db, "jobs", liveJobId), { 
+                        ...cleanPayload, 
+                        slug: liveJobId, // डेटा के अंदर भी स्लग सेव कर दो
+                        createdAt: new Date().toISOString() 
+                    });
                     
-                    // Video Trigger (Sirf Job ke liye, ya jaise aapki requirement ho)
-                    await triggerGitHubVideoRender(cleanPayload);
+                    // पब्लिश होने के बाद ड्राफ्ट से डिलीट कर दो
+                    await deleteDoc(doc(db, "job_drafts", liveJobId));
+                } else {
+                    // अगर बिना AI के डायरेक्ट मैन्युअली जॉब ऐड की है, तो रैंडम ID बनेगी
+                    const docRef = await addDoc(collection(db, "jobs"), { 
+                        ...cleanPayload, 
+                        createdAt: new Date().toISOString() 
+                    });
+                    liveJobId = docRef.id;
                 }
 
-                if (currentDraftId) {
-                    await deleteDoc(doc(db, "job_drafts", String(currentDraftId)));
+               if (postType === 'JOB' || postType === 'FAST_TRACK') {
+                    // 🔥 Firebase को बाईपास करके डायरेक्ट GitHub को आर्डर
+                    await triggerTelegramViaGitHub(cleanPayload, liveJobId, postType);
+                    
+                    // Video Trigger (अब सही स्लग के साथ जाएगा)
+                    await triggerGitHubVideoRender({ ...cleanPayload, id: liveJobId, slug: liveJobId });
                 }
 
                 alert("Published Live Successfully! 🚀");
