@@ -10,6 +10,26 @@ import {
 } from 'lucide-react';
 import SEO from '../components/SEO'; 
 
+// 🔥 SEO FIX FOR FAKE/DELETED TESTS
+const TestNotFoundScreen = () => {
+    useEffect(() => {
+        let meta = document.querySelector('meta[name="robots"]');
+        if (!meta) {
+            meta = document.createElement('meta');
+            meta.setAttribute("name", "robots");
+            document.head.appendChild(meta);
+        }
+        meta.setAttribute("content", "noindex, nofollow");
+        document.title = "Test Not Found | StudyGyaan";
+    }, []);
+
+    return (
+        <div className="h-screen flex items-center justify-center font-bold text-red-500 bg-slate-50 text-2xl">
+            404 - Test Not Found!
+        </div>
+    );
+};
+
 const PlayMockTest = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -135,7 +155,7 @@ const PlayMockTest = () => {
         </div>
     );
 
-    if (!testData) return <div className="h-screen flex items-center justify-center font-bold text-red-500 bg-slate-50">Test Not Found!</div>;
+    if (!testData) return <TestNotFoundScreen />;
 
     // --- 🏁 START SCREEN (Rules Setup) ---
     if (!testStarted) {
