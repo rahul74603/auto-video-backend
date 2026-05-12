@@ -398,6 +398,7 @@ async function handleMetaTags(req, res) {
             let collectionName = category;
             if (category === "job") collectionName = "jobs"; 
             if (category === "blog") collectionName = "blogs"; 
+            if (category === "test") collectionName = "mock_tests"; // ✅ TEST के लिए कलेक्शन ऐड किया
 
             const postDoc = await db.collection(collectionName).doc(postId).get();
             
@@ -406,21 +407,24 @@ async function handleMetaTags(req, res) {
                 const title = data.title || data.post_name || "StudyGyaan Update";
                 const desc = data.shortDescription || "Latest update on StudyGyaan";
                 
-                // ✅ ये रहा तेरी cPanel वाली फोटो का लिंक
                 const defaultImg = "https://studygyaan.in/og-image.jpg";
                 let img = data.subject_img || data.imageUrl || defaultImg;
                 
                 html = html.replace(/_OG_TITLE_/g, title);
                 html = html.replace(/_OG_DESCRIPTION_/g, desc);
                 html = html.replace(/_OG_IMAGE_/g, img);
-                html = html.replace(/_OG_URL_/g, canonicalUrl); // Updated to use strictly clean Canonical URL
+                html = html.replace(/_OG_URL_/g, canonicalUrl); 
                 
                 html = html.replace('</body>', '\n\n</body>');
+                res.set('Cache-Control', 'no-store');
+                return res.status(200).send(html);
             } else {
-                html = html.replace('</body>', `\n\n</body>`);
+                // 🚨 ट्रैकर: अगर बैकएंड चलेगा तो स्क्रीन पर React नहीं, बल्कि यह टेक्स्ट दिखेगा
+                res.set('Cache-Control', 'no-store');
+                return res.status(404).send("<h2>BINGO_404: Backend 100% Sahi Chal Raha Hai!</h2>"); 
             }
         }
-        res.set('Cache-Control', 'no-store'); // कैश बंद कर दिया
+        res.set('Cache-Control', 'no-store'); 
         return res.status(200).send(html);
     } catch (e) {
         return res.status(500).send("Backend Crash: " + e.message);
