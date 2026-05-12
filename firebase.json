@@ -1,11 +1,13 @@
 {
   "hosting": {
     "public": "dist",
+
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ],
+
     "redirects": [
       {
         "source": "/feed",
@@ -13,11 +15,25 @@
         "type": 301
       }
     ],
+
+    "headers": [
+      {
+        "source": "/404.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      }
+    ],
+
     "rewrites": [
       {
         "source": "/sitemap.xml",
         "function": "generateSitemap"
       },
+
       {
         "source": "/web-stories-sitemap.xml",
         "run": {
@@ -25,22 +41,36 @@
           "region": "us-central1"
         }
       },
+
       {
         "source": "/generateSitemap",
         "function": "generateSitemap"
       },
+
       {
         "source": "/forcePushSitemap",
         "function": "forcePushSitemap"
       },
+
       {
         "source": "/generateRss",
         "function": "generateRss"
       },
+
       {
         "source": "/feed.xml",
         "function": "rssFeed"
       },
+
+      
+     {
+        "source": "/test/**",
+        "run": {
+          "serviceId": "serversidemetatags",
+          "region": "us-central1"
+        }
+      },
+      
       {
         "source": "/web-stories/**",
         "run": {
@@ -48,6 +78,7 @@
           "region": "us-central1"
         }
       },
+
       {
         "source": "/job/**",
         "run": {
@@ -55,6 +86,7 @@
           "region": "us-central1"
         }
       },
+
       {
         "source": "/jobs/**",
         "run": {
@@ -62,6 +94,7 @@
           "region": "us-central1"
         }
       },
+
       {
         "source": "/blog/**",
         "run": {
@@ -69,6 +102,7 @@
           "region": "us-central1"
         }
       },
+
       {
         "source": "/blogs/**",
         "run": {
@@ -76,6 +110,7 @@
           "region": "us-central1"
         }
       },
+
       {
         "source": "/admit_cards/**",
         "run": {
@@ -83,6 +118,7 @@
           "region": "us-central1"
         }
       },
+
       {
         "source": "/results/**",
         "run": {
@@ -90,16 +126,35 @@
           "region": "us-central1"
         }
       },
+
+    
       {
-        "source": "**",
+        "source": "/",
+        "destination": "/index.html"
+      },
+
+      {
+        "source": "/about",
+        "destination": "/index.html"
+      },
+
+      {
+        "source": "/contact",
+        "destination": "/index.html"
+      },
+
+      {
+        "source": "/privacy-policy",
         "destination": "/index.html"
       }
     ]
   },
+
   "functions": [
     {
       "source": "ai_backend",
       "codebase": "default",
+
       "ignore": [
         "node_modules",
         ".git",
@@ -107,19 +162,24 @@
         "firebase-debug.*.log",
         "*.local"
       ],
+
       "disallowLegacyRuntimeConfig": true
     }
   ],
+
   "emulators": {
     "functions": {
       "port": 5001
     },
+
     "hosting": {
       "port": 5000
     },
+
     "ui": {
       "enabled": true
     },
+
     "singleProjectMode": true
   }
 }
