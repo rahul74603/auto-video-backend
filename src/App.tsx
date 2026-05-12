@@ -3,11 +3,10 @@ import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { LanguageProvider } from '@/context/LanguageContext';
 import { Toaster } from 'react-hot-toast';
-
 // ✅ SEO और Schema हुक्स
 import { generateSchemas } from '@/hooks/useSEO';
 import SEO from './components/SEO'; 
-
+const NotFound = lazy(() => import('./pages/NotFound'));
 // 🚀 सिर्फ वो चीजें जो हल्की हैं और सबसे पहले दिखनी चाहिए (Direct Import)
 import Home from './pages/Home';
 import Navigation from '@/sections/Navigation';
@@ -20,6 +19,7 @@ const HeaderAd = lazy(() => import('@/sections/Ads').then(m => ({ default: m.Hea
 const PopupAd = lazy(() => import('@/sections/Ads').then(m => ({ default: m.PopupAd })));
 
 // --- बाकी पेजेस Lazy Load ही रहेंगे ---
+
 const MockTestLibrary = lazy(() => import('./pages/MockTestLibrary')); 
 const PlayMockTest = lazy(() => import('./pages/PlayMockTest')); 
 const Success = lazy(() => import('./pages/Success')); 
@@ -56,7 +56,7 @@ const ManualPayment = lazy(() => import('./pages/ManualPayment'));
 const GovtJobs = lazy(() => import('@/sections/GovtJobs')); 
 const Notes = lazy(() => import('@/sections/Notes')); 
 const Shop = lazy(() => import('@/sections/Shop')); 
-
+const HandwrittenNotes = lazy(() => import("./pages/handwritten"));
 const SchemaWrapper: React.FC = () => {
   useEffect(() => {
     const script = document.createElement('script');
@@ -138,10 +138,10 @@ function App() {
                 <Route path="/e-books" element={<PageWrapper><Notes /></PageWrapper>} />
                 <Route path="/ebook/:id" element={<EbookDetails />} />
                 <Route path="/premium-notes" element={<PageWrapper><Shop /></PageWrapper>} />
-
+                <Route path="/handwritten-premium" element={<HandwrittenNotes />} />
                 <Route path="/blog" element={<PageWrapper><BlogList /></PageWrapper>} />
                 <Route path="/blog/:id" element={<PageWrapper><BlogPost /></PageWrapper>} />
-
+                
                 <Route path="/mock-tests" element={<PageWrapper><MockTestLibrary /></PageWrapper>} />
                 <Route path="/test/:id" element={<PlayMockTest />} />
                 <Route path="/success" element={<Success />} /> 
@@ -153,6 +153,7 @@ function App() {
                 <Route path="/contact-us" element={<ContactUs />} />
                 <Route path="/about-us" element={<AboutUs />} />
                 <Route path="/disclaimer" element={<Disclaimer />} />
+                <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
           </main>
