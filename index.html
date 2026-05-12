@@ -5,41 +5,64 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
-    <link rel="preconnect" href="https://firestore.googleapis.com">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-
     <title>StudyGyaan</title>
+
+    <meta name="robots" content="index, follow" />
+
+    <link rel="preconnect" href="https://firestore.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
     <script type="module" src="/src/main.tsx"></script>
 
     <script async type="application/javascript" src="https://news.google.com/swg/js/v1/swg-basic.js"></script>
+
     <script>
-      (self.SWG_BASIC = self.SWG_BASIC || []).push( basicSubscriptions => {
-        basicSubscriptions.init({
-          type: "NewsArticle",
-          isPartOfType: ["Product"],
-          isPartOfProductId: "CAownfa2DA:openaccess",
-          clientOptions: { theme: "light", lang: "en-GB" },
-        });
-      });
+      (self.SWG_BASIC = self.SWG_BASIC || []).push(
+        (basicSubscriptions) => {
+          basicSubscriptions.init({
+            type: "NewsArticle",
+            isPartOfType: ["Product"],
+            isPartOfProductId: "CAownfa2DA:openaccess",
+            clientOptions: {
+              theme: "light",
+              lang: "en-GB",
+            },
+          });
+        }
+      );
     </script>
   </head>
+
   <body>
     <div id="root"></div>
 
     <script>
-      setTimeout(function() {
-        var script = document.createElement('script');
-        script.src = "https://www.googletagmanager.com/gtag/js?id=G-16RNLCMG36";
+      setTimeout(function () {
+        var script = document.createElement("script");
+
+        script.src =
+          "https://www.googletagmanager.com/gtag/js?id=G-16RNLCMG36";
+
         script.async = true;
+
         document.body.appendChild(script);
 
         window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-        gtag('config', 'G-16RNLCMG36');
-      }, 5000); // 5 seconds delay (Final Fix for Mobile Score)
+
+        function gtag() {
+          dataLayer.push(arguments);
+        }
+
+        window.gtag = gtag;
+
+        gtag("js", new Date());
+
+        gtag("config", "G-16RNLCMG36", {
+          page_path: window.location.pathname,
+          anonymize_ip: true,
+        });
+      }, 3000);
     </script>
   </body>
 </html>
