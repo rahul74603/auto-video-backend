@@ -172,8 +172,12 @@ exports.triggerBlogStoryNoon = onRequest({
     memory: "512MiB",
     secrets: ["SERVICE_ACCOUNT_JSON", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"] 
 }, async (req, res) => {
-    await createStoryFromOldest('blogs', 'blog');
-    return res.status(200).send("Noon Blog Story API Executed");
+    const storySlug = await createStoryFromOldest('blogs', 'blog');
+    return res.status(200).json({
+        success: true,
+        message: "Noon Blog Story API Executed",
+        generatedStory: storySlug || "No pending blogs found"
+    });
 });
 
 // ==========================================
@@ -184,8 +188,12 @@ exports.triggerBlogStoryNight = onRequest({
     memory: "512MiB",
     secrets: ["SERVICE_ACCOUNT_JSON", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"] 
 }, async (req, res) => {
-    await createStoryFromOldest('blogs', 'blog');
-    return res.status(200).send("Night Blog Story API Executed");
+    const storySlug = await createStoryFromOldest('blogs', 'blog');
+    return res.status(200).json({
+        success: true,
+        message: "Night Blog Story API Executed",
+        generatedStory: storySlug || "No pending blogs found"
+    });
 });
 
 // ==========================================
@@ -196,6 +204,10 @@ exports.triggerMockStoryMorning = onRequest({
     memory: "512MiB",
     secrets: ["SERVICE_ACCOUNT_JSON", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"] 
 }, async (req, res) => {
-    await createStoryFromOldest('mock_tests', 'mocktest'); 
-    return res.status(200).send("Morning Mock Test Story API Executed");
+    const storySlug = await createStoryFromOldest('mock_tests', 'mocktest'); 
+    return res.status(200).json({
+        success: true,
+        message: "Morning Mock Test Story API Executed",
+        generatedStory: storySlug || "No pending mock tests found"
+    });
 });
