@@ -256,17 +256,20 @@ exports.fetchFastTrackUpdates = onRequest(
         } catch (error) { res.status(500).send(error.message); }
     }
 );
-
 /* ============================= */
-/* ⏰ DAILY SCHEDULED RUN        */
+/* 🚀 FREE HTTP API RUN (GitHub) */
 /* ============================= */
-exports.scheduledFastTrackUpdates = onSchedule(
-    { schedule: "0 2 * * *", timeZone: "Asia/Kolkata", timeoutSeconds: 300, memory: "1GiB", secrets: ["GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON"] },
-    async () => {
+exports.triggerFastTrackUpdates = onRequest(
+    { timeoutSeconds: 300, memory: "1GiB", secrets: ["GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON"] },
+    async (req, res) => {
         try {
             const data = await runFastTrackLogic();
             console.log(`🎯 Daily Auto-Run Success: ${data.length} updates found.`);
-        } catch (error) { console.error("❌ Daily Auto-Run Failed:", error.message); }
+            return res.status(200).send("Fast Track Updates API Executed");
+        } catch (error) { 
+            console.error("❌ Daily Auto-Run Failed:", error.message); 
+            return res.status(500).send(error.message);
+        }
     }
 );
 
