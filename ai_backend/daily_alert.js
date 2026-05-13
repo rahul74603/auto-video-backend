@@ -213,8 +213,13 @@ exports.triggerDailyAlert = onRequest(
     { timeoutSeconds: 300, memory: "1GiB", secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"] },
     async (req, res) => {
         try {
-            await runDailyAlert();
-            return res.status(200).send("Daily Alert API Executed Successfully");
+            // हमने runDailyAlert को थोड़ा मॉडिफाई किया है ताकि ये रिपोर्ट दे सके
+            const report = await runDailyAlert(); 
+            return res.status(200).json({
+                success: true,
+                message: "Daily Alert API Executed",
+                status: "Check Telegram for messages"
+            });
         } catch (error) {
             console.error("❌ Daily Alert API Failed:", error.message);
             return res.status(500).send(error.message);
