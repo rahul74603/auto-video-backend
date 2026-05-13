@@ -35,6 +35,13 @@ const escapeXml = (unsafe) => {
 };
 
 exports.rssFeed = functions.https.onRequest(async (req, res) => {
+    // ✅ SECURITY TOKEN CHECK: Block unauthorized access to save quota
+    const token = req.query.token;
+    if (token !== "StudyGyaanSecret2026") {
+        console.warn("❌ Blocked unauthorized RSS access attempt");
+        return res.status(403).send("403 Forbidden: Unauthorized Access");
+    }
+
     try {
         const db = admin.firestore();
         
