@@ -1,0 +1,24 @@
+name: Auto Web Stories Scheduler
+
+on:
+  schedule:
+    - cron: '30 4 * * *'  # सुबह 10:00 AM IST (Mock Test Story)
+    - cron: '30 6 * * *'  # दोपहर 12:00 PM IST (Blog Story Noon)
+    - cron: '30 15 * * *' # रात 9:00 PM IST (Blog Story Night)
+  workflow_dispatch: # मैन्युअल रन करने के लिए बटन
+
+jobs:
+  run-story-generator:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Mock Test Story (10 AM IST)
+        if: github.event.schedule == '30 4 * * *'
+        run: curl -X GET "https://us-central1-studymaterial-406ad.cloudfunctions.net/triggerMockStoryMorning"
+
+      - name: Trigger Blog Story Noon (12 PM IST)
+        if: github.event.schedule == '30 6 * * *'
+        run: curl -X GET "https://us-central1-studymaterial-406ad.cloudfunctions.net/triggerBlogStoryNoon"
+
+      - name: Trigger Blog Story Night (9 PM IST)
+        if: github.event.schedule == '30 15 * * *'
+        run: curl -X GET "https://us-central1-studymaterial-406ad.cloudfunctions.net/triggerBlogStoryNight"
