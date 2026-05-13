@@ -55,8 +55,8 @@ async function generateVerticalStoryImage(title, category) {
         console.log("🎨 Generating Vertical Image for Story...");
         const imagePrompt = `Vertical 9:16 portrait educational poster for ${category}: ${title}, vibrant, no text, clean UI background`;
         
-        // 720x1280 is perfect 9:16 ratio for Web Stories
-        const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=720&height=1280&nologo=true&quality=high`;
+        // Google Discover ke liye resolution 1080x1920 kiya gaya hai
+        const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=1080&height=1920&nologo=true&quality=high`;
         
         const imgRes = await axios.get(pollUrl, { 
             responseType: 'arraybuffer', 
@@ -76,7 +76,7 @@ async function generateVerticalStoryImage(title, category) {
     } catch (imgError) {
         console.error("❌ Story Image Generation Failed:", imgError.message);
         // Fallback: Default High-Quality Vertical Image
-        return "https://images.unsplash.com/photo-1532012197267-da84d127e765?q=80&w=720&h=1280&auto=format&fit=crop";
+        return "https://images.unsplash.com/photo-1532012197267-da84d127e765?q=80&w=1080&h=1920&auto=format&fit=crop";
     }
 }
 
