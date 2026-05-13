@@ -157,6 +157,17 @@ const renderWebStory = async (req, res) => {
     <link rel="canonical" href="${pageUrl}">
     <meta name="viewport" content="width=device-width,minimum-scale=1,initial-scale=1">
     
+    <meta name="robots" content="max-image-preview:large">
+    <meta property="og:title" content="${title}">
+    <meta property="og:description" content="${metaDescription}">
+    <meta property="og:image" content="${coverImage}">
+    <meta property="og:url" content="${pageUrl}">
+    <meta property="og:type" content="article">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="${title}">
+    <meta name="twitter:description" content="${metaDescription}">
+    <meta name="twitter:image" content="${coverImage}">
+    
     <script type="application/ld+json">
         ${jsonLdMarkup}
     </script>
