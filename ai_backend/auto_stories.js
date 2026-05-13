@@ -1,5 +1,5 @@
 require("dotenv").config();
-const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onRequest } = require("firebase-functions/v2/https"); // 👈 Changed to onRequest
 const admin = require("firebase-admin");
 const axios = require("axios");
 const { google } = require("googleapis");
@@ -165,37 +165,37 @@ async function createStoryFromOldest(collectionName, storyType) {
 }
 
 // ==========================================
-// ⏰ शेड्यूलर: 12:00 PM (BLOG STORY)
+// 🚀 HTTP API: 12:00 PM (BLOG STORY) - GitHub Call Karega
 // ==========================================
-exports.scheduledBlogStoryNoon = onSchedule({
-    schedule: "0 12 * * *", 
-    timeZone: "Asia/Kolkata",
+exports.triggerBlogStoryNoon = onRequest({
+    timeoutSeconds: 300,
     memory: "512MiB",
     secrets: ["SERVICE_ACCOUNT_JSON", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"] 
-}, async () => {
+}, async (req, res) => {
     await createStoryFromOldest('blogs', 'blog');
+    return res.status(200).send("Noon Blog Story API Executed");
 });
 
 // ==========================================
-// ⏰ शेड्यूलर: 9:00 PM (BLOG STORY)
+// 🚀 HTTP API: 9:00 PM (BLOG STORY) - GitHub Call Karega
 // ==========================================
-exports.scheduledBlogStoryNight = onSchedule({
-    schedule: "0 21 * * *", 
-    timeZone: "Asia/Kolkata",
+exports.triggerBlogStoryNight = onRequest({
+    timeoutSeconds: 300,
     memory: "512MiB",
     secrets: ["SERVICE_ACCOUNT_JSON", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"] 
-}, async () => {
+}, async (req, res) => {
     await createStoryFromOldest('blogs', 'blog');
+    return res.status(200).send("Night Blog Story API Executed");
 });
 
 // ==========================================
-// ⏰ शेड्यूलर: सुबह 10:00 AM (MOCK TEST STORY)
+// 🚀 HTTP API: सुबह 10:00 AM (MOCK TEST STORY) - GitHub Call Karega
 // ==========================================
-exports.scheduledMockStoryMorning = onSchedule({
-    schedule: "0 10 * * *", 
-    timeZone: "Asia/Kolkata",
+exports.triggerMockStoryMorning = onRequest({
+    timeoutSeconds: 300,
     memory: "512MiB",
     secrets: ["SERVICE_ACCOUNT_JSON", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"] 
-}, async () => {
+}, async (req, res) => {
     await createStoryFromOldest('mock_tests', 'mocktest'); 
+    return res.status(200).send("Morning Mock Test Story API Executed");
 });
