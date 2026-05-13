@@ -265,7 +265,13 @@ exports.triggerFastTrackUpdates = onRequest(
         try {
             const data = await runFastTrackLogic();
             console.log(`🎯 Daily Auto-Run Success: ${data.length} updates found.`);
-            return res.status(200).send("Fast Track Updates API Executed");
+            // अब GitHub को पूरा JSON डेटा वापस भेजा जाएगा
+            return res.status(200).json({
+                success: true,
+                message: "Fast Track Updates API Executed",
+                totalJobsScraped: data.length,
+                jobsDetails: data
+            });
         } catch (error) { 
             console.error("❌ Daily Auto-Run Failed:", error.message); 
             return res.status(500).send(error.message);
