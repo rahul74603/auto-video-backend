@@ -457,11 +457,7 @@ exports.fetchLatestGovtJobs = onRequest({ timeoutSeconds: 300, memory: "1GiB" },
 exports.fetchFastTrackUpdates = onRequest({ timeoutSeconds: 300, memory: "1GiB" }, 
     (req, res) => require("./fast_track_updates").fetchFastTrackUpdates(req, res));
 
-exports.scheduledFastTrackUpdates = onSchedule({
-    schedule: "0 2 * * *", timeZone: "Asia/Kolkata", timeoutSeconds: 300, memory: "1GiB",
-    secrets: ["GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON"]
-}, (event) => require("./fast_track_updates").scheduledFastTrackUpdates(event));
-
+exports.triggerFastTrackUpdates = onRequest({ timeoutSeconds: 300, memory: "1GiB" }, (req, res) => require("./fast_track_updates").triggerFastTrackUpdates(req, res));
 exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     document: "fast_track/{docId}",
     secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON", "GMAIL_CREDENTIALS", "YOUTUBE_TOKEN", "TTS_KEY_JSON", "FB_PAGE_ID", "FB_PAGE_TOKEN"],
@@ -481,18 +477,15 @@ exports.renderWebStory = onRequest({ cors: true }, (req, res) => {
 });
 exports.generateStoriesSitemap = onRequest({ memory: "256MiB" }, (req, res) => require("./web_stories").generateStoriesSitemap(req, res));
 
-// 5. Auto Stories (Scheduled)
-const storyConfig = { schedule: "30 13 * * *", timeZone: "Asia/Kolkata", memory: "1GiB" };
-exports.scheduledBlogStoryNoon = onSchedule(storyConfig, (event) => require("./auto_stories").scheduledBlogStoryNoon(event));
-exports.scheduledBlogStoryNight = onSchedule({ ...storyConfig, schedule: "30 21 * * *" }, (event) => require("./auto_stories").scheduledBlogStoryNight(event));
-exports.scheduledMockStoryMorning = onSchedule({ ...storyConfig, schedule: "30 9 * * *" }, (event) => require("./auto_stories").scheduledMockStoryMorning(event));
+// 5. Auto Stories (Triggered via GitHub Actions API)
+exports.triggerBlogStoryNoon = onRequest({ timeoutSeconds: 300, memory: "512MiB" }, (req, res) => require("./auto_stories").triggerBlogStoryNoon(req, res));
+
+exports.triggerBlogStoryNight = onRequest({ timeoutSeconds: 300, memory: "512MiB" }, (req, res) => require("./auto_stories").triggerBlogStoryNight(req, res));
+
+exports.triggerMockStoryMorning = onRequest({ timeoutSeconds: 300, memory: "512MiB" }, (req, res) => require("./auto_stories").triggerMockStoryMorning(req, res));
 
 // 6. Daily Alert & Others
-exports.scheduledDailyJobAlert = onSchedule({
-    schedule: "30 8 * * *", timeZone: "Asia/Kolkata", memory: "1GiB",
-    secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]
-}, (event) => require("./daily_alert").runDailyAlert(event));
-
+exports.triggerDailyAlert = onRequest({ timeoutSeconds: 300, memory: "1GiB" }, (req, res) => require("./daily_alert").triggerDailyAlert(req, res));
 exports.generatePremiumNote = onRequest({ timeoutSeconds: 300, memory: "1GiB" }, 
     (req, res) => require("./premium_notes").generatePremiumNote(req, res));
 
