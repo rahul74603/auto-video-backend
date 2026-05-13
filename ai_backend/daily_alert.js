@@ -206,10 +206,27 @@ exports.generateRss = onRequest(async (req, res) => {
     } catch (error) { res.status(500).send("Error"); }
 });
 
+// ============================================================================
+// 🚀 FREE HTTP API RUN (GitHub) - Daily Job Alert
+// ============================================================================
+exports.triggerDailyAlert = onRequest(
+    { timeoutSeconds: 300, memory: "1GiB", secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"] },
+    async (req, res) => {
+        try {
+            await runDailyAlert();
+            return res.status(200).send("Daily Alert API Executed Successfully");
+        } catch (error) {
+            console.error("❌ Daily Alert API Failed:", error.message);
+            return res.status(500).send(error.message);
+        }
+    }
+);
+
 module.exports = {
     runDailyAlert,
     generateSitemap: exports.generateSitemap,
     forcePushSitemap: exports.forcePushSitemap,
     generateRss: exports.generateRss,
-    paymentWebhook: exports.paymentWebhook
+    paymentWebhook: exports.paymentWebhook,
+    triggerDailyAlert: exports.triggerDailyAlert
 };
