@@ -145,19 +145,47 @@ async function runFastTrackLogic(sendLogs = console.log, apiKey) {
             const { data: html } = await axios.get(link, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 20000 });
             const $ = cheerio.load(html);
             let extractedLinks = new Set();
-            $("table a, .post-body a, .entry-content a").each((i, el) => {
+            
+            // 🛑 1. असली डायरेक्ट लिंक निकालने का 100% सटीक लॉजिक
+            const junkDomains = ["facebook.com", "twitter.com", "whatsapp.com", "telegram.me", "t.me", "instagram.com", "youtube.com"];
+            
+            // टेबल के अंदर की पूरी लाइन (Row) का टेक्स्ट निकालेंगे ताकि Gemini को पता चले "Click Here" किस चीज़ का है
+            $("table tr").each((i, tr) => {
+                let rowText = $(tr).text().replace(/\s+/g, ' ').trim(); // जैसे: "Download Admit Card Click Here"
+                $(tr).find('a').each((j, el) => {
+                    let href = $(el).attr("href");
+                    if (href && href.startsWith("http")) {
+                        let isJunk = junkDomains.some(domain => href.includes(domain));
+                        if (!isJunk && rowText.length > 2) {
+                            extractedLinks.add(`[Context: ${rowText}] -> (URL: ${href})`);
+                        }
+                    }
+                });
+            });
+
+            // अगर टेबल के बाहर पैराग्राफ में लिंक है
+            $(".post-body p a, .entry-content p a").each((i, el) => {
                 let href = $(el).attr("href");
                 let text = $(el).text().trim();
-                if (href && href.startsWith("http") && text.length > 1) {
-                    extractedLinks.add(`[Button Text: ${text}] -> (URL: ${href})`);
+                if (href && href.startsWith("http") && text.length > 2) {
+                     let isJunk = junkDomains.some(domain => href.includes(domain));
+                     if (!isJunk) {
+                         extractedLinks.add(`[Context: ${text}] -> (URL: ${href})`);
+                     }
                 }
             });
 
-            let finalLinksText = Array.from(extractedLinks).join("\n").substring(0, 3000);
-            const prompt = `Extract Info for ${category}. URL LIST: ${finalLinksText} Return ONLY valid JSON: { "title": "Clean Name", "slug": "slug", "directLink": "URL", "metaDesc": "desc" }`;
+            let finalLinksText = Array.from(extractedLinks).join("\n").substring(0, 3500);
+            const prompt = `Extract Info for ${category}. URL LIST: ${finalLinksText}
+            Return ONLY valid JSON: { "title": "Clean Name", "slug": "slug", "directLink": "Exact Official Download/Result URL", "metaDesc": "desc" }
+            IMPORTANT: Do not return the generic post URL. Look at the [Context] and find the exact working Direct Link for the ${category}.`;
             
             const aiResult = await model.generateContent(prompt);
             let cleanJson = JSON.parse(aiResult.response.text().replace(/```json|```/gi, "").trim());
+
+            // 🛑 2. 10 सेकंड का ब्रेक (429 Rate Limit Error रोकने के लिए)
+            sendLogs(`⏳ 10 सेकंड का ब्रेक ले रहा है...`);
+            await new Promise(resolve => setTimeout(resolve, 10000));
 
             const seoSlug = `${cleanJson.slug || createSlug(cleanJson.title || title)}-${dateSuffix}`;
             await db.collection("fast_track").doc(seoSlug).set({
