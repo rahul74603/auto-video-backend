@@ -85,21 +85,27 @@ async function generateVerticalStoryImage(title, category) {
 // ==========================================
 async function createStoryFromOldest(collectionName, storyType) {
     try {
-        console.log(`Checking for pending ${collectionName} to create a story...`);
-
+        // 🔥 पुराने पोस्ट्स को पहले निकालने का लॉजिक (Oldest First)
+        // यह सबसे पुराने पोस्ट से चेक करना शुरू करेगा और जिसकी स्टोरी नहीं बनी है, उसे उठा लेगा
         const snapshot = await db.collection(collectionName)
-            .where("isStoryCreated", "==", false)
-            .orderBy("createdAt", "asc") 
-            .limit(1)
+            .orderBy("createdAt", "asc") // asc = सबसे पुराना पहले
             .get();
 
-        if (snapshot.empty) {
+        let targetDoc = null;
+        for (let docItem of snapshot.docs) {
+            // अगर isStoryCreated फील्ड मौजूद नहीं है या false है, तो उसे पकड़ लेगा
+            if (docItem.data().isStoryCreated !== true) {
+                targetDoc = docItem;
+                break; // जैसे ही बिना स्टोरी वाला पुराना पोस्ट मिलेगा, लूप रुक जाएगा
+            }
+        }
+
+        if (!targetDoc) {
             console.log(`No pending ${collectionName} found for stories.`);
             return null;
         }
 
-        const doc = snapshot.docs[0];
-        const data = doc.data();
+        const doc = targetDoc;
 
         let finalTitle = data.title || "New Update";
         if (storyType === 'mocktest' && !data.title) {
