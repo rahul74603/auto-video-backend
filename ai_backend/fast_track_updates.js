@@ -40,7 +40,7 @@ const { generateAndUploadVideo } = require("./autoVideo.js");
 const { generateSyllabusPDF } = require("./autoPdf.js");
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 function createSlug(title) {
     return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-');
@@ -107,10 +107,14 @@ async function runFastTrackLogic(sendLogs = console.log) {
         return [];
     }
 
-    let uniqueItems = [];
+   let uniqueItems = [];
     const now = new Date();
     const dateSuffix = now.toLocaleString('en-IN', { month: 'short', year: 'numeric' }).toLowerCase().replace(' ', '-');
+    
+    // 🔥 यहाँ API Key फंक्शन के अंदर लोड होगी, जहाँ उसे Secret मिल जाएगा
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    
     const results = [];
 
     sendLogs(`🔍 कुल ${allItems.length} आइटम्स की जांच शुरू हो रही है...`);
