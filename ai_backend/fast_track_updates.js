@@ -185,6 +185,10 @@ async function runFastTrackLogic(sendLogs = console.log) {
     sendLogs(`🎉 Cycle Complete! Found ${results.length} new items.`);
     return results;
 }
+
+const genAI = new GoogleGenerativeAI(apiKey); // यहाँ incoming key यूज़ होगी
+ const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+
 /* ============================= */
 /* 🌐 MANUAL TRIGGER API        */
 /* ============================= */
@@ -202,25 +206,27 @@ exports.fetchFastTrackUpdates = onRequest(
 /* ============================= */
 /* 🚀 FREE HTTP API RUN (GitHub) */
 /* ============================= */
-exports.triggerFastTrackUpdates = onRequest(
-    { timeoutSeconds: 300, memory: "1GiB", secrets: ["GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON"] },
+exports.exports.triggerFastTrackUpdates = onRequest(
+    { timeoutSeconds: 300, memory: "1GiB" }, // अब यहाँ secrets: [] लिखने की ज़रूरत नहीं
     async (req, res) => {
-        // GitHub की स्क्रीन पर लाइव टेक्स्ट दिखाने के लिए हेडर्स
+        const incomingKey = req.headers['x-gemini-key'];
+        const authToken = req.headers['x-auth-token'];
+
+        // सुरक्षा जांच
+        if (authToken !== "StudyGyaan_FastTrack_786") return res.status(401).send("Unauthorized");
+        if (!incomingKey) return res.status(400).send("Missing API Key");
+
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
         res.setHeader('Transfer-Encoding', 'chunked');
 
-        const sendLogs = (msg) => {
-            res.write(`${msg}\n`);
-            console.log(msg);
-        };
+        const sendLogs = (msg) => { res.write(`${msg}\n`); console.log(msg); };
 
         try {
-            // runFastTrackLogic को sendLogs फंक्शन के साथ कॉल कर रहे हैं
-            const data = await runFastTrackLogic(sendLogs);
+            // हम incomingKey को फंक्शन के अंदर भेज रहे हैं
+            const data = await runFastTrackLogic(sendLogs, incomingKey);
             res.write(`\n🎉 Total New Items Processed: ${data.length}\n`);
             res.end();
         } catch (error) {
-            console.error("❌ Daily Auto-Run Failed:", error.message); 
             res.write(`\n❌ Error: ${error.message}\n`);
             res.end();
         }
