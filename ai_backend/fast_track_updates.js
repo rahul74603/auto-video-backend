@@ -110,7 +110,7 @@ async function runFastTrackLogic(sendLogs = console.log) {
     let uniqueItems = [];
     const now = new Date();
     const dateSuffix = now.toLocaleString('en-IN', { month: 'short', year: 'numeric' }).toLowerCase().replace(' ', '-');
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const results = [];
 
     sendLogs(`🔍 कुल ${allItems.length} आइटम्स की जांच शुरू हो रही है...`);
