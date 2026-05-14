@@ -40,13 +40,12 @@ const { generateAndUploadVideo } = require("./autoVideo.js");
 const { generateSyllabusPDF } = require("./autoPdf.js");
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-// const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 function createSlug(title) {
     return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-');
 }
 
-// ✅ Updated to Google Indexing v3 (from auto_blog.js)
+// ✅ Updated to Google Indexing v3
 async function notifyGoogle(url) {
     try {
         const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
@@ -81,7 +80,7 @@ async function notifyGoogle(url) {
 /* 🔥 SHARED FAST TRACK LOGIC (SMART MODE)  */
 /* ========================================== */
 
-async function runFastTrackLogic(sendLogs = console.log) {
+async function runFastTrackLogic(sendLogs = console.log, apiKey) {
     sendLogs("🚀 Starting Smart Fast-Track Scraper (Live Output Mode)...");
     const sources = [
         'https://www.freejobalert.com/feed/',
@@ -107,13 +106,13 @@ async function runFastTrackLogic(sendLogs = console.log) {
         return [];
     }
 
-   let uniqueItems = [];
+    let uniqueItems = [];
     const now = new Date();
     const dateSuffix = now.toLocaleString('en-IN', { month: 'short', year: 'numeric' }).toLowerCase().replace(' ', '-');
     
-    // 🔥 यहाँ API Key फंक्शन के अंदर लोड होगी, जहाँ उसे Secret मिल जाएगा
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // 🔥 यहाँ API Key फंक्शन के पैरामीटर (incoming key) से लोड होगी
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
     
     const results = [];
 
@@ -125,7 +124,7 @@ async function runFastTrackLogic(sendLogs = console.log) {
             const link = item.link || "No Link";
             const titleLower = title.toLowerCase();
             
-            // 🛑 सख्त फिल्टर: अगर इन 4 में से कोई नहीं है, तो तुरंत छोड़ दो
+            // 🛑 सख्त फिल्टर
             let category = "";
             if (titleLower.includes("result")) category = "Result";
             else if (titleLower.includes("admit card") || titleLower.includes("call letter") || titleLower.includes("hall ticket")) category = "Admit Card";
@@ -133,11 +132,9 @@ async function runFastTrackLogic(sendLogs = console.log) {
             else if (titleLower.includes("syllabus")) category = "Syllabus";
 
             if (!category) {
-                // अब ये GitHub पर फ़ालतू कचरा नहीं दिखाएगा, सीधा अगले पर जाएगा
                 continue; 
             }
 
-            // अगर पहले से सेव है तो भी AI के पास जाने की ज़रूरत नहीं
             const existingDoc = await db.collection("fast_track").where("originalLink", "==", link).limit(1).get();
             if (!existingDoc.empty) {
                 continue;
@@ -145,8 +142,6 @@ async function runFastTrackLogic(sendLogs = console.log) {
 
             sendLogs(`🎯 Processing Match [${category}]: ${title}`);
             
-            // AI (Gemini) का काम यहाँ से शुरू होगा...
-            // (बाकी का AI वाला कोड यहाँ रहेगा)
             const { data: html } = await axios.get(link, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 20000 });
             const $ = cheerio.load(html);
             let extractedLinks = new Set();
@@ -186,9 +181,6 @@ async function runFastTrackLogic(sendLogs = console.log) {
     return results;
 }
 
-const genAI = new GoogleGenerativeAI(apiKey); // यहाँ incoming key यूज़ होगी
- const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
-
 /* ============================= */
 /* 🌐 MANUAL TRIGGER API        */
 /* ============================= */
@@ -198,16 +190,18 @@ exports.fetchFastTrackUpdates = onRequest(
         const SECRET_KEY = "StudyGyaan_FastTrack_786";
         if (req.query.key !== SECRET_KEY) return res.status(401).send("Unauthorized");
         try {
-            const data = await runFastTrackLogic();
+            // मैन्युअल ट्रिगर में हम Firebase Secret से की (Key) पास करेंगे
+            const data = await runFastTrackLogic(console.log, process.env.GEMINI_API_KEY);
             res.json({ success: true, updatesFound: data.length, data });
         } catch (error) { res.status(500).send(error.message); }
     }
 );
+
 /* ============================= */
 /* 🚀 FREE HTTP API RUN (GitHub) */
 /* ============================= */
-exports.exports.triggerFastTrackUpdates = onRequest(
-    { timeoutSeconds: 300, memory: "1GiB" }, // अब यहाँ secrets: [] लिखने की ज़रूरत नहीं
+exports.triggerFastTrackUpdates = onRequest(
+    { timeoutSeconds: 300, memory: "1GiB" }, // यहाँ secrets हटा दिया है
     async (req, res) => {
         const incomingKey = req.headers['x-gemini-key'];
         const authToken = req.headers['x-auth-token'];
@@ -222,7 +216,6 @@ exports.exports.triggerFastTrackUpdates = onRequest(
         const sendLogs = (msg) => { res.write(`${msg}\n`); console.log(msg); };
 
         try {
-            // हम incomingKey को फंक्शन के अंदर भेज रहे हैं
             const data = await runFastTrackLogic(sendLogs, incomingKey);
             res.write(`\n🎉 Total New Items Processed: ${data.length}\n`);
             res.end();
@@ -245,48 +238,41 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten(
         secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON", "GMAIL_CREDENTIALS", "YOUTUBE_TOKEN", "TTS_KEY_JSON", "FB_PAGE_ID", "FB_PAGE_TOKEN"] 
     }, 
     async (event) => {
-        // अगर डेटा डिलीट हुआ है तो रुक जाएं
         if (!event.data.after.exists) return null;
 
         const newValue = event.data.after.data();
         const previousValue = event.data.before.exists ? event.data.before.data() : null;
 
-        // ✅ DEBUG LOGS: ये बहुत जरूरी हैं
         console.log(`🚀 Fast Track Triggered for: ${newValue.title}`);
         
+        const currentStatus = (newValue.status || "").toString().toLowerCase().trim();
         
-        
-    const currentStatus = (newValue.status || "").toString().toLowerCase().trim();
-        
-        // 🔥 MAHA-JUGAD: Status 'draft' nahi hona chahiye aur telegramSent false hona chahiye
       if (currentStatus !== 'draft' && newValue.telegramSent !== true) {
     
-    // 🔥 Google Discover के लिए 100% GSC Valid Schema (Crash-Proof)
-    let publishTime = new Date().toISOString();
-    if (newValue.createdAt && typeof newValue.createdAt.toDate === 'function') {
-        publishTime = newValue.createdAt.toDate().toISOString();
-    }
+            let publishTime = new Date().toISOString();
+            if (newValue.createdAt && typeof newValue.createdAt.toDate === 'function') {
+                publishTime = newValue.createdAt.toDate().toISOString();
+            }
 
-    const jsonLd = {
-        "@context": "https://schema.org",
-        "@type": "NewsArticle",
-        "headline": newValue.title,
-        "image": ["https://studygyaan.in/og-image.jpg"], 
-        "datePublished": publishTime,
-        "dateModified": new Date().toISOString(),
-        "description": newValue.description || newValue.title,
-        "author": { "@type": "Person", "name": "Rahul Sir", "url": "https://studygyaan.in" },
-        "publisher": { 
-            "@type": "Organization",
-            "name": "StudyGyaan",
-            "logo": { "@type": "ImageObject", "url": "https://studygyaan.in/logo.png" }
-        }
-    };
-    // डेटाबेस अपडेट
-    // डेटाबेस अपडेट
-    await admin.firestore().collection("fast_track").doc(event.params.docId).update({ schemaMarkup: JSON.stringify(jsonLd) });
+            const jsonLd = {
+                "@context": "https://schema.org",
+                "@type": "NewsArticle",
+                "headline": newValue.title,
+                "image": ["https://studygyaan.in/og-image.jpg"], 
+                "datePublished": publishTime,
+                "dateModified": new Date().toISOString(),
+                "description": newValue.description || newValue.title,
+                "author": { "@type": "Person", "name": "Rahul Sir", "url": "https://studygyaan.in" },
+                "publisher": { 
+                    "@type": "Organization",
+                    "name": "StudyGyaan",
+                    "logo": { "@type": "ImageObject", "url": "https://studygyaan.in/logo.png" }
+                }
+            };
+            
+            await admin.firestore().collection("fast_track").doc(event.params.docId).update({ schemaMarkup: JSON.stringify(jsonLd) });
 
-    const studyGyaanUrl = `https://studygyaan.in/update/${event.params.docId}`;
+            const studyGyaanUrl = `https://studygyaan.in/update/${event.params.docId}`;
             await notifyGoogle(studyGyaanUrl);
 
             let icon = "📌";
@@ -309,7 +295,6 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten(
                     });
                     console.log("✅ Telegram Alert Sent Successfully!");
                     
-                    // 🔥 Lock: Ab dobara nahi jayega
                     await admin.firestore().collection("fast_track").doc(event.params.docId).update({ telegramSent: true });
 
                 } catch (error) {
@@ -326,7 +311,7 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten(
                 console.log("✅ WhatsApp Alert Sent!");
             } catch (err) { console.error("❌ WhatsApp Error:", err.message); }
 
-            // --- 🎬 3. VIDEO & 📄 PDF (Background Tasks) ---
+            // --- 🎬 3. VIDEO & 📄 PDF ---
             console.log("⏳ Running Background Video/PDF Engine...");
 
             let videoPromise = Promise.resolve();
