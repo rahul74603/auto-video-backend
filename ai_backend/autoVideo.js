@@ -167,10 +167,10 @@ async function generateAndUploadVideo(jobData) {
     try {
         const youtube = await getYouTubeClient();
 
-        // --- Music & Avatar ---
-        // 🔥 100% पक्का रास्ता (Absolute Path) ताकि गिटहब रास्ता न भटके
-        const aiBackendDir = __dirname; 
-        const bgMusicDir = path.join(aiBackendDir, 'bg_music');
+      // --- Music & Avatar ---
+        // 🔥 डायरेक्ट 'ai_backend' और 'bg_music' लोकेशन फोर्स की गई है
+        const targetDir = __dirname.includes('ai_backend') ? __dirname : path.join(process.cwd(), 'ai_backend');
+        const bgMusicDir = path.join(targetDir, 'bg_music');
         
         let bgMusicPath = '';
         if (fs.existsSync(bgMusicDir)) {
@@ -178,17 +178,17 @@ async function generateAndUploadVideo(jobData) {
             if (mp3Files.length > 0) {
                 bgMusicPath = path.join(bgMusicDir, mp3Files[Math.floor(Math.random() * mp3Files.length)]);
             }
+        } else {
+            console.log(`❌ ERROR: गिटहब को ${bgMusicDir} पर म्यूजिक फोल्डर नहीं मिला!`);
         }
 
-        const filesInFolder = fs.readdirSync(aiBackendDir);
+        const filesInFolder = fs.readdirSync(targetDir);
         const anchorFiles = filesInFolder.filter(file => file.toLowerCase().endsWith('.mp4'));
-        
         if (anchorFiles.length === 0) {
-            throw new Error(`❌ No anchor videos (.mp4) found in ${aiBackendDir}! (चेक करें कि .gitignore ने mp4 फाइल को ब्लॉक तो नहीं किया है)`);
+            throw new Error(`❌ No anchor videos found in ${targetDir}!`);
         }
 
         let selectedVideoFile = anchorFiles[Math.floor(Math.random() * anchorFiles.length)];
-        let finalAnchorPath = path.join(aiBackendDir, selectedVideoFile);
         
         let isFemale = selectedVideoFile.toLowerCase().includes('female');
         let isMale = selectedVideoFile.toLowerCase().includes('male');
@@ -201,8 +201,9 @@ async function generateAndUploadVideo(jobData) {
         } else {
             selectedVoice = Math.random() > 0.5 ? 'hi-IN-Neural2-A' : 'hi-IN-Neural2-C';
         }
+        const finalAnchorPath = path.join(targetDir, selectedVideoFile);
 
-        console.log(`🎥 Selected Anchor: ${selectedVideoFile} | 🎵 Voice: ${selectedVoice}`);
+        console.log(`🎥 Selected Anchor: ${selectedVideoFile} | 🎵 Voice: ${selectedVoice}`);;
 
         // --- Text to Speech (Secret से Credentials उठाना) ---
         const ttsKeyVar = process.env.TTS_KEY_JSON;
