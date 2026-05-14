@@ -121,6 +121,7 @@ async function runFastTrackLogic(sendLogs = console.log) {
             const link = item.link || "No Link";
             const titleLower = title.toLowerCase();
             
+            // 🛑 सख्त फिल्टर: अगर इन 4 में से कोई नहीं है, तो तुरंत छोड़ दो
             let category = "";
             if (titleLower.includes("result")) category = "Result";
             else if (titleLower.includes("admit card") || titleLower.includes("call letter") || titleLower.includes("hall ticket")) category = "Admit Card";
@@ -128,17 +129,20 @@ async function runFastTrackLogic(sendLogs = console.log) {
             else if (titleLower.includes("syllabus")) category = "Syllabus";
 
             if (!category) {
-                sendLogs(`⏭️ Ignored (No Category): ${title.substring(0, 50)}...`);
-                continue;
+                // अब ये GitHub पर फ़ालतू कचरा नहीं दिखाएगा, सीधा अगले पर जाएगा
+                continue; 
             }
 
+            // अगर पहले से सेव है तो भी AI के पास जाने की ज़रूरत नहीं
             const existingDoc = await db.collection("fast_track").where("originalLink", "==", link).limit(1).get();
             if (!existingDoc.empty) {
-                sendLogs(`🔁 Already in DB: ${title.substring(0, 50)}...`);
                 continue;
             }
 
-            sendLogs(`🎯 Match Found [${category}]: ${title}`);
+            sendLogs(`🎯 Processing Match [${category}]: ${title}`);
+            
+            // AI (Gemini) का काम यहाँ से शुरू होगा...
+            // (बाकी का AI वाला कोड यहाँ रहेगा)
             const { data: html } = await axios.get(link, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 20000 });
             const $ = cheerio.load(html);
             let extractedLinks = new Set();
@@ -218,6 +222,7 @@ exports.triggerFastTrackUpdates = onRequest(
         }
     }
 );
+
 /* ============================================================== */
 /* 📢 TELEGRAM, WHATSAPP, VIDEO & PDF AUTO-TRIGGER                */
 /* ============================================================== */
