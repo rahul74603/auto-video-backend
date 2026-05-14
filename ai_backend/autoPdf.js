@@ -1,6 +1,5 @@
 require("dotenv").config();
 const admin = require("firebase-admin");
-const puppeteer = require("puppeteer");
 const { GoogleGenerativeAI } = require("@google/generative-ai"); // ✅ Free SDK
 
 // 🔥 STEP 1: Firebase Initialization with Secrets
@@ -42,10 +41,9 @@ async function generateSyllabusPDF(postData) {
     try {
         // 1. ✅ AI से सिलेबस लिखवाना (Free Gemini API)
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-2.5-flash-lite",
+            model: "gemini-1.5-flash",
             generationConfig: { responseMimeType: "text/plain" }
         });
-
         const prompt = `
         Act as an expert Sarkari Job Educator. Write a detailed Exam Pattern and Syllabus for "${postData.title}".
         Requirements:
@@ -105,7 +103,8 @@ async function generateSyllabusPDF(postData) {
         </html>
         `;
 
-        // 3. ✅ Puppeteer से PDF जनरेट करना
+       // 3. ✅ Puppeteer से PDF जनरेट करना (Lazy Load for Firebase Timeout Fix)
+        const puppeteer = require("puppeteer");
         const browser = await puppeteer.launch({ 
             args: ['--no-sandbox', '--disable-setuid-sandbox'] 
         });
