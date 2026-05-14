@@ -373,26 +373,39 @@ async function generateAndUploadVideo(jobData) {
         ctx.fillStyle = '#000000';
         ctx.font = '900 55px sans-serif';
         ctx.fillText(`👇 LINK IN FIRST COMMENT 👇`, width / 2, 1805);
+        fs.writeFileSync(posterPath, canvas.toBuffer('image/png'));
 
         // --- 🎬 VIDEO RENDERING ---
         console.log('🎬 रेंडरिंग चालू है... (गिटहब लॉग्स में प्रोग्रेस देखें)');
         
-        const filter = `[0:v]zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30[bg];` +
-                       `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=800:-1[anchor];` +
-                       `[bg][anchor]overlay=(main_w-overlay_w)/2:780[outv];` +
-                       `[2:a]volume=1.4[voice];[3:a]volume=0.10[bgm];[voice][bgm]amix=inputs=2:duration=first[a]`;
+        // 🔥 पक्के रास्ते (Absolute Paths)
+        const finalPoster = path.resolve(posterPath);
+        const finalAudio = path.resolve(audioPath);
+        const finalVideoOut = path.resolve(videoPath);
+        const finalAnchor = path.resolve(finalAnchorPath);
+        const finalMusic = bgMusicPath ? path.resolve(bgMusicPath) : null;
 
-        const args = [
-            '-y', '-loop', '1', '-i', posterPath,
-            '-stream_loop', '-1', '-an', '-i', finalAnchorPath,
-            '-i', audioPath,
-            '-stream_loop', '-1', '-i', bgMusicPath,
-            '-filter_complex', filter,
-            '-map', '[outv]', '-map', '[a]',
-            '-c:v', 'libx264', '-preset', 'superfast', '-crf', '28',
-            '-c:a', 'aac', '-b:a', '128k', '-shortest', '-pix_fmt', 'yuv420p',
-            videoPath
-        ];
+        const hasMusic = finalMusic && fs.existsSync(finalMusic);
+        console.log(`🔍 FILE CHECK: Poster=${fs.existsSync(finalPoster)}, Anchor=${fs.existsSync(finalAnchor)}, Voice=${fs.existsSync(finalAudio)}, Music=${hasMusic}`);
+
+        let filter, args;
+
+        if (hasMusic) {
+            filter = `[0:v]zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30[bg];` +
+                     `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=800:-1[anchor];` +
+                     `[bg][anchor]overlay=(main_w-overlay_w)/2:780[outv];` +
+                     `[2:a]volume=1.4[voice];[3:a]volume=0.10[bgm];[voice][bgm]amix=inputs=2:duration=first[a]`;
+
+            args = ['-y', '-loop', '1', '-i', finalPoster, '-stream_loop', '-1', '-an', '-i', finalAnchor, '-i', finalAudio, '-stream_loop', '-1', '-i', finalMusic, '-filter_complex', filter, '-map', '[outv]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'superfast', '-crf', '28', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-pix_fmt', 'yuv420p', finalVideoOut];
+        } else {
+            console.log("⚠️ BG Music नहीं मिला, बिना म्यूजिक के रेंडर हो रहा है...");
+            filter = `[0:v]zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30[bg];` +
+                     `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=800:-1[anchor];` +
+                     `[bg][anchor]overlay=(main_w-overlay_w)/2:780[outv];` +
+                     `[2:a]volume=1.4[a]`;
+
+            args = ['-y', '-loop', '1', '-i', finalPoster, '-stream_loop', '-1', '-an', '-i', finalAnchor, '-i', finalAudio, '-filter_complex', filter, '-map', '[outv]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'superfast', '-crf', '28', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-pix_fmt', 'yuv420p', finalVideoOut];
+        }
 
         await new Promise((resolve, reject) => {
             const ffmpeg = spawn(ffmpegPath, args);
