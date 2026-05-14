@@ -168,26 +168,32 @@ async function generateAndUploadVideo(jobData) {
         const youtube = await getYouTubeClient();
 
         // --- Music & Avatar ---
-        const bgMusicDir = path.join(__dirname, 'bg_music');
+        // 🔥 100% पक्का रास्ता (Absolute Path) ताकि गिटहब रास्ता न भटके
+        const aiBackendDir = __dirname; 
+        const bgMusicDir = path.join(aiBackendDir, 'bg_music');
+        
         let bgMusicPath = '';
         if (fs.existsSync(bgMusicDir)) {
             const mp3Files = fs.readdirSync(bgMusicDir).filter(f => f.toLowerCase().endsWith('.mp3'));
-            if (mp3Files.length > 0) bgMusicPath = path.join(bgMusicDir, mp3Files[Math.floor(Math.random() * mp3Files.length)]);
+            if (mp3Files.length > 0) {
+                bgMusicPath = path.join(bgMusicDir, mp3Files[Math.floor(Math.random() * mp3Files.length)]);
+            }
         }
 
-        const filesInFolder = fs.readdirSync(__dirname);
+        const filesInFolder = fs.readdirSync(aiBackendDir);
         const anchorFiles = filesInFolder.filter(file => file.toLowerCase().endsWith('.mp4'));
+        
         if (anchorFiles.length === 0) {
-            throw new Error("❌ No anchor videos found!");
+            throw new Error(`❌ No anchor videos (.mp4) found in ${aiBackendDir}! (चेक करें कि .gitignore ने mp4 फाइल को ब्लॉक तो नहीं किया है)`);
         }
 
         let selectedVideoFile = anchorFiles[Math.floor(Math.random() * anchorFiles.length)];
+        let finalAnchorPath = path.join(aiBackendDir, selectedVideoFile);
         
         let isFemale = selectedVideoFile.toLowerCase().includes('female');
         let isMale = selectedVideoFile.toLowerCase().includes('male');
 
         let selectedVoice;
-
         if (isFemale) {
             selectedVoice = 'hi-IN-Neural2-A';
         } else if (isMale) {
@@ -195,7 +201,6 @@ async function generateAndUploadVideo(jobData) {
         } else {
             selectedVoice = Math.random() > 0.5 ? 'hi-IN-Neural2-A' : 'hi-IN-Neural2-C';
         }
-        const finalAnchorPath = path.join(__dirname, selectedVideoFile);
 
         console.log(`🎥 Selected Anchor: ${selectedVideoFile} | 🎵 Voice: ${selectedVoice}`);
 
