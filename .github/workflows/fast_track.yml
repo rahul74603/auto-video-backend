@@ -2,7 +2,7 @@ name: Fast Track Scraper
 
 on:
   schedule:
-    - cron: '30 20 * * *'  # रात 2:00 बजे IST (20:30 UTC)
+    - cron: '30 20 * * *'  # रात 2:00 बजे IST
   workflow_dispatch: 
 
 jobs:
@@ -10,4 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Fast Track API
-        run: curl -X GET "https://us-central1-studymaterial-406ad.cloudfunctions.net/triggerFastTrackUpdates"
+        run: |
+          curl -X GET "https://us-central1-studymaterial-406ad.cloudfunctions.net/triggerFastTrackUpdates" \
+          -H "x-gemini-key: ${{ secrets.GEMINI_API_KEY }}" \
+          -H "x-auth-token: StudyGyaan_FastTrack_786"
