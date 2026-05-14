@@ -81,8 +81,8 @@ async function notifyGoogle(url) {
 /* 🔥 SHARED FAST TRACK LOGIC (SMART MODE)  */
 /* ========================================== */
 
-async function runFastTrackLogic() {
-    console.log("🚀 Starting Smart Fast-Track Scraper (Detailed Log Mode)...");
+async function runFastTrackLogic(sendLogs = console.log) {
+    sendLogs("🚀 Starting Smart Fast-Track Scraper (Live Output Mode)...");
     const sources = [
         'https://www.freejobalert.com/feed/',
         'https://www.sarkariexam.com/feed',
@@ -92,33 +92,28 @@ async function runFastTrackLogic() {
     let allItems = [];
     for (let url of sources) {
         try {
-            console.log(`📡 Fetching Source: ${url}`);
-            const response = await axios.get(url, {
-                headers: { 'User-Agent': 'Mozilla/5.0' },
-                timeout: 15000
-            });
+            sendLogs(`📡 Fetching Source: ${url}`);
+            const response = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 15000 });
             let feed = await parser.parseString(response.data);
             if (feed && feed.items) {
-                console.log(`✅ [${url}] से ${feed.items.length} आइटम्स मिले।`);
+                sendLogs(`✅ [${url}] से ${feed.items.length} आइटम्स मिले।`);
                 allItems.push(...feed.items);
             }
-        } catch (err) { console.warn(`⚠️ Source Failed [${url}]: ${err.message}`); }
+        } catch (err) { sendLogs(`⚠️ Source Failed [${url}]: ${err.message}`); }
     }
 
     if (allItems.length === 0) {
-        console.log("❌ किसी भी वेबसाइट से कोई डेटा नहीं मिला।");
+        sendLogs("❌ किसी भी वेबसाइट से कोई डेटा नहीं मिला।");
         return [];
     }
 
     let uniqueItems = [];
-    let seenLinks = new Set();
     const now = new Date();
     const dateSuffix = now.toLocaleString('en-IN', { month: 'short', year: 'numeric' }).toLowerCase().replace(' ', '-');
-
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
     const results = [];
 
-    console.log(`🔍 कुल ${allItems.length} आइटम्स की जांच शुरू हो रही है...`);
+    sendLogs(`🔍 कुल ${allItems.length} आइटम्स की जांच शुरू हो रही है...`);
 
     for (const item of allItems.slice(0, 40)) { 
         try {
@@ -133,21 +128,17 @@ async function runFastTrackLogic() {
             else if (titleLower.includes("syllabus")) category = "Syllabus";
 
             if (!category) {
-                console.log(`⏭️ Ignored (Category No Match): ${title.substring(0, 50)}...`);
+                sendLogs(`⏭️ Ignored (No Category): ${title.substring(0, 50)}...`);
                 continue;
             }
-
-            console.log(`🎯 Match Found [${category}]: ${title}`);
 
             const existingDoc = await db.collection("fast_track").where("originalLink", "==", link).limit(1).get();
             if (!existingDoc.empty) {
-                console.log(`🔁 Already in DB (Skipped): ${title}`);
+                sendLogs(`🔁 Already in DB: ${title.substring(0, 50)}...`);
                 continue;
             }
 
-            console.log(`✨ New Item Detected! Processing with Gemini...`);
-
-            // ... (बाकी स्क्रैपिंग और AI वाला लॉजिक सेम रहेगा)
+            sendLogs(`🎯 Match Found [${category}]: ${title}`);
             const { data: html } = await axios.get(link, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 20000 });
             const $ = cheerio.load(html);
             let extractedLinks = new Set();
@@ -178,12 +169,12 @@ async function runFastTrackLogic() {
             });
 
             results.push({ title: cleanJson.title || title, category });
-            console.log(`✅ Saved to Firestore: ${seoSlug}`);
+            sendLogs(`✅ Saved: ${seoSlug}`);
 
-        } catch (err) { console.error("⚠️ Loop Error:", err.message); }
+        } catch (err) { sendLogs(`⚠️ Loop Error: ${err.message}`); }
     }
     
-    console.log(`🎉 Cycle Complete! Found ${results.length} new items.`);
+    sendLogs(`🎉 Cycle Complete! Found ${results.length} new items.`);
     return results;
 }
 /* ============================= */
@@ -206,23 +197,27 @@ exports.fetchFastTrackUpdates = onRequest(
 exports.triggerFastTrackUpdates = onRequest(
     { timeoutSeconds: 300, memory: "1GiB", secrets: ["GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON"] },
     async (req, res) => {
+        // GitHub की स्क्रीन पर लाइव टेक्स्ट दिखाने के लिए हेडर्स
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Transfer-Encoding', 'chunked');
+
+        const sendLogs = (msg) => {
+            res.write(`${msg}\n`);
+            console.log(msg);
+        };
+
         try {
-            const data = await runFastTrackLogic();
-            console.log(`🎯 Daily Auto-Run Success: ${data.length} updates found.`);
-            // अब GitHub को पूरा JSON डेटा वापस भेजा जाएगा
-            return res.status(200).json({
-                success: true,
-                message: "Fast Track Updates API Executed",
-                totalJobsScraped: data.length,
-                jobsDetails: data
-            });
-        } catch (error) { 
+            // runFastTrackLogic को sendLogs फंक्शन के साथ कॉल कर रहे हैं
+            const data = await runFastTrackLogic(sendLogs);
+            res.write(`\n🎉 Total New Items Processed: ${data.length}\n`);
+            res.end();
+        } catch (error) {
             console.error("❌ Daily Auto-Run Failed:", error.message); 
-            return res.status(500).send(error.message);
+            res.write(`\n❌ Error: ${error.message}\n`);
+            res.end();
         }
     }
 );
-
 /* ============================================================== */
 /* 📢 TELEGRAM, WHATSAPP, VIDEO & PDF AUTO-TRIGGER                */
 /* ============================================================== */
