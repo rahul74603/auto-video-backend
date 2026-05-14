@@ -96,7 +96,18 @@ function generateSEO(jobData, jobCat) {
     let catTag = jobCat !== 'Default' ? jobCat.replace(/\s+/g, '') : 'NewVacancy'; 
     let specificTag = mainOrg + catTag; 
 
-    let allTags = [...new Set([specificTag, catTag, ...titleWords, ...baseTags])].slice(0, 25);
+    let rawTags = [...new Set([specificTag, catTag, ...titleWords, ...baseTags])];
+    
+    // 🔥 YouTube 400 character limit fix (Smart Tag Trimmer)
+    let allTags = [];
+    let currentLength = 0;
+    for (let tag of rawTags) {
+        if (currentLength + tag.length + 1 <= 380) { // 380 limit for safety
+            allTags.push(tag);
+            currentLength += tag.length + 1;
+        }
+    }
+
     let hashtags = allTags.slice(0, 5).map(t => '#' + t.replace(/[^a-zA-Z0-9]/g, '')).join(' ');
 
     // 🔥 Slug Priority Logic for URL
@@ -203,21 +214,22 @@ async function generateAndUploadVideo(jobData) {
             credentials: ttsCreds 
         });
 
-        let hooks = [
-            "रुको! ये अपडेट मिस मत करना!",
-            "अगर तुम exam की तैयारी कर रहे हो तो ये जरूरी है!",
-            "आज की सबसे बड़ी खबर!",
-            "ये मौका बार-बार नहीं आता!"
-        ];
-
-        let hook = hooks[Math.floor(Math.random() * hooks.length)];
-
-        let script = `${hook} ⚠️ ध्यान से सुनो! ${jobData.title} ${
-            jobCat === 'Result' ? 'का रिजल्ट जारी हो चुका है' :
-            jobCat === 'Admit Card' ? 'का एडमिट कार्ड आ गया है' :
-            jobCat === 'Answer Key' ? 'की आंसर की जारी हो गई है' :
-            'की नई भर्ती आ गई है'
-        }. पूरी जानकारी और डायरेक्ट लिंक के लिए अभी गूगल पर सर्च करें StudyGyaan.in`;
+       let cleanName = jobData.title.length > 50 ? jobData.title.substring(0, 50) : jobData.title;
+        let script = "";
+        // 🔥 Smart Human-like Hooks
+        if (jobCat === 'Result') {
+            let rHooks = ["क्या आपने भी इसका एग्जाम दिया था? तो दिल थाम के बैठिये!", "जिस रिजल्ट का आपको इंतज़ार था, वो आ गया है!", "खुशखबरी! रिजल्ट आ गया है!"];
+            script = `${rHooks[Math.floor(Math.random() * rHooks.length)]} ⚠️ ${cleanName} का रिजल्ट फाइनली डिक्लेयर हो चुका है। अपना रिजल्ट तुरंत चेक करने के लिए पहला कमेंट पढ़ें!`;
+        } else if (jobCat === 'Admit Card') {
+            let aHooks = ["एग्जाम डेट पास आ गई है, क्या आप तैयार हैं?", "अलर्ट! एडमिट कार्ड आउट हो चुका है!", "बिना इसके एग्जाम सेंटर में एंट्री नहीं मिलेगी!"];
+            script = `${aHooks[Math.floor(Math.random() * aHooks.length)]} ⚠️ ${cleanName} का एडमिट कार्ड जारी कर दिया गया है। अपना सेंटर और टाइमिंग चेक करने के लिए पहले कमेंट में दिए लिंक पर जाएँ!`;
+        } else if (jobCat === 'Syllabus' || jobCat === 'Answer Key') {
+            let sHooks = ["एग्जाम में टॉप करना है? तो ये ज़रूर देखें!", "सिलेक्शन चाहिए तो ये गलती मत करना!"];
+            script = `${sHooks[Math.floor(Math.random() * sHooks.length)]} ⚠️ ${cleanName} की नई अपडेट आ गई है। फ्री पीडीएफ डाउनलोड करने के लिए कमेंट बॉक्स चेक करें!`;
+        } else {
+            let jHooks = ["बेरोजगार हो? तो ये मौका हाथ से जाने मत देना!", "एक और शानदार सरकारी नौकरी आ गई है!", "तैयारी शुरू कर दो, क्योंकि बंपर भर्ती आ गई है!"];
+            script = `${jHooks[Math.floor(Math.random() * jHooks.length)]} ⚠️ ${cleanName} की नई वैकेंसी आउट हो गई है। फॉर्म भरने की पूरी डिटेल के लिए पहला कमेंट चेक करें!`;
+        }
 
         const [response] = await ttsClient.synthesizeSpeech({
             input: { text: script },
@@ -283,10 +295,21 @@ async function generateAndUploadVideo(jobData) {
         ctx.fillStyle = "#FFFF00";
         ctx.font = 'bold 90px sans-serif';
         ctx.fillText("🔥 IMPORTANT 🔥", width / 2, 450);
-        ctx.fillStyle = "#FF0000";
-        ctx.font = 'bold 80px sans-serif';
-        ctx.fillText("APPLY NOW", width / 2, 600);
-
+       // 🔥 Dynamic CTA Logic: Fast Track और Jobs के लिए अलग-अलग टेक्स्ट
+        if (jobCat === 'Default' || jobCat === 'JOB') {
+            ctx.fillStyle = "#FF0000";
+            ctx.font = 'bold 80px sans-serif';
+            ctx.fillText("APPLY NOW", width / 2, 600);
+        } else if (jobCat === 'Result') {
+            ctx.fillStyle = "#00FF00";
+            ctx.font = 'bold 70px sans-serif';
+            ctx.fillText("CHECK RESULT", width / 2, 600);
+        } else if (jobCat === 'Admit Card') {
+            ctx.fillStyle = "#FFD700";
+            ctx.font = 'bold 70px sans-serif';
+            ctx.fillText("DOWNLOAD NOW", width / 2, 600);
+        }
+        // Syllabus और Answer Key के लिए जगह खाली छोड़ दी जाएगी
         function wrapText(context, text, x, y, maxWidth, lineHeight) {
             let words = text.split(' '), line = '';
             for (let n = 0; n < words.length; n++) {
@@ -338,14 +361,12 @@ async function generateAndUploadVideo(jobData) {
             ctx.fillText(`⏳ Last Date: ${showLast}`, width / 2, infoY + 140);
         }
 
-        drawRoundedRect(ctx, 150, 1720, 780, 130, 65);
-        ctx.fillStyle = activeTheme.accent;
+        // 🔥 Visual Retention Hack: Comment Call-To-Action
+        ctx.fillStyle = '#ffcc00'; // Eye-catching Yellow banner
         ctx.fill();
         ctx.fillStyle = '#000000';
-        ctx.font = 'bold 70px sans-serif';
-        ctx.fillText(`🔍 Check on studygyaan.in`, width / 2, 1810);
-
-        fs.writeFileSync(posterPath, canvas.toBuffer('image/png'));
+        ctx.font = '900 55px sans-serif';
+        ctx.fillText(`👇 LINK IN FIRST COMMENT 👇`, width / 2, 1805);
 
         // --- 🎬 VIDEO RENDERING ---
         console.log('🎬 रेंडरिंग चालू है... (गिटहब लॉग्स में प्रोग्रेस देखें)');
@@ -389,12 +410,16 @@ async function generateAndUploadVideo(jobData) {
         const seoData = generateSEO(jobData, jobCat); 
         
         let maxTitleLen = jobCat !== 'Default' ? 45 : 55;
-        let cleanTitle = jobData.title.length > maxTitleLen ? jobData.title.substring(0, maxTitleLen) + "..." : jobData.title;
-        let powerWords = ["🔥 Breaking", "🚨 Alert", "⚡ Latest", "💥 Big Update"];
-        let randomPower = powerWords[Math.floor(Math.random() * powerWords.length)];
-
-        let finalTitle = `${randomPower} ${cleanTitle.substring(0,40)} ${jobCat !== 'Default' ? jobCat + ' Out!' : 'New Vacancy'} 2026 #Shorts`;
-
+        let cleanTitle = jobData.title.length > 40 ? jobData.title.substring(0, 40) + ".." : jobData.title;
+        
+        // 🔥 Viral Title Hooks for Click-Through-Rate (CTR)
+        let viralHooks = [];
+        if (jobCat === 'Result') viralHooks = ["😱 जल्दी चेक करें!", "🔥 Result आ गया!", "🚨 90% फेल?"];
+        else if (jobCat === 'Admit Card') viralHooks = ["🚨 सेंटर चेक करें!", "🔥 Download Now!", "😱 Exam Date!"];
+        else viralHooks = ["😱 मौका मत छोड़ना!", "🔥 Apply Now!", "🚨 Notification Out!"];
+        
+        let vHook = viralHooks[Math.floor(Math.random() * viralHooks.length)];
+        let finalTitle = `${vHook} ${cleanTitle} ${jobCat !== 'Default' ? jobCat : 'Vacancy'} #Shorts #GovtJobs`;
         const res = await youtube.videos.insert({
             part: 'snippet,status',
             requestBody: {
@@ -418,7 +443,12 @@ async function generateAndUploadVideo(jobData) {
 
         // --- 📂 2. AUTO PLAYLIST SORTING ---
         try {
-            let playlistTitle = jobCat !== 'Default' ? jobCat : 'Latest Govt Jobs';
+            // 🔥 Smart Playlist Logic
+            let playlistTitle = "Latest Govt Jobs"; // सिर्फ Jobs और Vacancy के लिए
+            if (jobCat === 'Result') playlistTitle = "Results & Updates";
+            else if (jobCat === 'Admit Card') playlistTitle = "Admit Cards";
+            else if (jobCat === 'Syllabus') playlistTitle = "Exam Syllabus";
+            else if (jobCat === 'Answer Key') playlistTitle = "Answer Keys";
             
             // चेक करें कि क्या यह प्लेलिस्ट पहले से मौजूद है
             const playlistsRes = await youtube.playlists.list({ part: 'snippet', mine: true, maxResults: 50 });
