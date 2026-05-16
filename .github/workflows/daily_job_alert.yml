@@ -9,5 +9,22 @@ jobs:
   run-api:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Daily Alert API
-        run: curl -X GET "https://us-central1-studymaterial-406ad.cloudfunctions.net/triggerDailyAlert"
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: |
+          npm install --legacy-peer-deps
+          if [ -d "ai_backend" ]; then cd ai_backend && npm install --legacy-peer-deps || true; fi
+
+      - name: Trigger Daily Alert (Node Script)
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node ai_backend/daily_alert.js
