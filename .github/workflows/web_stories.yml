@@ -5,20 +5,48 @@ on:
     - cron: '30 4 * * *'  # सुबह 10:00 AM IST (Mock Test Story)
     - cron: '30 6 * * *'  # दोपहर 12:00 PM IST (Blog Story Noon)
     - cron: '30 15 * * *' # रात 9:00 PM IST (Blog Story Night)
-  workflow_dispatch: # मैन्युअल रन करने के लिए बटन
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'क्या रन करना है? (blog या mocktest लिखें)'
+        required: true
+        default: 'blog'
 
 jobs:
   run-story-generator:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Mock Test Story (10 AM IST)
-        if: github.event.schedule == '30 4 * * *'
-        run: curl -X GET "https://us-central1-studymaterial-406ad.cloudfunctions.net/triggerMockStoryMorning"
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-      - name: Trigger Blog Story Noon (12 PM IST)
-        if: github.event.schedule == '30 6 * * *'
-        run: curl -X GET "https://us-central1-studymaterial-406ad.cloudfunctions.net/triggerBlogStoryNoon"
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Trigger Mock Test Story (10 AM IST या Manual)
+        if: github.event.schedule == '30 4 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'mocktest')
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node ai_backend/auto_stories.js mocktest
+
+      - name: Trigger Blog Story Noon (12 PM IST या Manual)
+        if: github.event.schedule == '30 6 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'blog')
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node ai_backend/auto_stories.js blog
 
       - name: Trigger Blog Story Night (9 PM IST)
         if: github.event.schedule == '30 15 * * *'
-        run: curl -X GET "https://us-central1-studymaterial-406ad.cloudfunctions.net/triggerBlogStoryNight"
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node ai_backend/auto_stories.js blog
