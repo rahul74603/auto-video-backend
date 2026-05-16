@@ -235,3 +235,20 @@ module.exports = {
     paymentWebhook: exports.paymentWebhook,
     triggerDailyAlert: exports.triggerDailyAlert
 };
+
+// ============================================================================
+// ✅ GitHub Actions Execution Block (Direct Run)
+// ============================================================================
+if (require.main === module) {
+    console.log("🚀 Running daily_alert.js directly via GitHub Actions...");
+    
+    runDailyAlert()
+        .then(() => {
+            console.log("✅ Daily Job Alert execution complete.");
+            process.exit(0);
+        })
+        .catch(err => {
+            console.error("❌ Execution failed:", err.message);
+            process.exit(1);
+        });
+}
