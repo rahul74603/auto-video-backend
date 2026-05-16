@@ -47,7 +47,7 @@ async function generateScriptWithGemini(blogTitle, blogContent) {
 
     try {
         const response = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${geminiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
             {
                 contents: [{ parts: [{ text: prompt }] }]
             },
@@ -56,7 +56,7 @@ async function generateScriptWithGemini(blogTitle, blogContent) {
 
         const script = response.data.candidates[0].content.parts[0].text;
         console.log("✅ स्क्रिप्ट रेडी है!");
-        return script.replace(/[\*\#\_]/g, ''); // फालतू मार्क्स हटाना
+        return script.replace(/[\*\#\_]/g, ''); 
     } catch (error) {
         throw new Error("❌ Gemini API Error: " + (error.response ? JSON.stringify(error.response.data) : error.message));
     }
@@ -71,7 +71,6 @@ function createLandscapePoster(title, outputPath) {
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // Background Gradient
     let grad = ctx.createLinearGradient(0, 0, 0, height);
     grad.addColorStop(0, '#0f2027');
     grad.addColorStop(0.5, '#203a43');
@@ -79,7 +78,6 @@ function createLandscapePoster(title, outputPath) {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, height);
 
-    // Text Wrap Function
     function wrapText(context, text, x, y, maxWidth, lineHeight) {
         let words = text.split(' '), line = '';
         for (let n = 0; n < words.length; n++) {
@@ -94,13 +92,11 @@ function createLandscapePoster(title, outputPath) {
         return y;
     }
 
-    // Header
     ctx.fillStyle = '#00FF00';
     ctx.font = 'bold 60px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('STUDYGYAAN.IN EXCLUSIVE', width / 2, 150);
 
-    // Main Title
     ctx.fillStyle = '#ffffff'; 
     ctx.font = 'bold 110px sans-serif'; 
     ctx.shadowColor = "rgba(0,0,0,0.8)";
@@ -108,7 +104,6 @@ function createLandscapePoster(title, outputPath) {
     wrapText(ctx, title.toUpperCase(), width / 2, 400, 1600, 140);
     ctx.shadowBlur = 0;
 
-    // CTA Box
     ctx.fillStyle = '#ffcc00'; 
     ctx.fillRect(0, 880, width, 200); 
     ctx.fillStyle = '#000000';
@@ -131,7 +126,6 @@ async function generateLongVideo() {
     const videoPath = path.resolve(tempDir, `long-video-${Date.now()}.mp4`);
 
     try {
-        // 1. Fetch Latest Blog
         const snapshot = await db.collection('blogs').orderBy("createdAt", "desc").limit(1).get();
         if (snapshot.empty) throw new Error("❌ कोई ब्लॉग नहीं मिला!");
         const blogDoc = snapshot.docs[0];
@@ -141,26 +135,51 @@ async function generateLongVideo() {
 
         console.log(`📝 ब्लॉग मिला: ${blogTitle}`);
 
-        // 2. Generate Script
         const scriptText = await generateScriptWithGemini(blogTitle, blogContent);
 
-        // 3. Generate Audio via Google TTS
         console.log("🗣️ आवाज़ (TTS) जनरेट हो रही है...");
         const ttsKeyVar = process.env.TTS_KEY_JSON;
         if (!ttsKeyVar) throw new Error("❌ TTS_KEY_JSON नहीं मिला!");
         const ttsClient = new textToSpeech.TextToSpeechClient({ credentials: JSON.parse(ttsKeyVar) });
         
-        const [response] = await ttsClient.synthesizeSpeech({
-            input: { text: scriptText },
-            voice: { languageCode: 'hi-IN', name: 'hi-IN-Neural2-C' }, // Male Voice
-            audioConfig: { audioEncoding: 'MP3', speakingRate: 1.0 },
-        });
-        fs.writeFileSync(audioPath, response.audioContent, 'binary');
+        // 🔥 FIX: 5000 Byte Limit Issue (Script Chunking Logic)
+        let chunks = [];
+        let currentChunk = "";
+        // वाक्यों (Sentences) के आधार पर स्क्रिप्ट को तोड़ना ताकि शब्द बीच में न कटें
+        let sentences = scriptText.split(/(?<=[.!?।\n])/); 
+        
+        for (let sentence of sentences) {
+            if (!sentence.trim()) continue;
+            // 1200 अक्षरों से ज्यादा होने पर नया हिस्सा बनाना (सुरक्षित लिमिट)
+            if (currentChunk.length + sentence.length > 1200) {
+                if(currentChunk) chunks.push(currentChunk);
+                currentChunk = sentence;
+            } else {
+                currentChunk += sentence;
+            }
+        }
+        if (currentChunk.trim().length > 0) chunks.push(currentChunk);
 
-        // 4. Generate Poster
+        console.log(`🗣️ स्क्रिप्ट बड़ी है, इसे ${chunks.length} हिस्सों में बाँट कर आवाज़ बनाई जा रही है...`);
+
+        let finalAudioBuffer = Buffer.alloc(0);
+        for (let i = 0; i < chunks.length; i++) {
+            const [response] = await ttsClient.synthesizeSpeech({
+                input: { text: chunks[i] },
+                voice: { languageCode: 'hi-IN', name: 'hi-IN-Neural2-C' },
+                audioConfig: { audioEncoding: 'MP3', speakingRate: 1.0 },
+            });
+            const chunkBuffer = Buffer.from(response.audioContent, 'binary');
+            // हर हिस्से को मेन फाइल में जोड़ते जाना
+            finalAudioBuffer = Buffer.concat([finalAudioBuffer, chunkBuffer]);
+            console.log(`⏳ हिस्सा ${i + 1}/${chunks.length} जनरेट हुआ...`);
+        }
+        
+        fs.writeFileSync(audioPath, finalAudioBuffer, 'binary');
+        console.log("✅ फाइनल ऑडियो तैयार हो गई!");
+
         createLandscapePoster(blogTitle, posterPath);
 
-        // 5. Check Music
         const targetDir = __dirname.includes('ai_backend') ? __dirname : path.join(process.cwd(), 'ai_backend');
         const bgMusicDir = path.join(targetDir, 'bg_music');
         let finalMusic = null;
@@ -169,17 +188,14 @@ async function generateLongVideo() {
             if (mp3Files.length > 0) finalMusic = path.resolve(path.join(bgMusicDir, mp3Files[0]));
         }
 
-        // 6. FFmpeg Rendering
         console.log('🎬 FFmpeg रेंडरिंग चालू है... (लॉन्ग वीडियो में थोड़ा समय लग सकता है)');
         const hasMusic = finalMusic && fs.existsSync(finalMusic);
         
         let args = [];
         if (hasMusic) {
-            // म्यूजिक के साथ
             const filter = `[1:a]volume=1.4[voice];[2:a]volume=0.05[bgm];[voice][bgm]amix=inputs=2:duration=first[a]`;
             args = ['-y', '-loop', '1', '-i', posterPath, '-i', audioPath, '-stream_loop', '-1', '-i', finalMusic, '-filter_complex', filter, '-map', '0:v', '-map', '[a]', '-c:v', 'libx264', '-preset', 'superfast', '-tune', 'stillimage', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-pix_fmt', 'yuv420p', videoPath];
         } else {
-            // बिना म्यूजिक
             args = ['-y', '-loop', '1', '-i', posterPath, '-i', audioPath, '-c:v', 'libx264', '-preset', 'superfast', '-tune', 'stillimage', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-pix_fmt', 'yuv420p', videoPath];
         }
 
@@ -196,7 +212,6 @@ async function generateLongVideo() {
         });
 
         console.log(`\n✅ फुल लेंथ वीडियो तैयार हो गया: ${videoPath}`);
-        // यहाँ से आप इसे अपलोड करने का लॉजिक (YouTube API) कॉल कर सकते हैं।
         return videoPath;
 
     } catch (error) {
