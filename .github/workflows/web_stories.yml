@@ -25,7 +25,9 @@ jobs:
           node-version: '20'
 
       - name: Install Dependencies
-        run: npm install --legacy-peer-deps
+        run: |
+          npm install --legacy-peer-deps
+          if [ -d "ai_backend" ]; then cd ai_backend && npm install --legacy-peer-deps || true; fi
 
       - name: Trigger Mock Test Story (10 AM IST या Manual)
         if: github.event.schedule == '30 4 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'mocktest')
