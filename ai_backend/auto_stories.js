@@ -217,3 +217,24 @@ exports.triggerMockStoryMorning = onRequest({
         generatedStory: storySlug || "No pending mock tests found"
     });
 });
+// ==========================================
+// ✅ GitHub Actions Execution Block (Direct Run)
+// ==========================================
+if (require.main === module) {
+    // Command line argument लेगा, जैसे: node auto_stories.js blog या node auto_stories.js mocktest
+    const action = process.argv[2] || "blog"; 
+    const collection = action === "mocktest" ? "mock_tests" : "blogs";
+    const storyType = action === "mocktest" ? "mocktest" : "blog";
+
+    console.log(`🚀 Running auto_stories.js directly for: ${storyType}`);
+    
+    createStoryFromOldest(collection, storyType)
+        .then(slug => {
+            console.log(`✅ Execution complete. Generated Story: ${slug || "No pending items"}`);
+            process.exit(0);
+        })
+        .catch(err => {
+            console.error(`❌ Execution failed: ${err.message}`);
+            process.exit(1);
+        });
+}
