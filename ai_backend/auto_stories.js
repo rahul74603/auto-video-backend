@@ -106,7 +106,7 @@ async function createStoryFromOldest(collectionName, storyType) {
         }
 
         const doc = targetDoc;
-
+        const data = doc.data();
         let finalTitle = data.title || "New Update";
         if (storyType === 'mocktest' && !data.title) {
             finalTitle = data.testName || "New Mock Test";
