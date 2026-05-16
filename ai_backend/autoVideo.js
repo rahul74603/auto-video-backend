@@ -302,19 +302,7 @@ async function generateAndUploadVideo(jobData) {
         ctx.font = 'bold 90px sans-serif';
         ctx.fillText("🔥 IMPORTANT 🔥", width / 2, 450);
        // 🔥 Dynamic CTA Logic: Fast Track और Jobs के लिए अलग-अलग टेक्स्ट
-        if (jobCat === 'Default' || jobCat === 'JOB') {
-            ctx.fillStyle = "#FF0000";
-            ctx.font = 'bold 80px sans-serif';
-            ctx.fillText("APPLY NOW", width / 2, 600);
-        } else if (jobCat === 'Result') {
-            ctx.fillStyle = "#00FF00";
-            ctx.font = 'bold 70px sans-serif';
-            ctx.fillText("CHECK RESULT", width / 2, 600);
-        } else if (jobCat === 'Admit Card') {
-            ctx.fillStyle = "#FFD700";
-            ctx.font = 'bold 70px sans-serif';
-            ctx.fillText("DOWNLOAD NOW", width / 2, 600);
-        }
+        
         // Syllabus और Answer Key के लिए जगह खाली छोड़ दी जाएगी
         function wrapText(context, text, x, y, maxWidth, lineHeight) {
             let words = text.split(' '), line = '';
@@ -336,11 +324,31 @@ async function generateAndUploadVideo(jobData) {
         ctx.font = '900 85px sans-serif'; 
         let titleEndY = wrapText(ctx, jobData.title.toUpperCase(), width / 2, 530, 950, 105);
         ctx.shadowBlur = 0; 
+        
+        // 🔥 1. DYNAMIC CTA: अब यह हमेशा टाइटल के ठीक नीचे आएगा
+        let ctaY = titleEndY + 120;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle'; // Professional Center Alignment
+        
+        if (jobCat === 'Default' || jobCat === 'JOB') {
+            ctx.fillStyle = "#FF0000";
+            ctx.font = 'bold 80px sans-serif';
+            ctx.fillText("APPLY NOW", width / 2, ctaY);
+        } else if (jobCat === 'Result') {
+            ctx.fillStyle = "#00FF00";
+            ctx.font = 'bold 70px sans-serif';
+            ctx.fillText("CHECK RESULT", width / 2, ctaY);
+        } else if (jobCat === 'Admit Card') {
+            ctx.fillStyle = "#FFD700";
+            ctx.font = 'bold 70px sans-serif';
+            ctx.fillText("DOWNLOAD NOW", width / 2, ctaY);
+        }
 
-        let infoY = 1350; 
+        // 🔥 2. DYNAMIC INFO BOX: यह हमेशा CTA बटन से सुरक्षित दूरी (220px नीचे) पर बनेगा (Overlapping Impossible)
+        let infoY = ctaY + 220; 
         let boxHeight = 320;
         
-        drawRoundedRect(ctx, 60, infoY - 80, 960, boxHeight, 40);
+        drawRoundedRect(ctx, 60, infoY - 100, 960, boxHeight, 40);
         ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'; 
         ctx.fill();
         ctx.lineWidth = 5;
@@ -353,26 +361,30 @@ async function generateAndUploadVideo(jobData) {
         
         if (jobCat === 'Result' || jobCat === 'Answer Key' || jobCat === 'Admit Card') {
             ctx.fillStyle = activeTheme.accent;
-            ctx.fillText(`📌 Update: ${jobCat} Out!`, width / 2, infoY + 20);
+            ctx.fillText(`📌 Update: ${jobCat} Out!`, width / 2, infoY);
             ctx.fillStyle = '#FF4500'; 
             let showDate = (jobData.updateDate && jobData.updateDate !== 'undefined') ? jobData.updateDate : todayDate;
-            ctx.fillText(`📅 Date: ${showDate}`, width / 2, infoY + 140);
+            ctx.fillText(`📅 Date: ${showDate}`, width / 2, infoY + 120);
         } else {
             ctx.fillStyle = activeTheme.accent;
             let showStart = (jobData.startDate && jobData.startDate !== 'undefined') ? jobData.startDate : 'Apply Now';
-            ctx.fillText(`🚀 Starts: ${showStart}`, width / 2, infoY + 20);
+            ctx.fillText(`🚀 Starts: ${showStart}`, width / 2, infoY);
             ctx.fillStyle = '#FF4500'; 
             ctx.font = 'bold 75px sans-serif'; 
             let showLast = (jobData.lastDate && jobData.lastDate !== 'undefined') ? jobData.lastDate : 'Soon';
-            ctx.fillText(`⏳ Last Date: ${showLast}`, width / 2, infoY + 140);
+            ctx.fillText(`⏳ Last Date: ${showLast}`, width / 2, infoY + 120);
         }
 
-        // 🔥 Visual Retention Hack: Comment Call-To-Action
-        ctx.fillStyle = '#ffcc00'; // Eye-catching Yellow banner
-        ctx.fill();
+        // 🔥 3. PERFECT YELLOW FOOTER BOX (Fixed Empty Box Bug)
+        ctx.fillStyle = '#ffcc00'; 
+        ctx.fillRect(0, 1720, width, 200); 
         ctx.fillStyle = '#000000';
         ctx.font = '900 55px sans-serif';
-        ctx.fillText(`👇 LINK IN FIRST COMMENT 👇`, width / 2, 1805);
+        ctx.fillText(`👇 LINK IN FIRST COMMENT 👇`, width / 2, 1820); // 1820 for perfect vertical center
+        
+        // Reset Baseline
+        ctx.textBaseline = 'alphabetic';
+        
         fs.writeFileSync(posterPath, canvas.toBuffer('image/png'));
 
         // --- 🎬 VIDEO RENDERING ---
