@@ -8,6 +8,7 @@ const admin = require("firebase-admin");
 const { createCanvas } = require('canvas');
 const textToSpeech = require('@google-cloud/text-to-speech');
 const ffmpegPath = require('ffmpeg-static');
+const FormData = require('form-data');
 require("dotenv").config();
 
 // =========================================================
@@ -28,7 +29,122 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 // =========================================================
-// 🧠 1. GEMINI API SCRIPT WRITER
+// 🔐 1. YOUTUBE AUTHENTICATION
+// =========================================================
+async function getYouTubeClient() {
+    const credentialsVar = process.env.GMAIL_CREDENTIALS;
+    const tokenVar = process.env.YOUTUBE_TOKEN;
+
+    if (!credentialsVar || !tokenVar || tokenVar === "test" || tokenVar === "temp_key") {
+        throw new Error("❌ GMAIL_CREDENTIALS या YOUTUBE_TOKEN सीक्रेट नहीं मिला या Dummy सेट है!");
+    }
+
+    let creds, token;
+    try {
+        creds = JSON.parse(credentialsVar);
+        token = JSON.parse(tokenVar);
+    } catch (e) {
+        throw new Error("❌ YOUTUBE Secrets Invalid JSON format. कृपया असली JSON डालें।");
+    }
+
+    const { client_secret, client_id, redirect_uris } = creds.installed || creds.web;
+    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+
+    oAuth2Client.setCredentials(token);
+    return google.youtube({ version: 'v3', auth: oAuth2Client });
+}
+
+// =========================================================
+// 📱 2. FACEBOOK UPLOAD ENGINE (Videos & Reels)
+// =========================================================
+async function uploadToFacebook(videoPath, description) {
+    const FB_PAGE_ID = process.env.FB_PAGE_ID;
+    const FB_PAGE_TOKEN = process.env.FB_PAGE_TOKEN;
+
+    if (!FB_PAGE_ID || !FB_PAGE_TOKEN) {
+        console.log('⚠️ FB_PAGE_ID या TOKEN नहीं मिला, फेसबुक स्किप कर दिया।');
+        return;
+    }
+
+    console.log('📱 फेसबुक पेज पर लॉन्ग वीडियो अपलोड शुरू...');
+    const formData = new FormData();
+    formData.append('access_token', FB_PAGE_TOKEN);
+    formData.append('source', fs.createReadStream(videoPath));
+    formData.append('description', description + "\n\n👉 Visit: https://studygyaan.in\n#studymaterial #exams #education");
+
+    try {
+        const fbRes = await axios.post(
+            `https://graph.facebook.com/v19.0/${FB_PAGE_ID}/videos`,
+            formData,
+            { headers: formData.getHeaders() }
+        );
+        console.log('✅ फेसबुक वीडियो सफलतापूर्वक लाइव हो गया! ID: ' + fbRes.data.id);
+    } catch (fbErr) {
+        console.error('❌ फेसबुक अपलोड फेल:', fbErr.response ? fbErr.response.data : fbErr.message);
+    }
+}
+
+// =========================================================
+// 🧠 3. THE MAGIC SEO ENGINE FOR BLOGS
+// =========================================================
+function generateSEO(blogData, blogCat) {
+    let titleWords = blogData.title.split(' ').filter(w => w.length > 2 && !['and', 'the', 'for', 'out', 'now'].includes(w.toLowerCase()));
+    let mainOrg = titleWords.slice(0, 2).join(''); 
+    
+    let baseTags = [
+        'StudyGyaan', 'StudyGyaan.in', 'ExamPreparation', 'SarkariResult2026', 
+        'LatestUpdate', 'FreePDF', 'PremiumNotes', 'StudyMaterial', 'MockTest'
+    ];
+    
+    let catTag = blogCat !== 'Default' ? blogCat.replace(/\s+/g, '') : 'BlogUpdate'; 
+    let specificTag = mainOrg + catTag; 
+
+    let rawTags = [...new Set([specificTag, catTag, ...titleWords, ...baseTags])];
+    
+    let allTags = [];
+    let currentLength = 0;
+    for (let tag of rawTags) {
+        if (currentLength + tag.length + 1 <= 380) { 
+            allTags.push(tag);
+            currentLength += tag.length + 1;
+        }
+    }
+
+    let hashtags = allTags.slice(0, 5).map(t => '#' + t.replace(/[^a-zA-Z0-9]/g, '')).join(' ');
+    const identifier = blogData.slug || blogData.id; 
+    let postLink = "https://studygyaan.in";
+    
+    if (identifier) {
+        postLink = `https://studygyaan.in/blog/${identifier}`;
+    }
+
+    let description = `
+🔥 ${blogData.title} ${blogCat} 2026 Latest Educational Update
+
+📌 Full Details Check Here:
+🔗 ${postLink}
+
+📚 Free PDF + Mock Test:
+👉 https://studygyaan.in
+
+🚀 Daily Govt Jobs + Notes:
+👉 Visit StudyGyaan.in
+
+🔔 Subscribe for fastest updates
+
+🔥 Trending Keywords:
+${allTags.join(', ')}
+
+${hashtags}
+`;
+    let videoCTA = "\n🎥 Watch full video on YouTube: StudyGyaan Official";
+    description += videoCTA;
+
+    return { tags: allTags, description: description, postLink: postLink };
+}
+
+// =========================================================
+// 🧠 4. GEMINI API SCRIPT WRITER
 // =========================================================
 async function generateScriptWithGemini(blogTitle, blogContent) {
     const geminiKey = process.env.GEMINI_API_KEY;
@@ -63,7 +179,7 @@ async function generateScriptWithGemini(blogTitle, blogContent) {
 }
 
 // =========================================================
-// 🖼️ 2. LANDSCAPE POSTER ENGINE (16:9 for YouTube Long Form)
+// 🖼️ 5. LANDSCAPE POSTER ENGINE (16:9 for YouTube Long Form)
 // =========================================================
 function createLandscapePoster(title, outputPath) {
     console.log('🖼️ 16:9 यूट्यूब पोस्टर डिज़ाइन हो रहा है...');
@@ -116,25 +232,31 @@ function createLandscapePoster(title, outputPath) {
 }
 
 // =========================================================
-// 🎬 3. MAIN LONG VIDEO GENERATOR ENGINE
+// 🎬 6. MAIN LONG VIDEO GENERATOR ENGINE
 // =========================================================
 async function generateLongVideo() {
     console.log("🎬 Long Video Engine Started...");
     const tempDir = os.tmpdir();
     const audioPath = path.resolve(tempDir, `long-audio-${Date.now()}.mp3`);
     const posterPath = path.resolve(tempDir, `long-poster-${Date.now()}.png`);
-    const videoPath = path.resolve(tempDir, `long-video-${Date.now()}.mp4`);
-
+    
     try {
         const snapshot = await db.collection('blogs').orderBy("createdAt", "desc").limit(1).get();
         if (snapshot.empty) throw new Error("❌ कोई ब्लॉग नहीं मिला!");
         const blogDoc = snapshot.docs[0];
         const blogData = blogDoc.data();
+        blogData.id = blogDoc.id; // ID सिंक करना
+
         const blogTitle = blogData.title || "New Update";
         const blogContent = blogData.description || blogData.content || blogTitle;
+        const blogCat = blogData.category || 'Default';
+
+        const safeSlug = (blogData.slug || 'studygyaan-update').replace(/[^a-z0-9]/gi, '-').substring(0, 50);
+        const videoPath = path.resolve(tempDir, `${safeSlug}-${Date.now()}.mp4`);
 
         console.log(`📝 ब्लॉग मिला: ${blogTitle}`);
 
+        const youtube = await getYouTubeClient();
         const scriptText = await generateScriptWithGemini(blogTitle, blogContent);
 
         console.log("🗣️ आवाज़ (TTS) जनरेट हो रही है...");
@@ -142,15 +264,12 @@ async function generateLongVideo() {
         if (!ttsKeyVar) throw new Error("❌ TTS_KEY_JSON नहीं मिला!");
         const ttsClient = new textToSpeech.TextToSpeechClient({ credentials: JSON.parse(ttsKeyVar) });
         
-        // 🔥 FIX: 5000 Byte Limit Issue (Script Chunking Logic)
         let chunks = [];
         let currentChunk = "";
-        // वाक्यों (Sentences) के आधार पर स्क्रिप्ट को तोड़ना ताकि शब्द बीच में न कटें
         let sentences = scriptText.split(/(?<=[.!?।\n])/); 
         
         for (let sentence of sentences) {
             if (!sentence.trim()) continue;
-            // 1200 अक्षरों से ज्यादा होने पर नया हिस्सा बनाना (सुरक्षित लिमिट)
             if (currentChunk.length + sentence.length > 1200) {
                 if(currentChunk) chunks.push(currentChunk);
                 currentChunk = sentence;
@@ -170,7 +289,6 @@ async function generateLongVideo() {
                 audioConfig: { audioEncoding: 'MP3', speakingRate: 1.0 },
             });
             const chunkBuffer = Buffer.from(response.audioContent, 'binary');
-            // हर हिस्से को मेन फाइल में जोड़ते जाना
             finalAudioBuffer = Buffer.concat([finalAudioBuffer, chunkBuffer]);
             console.log(`⏳ हिस्सा ${i + 1}/${chunks.length} जनरेट हुआ...`);
         }
@@ -188,7 +306,7 @@ async function generateLongVideo() {
             if (mp3Files.length > 0) finalMusic = path.resolve(path.join(bgMusicDir, mp3Files[0]));
         }
 
-        console.log('🎬 FFmpeg रेंडरिंग चालू है... (लॉन्ग वीडियो में थोड़ा समय लग सकता है)');
+        console.log('🎬 FFmpeg रेंडरिंग चालू है...');
         const hasMusic = finalMusic && fs.existsSync(finalMusic);
         
         let args = [];
@@ -212,10 +330,108 @@ async function generateLongVideo() {
         });
 
         console.log(`\n✅ फुल लेंथ वीडियो तैयार हो गया: ${videoPath}`);
-        return videoPath;
+
+        // =========================================================
+        // 🚀 YOUTUBE UPLOAD PROCESS
+        // =========================================================
+        const seoData = generateSEO(blogData, blogCat);
+        let cleanTitle = blogTitle.length > 40 ? blogTitle.substring(0, 40) + ".." : blogTitle;
+        
+        let viralHooks = ["😱 बड़ी खुशखबरी!", "🔥 New Update Out!", "🚨 ज़रूर देखें!"];
+        let vHook = viralHooks[Math.floor(Math.random() * viralHooks.length)];
+        let finalTitle = `${vHook} ${cleanTitle} | StudyGyaan #Education #GovtJobs`;
+
+        console.log('🚀 यूट्यूब पर वीडियो अपलोड किया जा रहा है...');
+        const res = await youtube.videos.insert({
+            part: 'snippet,status',
+            requestBody: {
+                snippet: { title: finalTitle, description: seoData.description, tags: seoData.tags },
+                status: { privacyStatus: 'public', selfDeclaredMadeForKids: false }
+            },
+            media: { body: fs.createReadStream(videoPath) }
+        });
+
+        console.log('✅ यूट्यूब वीडियो लाइव! URL: https://youtu.be/' + res.data.id);
+
+        // --- 🖼️ CUSTOM THUMBNAIL ---
+        try {
+            await youtube.thumbnails.set({
+                videoId: res.data.id,
+                media: { body: fs.createReadStream(posterPath) }
+            });
+            console.log('🖼️ ✅ कस्टम थंबनेल सेट कर दिया गया!');
+        } catch (thumbErr) {
+            console.log('⚠️ थंबनेल लगाने में दिक्कत आई:', thumbErr.message);
+        }
+
+        // --- 📂 PLAYLIST SORTING ---
+        try {
+            let playlistTitle = "Latest Educational Updates";
+            const playlistsRes = await youtube.playlists.list({ part: 'snippet', mine: true, maxResults: 50 });
+            let playlistId = null;
+            const existingPlaylist = (playlistsRes.data.items || []).find(p => p.snippet.title.toLowerCase() === playlistTitle.toLowerCase());
+            
+            if (existingPlaylist) {
+                playlistId = existingPlaylist.id;
+            } else {
+                const newPlaylist = await youtube.playlists.insert({
+                    part: 'snippet,status',
+                    requestBody: { snippet: { title: playlistTitle }, status: { privacyStatus: 'public' } }
+                });
+                playlistId = newPlaylist.data.id;
+                console.log(`📂 नई प्लेलिस्ट '${playlistTitle}' बनाई गई!`);
+            }
+            
+            await youtube.playlistItems.insert({
+                part: 'snippet',
+                requestBody: {
+                    snippet: { playlistId: playlistId, resourceId: { kind: 'youtube#video', videoId: res.data.id } }
+                }
+            });
+            console.log(`✅ वीडियो को प्लेलिस्ट में जोड़ दिया गया!`);
+        } catch (pErr) {
+            console.log('⚠️ प्लेलिस्ट ऑपरेशन स्किप्ड:', pErr.message);
+        }
+
+        // --- 📢 TELEGRAM NOTIFICATION ---
+        const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+        const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+        if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+            await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                chat_id: TELEGRAM_CHAT_ID,
+                text: `🚀 <b>New Full Video Live!</b>\n\n📌 <b>Topic:</b> ${blogTitle}\n🔗 <b>Watch Here:</b> https://youtu.be/${res.data.id}\n\n✅ Automatically uploaded on YouTube & Facebook.`,
+                parse_mode: 'HTML'
+            }).catch(() => console.log('⚠️ टेलीग्राम नोटिफिकेशन सेंड फेल।'));
+        }
+
+        // --- 📱 FACEBOOK & REELS UPLOAD ---
+        await uploadToFacebook(videoPath, seoData.description);
+
+        // --- 💬 AUTO PINNED COMMENT ---
+        console.log('⏳ 10 सेकंड का इंतज़ार... (कमेंट करने के लिए)');
+        await new Promise(resolve => setTimeout(resolve, 10000));
+
+        try {
+            await youtube.commentThreads.insert({
+                part: 'snippet',
+                requestBody: {
+                    snippet: {
+                        videoId: res.data.id,
+                        topLevelComment: { snippet: { textOriginal: `🔥 Direct Link + Free Materials 👇\n🔗 ${seoData.postLink}\n\n📚 Website:\n👉 https://studygyaan.in\n\n🚀 Join Telegram For Instant Notifications!` } }
+                    }
+                }
+            });
+            console.log('💬 पहला कमेंट सफलतापूर्वक लाइव हो गया!');
+        } catch (commentErr) {
+            console.log('⚠️ कमेंट सेक्शन स्किप्ड:', commentErr.message);
+        }
+
+        // लोकल फाइल्स डिलीट करना
+        if(fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+        return true;
 
     } catch (error) {
-        console.error('❌ Error in Long Video Engine:', error.message);
+        console.error('❌ Error in Long Video Master Engine:', error.message);
         throw error;
     } finally {
         if(fs.existsSync(audioPath)) fs.unlinkSync(audioPath); 
@@ -229,7 +445,7 @@ async function generateLongVideo() {
 if (require.main === module) {
     generateLongVideo()
         .then(() => {
-            console.log("✅ Process Finished Successfully");
+            console.log("✅ Full Process Finished Successfully");
             process.exit(0);
         })
         .catch(err => {
