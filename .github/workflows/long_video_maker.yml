@@ -1,0 +1,31 @@
+name: Auto Long Video Maker
+
+on:
+  schedule:
+    - cron: '0 1 * * *'   # सुबह 06:30 AM IST (01:00 UTC)
+    - cron: '0 13 * * *'  # शाम 06:30 PM IST (13:00 UTC)
+  workflow_dispatch: 
+
+jobs:
+  run-long-video:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: |
+          npm install --legacy-peer-deps
+          if [ -d "ai_backend" ]; then cd ai_backend && npm install --legacy-peer-deps || true; fi
+
+      - name: Generate Long Video
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TTS_KEY_JSON: ${{ secrets.TTS_KEY_JSON }}
+        run: node ai_backend/long_video.js
