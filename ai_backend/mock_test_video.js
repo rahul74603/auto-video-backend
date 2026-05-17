@@ -470,6 +470,7 @@ async function generateMockTestVideo() {
         let ytTitle = `${title} | Top ${totalQuestions} Questions | StudyGyaan`;
         if (ytTitle.length > 100) ytTitle = ytTitle.substring(0, 97) + '...'; 
 
+        let ytVideoId = ""; // 🔥 वीडियो ID को बाहर स्टोर करने के लिए
         console.log('🚀 यूट्यूब पर अपलोड हो रहा है...');
         try {
             const res = await youtube.videos.insert({
@@ -480,8 +481,9 @@ async function generateMockTestVideo() {
                 },
                 media: { body: fs.createReadStream(finalVideoPath) }
             });
-            console.log('✅ यूट्यूब वीडियो लाइव! URL: https://youtu.be/' + res.data.id);
-            try { await youtube.thumbnails.set({ videoId: res.data.id, media: { body: fs.createReadStream(filesToClean[1]) } }); } catch (e) {}
+            ytVideoId = res.data.id;
+            console.log('✅ यूट्यूब वीडियो लाइव! URL: https://youtu.be/' + ytVideoId);
+            try { await youtube.thumbnails.set({ videoId: ytVideoId, media: { body: fs.createReadStream(filesToClean[1]) } }); } catch (e) {}
         } catch(ytErr) {
             console.error('❌ यूट्यूब अपलोड फेल:', ytErr.message);
         }
@@ -491,9 +493,13 @@ async function generateMockTestVideo() {
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
         const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
         if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+            let teleText = `🚀 <b>New ${totalQuestions} Q&A Mock Test Live!</b>\n\n📌 <b>Subject:</b> ${subject}\n`;
+            if (ytVideoId) teleText += `🔗 <b>Watch Here:</b> https://youtu.be/${ytVideoId}\n\n`;
+            teleText += `✅ Try it now on StudyGyaan.in`;
+
             await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
                 chat_id: TELEGRAM_CHAT_ID,
-                text: `🚀 <b>New ${totalQuestions} Q&A Mock Test Live!</b>\n\n📌 <b>Subject:</b> ${subject}\n\n✅ Try it now on StudyGyaan.in`,
+                text: teleText,
                 parse_mode: 'HTML'
             }).catch(() => {});
         }
