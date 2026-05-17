@@ -179,7 +179,6 @@ async function renderClip(imagePath, audioPath, outputPath, isSilentTimer = fals
     }
 
     return new Promise((resolve, reject) => {
-        // 🔥 FIX: stdio: 'ignore' added to prevent buffer overflow
         const ffmpeg = spawn(ffmpegPath, args, { stdio: 'ignore' });
         ffmpeg.on('close', (code) => {
             if (code === 0) resolve();
@@ -302,7 +301,6 @@ async function generateMockTestVideo() {
         filesToClean.push(finalVideoPath);
 
         await new Promise((resolve, reject) => {
-            // 🔥 FIX: stdio: 'ignore' added to prevent buffer overflow during concat
             const ffmpeg = spawn(ffmpegPath, ['-y', '-f', 'concat', '-safe', '0', '-i', concatListPath, '-c', 'copy', finalVideoPath], { stdio: 'ignore' });
             ffmpeg.on('close', (code) => {
                 if (code === 0) resolve();
@@ -315,11 +313,17 @@ async function generateMockTestVideo() {
         const youtube = await getYouTubeClient();
         const seoDesc = `🔥 ${title} | ${subject} Mock Test\n\n📌 Take Free Mock Tests & Download PDF:\n👉 https://studygyaan.in\n\n#MockTest #StudyGyaan #ExamPreparation`;
         
+        // 🔥 FIX: Title 100 Characters Limit Safeguard
+        let ytTitle = `${title} | Top ${totalQuestions} Questions | StudyGyaan`;
+        if (ytTitle.length > 100) {
+            ytTitle = ytTitle.substring(0, 97) + '...'; // 100 अक्षरों से ज्यादा होने पर ट्रिम करें
+        }
+
         console.log('🚀 यूट्यूब पर अपलोड हो रहा है...');
         const res = await youtube.videos.insert({
             part: 'snippet,status',
             requestBody: {
-                snippet: { title: `${title} | Top ${totalQuestions} Questions | StudyGyaan`, description: seoDesc, tags: ['MockTest', 'StudyGyaan', subject, 'TopQuestions'] },
+                snippet: { title: ytTitle, description: seoDesc, tags: ['MockTest', 'StudyGyaan', subject, 'TopQuestions'] },
                 status: { privacyStatus: 'public', selfDeclaredMadeForKids: false }
             },
             media: { body: fs.createReadStream(finalVideoPath) }
