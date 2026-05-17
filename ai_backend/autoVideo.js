@@ -220,23 +220,22 @@ async function generateAndUploadVideo(jobData) {
             credentials: ttsCreds 
         });
 
-       let cleanName = jobData.title.length > 50 ? jobData.title.substring(0, 50) : jobData.title;
+      let cleanName = jobData.title.length > 50 ? jobData.title.substring(0, 50) : jobData.title;
         let script = "";
-        // 🔥 Smart Human-like Hooks
+        // 🔥 Smart Human-like Hooks with "Dot In" fix
         if (jobCat === 'Result') {
             let rHooks = ["क्या आपने भी इसका एग्जाम दिया था? तो दिल थाम के बैठिये!", "जिस रिजल्ट का आपको इंतज़ार था, वो आ गया है!", "खुशखबरी! रिजल्ट आ गया है!"];
-            script = `${rHooks[Math.floor(Math.random() * rHooks.length)]} ⚠️ ${cleanName} का रिजल्ट फाइनली डिक्लेयर हो चुका है। अपना रिजल्ट तुरंत चेक करने के लिए पहला कमेंट पढ़ें!`;
+            script = `${rHooks[Math.floor(Math.random() * rHooks.length)]} ⚠️ ${cleanName} का रिजल्ट फाइनली डिक्लेयर हो चुका है। अपना रिजल्ट तुरंत चेक करने के लिए पहला कमेंट पढ़ें और स्टडी ज्ञान डॉट इन पर विजिट करें!`;
         } else if (jobCat === 'Admit Card') {
             let aHooks = ["एग्जाम डेट पास आ गई है, क्या आप तैयार हैं?", "अलर्ट! एडमिट कार्ड आउट हो चुका है!", "बिना इसके एग्जाम सेंटर में एंट्री नहीं मिलेगी!"];
-            script = `${aHooks[Math.floor(Math.random() * aHooks.length)]} ⚠️ ${cleanName} का एडमिट कार्ड जारी कर दिया गया है। अपना सेंटर और टाइमिंग चेक करने के लिए पहले कमेंट में दिए लिंक पर जाएँ!`;
+            script = `${aHooks[Math.floor(Math.random() * aHooks.length)]} ⚠️ ${cleanName} का एडमिट कार्ड जारी कर दिया गया है। अपना सेंटर और टाइमिंग चेक करने के लिए पहले कमेंट में दिए लिंक पर जाएँ और स्टडी ज्ञान डॉट इन पर विजिट करें!`;
         } else if (jobCat === 'Syllabus' || jobCat === 'Answer Key') {
             let sHooks = ["एग्जाम में टॉप करना है? तो ये ज़रूर देखें!", "सिलेक्शन चाहिए तो ये गलती मत करना!"];
-            script = `${sHooks[Math.floor(Math.random() * sHooks.length)]} ⚠️ ${cleanName} की नई अपडेट आ गई है। फ्री पीडीएफ डाउनलोड करने के लिए कमेंट बॉक्स चेक करें!`;
+            script = `${sHooks[Math.floor(Math.random() * sHooks.length)]} ⚠️ ${cleanName} की नई अपडेट आ गई है। फ्री पीडीएफ डाउनलोड करने के लिए कमेंट बॉक्स चेक करें और स्टडी ज्ञान डॉट इन पर विजिट करें!`;
         } else {
             let jHooks = ["बेरोजगार हो? तो ये मौका हाथ से जाने मत देना!", "एक और शानदार सरकारी नौकरी आ गई है!", "तैयारी शुरू कर दो, क्योंकि बंपर भर्ती आ गई है!"];
-            script = `${jHooks[Math.floor(Math.random() * jHooks.length)]} ⚠️ ${cleanName} की नई वैकेंसी आउट हो गई है। फॉर्म भरने की पूरी डिटेल के लिए पहला कमेंट चेक करें!`;
+            script = `${jHooks[Math.floor(Math.random() * jHooks.length)]} ⚠️ ${cleanName} की नई वैकेंसी आउट हो गई है। फॉर्म भरने की पूरी डिटेल के लिए पहला कमेंट चेक करें और स्टडी ज्ञान डॉट इन पर विजिट करें!`;
         }
-
         const [response] = await ttsClient.synthesizeSpeech({
             input: { text: script },
             voice: { languageCode: 'hi-IN', name: selectedVoice },
