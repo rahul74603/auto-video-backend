@@ -5,7 +5,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { google } = require('googleapis');
 const admin = require("firebase-admin");
-const { createCanvas, registerFont } = require('canvas'); // 🔥 FIX: registerFont जोड़ा गया
+const { createCanvas, registerFont } = require('canvas');
 const textToSpeech = require('@google-cloud/text-to-speech');
 const ffmpegPath = require('ffmpeg-static');
 const FormData = require('form-data');
@@ -48,7 +48,6 @@ async function setupHindiFont() {
         });
         console.log('✅ हिंदी फॉन्ट डाउनलोड हो गया!');
     }
-    // Canvas को बता रहे हैं कि इस फॉन्ट को 'HindiFont' नाम से इस्तेमाल करे
     registerFont(fontPath, { family: 'HindiFont' });
 }
 
@@ -91,14 +90,13 @@ async function uploadToFacebook(videoPath, description) {
 }
 
 // =========================================================
-// 🖼️ 3. MOCK TEST SLIDE GENERATOR (HINDI + ENGLISH)
+// 🖼️ 3. MOCK TEST SLIDE GENERATOR
 // =========================================================
-function createMockSlide(questionObj, qNumber, totalQuestions, isAnswer, subject, outputPath) {
+function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, outputPath, timerNumber = null) {
     const width = 1920, height = 1080;
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // Background Gradient
     let grad = ctx.createLinearGradient(0, 0, 0, height);
     grad.addColorStop(0, '#0f2027');
     grad.addColorStop(0.5, '#203a43');
@@ -106,22 +104,21 @@ function createMockSlide(questionObj, qNumber, totalQuestions, isAnswer, subject
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, height);
 
-    // Header Top Bar
     ctx.fillStyle = '#ffcc00';
     ctx.fillRect(0, 0, width, 100);
     ctx.fillStyle = '#000000';
-    ctx.font = '50px "HindiFont", sans-serif'; // 🔥 FIX: HindiFont Applied
+    ctx.font = '50px "HindiFont", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(`${subject.toUpperCase()} MOCK TEST | StudyGyaan.in`, width / 2, 50);
 
-    // Question Number Box
     ctx.fillStyle = '#FF4500';
     ctx.fillRect(50, 150, 350, 80);
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = '45px "HindiFont", sans-serif'; // 🔥 FIX: HindiFont Applied
+    ctx.font = '45px "HindiFont", sans-serif';
     ctx.fillText(`Question ${qNumber} / ${totalQuestions}`, 225, 190);
 
+    // 🔥 FIX 1: Better Text Wrapping for Overlap Issue
     function wrapText(context, text, x, y, maxWidth, lineHeight) {
         let words = text.split(' '), line = '';
         for (let n = 0; n < words.length; n++) {
@@ -133,22 +130,20 @@ function createMockSlide(questionObj, qNumber, totalQuestions, isAnswer, subject
             } else { line = testLine; }
         }
         context.fillText(line, x, y);
-        return y + lineHeight;
+        return y + lineHeight + 15; // Extra padding
     }
 
-    // Draw English & Hindi Question
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.font = '55px "HindiFont", sans-serif'; // 🔥 FIX: HindiFont Applied
-    let textY = 280;
-    textY = wrapText(ctx, `Q. ${questionObj.qEn}`, 80, textY, 1750, 70);
-    textY += 20;
-    ctx.fillStyle = '#00FFFF'; 
-    textY = wrapText(ctx, `प्र. ${questionObj.qHi}`, 80, textY, 1750, 70);
+    ctx.font = '50px "HindiFont", sans-serif';
     
-    // Draw Options
-    textY += 60;
+    let textY = 270;
+    textY = wrapText(ctx, `Q. ${questionObj.qEn}`, 80, textY, 1750, 60);
+    ctx.fillStyle = '#00FFFF'; 
+    textY = wrapText(ctx, `प्र. ${questionObj.qHi}`, 80, textY, 1750, 60);
+    
+    textY += 30; // Gap before options
     const options = [
         { label: 'A', textEn: questionObj.optA_En, textHi: questionObj.optA_Hi },
         { label: 'B', textEn: questionObj.optB_En, textHi: questionObj.optB_Hi },
@@ -156,22 +151,47 @@ function createMockSlide(questionObj, qNumber, totalQuestions, isAnswer, subject
         { label: 'D', textEn: questionObj.optD_En, textHi: questionObj.optD_Hi }
     ];
 
-    ctx.font = '45px "HindiFont", sans-serif'; // 🔥 FIX: HindiFont Applied
+    ctx.font = '40px "HindiFont", sans-serif';
+    
+    // Auto-adjust layout if content is huge
+    let optGap = textY > 600 ? 75 : 90; 
+
     options.forEach(opt => {
-        if (isAnswer && opt.label === questionObj.correct) {
+        if (mode === 'answer' && opt.label === questionObj.correct) {
             ctx.fillStyle = '#28a745'; 
-            ctx.fillRect(70, textY - 15, 1780, 80);
+            ctx.fillRect(70, textY - 10, 1780, optGap - 5);
             ctx.fillStyle = '#ffffff';
         } else {
             ctx.fillStyle = '#ffffff';
         }
-        ctx.fillText(`${opt.label}) ${opt.textEn}  |  ${opt.textHi}`, 100, textY);
-        textY += 100;
+        
+        let optText = `${opt.label}) ${opt.textEn}`;
+        if (opt.textEn.toLowerCase() !== opt.textHi.toLowerCase()) {
+             optText += `  |  ${opt.textHi}`;
+        }
+        ctx.fillText(optText, 100, textY);
+        textY += optGap;
     });
 
-    if (isAnswer) {
+    if (mode === 'timer' && timerNumber !== null) {
+        ctx.beginPath();
+        ctx.arc(1600, 200, 90, 0, 2 * Math.PI, false);
+        ctx.fillStyle = '#ffcc00';
+        ctx.fill();
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        ctx.fillStyle = '#000000';
+        ctx.font = 'bold 90px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${timerNumber}`, 1600, 200);
+    }
+
+    if (mode === 'answer') {
         ctx.fillStyle = '#FFD700';
-        ctx.font = '50px "HindiFont", sans-serif'; // 🔥 FIX: HindiFont Applied
+        ctx.font = '50px "HindiFont", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(`✅ Correct Answer: Option ${questionObj.correct}`, width / 2, 980);
     }
@@ -194,11 +214,12 @@ async function generateAudio(text, outputPath, ttsClient) {
 // =========================================================
 // 🎬 5. FFMPEG CLIP RENDERER
 // =========================================================
-async function renderClip(imagePath, audioPath, outputPath, isSilentTimer = false) {
+async function renderClip(imagePath, audioPath, outputPath, isSilentTimer = false, duration = 1) {
     let args = [];
     if (isSilentTimer) {
-        args = ['-y', '-loop', '1', '-i', imagePath, '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100', '-c:v', 'libx264', '-preset', 'superfast', '-tune', 'stillimage', '-c:a', 'aac', '-b:a', '128k', '-pix_fmt', 'yuv420p', '-s', '1920x1080', '-r', '30', '-t', '5', outputPath];
+        args = ['-y', '-loop', '1', '-i', imagePath, '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100', '-c:v', 'libx264', '-preset', 'superfast', '-tune', 'stillimage', '-c:a', 'aac', '-b:a', '128k', '-pix_fmt', 'yuv420p', '-s', '1920x1080', '-r', '30', '-t', `${duration}`, outputPath];
     } else {
+        // 🔥 FIX 2: Added -shortest to ensure audio mapping matches video length
         args = ['-y', '-loop', '1', '-i', imagePath, '-i', audioPath, '-c:v', 'libx264', '-preset', 'superfast', '-tune', 'stillimage', '-c:a', 'aac', '-b:a', '128k', '-pix_fmt', 'yuv420p', '-s', '1920x1080', '-r', '30', '-shortest', outputPath];
     }
 
@@ -212,6 +233,16 @@ async function renderClip(imagePath, audioPath, outputPath, isSilentTimer = fals
 }
 
 // =========================================================
+// 🧠 HELPER: SMART TEXT COMPARATOR
+// =========================================================
+function isSimilar(str1, str2) {
+    if (!str1 || !str2) return true;
+    let s1 = str1.toLowerCase().replace(/[^a-z0-9]/gi, '').trim();
+    let s2 = str2.toLowerCase().replace(/[^a-z0-9]/gi, '').trim();
+    return s1 === s2;
+}
+
+// =========================================================
 // 🚀 6. MAIN MOCK TEST VIDEO ENGINE
 // =========================================================
 async function generateMockTestVideo() {
@@ -219,7 +250,6 @@ async function generateMockTestVideo() {
     const tempDir = os.tmpdir();
     
     try {
-        // 🔥 सबसे पहले हिंदी फॉन्ट रेडी करेंगे
         await setupHindiFont();
 
         const snapshot = await db.collection('mock_tests').orderBy("createdAt", "desc").limit(10).get();
@@ -279,46 +309,60 @@ async function generateMockTestVideo() {
                 parsedOpts.push({ en: oEn, hi: oHi });
                 
                 if (correctOptSafe !== "" && correctOptSafe === optStr.trim()) {
-                    correctLabel = String.fromCharCode(65 + j); // 0=A, 1=B, 2=C, 3=D
+                    correctLabel = String.fromCharCode(65 + j);
                 }
             }
 
             const q = {
-                qEn: qEn,
-                qHi: qHi,
-                optA_En: parsedOpts[0] ? parsedOpts[0].en : "",
-                optA_Hi: parsedOpts[0] ? parsedOpts[0].hi : "",
-                optB_En: parsedOpts[1] ? parsedOpts[1].en : "",
-                optB_Hi: parsedOpts[1] ? parsedOpts[1].hi : "",
-                optC_En: parsedOpts[2] ? parsedOpts[2].en : "",
-                optC_Hi: parsedOpts[2] ? parsedOpts[2].hi : "",
-                optD_En: parsedOpts[3] ? parsedOpts[3].en : "",
-                optD_Hi: parsedOpts[3] ? parsedOpts[3].hi : "",
+                qEn: qEn, qHi: qHi,
+                optA_En: parsedOpts[0] ? parsedOpts[0].en : "", optA_Hi: parsedOpts[0] ? parsedOpts[0].hi : "",
+                optB_En: parsedOpts[1] ? parsedOpts[1].en : "", optB_Hi: parsedOpts[1] ? parsedOpts[1].hi : "",
+                optC_En: parsedOpts[2] ? parsedOpts[2].en : "", optC_Hi: parsedOpts[2] ? parsedOpts[2].hi : "",
+                optD_En: parsedOpts[3] ? parsedOpts[3].en : "", optD_Hi: parsedOpts[3] ? parsedOpts[3].hi : "",
                 correct: correctLabel
             };
             
             const qImg = path.join(tempDir, `q_img_${i}.png`);
-            const aImg = path.join(tempDir, `a_img_${i}.png`);
             const qAud = path.join(tempDir, `q_aud_${i}.mp3`);
-            const aAud = path.join(tempDir, `a_aud_${i}.mp3`);
             const qVid = path.join(tempDir, `q_vid_${i}.mp4`);
-            const tVid = path.join(tempDir, `t_vid_${i}.mp4`);
+            
+            const aImg = path.join(tempDir, `a_img_${i}.png`);
+            const aAud = path.join(tempDir, `a_aud_${i}.mp3`);
             const aVid = path.join(tempDir, `a_vid_${i}.mp4`);
-            filesToClean.push(qImg, aImg, qAud, aAud, qVid, tVid, aVid);
+            filesToClean.push(qImg, qAud, qVid, aImg, aAud, aVid);
 
-            createMockSlide(q, i + 1, totalQuestions, false, subject, qImg);
-            createMockSlide(q, i + 1, totalQuestions, true, subject, aImg);
+            createMockSlide(q, i + 1, totalQuestions, 'question', subject, qImg);
+            createMockSlide(q, i + 1, totalQuestions, 'answer', subject, aImg);
 
-            const qText = `प्रश्न ${i + 1}. ${q.qHi}. ऑप्शंस हैं. ए, ${q.optA_Hi}. बी, ${q.optB_Hi}. सी, ${q.optC_Hi}. डी, ${q.optD_Hi}. आपका समय शुरू होता है अब।`;
+            // 🔥 FIX 4: SMART TTS READING LOGIC
+            let spokenQuestion = isSimilar(q.qEn, q.qHi) ? q.qHi : `${q.qEn}. ${q.qHi}`;
+            
+            let oA = isSimilar(q.optA_En, q.optA_Hi) ? q.optA_Hi : `${q.optA_En}, ya ${q.optA_Hi}`;
+            let oB = isSimilar(q.optB_En, q.optB_Hi) ? q.optB_Hi : `${q.optB_En}, ya ${q.optB_Hi}`;
+            let oC = isSimilar(q.optC_En, q.optC_Hi) ? q.optC_Hi : `${q.optC_En}, ya ${q.optC_Hi}`;
+            let oD = isSimilar(q.optD_En, q.optD_Hi) ? q.optD_Hi : `${q.optD_En}, ya ${q.optD_Hi}`;
+
+            const qText = `प्रश्न ${i + 1}. ${spokenQuestion}. ऑप्शंस हैं: ए, ${oA}. बी, ${oB}. सी, ${oC}. डी, ${oD}. आपका समय शुरू होता है अब।`;
             const aText = `सही जवाब है, ऑप्शन ${q.correct}.`;
+            
             await generateAudio(qText, qAud, ttsClient);
             await generateAudio(aText, aAud, ttsClient);
 
             await renderClip(qImg, qAud, qVid, false); 
-            await renderClip(qImg, null, tVid, true);  
-            await renderClip(aImg, aAud, aVid, false); 
+            concatContent += `file '${qVid}'\n`;
 
-            concatContent += `file '${qVid}'\nfile '${tVid}'\nfile '${aVid}'\n`;
+            for (let t = 5; t >= 1; t--) {
+                const tImg = path.join(tempDir, `t_img_${i}_${t}.png`);
+                const tVid = path.join(tempDir, `t_vid_${i}_${t}.mp4`);
+                filesToClean.push(tImg, tVid);
+
+                createMockSlide(q, i + 1, totalQuestions, 'timer', subject, tImg, t);
+                await renderClip(tImg, null, tVid, true, 1);
+                concatContent += `file '${tVid}'\n`;
+            }
+
+            await renderClip(aImg, aAud, aVid, false); 
+            concatContent += `file '${aVid}'\n`;
         }
 
         fs.writeFileSync(concatListPath, concatContent);
@@ -341,25 +385,24 @@ async function generateMockTestVideo() {
         const seoDesc = `🔥 ${title} | ${subject} Mock Test\n\n📌 Take Free Mock Tests & Download PDF:\n👉 https://studygyaan.in\n\n#MockTest #StudyGyaan #ExamPreparation`;
         
         let ytTitle = `${title} | Top ${totalQuestions} Questions | StudyGyaan`;
-        if (ytTitle.length > 100) {
-            ytTitle = ytTitle.substring(0, 97) + '...'; 
-        }
+        if (ytTitle.length > 100) ytTitle = ytTitle.substring(0, 97) + '...'; 
 
+        // 🔥 FIX 5: CHECK UPLOAD STATUS
         console.log('🚀 यूट्यूब पर अपलोड हो रहा है...');
-        const res = await youtube.videos.insert({
-            part: 'snippet,status',
-            requestBody: {
-                snippet: { title: ytTitle, description: seoDesc, tags: ['MockTest', 'StudyGyaan', subject, 'TopQuestions'] },
-                status: { privacyStatus: 'public', selfDeclaredMadeForKids: false }
-            },
-            media: { body: fs.createReadStream(finalVideoPath) }
-        });
-
-        console.log('✅ यूट्यूब वीडियो लाइव! URL: https://youtu.be/' + res.data.id);
-
         try {
-            await youtube.thumbnails.set({ videoId: res.data.id, media: { body: fs.createReadStream(filesToClean[1]) } }); 
-        } catch (e) { console.log('⚠️ थंबनेल स्किप'); }
+            const res = await youtube.videos.insert({
+                part: 'snippet,status',
+                requestBody: {
+                    snippet: { title: ytTitle, description: seoDesc, tags: ['MockTest', 'StudyGyaan', subject, 'TopQuestions'] },
+                    status: { privacyStatus: 'public', selfDeclaredMadeForKids: false }
+                },
+                media: { body: fs.createReadStream(finalVideoPath) }
+            });
+            console.log('✅ यूट्यूब वीडियो लाइव! URL: https://youtu.be/' + res.data.id);
+            try { await youtube.thumbnails.set({ videoId: res.data.id, media: { body: fs.createReadStream(filesToClean[1]) } }); } catch (e) {}
+        } catch(ytErr) {
+            console.error('❌ यूट्यूब अपलोड फेल:', ytErr.message);
+        }
 
         await uploadToFacebook(finalVideoPath, seoDesc);
 
@@ -368,7 +411,7 @@ async function generateMockTestVideo() {
         if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
             await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
                 chat_id: TELEGRAM_CHAT_ID,
-                text: `🚀 <b>New ${totalQuestions} Q&A Mock Test Live!</b>\n\n📌 <b>Subject:</b> ${subject}\n🔗 <b>Watch:</b> https://youtu.be/${res.data.id}\n\n✅ Try it now on StudyGyaan.in`,
+                text: `🚀 <b>New ${totalQuestions} Q&A Mock Test Live!</b>\n\n📌 <b>Subject:</b> ${subject}\n\n✅ Try it now on StudyGyaan.in`,
                 parse_mode: 'HTML'
             }).catch(() => {});
         }
@@ -385,9 +428,6 @@ async function generateMockTestVideo() {
     }
 }
 
-// ============================================================================
-// ✅ GitHub Actions Execution Block
-// ============================================================================
 if (require.main === module) {
     generateMockTestVideo()
         .then(() => {
