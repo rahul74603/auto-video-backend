@@ -90,7 +90,7 @@ async function uploadToFacebook(videoPath, description) {
 }
 
 // =========================================================
-// 🧠 3. SMART COMPARATOR (To avoid repetitive reading)
+// 🧠 3. SMART COMPARATOR
 // =========================================================
 function isSimilar(str1, str2) {
     if (!str1 || !str2) return true;
@@ -100,7 +100,7 @@ function isSimilar(str1, str2) {
 }
 
 // =========================================================
-// 🖼️ 4. MOCK TEST SLIDE GENERATOR
+// 🖼️ 4. MOCK TEST SLIDE GENERATOR (DYNAMIC AUTO-SCALE)
 // =========================================================
 function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, outputPath, timerNumber = null) {
     const width = 1920, height = 1080;
@@ -142,23 +142,35 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
         return y + lineHeight; 
     }
 
+    // 🔥 DYNAMIC FONT SCALING (Based on Content Length)
+    let totalChars = (questionObj.qEn + questionObj.qHi + questionObj.optA_En + questionObj.optA_Hi + questionObj.optB_En + questionObj.optB_Hi + questionObj.optC_En + questionObj.optC_Hi + questionObj.optD_En + questionObj.optD_Hi).length;
+    
+    let qFont = 55;
+    let optFont = 45;
+    let blockGap = 50; // Gap between Q and Options
+    let lineGap = 15; // Extra padding for text wrapping
+
+    if (totalChars > 350) { qFont = 48; optFont = 40; blockGap = 40; lineGap = 10; }
+    if (totalChars > 500) { qFont = 42; optFont = 35; blockGap = 30; lineGap = 8; }
+    if (totalChars > 700) { qFont = 38; optFont = 30; blockGap = 20; lineGap = 5; }
+
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     let textY = 270;
 
-    // 🔥 FIX 1: Smart Render - Do not show separate English if it's the same
+    // Draw Question
     ctx.fillStyle = '#ffffff';
-    ctx.font = '50px "HindiFont", sans-serif';
+    ctx.font = `${qFont}px "HindiFont", sans-serif`;
     
     if (isSimilar(questionObj.qEn, questionObj.qHi)) {
-        textY = wrapText(ctx, `प्र. ${questionObj.qHi}`, 80, textY, 1750, 65) + 40; // Single text display
+        textY = wrapText(ctx, `प्र. ${questionObj.qHi}`, 80, textY, 1750, qFont + lineGap) + blockGap;
     } else {
-        textY = wrapText(ctx, `Q. ${questionObj.qEn}`, 80, textY, 1750, 65) + 15;
+        textY = wrapText(ctx, `Q. ${questionObj.qEn}`, 80, textY, 1750, qFont + lineGap) + (lineGap * 2);
         ctx.fillStyle = '#00FFFF'; 
-        textY = wrapText(ctx, `प्र. ${questionObj.qHi}`, 80, textY, 1750, 65) + 40; // Bilingual display
+        textY = wrapText(ctx, `प्र. ${questionObj.qHi}`, 80, textY, 1750, qFont + lineGap) + blockGap;
     }
     
-    // 🔥 FIX 2: Options Gap Fix
+    // Draw Options
     const options = [
         { label: 'A', textEn: questionObj.optA_En, textHi: questionObj.optA_Hi },
         { label: 'B', textEn: questionObj.optB_En, textHi: questionObj.optB_Hi },
@@ -166,15 +178,14 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
         { label: 'D', textEn: questionObj.optD_En, textHi: questionObj.optD_Hi }
     ];
 
-    ctx.font = '42px "HindiFont", sans-serif';
+    ctx.font = `${optFont}px "HindiFont", sans-serif`;
     
     options.forEach(opt => {
-        // Calculate text lines to adjust background box properly
-        let optText = isSimilar(opt.textEn, opt.textHi) ? `${opt.label}) ${opt.textHi}` : `${opt.label}) ${opt.textEn}  |  ${opt.textHi}`;
+        // Space added around | for Hindi and English separation
+        let optText = isSimilar(opt.textEn, opt.textHi) ? `${opt.label}) ${opt.textHi}` : `${opt.label}) ${opt.textEn}     |     ${opt.textHi}`;
         
-        let estimatedLines = 1;
-        if (ctx.measureText(optText).width > 1700) estimatedLines = 2;
-        let boxHeight = estimatedLines * 60 + 20;
+        let estimatedHeight = (ctx.measureText(optText).width > 1650) ? (optFont * 2) + lineGap : optFont;
+        let boxHeight = estimatedHeight + 30;
 
         if (mode === 'answer' && opt.label === questionObj.correct) {
             ctx.fillStyle = '#28a745'; 
@@ -184,7 +195,7 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
             ctx.fillStyle = '#ffffff';
         }
         
-        textY = wrapText(ctx, optText, 100, textY, 1700, 60) + 30; // Increased spacing between options
+        textY = wrapText(ctx, optText, 100, textY, 1680, optFont + lineGap) + 30; // 30 is the gap between each option
     });
 
     if (mode === 'timer' && timerNumber !== null) {
@@ -214,6 +225,40 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
 }
 
 // =========================================================
+// 🖼️ 4.5 OUTRO SLIDE GENERATOR
+// =========================================================
+function createOutroSlide(outputPath) {
+    const width = 1920, height = 1080;
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+
+    let grad = ctx.createLinearGradient(0, 0, 0, height);
+    grad.addColorStop(0, '#0f2027');
+    grad.addColorStop(1, '#2c5364');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = 'bold 80px "HindiFont", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`Thanks For Watching!`, width / 2, 350);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 60px "HindiFont", sans-serif';
+    ctx.fillText(`👍 Like, Share & Subscribe`, width / 2, 550);
+
+    ctx.fillStyle = '#00FFFF';
+    ctx.font = 'bold 70px "HindiFont", sans-serif';
+    ctx.fillText(`For More Jobs, Mock Tests & Blogs`, width / 2, 750);
+    
+    ctx.fillStyle = '#FF4500';
+    ctx.fillText(`Visit: StudyGyaan.in`, width / 2, 850);
+
+    fs.writeFileSync(outputPath, canvas.toBuffer('image/png'));
+}
+
+// =========================================================
 // 🗣️ 5. TEXT TO SPEECH (TTS) ENGINE
 // =========================================================
 async function generateAudio(text, outputPath, ttsClient) {
@@ -226,7 +271,7 @@ async function generateAudio(text, outputPath, ttsClient) {
 }
 
 // =========================================================
-// 🎬 6. FFMPEG CLIP RENDERER (AUDIO SYNC & CORRUPTION FIX)
+// 🎬 6. FFMPEG CLIP RENDERER
 // =========================================================
 async function renderClip(imagePath, audioPath, outputPath, isSilentTimer = false, duration = 1) {
     let args = [];
@@ -337,7 +382,6 @@ async function generateMockTestVideo() {
             createMockSlide(q, i + 1, totalQuestions, 'question', subject, qImg);
             createMockSlide(q, i + 1, totalQuestions, 'answer', subject, aImg);
 
-            // 🔥 FIX 3: Smart TTS Logic - Read only once if identical
             let spokenQuestion = isSimilar(q.qEn, q.qHi) ? q.qHi : `${q.qEn}. ${q.qHi}`;
             let oA = isSimilar(q.optA_En, q.optA_Hi) ? q.optA_Hi : `${q.optA_En}, या ${q.optA_Hi}`;
             let oB = isSimilar(q.optB_En, q.optB_Hi) ? q.optB_Hi : `${q.optB_En}, या ${q.optB_Hi}`;
@@ -367,9 +411,23 @@ async function generateMockTestVideo() {
             concatContent += `file '${aVid}'\n`;
         }
 
+        // 🔥 OUTRO (Like, Subscribe, StudyGyaan.in CTA)
+        console.log(`🎬 आउट्रो जनरेट हो रहा है...`);
+        const outroImg = path.join(tempDir, `outro_img.png`);
+        const outroAud = path.join(tempDir, `outro_aud.mp3`);
+        const outroVid = path.join(tempDir, `outro_vid.mp4`);
+        filesToClean.push(outroImg, outroAud, outroVid);
+
+        createOutroSlide(outroImg);
+        const outroText = "वीडियो देखने के लिए धन्यवाद। कृपया चैनल को लाइक और सब्सक्राइब करें। और अधिक जॉब्स, मॉक टेस्ट और ब्लॉग्स के लिए हमारी वेबसाइट, स्टडी ज्ञान डॉट इन, पर ज़रूर विजिट करें।";
+        await generateAudio(outroText, outroAud, ttsClient);
+        await renderClip(outroImg, outroAud, outroVid, false);
+        
+        concatContent += `file '${outroVid}'\n`;
+
         fs.writeFileSync(concatListPath, concatContent);
         
-        console.log(`🎬 सभी ${totalQuestions} प्रश्नों को जोड़कर फाइनल वीडियो बनाया जा रहा है (इसमें समय लगेगा)...`);
+        console.log(`🎬 सभी ${totalQuestions} प्रश्नों और आउट्रो को जोड़कर फाइनल वीडियो बनाया जा रहा है (इसमें समय लगेगा)...`);
         const finalVideoPath = path.join(tempDir, `final_mock_${Date.now()}.mp4`);
         filesToClean.push(finalVideoPath);
 
