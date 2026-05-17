@@ -179,7 +179,8 @@ async function renderClip(imagePath, audioPath, outputPath, isSilentTimer = fals
     }
 
     return new Promise((resolve, reject) => {
-        const ffmpeg = spawn(ffmpegPath, args);
+        // 🔥 FIX: stdio: 'ignore' added to prevent buffer overflow
+        const ffmpeg = spawn(ffmpegPath, args, { stdio: 'ignore' });
         ffmpeg.on('close', (code) => {
             if (code === 0) resolve();
             else reject(new Error(`FFmpeg Clip Render Error: Code ${code}`));
@@ -229,12 +230,10 @@ async function generateMockTestVideo() {
         let concatContent = "";
         let filesToClean = [concatListPath];
 
-        // 3. Process Dynamic Questions One by One (FIREBASE IMAGE LOGIC APPLIED WITH SAFE STRING FIX)
         for (let i = 0; i < totalQuestions; i++) {
             console.log(`⏳ जनरेट हो रहा है: प्रश्न ${i + 1}/${totalQuestions} ...`);
             const rawQ = mockData.questions[i];
             
-            // 🔥 FIREBASE SAFE DATA PARSING 🔥
             let qTextSafe = rawQ.qText != null ? String(rawQ.qText) : "";
             let qParts = qTextSafe.split(' / ');
             let qEn = qParts[0] ? qParts[0].trim() : "";
@@ -272,7 +271,6 @@ async function generateMockTestVideo() {
                 correct: correctLabel
             };
             
-            // Paths
             const qImg = path.join(tempDir, `q_img_${i}.png`);
             const aImg = path.join(tempDir, `a_img_${i}.png`);
             const qAud = path.join(tempDir, `q_aud_${i}.mp3`);
@@ -282,34 +280,30 @@ async function generateMockTestVideo() {
             const aVid = path.join(tempDir, `a_vid_${i}.mp4`);
             filesToClean.push(qImg, aImg, qAud, aAud, qVid, tVid, aVid);
 
-            // Images
             createMockSlide(q, i + 1, totalQuestions, false, subject, qImg);
             createMockSlide(q, i + 1, totalQuestions, true, subject, aImg);
 
-            // Audios (सिर्फ हिंदी वाला हिस्सा बोलेगा)
             const qText = `प्रश्न ${i + 1}. ${q.qHi}. ऑप्शंस हैं. ए, ${q.optA_Hi}. बी, ${q.optB_Hi}. सी, ${q.optC_Hi}. डी, ${q.optD_Hi}. आपका समय शुरू होता है अब।`;
             const aText = `सही जवाब है, ऑप्शन ${q.correct}.`;
             await generateAudio(qText, qAud, ttsClient);
             await generateAudio(aText, aAud, ttsClient);
 
-            // Video Clips
             await renderClip(qImg, qAud, qVid, false); 
             await renderClip(qImg, null, tVid, true);  
             await renderClip(aImg, aAud, aVid, false); 
 
-            // Add to Concat file
             concatContent += `file '${qVid}'\nfile '${tVid}'\nfile '${aVid}'\n`;
         }
 
         fs.writeFileSync(concatListPath, concatContent);
         
-        // 4. Merge all clips into Final Video
-        console.log(`🎬 सभी ${totalQuestions} प्रश्नों को जोड़कर फाइनल वीडियो बनाया जा रहा है (इसमें समय लगेगा)...`);
+        console.log(`🎬 सभी ${totalQuestions} प्रश्नों को जोड़कर फाइनल वीडियो बनाया जा रहा है (इसमें समय लगेगा)...`);
         const finalVideoPath = path.join(tempDir, `final_mock_${Date.now()}.mp4`);
         filesToClean.push(finalVideoPath);
 
         await new Promise((resolve, reject) => {
-            const ffmpeg = spawn(ffmpegPath, ['-y', '-f', 'concat', '-safe', '0', '-i', concatListPath, '-c', 'copy', finalVideoPath]);
+            // 🔥 FIX: stdio: 'ignore' added to prevent buffer overflow during concat
+            const ffmpeg = spawn(ffmpegPath, ['-y', '-f', 'concat', '-safe', '0', '-i', concatListPath, '-c', 'copy', finalVideoPath], { stdio: 'ignore' });
             ffmpeg.on('close', (code) => {
                 if (code === 0) resolve();
                 else reject(new Error(`FFmpeg Concat Error ${code}`));
@@ -318,7 +312,6 @@ async function generateMockTestVideo() {
 
         console.log(`✅ फुल ${totalQuestions} प्रश्नों का वीडियो तैयार: ${finalVideoPath}`);
 
-        // 5. SEO & Upload
         const youtube = await getYouTubeClient();
         const seoDesc = `🔥 ${title} | ${subject} Mock Test\n\n📌 Take Free Mock Tests & Download PDF:\n👉 https://studygyaan.in\n\n#MockTest #StudyGyaan #ExamPreparation`;
         
