@@ -90,20 +90,23 @@ async function uploadToFacebook(videoPath, description) {
 }
 
 // =========================================================
-// 🧠 3. ADVANCED SMART COMPARATOR (Fix for Numbers & Exact Matches)
+// 🧠 3. TEXT CLEANER & COMPARATOR
 // =========================================================
+function cleanText(str) {
+    if (!str) return "";
+    // 🔥 FIX: Removes ** (tarankan) and multiple spaces
+    return String(str).replace(/\*/g, '').replace(/\s+/g, ' ').trim();
+}
+
 function isSimilar(str1, str2) {
     if (!str1 || !str2) return true;
-    
-    // Remove all spaces, special characters, pipes (|) and convert to lowercase for strict comparison
-    let s1 = str1.toLowerCase().replace(/[^a-z0-9\u0900-\u097F]/gi, '');
-    let s2 = str2.toLowerCase().replace(/[^a-z0-9\u0900-\u097F]/gi, '');
-    
+    let s1 = str1.toLowerCase().replace(/[^a-z0-9]/gi, '').trim();
+    let s2 = str2.toLowerCase().replace(/[^a-z0-9]/gi, '').trim();
     return s1 === s2;
 }
 
 // =========================================================
-// 🖼️ 4. MOCK TEST SLIDE GENERATOR (PERFECT BLOCK RENDERING)
+// 🖼️ 4. MOCK TEST SLIDE GENERATOR (BULLETPROOF BLOCK RENDERING)
 // =========================================================
 function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, outputPath, timerNumber = null) {
     const width = 1920, height = 1080;
@@ -134,19 +137,16 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
     ctx.font = 'bold 45px "HindiFont", sans-serif';
     ctx.fillText(`Question ${qNumber} / ${totalQuestions}`, 225, 190);
 
-    // 🔥 DYNAMIC FONT SCALING
+    // Auto-Scale Font Sizes
     let totalChars = (questionObj.qEn + questionObj.qHi + questionObj.optA_En + questionObj.optA_Hi + questionObj.optB_En + questionObj.optB_Hi + questionObj.optC_En + questionObj.optC_Hi + questionObj.optD_En + questionObj.optD_Hi).length;
-    
     let qFont = 55; let optFont = 45; let blockGap = 60; let lineGap = 15; 
-
-    if (totalChars > 350) { qFont = 48; optFont = 40; blockGap = 50; lineGap = 12; }
-    if (totalChars > 500) { qFont = 42; optFont = 35; blockGap = 40; lineGap = 10; }
-    if (totalChars > 700) { qFont = 36; optFont = 30; blockGap = 30; lineGap = 8; }
+    if (totalChars > 350) { qFont = 45; optFont = 38; blockGap = 40; lineGap = 10; }
+    if (totalChars > 600) { qFont = 38; optFont = 32; blockGap = 30; lineGap = 8; }
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
 
-    // 🔥 NEW BULLETPROOF WRAPTEXT LOGIC
+    // 🔥 FIX: The Ultimate Draw Block logic that physically prevents overlap
     function drawTextBlock(context, text, x, startY, maxWidth, lineHeight, color) {
         context.fillStyle = color;
         let words = text.split(' ');
@@ -165,24 +165,21 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
             }
         }
         context.fillText(line, x, currentY);
-        return currentY + lineHeight; // Returns exact Y for next block
+        return currentY + lineHeight; // Returns exact Y coordinate for the next text block
     }
 
     let currentY = 270;
 
-    // Draw Question Block
+    // 1. Draw Question
     ctx.font = `bold ${qFont}px "HindiFont", sans-serif`;
-    
-    if (isSimilar(questionObj.qEn, questionObj.qHi)) {
-        // If exactly same, just print Hindi (or English if Hindi is missing)
+    if (questionObj.qEn === questionObj.qHi || !questionObj.qEn) {
         currentY = drawTextBlock(ctx, `प्र. ${questionObj.qHi || questionObj.qEn}`, 80, currentY, 1750, qFont + lineGap, '#ffffff') + blockGap;
     } else {
-        // Print English, then Hindi
         currentY = drawTextBlock(ctx, `Q. ${questionObj.qEn}`, 80, currentY, 1750, qFont + lineGap, '#ffffff') + 10;
         currentY = drawTextBlock(ctx, `प्र. ${questionObj.qHi}`, 80, currentY, 1750, qFont + lineGap, '#00FFFF') + blockGap;
     }
     
-    // Draw Options Block
+    // 2. Draw Options
     const options = [
         { label: 'A', textEn: questionObj.optA_En, textHi: questionObj.optA_Hi },
         { label: 'B', textEn: questionObj.optB_En, textHi: questionObj.optB_Hi },
@@ -193,23 +190,24 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
     ctx.font = `bold ${optFont}px "HindiFont", sans-serif`;
     
     options.forEach(opt => {
-        let optText = isSimilar(opt.textEn, opt.textHi) ? `${opt.label}) ${opt.textHi || opt.textEn}` : `${opt.label}) ${opt.textEn}     |     ${opt.textHi}`;
+        let optText = (opt.textEn === opt.textHi || !opt.textEn) 
+            ? `${opt.label}) ${opt.textHi || opt.textEn}` 
+            : `${opt.label}) ${opt.textEn}     |     ${opt.textHi}`;
         
         let startBoxY = currentY - 10;
         
-        // Measure how many lines this option will take to draw background box
+        // Measure exact height needed for background box
         let words = optText.split(' ');
-        let line = '';
+        let tempLine = '';
         let linesCount = 1;
         for (let n = 0; n < words.length; n++) {
-            let testLine = line + words[n] + ' ';
+            let testLine = tempLine + words[n] + ' ';
             if (ctx.measureText(testLine).width > 1680 && n > 0) {
                 linesCount++;
-                line = words[n] + ' ';
-            } else { line = testLine; }
+                tempLine = words[n] + ' ';
+            } else { tempLine = testLine; }
         }
-        
-        let boxHeight = (linesCount * (optFont + lineGap)) + 10;
+        let boxHeight = (linesCount * (optFont + lineGap)) + 15;
 
         // Draw Answer Box
         if (mode === 'answer' && opt.label === questionObj.correct) {
@@ -217,11 +215,11 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
             ctx.fillRect(70, startBoxY, 1780, boxHeight);
         }
 
-        // Draw Option Text & Update Y
-        currentY = drawTextBlock(ctx, optText, 100, currentY, 1680, optFont + lineGap, '#ffffff') + 30; // 30 is option gap
+        // Draw Text and dynamically move to next exact position
+        currentY = drawTextBlock(ctx, optText, 100, currentY, 1680, optFont + lineGap, '#ffffff') + 30; // 30px gap between options
     });
 
-    // Visual Timer
+    // 3. Visual Timer
     if (mode === 'timer' && timerNumber !== null) {
         ctx.beginPath();
         ctx.arc(1600, 200, 90, 0, 2 * Math.PI, false);
@@ -362,25 +360,26 @@ async function generateMockTestVideo() {
             console.log(`⏳ जनरेट हो रहा है: प्रश्न ${i + 1}/${totalQuestions} ...`);
             const rawQ = mockData.questions[i];
             
-            let qTextSafe = rawQ.qText != null ? String(rawQ.qText) : "";
+            // 🔥 FIX: Replace Database 'Enter' (\n) with ' / ' before splitting to fix overlap root cause
+            let qTextSafe = rawQ.qText != null ? String(rawQ.qText).replace(/\n/g, ' / ') : "";
             let qParts = qTextSafe.split(/\s*\/\s*/);
-            let qEn = qParts[0] ? qParts[0].trim() : "";
-            let qHi = qParts.length > 1 ? qParts[1].trim() : qEn; 
+            let qEn = cleanText(qParts[0]);
+            let qHi = qParts.length > 1 ? cleanText(qParts[1]) : qEn; 
 
             let opts = rawQ.options || [];
             let parsedOpts = [];
             let correctLabel = "A";
             
-            let correctOptSafe = rawQ.correctOption != null ? String(rawQ.correctOption).trim() : "";
+            let correctOptSafe = rawQ.correctOption != null ? String(rawQ.correctOption).replace(/\*\*/g, '').replace(/\n/g, ' / ').trim() : "";
 
             for (let j = 0; j < 4; j++) {
-                let optStr = opts[j] != null ? String(opts[j]) : "";
+                let optStr = opts[j] != null ? String(opts[j]).replace(/\n/g, ' / ') : "";
                 let oParts = optStr.split(/\s*\/\s*/);
-                let oEn = oParts[0] ? oParts[0].trim() : "";
-                let oHi = oParts.length > 1 ? oParts[1].trim() : oEn;
+                let oEn = cleanText(oParts[0]);
+                let oHi = oParts.length > 1 ? cleanText(oParts[1]) : oEn;
                 parsedOpts.push({ en: oEn, hi: oHi });
                 
-                if (correctOptSafe !== "" && correctOptSafe === optStr.trim()) {
+                if (correctOptSafe !== "" && cleanText(optStr) === correctOptSafe) {
                     correctLabel = String.fromCharCode(65 + j); 
                 }
             }
@@ -391,7 +390,7 @@ async function generateMockTestVideo() {
                 optB_En: parsedOpts[1] ? parsedOpts[1].en : "", optB_Hi: parsedOpts[1] ? parsedOpts[1].hi : "",
                 optC_En: parsedOpts[2] ? parsedOpts[2].en : "", optC_Hi: parsedOpts[2] ? parsedOpts[2].hi : "",
                 optD_En: parsedOpts[3] ? parsedOpts[3].en : "", optD_Hi: parsedOpts[3] ? parsedOpts[3].hi : "",
-                correct: correctLabel
+                correct: correctLabel || "A"
             };
             
             const qImg = path.join(tempDir, `q_img_${i}.png`);
@@ -406,12 +405,12 @@ async function generateMockTestVideo() {
             createMockSlide(q, i + 1, totalQuestions, 'question', subject, qImg);
             createMockSlide(q, i + 1, totalQuestions, 'answer', subject, aImg);
 
-            // 🔥 SUPER SMART TTS LOGIC
-            let spokenQuestion = isSimilar(q.qEn, q.qHi) ? (q.qHi || q.qEn) : `${q.qEn}. ${q.qHi}`;
-            let oA = isSimilar(q.optA_En, q.optA_Hi) ? (q.optA_Hi || q.optA_En) : `${q.optA_En}, या ${q.optA_Hi}`;
-            let oB = isSimilar(q.optB_En, q.optB_Hi) ? (q.optB_Hi || q.optB_En) : `${q.optB_En}, या ${q.optB_Hi}`;
-            let oC = isSimilar(q.optC_En, q.optC_Hi) ? (q.optC_Hi || q.optC_En) : `${q.optC_En}, या ${q.optC_Hi}`;
-            let oD = isSimilar(q.optD_En, q.optD_Hi) ? (q.optD_Hi || q.optD_En) : `${q.optD_En}, या ${q.optD_Hi}`;
+            // Audio Generation
+            let spokenQuestion = (q.qEn === q.qHi || !q.qEn) ? q.qHi : `${q.qEn}. ${q.qHi}`;
+            let oA = (q.optA_En === q.optA_Hi || !q.optA_En) ? q.optA_Hi : `${q.optA_En}, या ${q.optA_Hi}`;
+            let oB = (q.optB_En === q.optB_Hi || !q.optB_En) ? q.optB_Hi : `${q.optB_En}, या ${q.optB_Hi}`;
+            let oC = (q.optC_En === q.optC_Hi || !q.optC_En) ? q.optC_Hi : `${q.optC_En}, या ${q.optC_Hi}`;
+            let oD = (q.optD_En === q.optD_Hi || !q.optD_En) ? q.optD_Hi : `${q.optD_En}, या ${q.optD_Hi}`;
 
             const qText = `प्रश्न ${i + 1}. ${spokenQuestion}. ऑप्शंस हैं: ए, ${oA}. बी, ${oB}. सी, ${oC}. डी, ${oD}. आपका समय शुरू होता है अब।`;
             const aText = `सही जवाब है, ऑप्शन ${q.correct}.`;
