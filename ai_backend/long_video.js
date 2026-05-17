@@ -241,11 +241,25 @@ async function generateLongVideo() {
     const posterPath = path.resolve(tempDir, `long-poster-${Date.now()}.png`);
     
     try {
-        const snapshot = await db.collection('blogs').orderBy("createdAt", "desc").limit(1).get();
+        // 🔥 FIX: 10 नए ब्लॉग चेक करने का लॉजिक (Status Flag)
+        const snapshot = await db.collection('blogs').orderBy("createdAt", "desc").limit(10).get();
         if (snapshot.empty) throw new Error("❌ कोई ब्लॉग नहीं मिला!");
-        const blogDoc = snapshot.docs[0];
-        const blogData = blogDoc.data();
-        blogData.id = blogDoc.id; // ID सिंक करना
+        
+        let targetBlogDoc = null;
+        for (let doc of snapshot.docs) {
+            if (doc.data().longVideoMade !== true) {
+                targetBlogDoc = doc;
+                break;
+            }
+        }
+
+        if (!targetBlogDoc) {
+            console.log("✅ सभी 10 लेटेस्ट ब्लॉग्स के वीडियो बन चुके हैं। कोई नया वीडियो नहीं बनाना है।");
+            return true;
+        }
+
+        const blogData = targetBlogDoc.data();
+        blogData.id = targetBlogDoc.id; // ID सिंक करना
 
         const blogTitle = blogData.title || "New Update";
         const blogContent = blogData.description || blogData.content || blogTitle;
@@ -254,7 +268,7 @@ async function generateLongVideo() {
         const safeSlug = (blogData.slug || 'studygyaan-update').replace(/[^a-z0-9]/gi, '-').substring(0, 50);
         const videoPath = path.resolve(tempDir, `${safeSlug}-${Date.now()}.mp4`);
 
-        console.log(`📝 ब्लॉग मिला: ${blogTitle}`);
+        console.log(`📝 नया ब्लॉग मिला: ${blogTitle}`);
 
         const youtube = await getYouTubeClient();
         const scriptText = await generateScriptWithGemini(blogTitle, blogContent);
@@ -279,7 +293,7 @@ async function generateLongVideo() {
         }
         if (currentChunk.trim().length > 0) chunks.push(currentChunk);
 
-        console.log(`🗣️ स्क्रिप्ट बड़ी है, इसे ${chunks.length} हिस्सों में बाँट कर आवाज़ बनाई जा रही है...`);
+        console.log(`🗣️ स्क्रिप्ट बड़ी है, इसे ${chunks.length} हिस्सों में बाँट कर आवाज़ बनाई जा रही है...`);
 
         let finalAudioBuffer = Buffer.alloc(0);
         for (let i = 0; i < chunks.length; i++) {
@@ -425,6 +439,10 @@ async function generateLongVideo() {
         } catch (commentErr) {
             console.log('⚠️ कमेंट सेक्शन स्किप्ड:', commentErr.message);
         }
+
+        // 🔥 FIREBASE STATUS UPDATE
+        await db.collection('blogs').doc(blogData.id).update({ longVideoMade: true });
+        console.log(`✅ डेटाबेस में ब्लॉग '${blogTitle}' का longVideoMade स्टेटस अपडेट कर दिया गया!`);
 
         // लोकल फाइल्स डिलीट करना
         if(fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
