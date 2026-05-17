@@ -229,29 +229,31 @@ async function generateMockTestVideo() {
         let concatContent = "";
         let filesToClean = [concatListPath];
 
-        // 3. Process Dynamic Questions One by One (FIREBASE IMAGE LOGIC APPLIED)
+        // 3. Process Dynamic Questions One by One (FIREBASE IMAGE LOGIC APPLIED WITH SAFE STRING FIX)
         for (let i = 0; i < totalQuestions; i++) {
             console.log(`⏳ जनरेट हो रहा है: प्रश्न ${i + 1}/${totalQuestions} ...`);
             const rawQ = mockData.questions[i];
             
-            // 🔥 FIREBASE IMAGE DATA PARSING 🔥
-            let qParts = rawQ.qText ? rawQ.qText.split(' / ') : ["", ""];
+            // 🔥 FIREBASE SAFE DATA PARSING 🔥
+            let qTextSafe = rawQ.qText != null ? String(rawQ.qText) : "";
+            let qParts = qTextSafe.split(' / ');
             let qEn = qParts[0] ? qParts[0].trim() : "";
-            let qHi = qParts[1] ? qParts[1].trim() : qEn; // अगर हिंदी नहीं है तो इंग्लिश ही ले लेगा
+            let qHi = qParts[1] ? qParts[1].trim() : qEn; 
 
             let opts = rawQ.options || [];
             let parsedOpts = [];
             let correctLabel = "A";
+            
+            let correctOptSafe = rawQ.correctOption != null ? String(rawQ.correctOption).trim() : "";
 
             for (let j = 0; j < 4; j++) {
-                let optStr = opts[j] || "";
+                let optStr = opts[j] != null ? String(opts[j]) : "";
                 let oParts = optStr.split(' / ');
                 let oEn = oParts[0] ? oParts[0].trim() : "";
                 let oHi = oParts[1] ? oParts[1].trim() : oEn;
                 parsedOpts.push({ en: oEn, hi: oHi });
                 
-                // सही जवाब A, B, C, D ढूँढना
-                if (rawQ.correctOption && rawQ.correctOption.trim() === optStr.trim()) {
+                if (correctOptSafe !== "" && correctOptSafe === optStr.trim()) {
                     correctLabel = String.fromCharCode(65 + j); // 0=A, 1=B, 2=C, 3=D
                 }
             }
