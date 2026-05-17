@@ -94,7 +94,6 @@ async function uploadToFacebook(videoPath, description) {
 // =========================================================
 function isSimilar(str1, str2) {
     if (!str1 || !str2) return true;
-    // Remove spaces, punctuation, case to compare core text
     let s1 = str1.toLowerCase().replace(/[^a-z0-9\u0900-\u097F]/gi, '').trim();
     let s2 = str2.toLowerCase().replace(/[^a-z0-9\u0900-\u097F]/gi, '').trim();
     return s1 === s2;
@@ -147,19 +146,19 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
     ctx.textBaseline = 'top';
     let textY = 270;
 
-    // 🔥 SMART RENDER: Question Text Overlap Fix
+    // 🔥 FIX 1: Smart Render - Do not show separate English if it's the same
     ctx.fillStyle = '#ffffff';
     ctx.font = '50px "HindiFont", sans-serif';
     
     if (isSimilar(questionObj.qEn, questionObj.qHi)) {
-        textY = wrapText(ctx, `Q. ${questionObj.qEn}`, 80, textY, 1750, 65) + 30; // Extra gap
+        textY = wrapText(ctx, `प्र. ${questionObj.qHi}`, 80, textY, 1750, 65) + 40; // Single text display
     } else {
         textY = wrapText(ctx, `Q. ${questionObj.qEn}`, 80, textY, 1750, 65) + 15;
         ctx.fillStyle = '#00FFFF'; 
-        textY = wrapText(ctx, `प्र. ${questionObj.qHi}`, 80, textY, 1750, 65) + 30;
+        textY = wrapText(ctx, `प्र. ${questionObj.qHi}`, 80, textY, 1750, 65) + 40; // Bilingual display
     }
     
-    // 🔥 SMART RENDER: Options List Fix
+    // 🔥 FIX 2: Options Gap Fix
     const options = [
         { label: 'A', textEn: questionObj.optA_En, textHi: questionObj.optA_Hi },
         { label: 'B', textEn: questionObj.optB_En, textHi: questionObj.optB_Hi },
@@ -170,22 +169,24 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
     ctx.font = '42px "HindiFont", sans-serif';
     
     options.forEach(opt => {
+        // Calculate text lines to adjust background box properly
+        let optText = isSimilar(opt.textEn, opt.textHi) ? `${opt.label}) ${opt.textHi}` : `${opt.label}) ${opt.textEn}  |  ${opt.textHi}`;
+        
+        let estimatedLines = 1;
+        if (ctx.measureText(optText).width > 1700) estimatedLines = 2;
+        let boxHeight = estimatedLines * 60 + 20;
+
         if (mode === 'answer' && opt.label === questionObj.correct) {
             ctx.fillStyle = '#28a745'; 
-            ctx.fillRect(70, textY - 10, 1780, 80);
+            ctx.fillRect(70, textY - 10, 1780, boxHeight);
             ctx.fillStyle = '#ffffff';
         } else {
             ctx.fillStyle = '#ffffff';
         }
         
-        let optText = `${opt.label}) ${opt.textEn}`;
-        if (!isSimilar(opt.textEn, opt.textHi)) {
-             optText += `  |  ${opt.textHi}`;
-        }
-        textY = wrapText(ctx, optText, 100, textY, 1700, 55) + 25; // Auto-adjust gap based on lines
+        textY = wrapText(ctx, optText, 100, textY, 1700, 60) + 30; // Increased spacing between options
     });
 
-    // Visual Timer
     if (mode === 'timer' && timerNumber !== null) {
         ctx.beginPath();
         ctx.arc(1600, 200, 90, 0, 2 * Math.PI, false);
@@ -230,10 +231,8 @@ async function generateAudio(text, outputPath, ttsClient) {
 async function renderClip(imagePath, audioPath, outputPath, isSilentTimer = false, duration = 1) {
     let args = [];
     if (isSilentTimer) {
-        // 🔥 FIX: Forced -ar 44100 and -ac 2 to perfectly match the TTS output stream. This fixes the audio drop and YouTube corrupt file issue!
         args = ['-y', '-loop', '1', '-i', imagePath, '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100', '-c:v', 'libx264', '-preset', 'superfast', '-tune', 'stillimage', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2', '-pix_fmt', 'yuv420p', '-s', '1920x1080', '-r', '30', '-t', `${duration}`, outputPath];
     } else {
-        // 🔥 FIX: Standardized Audio parameters here too.
         args = ['-y', '-loop', '1', '-i', imagePath, '-i', audioPath, '-c:v', 'libx264', '-preset', 'superfast', '-tune', 'stillimage', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2', '-pix_fmt', 'yuv420p', '-s', '1920x1080', '-r', '30', '-shortest', outputPath];
     }
 
@@ -338,7 +337,7 @@ async function generateMockTestVideo() {
             createMockSlide(q, i + 1, totalQuestions, 'question', subject, qImg);
             createMockSlide(q, i + 1, totalQuestions, 'answer', subject, aImg);
 
-            // 🔥 SMART TTS: Do bar nahi bolega agar matlab ek hi hai
+            // 🔥 FIX 3: Smart TTS Logic - Read only once if identical
             let spokenQuestion = isSimilar(q.qEn, q.qHi) ? q.qHi : `${q.qEn}. ${q.qHi}`;
             let oA = isSimilar(q.optA_En, q.optA_Hi) ? q.optA_Hi : `${q.optA_En}, या ${q.optA_Hi}`;
             let oB = isSimilar(q.optB_En, q.optB_Hi) ? q.optB_Hi : `${q.optB_En}, या ${q.optB_Hi}`;
