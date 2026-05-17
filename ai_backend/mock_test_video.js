@@ -5,7 +5,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { google } = require('googleapis');
 const admin = require("firebase-admin");
-const { createCanvas } = require('canvas');
+const { createCanvas, registerFont } = require('canvas'); // 🔥 FIX: registerFont जोड़ा गया
 const textToSpeech = require('@google-cloud/text-to-speech');
 const ffmpegPath = require('ffmpeg-static');
 const FormData = require('form-data');
@@ -27,6 +27,30 @@ if (!admin.apps.length) {
     }
 }
 const db = admin.firestore();
+
+// =========================================================
+// 🅰️ 0.1. HINDI FONT DOWNLOADER ENGINE
+// =========================================================
+async function setupHindiFont() {
+    const fontPath = path.join(os.tmpdir(), 'HindiFont-Bold.ttf');
+    if (!fs.existsSync(fontPath)) {
+        console.log('⬇️ सर्वर पर हिंदी फॉन्ट नहीं है, डाउनलोड किया जा रहा है...');
+        const response = await axios({
+            url: 'https://raw.githubusercontent.com/googlefonts/noto-fonts/main/hinted/ttf/NotoSansDevanagari/NotoSansDevanagari-Bold.ttf',
+            method: 'GET',
+            responseType: 'stream'
+        });
+        const writer = fs.createWriteStream(fontPath);
+        response.data.pipe(writer);
+        await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+        console.log('✅ हिंदी फॉन्ट डाउनलोड हो गया!');
+    }
+    // Canvas को बता रहे हैं कि इस फॉन्ट को 'HindiFont' नाम से इस्तेमाल करे
+    registerFont(fontPath, { family: 'HindiFont' });
+}
 
 // =========================================================
 // 🔐 1. YOUTUBE AUTHENTICATION
@@ -86,7 +110,7 @@ function createMockSlide(questionObj, qNumber, totalQuestions, isAnswer, subject
     ctx.fillStyle = '#ffcc00';
     ctx.fillRect(0, 0, width, 100);
     ctx.fillStyle = '#000000';
-    ctx.font = 'bold 50px sans-serif';
+    ctx.font = '50px "HindiFont", sans-serif'; // 🔥 FIX: HindiFont Applied
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(`${subject.toUpperCase()} MOCK TEST | StudyGyaan.in`, width / 2, 50);
@@ -95,7 +119,7 @@ function createMockSlide(questionObj, qNumber, totalQuestions, isAnswer, subject
     ctx.fillStyle = '#FF4500';
     ctx.fillRect(50, 150, 350, 80);
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 45px sans-serif';
+    ctx.font = '45px "HindiFont", sans-serif'; // 🔥 FIX: HindiFont Applied
     ctx.fillText(`Question ${qNumber} / ${totalQuestions}`, 225, 190);
 
     function wrapText(context, text, x, y, maxWidth, lineHeight) {
@@ -116,7 +140,7 @@ function createMockSlide(questionObj, qNumber, totalQuestions, isAnswer, subject
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.font = 'bold 55px sans-serif';
+    ctx.font = '55px "HindiFont", sans-serif'; // 🔥 FIX: HindiFont Applied
     let textY = 280;
     textY = wrapText(ctx, `Q. ${questionObj.qEn}`, 80, textY, 1750, 70);
     textY += 20;
@@ -132,7 +156,7 @@ function createMockSlide(questionObj, qNumber, totalQuestions, isAnswer, subject
         { label: 'D', textEn: questionObj.optD_En, textHi: questionObj.optD_Hi }
     ];
 
-    ctx.font = 'bold 45px sans-serif';
+    ctx.font = '45px "HindiFont", sans-serif'; // 🔥 FIX: HindiFont Applied
     options.forEach(opt => {
         if (isAnswer && opt.label === questionObj.correct) {
             ctx.fillStyle = '#28a745'; 
@@ -147,7 +171,7 @@ function createMockSlide(questionObj, qNumber, totalQuestions, isAnswer, subject
 
     if (isAnswer) {
         ctx.fillStyle = '#FFD700';
-        ctx.font = 'bold 50px sans-serif';
+        ctx.font = '50px "HindiFont", sans-serif'; // 🔥 FIX: HindiFont Applied
         ctx.textAlign = 'center';
         ctx.fillText(`✅ Correct Answer: Option ${questionObj.correct}`, width / 2, 980);
     }
@@ -195,6 +219,9 @@ async function generateMockTestVideo() {
     const tempDir = os.tmpdir();
     
     try {
+        // 🔥 सबसे पहले हिंदी फॉन्ट रेडी करेंगे
+        await setupHindiFont();
+
         const snapshot = await db.collection('mock_tests').orderBy("createdAt", "desc").limit(10).get();
         if (snapshot.empty) throw new Error("❌ कोई मॉक टेस्ट नहीं मिला!");
         
@@ -313,10 +340,9 @@ async function generateMockTestVideo() {
         const youtube = await getYouTubeClient();
         const seoDesc = `🔥 ${title} | ${subject} Mock Test\n\n📌 Take Free Mock Tests & Download PDF:\n👉 https://studygyaan.in\n\n#MockTest #StudyGyaan #ExamPreparation`;
         
-        // 🔥 FIX: Title 100 Characters Limit Safeguard
         let ytTitle = `${title} | Top ${totalQuestions} Questions | StudyGyaan`;
         if (ytTitle.length > 100) {
-            ytTitle = ytTitle.substring(0, 97) + '...'; // 100 अक्षरों से ज्यादा होने पर ट्रिम करें
+            ytTitle = ytTitle.substring(0, 97) + '...'; 
         }
 
         console.log('🚀 यूट्यूब पर अपलोड हो रहा है...');
