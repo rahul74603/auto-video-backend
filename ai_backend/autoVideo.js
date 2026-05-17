@@ -98,11 +98,10 @@ function generateSEO(jobData, jobCat) {
 
     let rawTags = [...new Set([specificTag, catTag, ...titleWords, ...baseTags])];
     
-    // 🔥 YouTube 400 character limit fix (Smart Tag Trimmer)
     let allTags = [];
     let currentLength = 0;
     for (let tag of rawTags) {
-        if (currentLength + tag.length + 1 <= 380) { // 380 limit for safety
+        if (currentLength + tag.length + 1 <= 380) { 
             allTags.push(tag);
             currentLength += tag.length + 1;
         }
@@ -110,7 +109,6 @@ function generateSEO(jobData, jobCat) {
 
     let hashtags = allTags.slice(0, 5).map(t => '#' + t.replace(/[^a-zA-Z0-9]/g, '')).join(' ');
 
-    // 🔥 Slug Priority Logic for URL
     const identifier = jobData.slug || jobData.id; 
     let postLink = "https://studygyaan.in";
     
@@ -147,7 +145,6 @@ description += videoCTA;
 // 🎬 3. MAIN VIDEO GENERATOR ENGINE
 // =========================================================
 async function generateAndUploadVideo(jobData) {
-    // 🔥 Timeout Fix: भारी लाइब्रेरीज़ को अंदर रखा गया है
     const textToSpeech = require('@google-cloud/text-to-speech');
     const { createCanvas, registerFont } = require('canvas');
     const ffmpegPath = require('ffmpeg-static');
@@ -158,7 +155,6 @@ async function generateAndUploadVideo(jobData) {
     const audioPath = path.join(tempDir, `temp-audio-${Date.now()}.mp3`);
     const posterPath = path.join(tempDir, `temp-poster-${Date.now()}.png`);
     
-    // 🔥 SEO Friendly Filename (यूट्यूब के लिए)
     const safeSlug = (jobData.slug || 'govt-job').replace(/[^a-z0-9]/gi, '-').substring(0, 50);
     const videoPath = path.join(tempDir, `${safeSlug}-${Date.now()}.mp4`);
 
@@ -167,8 +163,7 @@ async function generateAndUploadVideo(jobData) {
     try {
         const youtube = await getYouTubeClient();
 
-      // --- Music & Avatar ---
-        // 🔥 डायरेक्ट 'ai_backend' और 'bg_music' लोकेशन फोर्स की गई है
+        // --- Music & Avatar ---
         const targetDir = __dirname.includes('ai_backend') ? __dirname : path.join(process.cwd(), 'ai_backend');
         const bgMusicDir = path.join(targetDir, 'bg_music');
         
@@ -205,7 +200,7 @@ async function generateAndUploadVideo(jobData) {
 
         console.log(`🎥 Selected Anchor: ${selectedVideoFile} | 🎵 Voice: ${selectedVoice}`);;
 
-        // --- Text to Speech (Secret से Credentials उठाना) ---
+        // --- Text to Speech ---
         const ttsKeyVar = process.env.TTS_KEY_JSON;
         if (!ttsKeyVar || ttsKeyVar === "test" || ttsKeyVar === "temp_key") throw new Error("❌ TTS_KEY_JSON सीक्रेट नहीं मिला या Dummy सेट है!");
         
@@ -222,15 +217,14 @@ async function generateAndUploadVideo(jobData) {
 
        let cleanName = jobData.title.length > 50 ? jobData.title.substring(0, 50) : jobData.title;
         let script = "";
-        // 🔥 Smart Human-like Hooks
         if (jobCat === 'Result') {
-            let rHooks = ["क्या आपने भी इसका एग्जाम दिया था? तो दिल थाम के बैठिये!", "जिस रिजल्ट का आपको इंतज़ार था, वो आ गया है!", "खुशखबरी! रिजल्ट आ गया है!"];
-            script = `${rHooks[Math.floor(Math.random() * rHooks.length)]} ⚠️ ${cleanName} का रिजल्ट फाइनली डिक्लेयर हो चुका है। अपना रिजल्ट तुरंत चेक करने के लिए पहला कमेंट पढ़ें!`;
+            let rHooks = ["क्या आपने भी इसका एग्जाम दिया था? तो दिल थाम के बैठिये!", "जिस रिजल्ट का आपको इंतज़ार था, वो आ गया है!", "खुशखबरी! रिजल्ट आ गया है!"];
+            script = `${rHooks[Math.floor(Math.random() * rHooks.length)]} ⚠️ ${cleanName} का रिजल्ट फाइनली डिक्लेयर हो चुका है। अपना रिजल्ट तुरंत चेक करने के लिए पहला कमेंट पढ़ें!`;
         } else if (jobCat === 'Admit Card') {
             let aHooks = ["एग्जाम डेट पास आ गई है, क्या आप तैयार हैं?", "अलर्ट! एडमिट कार्ड आउट हो चुका है!", "बिना इसके एग्जाम सेंटर में एंट्री नहीं मिलेगी!"];
             script = `${aHooks[Math.floor(Math.random() * aHooks.length)]} ⚠️ ${cleanName} का एडमिट कार्ड जारी कर दिया गया है। अपना सेंटर और टाइमिंग चेक करने के लिए पहले कमेंट में दिए लिंक पर जाएँ!`;
         } else if (jobCat === 'Syllabus' || jobCat === 'Answer Key') {
-            let sHooks = ["एग्जाम में टॉप करना है? तो ये ज़रूर देखें!", "सिलेक्शन चाहिए तो ये गलती मत करना!"];
+            let sHooks = ["एग्जाम में टॉप करना है? तो ये ज़रूर देखें!", "सिलेक्शन चाहिए तो ये गलती मत करना!"];
             script = `${sHooks[Math.floor(Math.random() * sHooks.length)]} ⚠️ ${cleanName} की नई अपडेट आ गई है। फ्री पीडीएफ डाउनलोड करने के लिए कमेंट बॉक्स चेक करें!`;
         } else {
             let jHooks = ["बेरोजगार हो? तो ये मौका हाथ से जाने मत देना!", "एक और शानदार सरकारी नौकरी आ गई है!", "तैयारी शुरू कर दो, क्योंकि बंपर भर्ती आ गई है!"];
@@ -301,9 +295,8 @@ async function generateAndUploadVideo(jobData) {
         ctx.fillStyle = "#FFFF00";
         ctx.font = 'bold 90px sans-serif';
         ctx.fillText("🔥 IMPORTANT 🔥", width / 2, 450);
-       // 🔥 Dynamic CTA Logic: Fast Track और Jobs के लिए अलग-अलग टेक्स्ट
         
-        // Syllabus और Answer Key के लिए जगह खाली छोड़ दी जाएगी
+        // 🔥 FIX: Overlap Resolution Function (Returns Next Y position)
         function wrapText(context, text, x, y, maxWidth, lineHeight) {
             let words = text.split(' '), line = '';
             for (let n = 0; n < words.length; n++) {
@@ -315,20 +308,22 @@ async function generateAndUploadVideo(jobData) {
                 } else { line = testLine; }
             }
             context.fillText(line, x, y);
-            return y;
+            return y + lineHeight; // Returns bottom of this text block
         }
 
         ctx.shadowColor = activeTheme.accent; 
         ctx.shadowBlur = 25;
         ctx.fillStyle = '#ffffff'; 
         ctx.font = '900 85px sans-serif'; 
+        
+        // 🔥 Get exact end Y of the Title so we know where to place the CTA
         let titleEndY = wrapText(ctx, jobData.title.toUpperCase(), width / 2, 530, 950, 105);
         ctx.shadowBlur = 0; 
         
-        // 🔥 1. DYNAMIC CTA: अब यह हमेशा टाइटल के ठीक नीचे आएगा
-        let ctaY = titleEndY + 120;
+        // 🔥 1. DYNAMIC CTA: Dynamically pushed below the Title
+        let ctaY = titleEndY + 80;
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle'; // Professional Center Alignment
+        ctx.textBaseline = 'middle'; 
         
         if (jobCat === 'Default' || jobCat === 'JOB') {
             ctx.fillStyle = "#FF0000";
@@ -344,11 +339,11 @@ async function generateAndUploadVideo(jobData) {
             ctx.fillText("DOWNLOAD NOW", width / 2, ctaY);
         }
 
-        // 🔥 2. DYNAMIC INFO BOX: यह हमेशा CTA बटन से सुरक्षित दूरी (220px नीचे) पर बनेगा (Overlapping Impossible)
-        let infoY = ctaY + 220; 
+        // 🔥 2. DYNAMIC INFO BOX: Safely below the CTA
+        let infoBoxStartY = ctaY + 80; 
         let boxHeight = 320;
         
-        drawRoundedRect(ctx, 60, infoY - 100, 960, boxHeight, 40);
+        drawRoundedRect(ctx, 60, infoBoxStartY, 960, boxHeight, 40);
         ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'; 
         ctx.fill();
         ctx.lineWidth = 5;
@@ -361,28 +356,27 @@ async function generateAndUploadVideo(jobData) {
         
         if (jobCat === 'Result' || jobCat === 'Answer Key' || jobCat === 'Admit Card') {
             ctx.fillStyle = activeTheme.accent;
-            ctx.fillText(`📌 Update: ${jobCat} Out!`, width / 2, infoY);
+            ctx.fillText(`📌 Update: ${jobCat} Out!`, width / 2, infoBoxStartY + 100);
             ctx.fillStyle = '#FF4500'; 
             let showDate = (jobData.updateDate && jobData.updateDate !== 'undefined') ? jobData.updateDate : todayDate;
-            ctx.fillText(`📅 Date: ${showDate}`, width / 2, infoY + 120);
+            ctx.fillText(`📅 Date: ${showDate}`, width / 2, infoBoxStartY + 220);
         } else {
             ctx.fillStyle = activeTheme.accent;
             let showStart = (jobData.startDate && jobData.startDate !== 'undefined') ? jobData.startDate : 'Apply Now';
-            ctx.fillText(`🚀 Starts: ${showStart}`, width / 2, infoY);
+            ctx.fillText(`🚀 Starts: ${showStart}`, width / 2, infoBoxStartY + 100);
             ctx.fillStyle = '#FF4500'; 
             ctx.font = 'bold 75px sans-serif'; 
             let showLast = (jobData.lastDate && jobData.lastDate !== 'undefined') ? jobData.lastDate : 'Soon';
-            ctx.fillText(`⏳ Last Date: ${showLast}`, width / 2, infoY + 120);
+            ctx.fillText(`⏳ Last Date: ${showLast}`, width / 2, infoBoxStartY + 220);
         }
 
-        // 🔥 3. PERFECT YELLOW FOOTER BOX (Fixed Empty Box Bug)
+        // 3. PERFECT YELLOW FOOTER BOX
         ctx.fillStyle = '#ffcc00'; 
         ctx.fillRect(0, 1720, width, 200); 
         ctx.fillStyle = '#000000';
         ctx.font = '900 55px sans-serif';
-        ctx.fillText(`👇 LINK IN FIRST COMMENT 👇`, width / 2, 1820); // 1820 for perfect vertical center
+        ctx.fillText(`👇 LINK IN FIRST COMMENT 👇`, width / 2, 1820); 
         
-        // Reset Baseline
         ctx.textBaseline = 'alphabetic';
         
         fs.writeFileSync(posterPath, canvas.toBuffer('image/png'));
@@ -390,7 +384,6 @@ async function generateAndUploadVideo(jobData) {
         // --- 🎬 VIDEO RENDERING ---
         console.log('🎬 रेंडरिंग चालू है... (गिटहब लॉग्स में प्रोग्रेस देखें)');
         
-        // 🔥 पक्के रास्ते (Absolute Paths)
         const finalPoster = path.resolve(posterPath);
         const finalAudio = path.resolve(audioPath);
         const finalVideoOut = path.resolve(videoPath);
@@ -443,11 +436,10 @@ async function generateAndUploadVideo(jobData) {
         let maxTitleLen = jobCat !== 'Default' ? 45 : 55;
         let cleanTitle = jobData.title.length > 40 ? jobData.title.substring(0, 40) + ".." : jobData.title;
         
-        // 🔥 Viral Title Hooks for Click-Through-Rate (CTR)
         let viralHooks = [];
         if (jobCat === 'Result') viralHooks = ["😱 जल्दी चेक करें!", "🔥 Result आ गया!", "🚨 90% फेल?"];
         else if (jobCat === 'Admit Card') viralHooks = ["🚨 सेंटर चेक करें!", "🔥 Download Now!", "😱 Exam Date!"];
-        else viralHooks = ["😱 मौका मत छोड़ना!", "🔥 Apply Now!", "🚨 Notification Out!"];
+        else viralHooks = ["😱 मौका मत छोड़ना!", "🔥 Apply Now!", "🚨 Notification Out!"];
         
         let vHook = viralHooks[Math.floor(Math.random() * viralHooks.length)];
         let finalTitle = `${vHook} ${cleanTitle} ${jobCat !== 'Default' ? jobCat : 'Vacancy'} #Shorts #GovtJobs`;
@@ -461,7 +453,7 @@ async function generateAndUploadVideo(jobData) {
         });
         
         console.log('✅ यूट्यूब वीडियो लाइव! URL: https://youtu.be/' + res.data.id);
-// --- 🖼️ 1. AUTO CUSTOM THUMBNAIL ---
+        
         try {
             await youtube.thumbnails.set({
                 videoId: res.data.id,
@@ -474,14 +466,12 @@ async function generateAndUploadVideo(jobData) {
 
         // --- 📂 2. AUTO PLAYLIST SORTING ---
         try {
-            // 🔥 Smart Playlist Logic
-            let playlistTitle = "Latest Govt Jobs"; // सिर्फ Jobs और Vacancy के लिए
+            let playlistTitle = "Latest Govt Jobs"; 
             if (jobCat === 'Result') playlistTitle = "Results & Updates";
             else if (jobCat === 'Admit Card') playlistTitle = "Admit Cards";
             else if (jobCat === 'Syllabus') playlistTitle = "Exam Syllabus";
             else if (jobCat === 'Answer Key') playlistTitle = "Answer Keys";
             
-            // चेक करें कि क्या यह प्लेलिस्ट पहले से मौजूद है
             const playlistsRes = await youtube.playlists.list({ part: 'snippet', mine: true, maxResults: 50 });
             let playlistId = null;
             const existingPlaylist = (playlistsRes.data.items || []).find(p => p.snippet.title.toLowerCase() === playlistTitle.toLowerCase());
@@ -489,7 +479,6 @@ async function generateAndUploadVideo(jobData) {
             if (existingPlaylist) {
                 playlistId = existingPlaylist.id;
             } else {
-                // अगर नहीं है, तो नई प्लेलिस्ट बना लें
                 const newPlaylist = await youtube.playlists.insert({
                     part: 'snippet,status',
                     requestBody: { snippet: { title: playlistTitle }, status: { privacyStatus: 'public' } }
@@ -498,7 +487,6 @@ async function generateAndUploadVideo(jobData) {
                 console.log(`📂 नई प्लेलिस्ट '${playlistTitle}' बनाई गई!`);
             }
             
-            // वीडियो को प्लेलिस्ट में डालें
             await youtube.playlistItems.insert({
                 part: 'snippet',
                 requestBody: {
@@ -509,6 +497,7 @@ async function generateAndUploadVideo(jobData) {
         } catch (pErr) {
             console.log('⚠️ प्लेलिस्ट में जोड़ने में दिक्कत आई:', pErr.message);
         }
+        
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
         const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
         if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
@@ -519,10 +508,8 @@ async function generateAndUploadVideo(jobData) {
             }).catch(() => console.log('टेलीग्राम एरर'));
         }
 
-        // --- 🚀 FACEBOOK & REELS (Call the function) ---
         await uploadToFacebook(videoPath, seoData.description);
 
-        // --- 💬 AUTO COMMENT ---
         console.log('⏳ 10 सेकंड का इंतज़ार... (कमेंट करने के लिए)');
         await new Promise(resolve => setTimeout(resolve, 10000));
 
@@ -546,7 +533,6 @@ async function generateAndUploadVideo(jobData) {
         console.error('❌ Error in Premium Video Engine:', err.message);
         return false;
     } finally {
-        // --- 🧹 क्लीनअप ---
         if(fs.existsSync(audioPath)) fs.unlinkSync(audioPath); 
         if(fs.existsSync(posterPath)) fs.unlinkSync(posterPath); 
         if(fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
@@ -555,7 +541,6 @@ async function generateAndUploadVideo(jobData) {
 
 module.exports = { generateAndUploadVideo };
 
-// ✅ GitHub Actions Execution Block (यह लाइन रन होने के लिए बहुत ज़रूरी है)
 if (require.main === module) {
     const payloadStr = process.env.JOB_DATA;
     if (payloadStr) {
