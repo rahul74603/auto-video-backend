@@ -100,7 +100,7 @@ function isSimilar(str1, str2) {
 }
 
 // =========================================================
-// 🖼️ 4. MOCK TEST SLIDE GENERATOR (DYNAMIC AUTO-SCALE)
+// 🖼️ 4. MOCK TEST SLIDE GENERATOR (PERFECT WRAPPING)
 // =========================================================
 function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, outputPath, timerNumber = null) {
     const width = 1920, height = 1080;
@@ -128,31 +128,35 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
     ctx.font = '45px "HindiFont", sans-serif';
     ctx.fillText(`Question ${qNumber} / ${totalQuestions}`, 225, 190);
 
-    function wrapText(context, text, x, y, maxWidth, lineHeight) {
-        let words = text.split(' '), line = '';
-        for (let n = 0; n < words.length; n++) {
-            let testLine = line + words[n] + ' ';
-            if (context.measureText(testLine).width > maxWidth && n > 0) {
-                context.fillText(line, x, y);
-                line = words[n] + ' ';
-                y += lineHeight;
-            } else { line = testLine; }
-        }
-        context.fillText(line, x, y);
-        return y + lineHeight; 
-    }
-
     // 🔥 DYNAMIC FONT SCALING (Based on Content Length)
     let totalChars = (questionObj.qEn + questionObj.qHi + questionObj.optA_En + questionObj.optA_Hi + questionObj.optB_En + questionObj.optB_Hi + questionObj.optC_En + questionObj.optC_Hi + questionObj.optD_En + questionObj.optD_Hi).length;
     
     let qFont = 55;
     let optFont = 45;
-    let blockGap = 50; // Gap between Q and Options
-    let lineGap = 15; // Extra padding for text wrapping
+    let blockGap = 50; 
+    let lineGap = 15; 
 
     if (totalChars > 350) { qFont = 48; optFont = 40; blockGap = 40; lineGap = 10; }
     if (totalChars > 500) { qFont = 42; optFont = 35; blockGap = 30; lineGap = 8; }
     if (totalChars > 700) { qFont = 38; optFont = 30; blockGap = 20; lineGap = 5; }
+
+    // 🔥 NEW WRAPTEXT LOGIC: Returns the exact bottom Y position of the drawn text block
+    function wrapText(context, text, x, startY, maxWidth, lineHeight) {
+        let words = text.split(' '), line = '', currentY = startY;
+        for (let n = 0; n < words.length; n++) {
+            let testLine = line + words[n] + ' ';
+            let metrics = context.measureText(testLine);
+            if (metrics.width > maxWidth && n > 0) {
+                context.fillText(line, x, currentY);
+                line = words[n] + ' ';
+                currentY += lineHeight; // Move down for the next line
+            } else {
+                line = testLine;
+            }
+        }
+        context.fillText(line, x, currentY);
+        return currentY + lineHeight; // Return Y position for the next element
+    }
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -165,7 +169,7 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
     if (isSimilar(questionObj.qEn, questionObj.qHi)) {
         textY = wrapText(ctx, `प्र. ${questionObj.qHi}`, 80, textY, 1750, qFont + lineGap) + blockGap;
     } else {
-        textY = wrapText(ctx, `Q. ${questionObj.qEn}`, 80, textY, 1750, qFont + lineGap) + (lineGap * 2);
+        textY = wrapText(ctx, `Q. ${questionObj.qEn}`, 80, textY, 1750, qFont + lineGap) + lineGap;
         ctx.fillStyle = '#00FFFF'; 
         textY = wrapText(ctx, `प्र. ${questionObj.qHi}`, 80, textY, 1750, qFont + lineGap) + blockGap;
     }
@@ -181,21 +185,21 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
     ctx.font = `${optFont}px "HindiFont", sans-serif`;
     
     options.forEach(opt => {
-        // Space added around | for Hindi and English separation
         let optText = isSimilar(opt.textEn, opt.textHi) ? `${opt.label}) ${opt.textHi}` : `${opt.label}) ${opt.textEn}     |     ${opt.textHi}`;
         
+        let startBoxY = textY - 10;
         let estimatedHeight = (ctx.measureText(optText).width > 1650) ? (optFont * 2) + lineGap : optFont;
         let boxHeight = estimatedHeight + 30;
 
         if (mode === 'answer' && opt.label === questionObj.correct) {
             ctx.fillStyle = '#28a745'; 
-            ctx.fillRect(70, textY - 10, 1780, boxHeight);
+            ctx.fillRect(70, startBoxY, 1780, boxHeight);
             ctx.fillStyle = '#ffffff';
         } else {
             ctx.fillStyle = '#ffffff';
         }
         
-        textY = wrapText(ctx, optText, 100, textY, 1680, optFont + lineGap) + 30; // 30 is the gap between each option
+        textY = wrapText(ctx, optText, 100, textY, 1680, optFont + lineGap) + 30; 
     });
 
     if (mode === 'timer' && timerNumber !== null) {
@@ -411,7 +415,6 @@ async function generateMockTestVideo() {
             concatContent += `file '${aVid}'\n`;
         }
 
-        // 🔥 OUTRO (Like, Subscribe, StudyGyaan.in CTA)
         console.log(`🎬 आउट्रो जनरेट हो रहा है...`);
         const outroImg = path.join(tempDir, `outro_img.png`);
         const outroAud = path.join(tempDir, `outro_aud.mp3`);
