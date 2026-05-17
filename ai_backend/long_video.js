@@ -5,7 +5,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { google } = require('googleapis');
 const admin = require("firebase-admin");
-const { createCanvas } = require('canvas');
+const { createCanvas, registerFont } = require('canvas');
 const textToSpeech = require('@google-cloud/text-to-speech');
 const ffmpegPath = require('ffmpeg-static');
 const FormData = require('form-data');
@@ -27,6 +27,29 @@ if (!admin.apps.length) {
     }
 }
 const db = admin.firestore();
+
+// =========================================================
+// 🅰️ 0.1. HINDI FONT DOWNLOADER ENGINE
+// =========================================================
+async function setupHindiFont() {
+    const fontPath = path.join(os.tmpdir(), 'HindiFont-Bold.ttf');
+    if (!fs.existsSync(fontPath)) {
+        console.log('⬇️ सर्वर पर हिंदी फॉन्ट नहीं है, डाउनलोड किया जा रहा है...');
+        const response = await axios({
+            url: 'https://raw.githubusercontent.com/googlefonts/noto-fonts/main/hinted/ttf/NotoSansDevanagari/NotoSansDevanagari-Bold.ttf',
+            method: 'GET',
+            responseType: 'stream'
+        });
+        const writer = fs.createWriteStream(fontPath);
+        response.data.pipe(writer);
+        await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+        console.log('✅ हिंदी फॉन्ट डाउनलोड हो गया!');
+    }
+    registerFont(fontPath, { family: 'HindiFont' });
+}
 
 // =========================================================
 // 🔐 1. YOUTUBE AUTHENTICATION
@@ -55,7 +78,7 @@ async function getYouTubeClient() {
 }
 
 // =========================================================
-// 📱 2. FACEBOOK UPLOAD ENGINE (Videos & Reels)
+// 📱 2. FACEBOOK UPLOAD ENGINE
 // =========================================================
 async function uploadToFacebook(videoPath, description) {
     const FB_PAGE_ID = process.env.FB_PAGE_ID;
@@ -91,10 +114,7 @@ function generateSEO(blogData, blogCat) {
     let titleWords = blogData.title.split(' ').filter(w => w.length > 2 && !['and', 'the', 'for', 'out', 'now'].includes(w.toLowerCase()));
     let mainOrg = titleWords.slice(0, 2).join(''); 
     
-    let baseTags = [
-        'StudyGyaan', 'StudyGyaan.in', 'ExamPreparation', 'SarkariResult2026', 
-        'LatestUpdate', 'FreePDF', 'PremiumNotes', 'StudyMaterial', 'MockTest'
-    ];
+    let baseTags = ['StudyGyaan', 'StudyGyaan.in', 'ExamPreparation', 'SarkariResult2026', 'LatestUpdate', 'FreePDF', 'PremiumNotes', 'StudyMaterial', 'MockTest'];
     
     let catTag = blogCat !== 'Default' ? blogCat.replace(/\s+/g, '') : 'BlogUpdate'; 
     let specificTag = mainOrg + catTag; 
@@ -114,31 +134,9 @@ function generateSEO(blogData, blogCat) {
     const identifier = blogData.slug || blogData.id; 
     let postLink = "https://studygyaan.in";
     
-    if (identifier) {
-        postLink = `https://studygyaan.in/blog/${identifier}`;
-    }
+    if (identifier) postLink = `https://studygyaan.in/blog/${identifier}`;
 
-    let description = `
-🔥 ${blogData.title} ${blogCat} 2026 Latest Educational Update
-
-📌 Full Details Check Here:
-🔗 ${postLink}
-
-📚 Free PDF + Mock Test:
-👉 https://studygyaan.in
-
-🚀 Daily Govt Jobs + Notes:
-👉 Visit StudyGyaan.in
-
-🔔 Subscribe for fastest updates
-
-🔥 Trending Keywords:
-${allTags.join(', ')}
-
-${hashtags}
-`;
-    let videoCTA = "\n🎥 Watch full video on YouTube: StudyGyaan Official";
-    description += videoCTA;
+    let description = `🔥 ${blogData.title} ${blogCat} 2026 Latest Educational Update\n\n📌 Full Details Check Here:\n🔗 ${postLink}\n\n📚 Free PDF + Mock Test:\n👉 https://studygyaan.in\n\n🚀 Daily Govt Jobs + Notes:\n👉 Visit StudyGyaan.in\n\n🔔 Subscribe for fastest updates\n\n🔥 Trending Keywords:\n${allTags.join(', ')}\n\n${hashtags}\n🎥 Watch full video on YouTube: StudyGyaan Official`;
 
     return { tags: allTags, description: description, postLink: postLink };
 }
@@ -156,6 +154,7 @@ async function generateScriptWithGemini(blogTitle, blogContent) {
     नीचे दिए गए ब्लॉग पोस्ट के आधार पर एक 3 मिनट की शानदार YouTube वीडियो स्क्रिप्ट लिखो।
     स्क्रिप्ट हिंदी में होनी चाहिए (लेकिन देवनागरी लिपि में)।
     वीडियो की शुरुआत एक हुक (Hook) से करो, बीच में मुख्य बातें बताओ, और अंत में StudyGyaan.in वेबसाइट पर जाने और वीडियो लाइक करने के लिए कहो।
+    कृपया ध्यान दें कि जब भी वेबसाइट का नाम बोलना हो तो उसे "स्टडी ज्ञान डॉट इन" लिखें। "डॉट ऐ एन" मत लिखना।
     केवल बोले जाने वाले शब्द (Spoken text) लिखो। कोई ब्रैकेट, बैकग्राउंड म्यूजिक का नाम, या एक्स्ट्रा टेक्स्ट मत लिखना।
 
     ब्लॉग का टाइटल: ${blogTitle}
@@ -164,9 +163,7 @@ async function generateScriptWithGemini(blogTitle, blogContent) {
     try {
         const response = await axios.post(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
-            {
-                contents: [{ parts: [{ text: prompt }] }]
-            },
+            { contents: [{ parts: [{ text: prompt }] }] },
             { headers: { 'Content-Type': 'application/json' } }
         );
 
@@ -209,21 +206,21 @@ function createLandscapePoster(title, outputPath) {
     }
 
     ctx.fillStyle = '#00FF00';
-    ctx.font = 'bold 60px sans-serif';
+    ctx.font = 'bold 60px "HindiFont", sans-serif'; // HindiFont Applied
     ctx.textAlign = 'center';
     ctx.fillText('STUDYGYAAN.IN EXCLUSIVE', width / 2, 150);
 
     ctx.fillStyle = '#ffffff'; 
-    ctx.font = 'bold 110px sans-serif'; 
+    ctx.font = 'bold 110px "HindiFont", sans-serif'; // HindiFont Applied
     ctx.shadowColor = "rgba(0,0,0,0.8)";
     ctx.shadowBlur = 15;
-    wrapText(ctx, title.toUpperCase(), width / 2, 400, 1600, 140);
+    wrapText(ctx, title, width / 2, 400, 1600, 140);
     ctx.shadowBlur = 0;
 
     ctx.fillStyle = '#ffcc00'; 
     ctx.fillRect(0, 880, width, 200); 
     ctx.fillStyle = '#000000';
-    ctx.font = '900 70px sans-serif';
+    ctx.font = '900 70px "HindiFont", sans-serif'; // HindiFont Applied
     ctx.textBaseline = 'middle';
     ctx.fillText(`👇 FULL DETAILS LINK IN DESCRIPTION 👇`, width / 2, 980);
     
@@ -241,7 +238,9 @@ async function generateLongVideo() {
     const posterPath = path.resolve(tempDir, `long-poster-${Date.now()}.png`);
     
     try {
-        // 🔥 FIX: 10 नए ब्लॉग चेक करने का लॉजिक (Status Flag)
+        // 🔥 Setup Hindi Font
+        await setupHindiFont();
+
         const snapshot = await db.collection('blogs').orderBy("createdAt", "desc").limit(10).get();
         if (snapshot.empty) throw new Error("❌ कोई ब्लॉग नहीं मिला!");
         
@@ -259,7 +258,7 @@ async function generateLongVideo() {
         }
 
         const blogData = targetBlogDoc.data();
-        blogData.id = targetBlogDoc.id; // ID सिंक करना
+        blogData.id = targetBlogDoc.id; 
 
         const blogTitle = blogData.title || "New Update";
         const blogContent = blogData.description || blogData.content || blogTitle;
@@ -380,7 +379,7 @@ async function generateLongVideo() {
 
         // --- 📂 PLAYLIST SORTING ---
         try {
-            let playlistTitle = "Latest Educational Updates";
+            let playlistTitle = "Important Educational Updates";
             const playlistsRes = await youtube.playlists.list({ part: 'snippet', mine: true, maxResults: 50 });
             let playlistId = null;
             const existingPlaylist = (playlistsRes.data.items || []).find(p => p.snippet.title.toLowerCase() === playlistTitle.toLowerCase());
