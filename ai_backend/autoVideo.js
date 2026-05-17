@@ -98,10 +98,11 @@ function generateSEO(jobData, jobCat) {
 
     let rawTags = [...new Set([specificTag, catTag, ...titleWords, ...baseTags])];
     
+    // 🔥 YouTube 400 character limit fix (Smart Tag Trimmer)
     let allTags = [];
     let currentLength = 0;
     for (let tag of rawTags) {
-        if (currentLength + tag.length + 1 <= 380) { 
+        if (currentLength + tag.length + 1 <= 380) { // 380 limit for safety
             allTags.push(tag);
             currentLength += tag.length + 1;
         }
@@ -109,6 +110,7 @@ function generateSEO(jobData, jobCat) {
 
     let hashtags = allTags.slice(0, 5).map(t => '#' + t.replace(/[^a-zA-Z0-9]/g, '')).join(' ');
 
+    // 🔥 Slug Priority Logic for URL
     const identifier = jobData.slug || jobData.id; 
     let postLink = "https://studygyaan.in";
     
@@ -145,6 +147,7 @@ description += videoCTA;
 // 🎬 3. MAIN VIDEO GENERATOR ENGINE
 // =========================================================
 async function generateAndUploadVideo(jobData) {
+    // 🔥 Timeout Fix: भारी लाइब्रेरीज़ को अंदर रखा गया है
     const textToSpeech = require('@google-cloud/text-to-speech');
     const { createCanvas, registerFont } = require('canvas');
     const ffmpegPath = require('ffmpeg-static');
@@ -155,6 +158,7 @@ async function generateAndUploadVideo(jobData) {
     const audioPath = path.join(tempDir, `temp-audio-${Date.now()}.mp3`);
     const posterPath = path.join(tempDir, `temp-poster-${Date.now()}.png`);
     
+    // 🔥 SEO Friendly Filename (यूट्यूब के लिए)
     const safeSlug = (jobData.slug || 'govt-job').replace(/[^a-z0-9]/gi, '-').substring(0, 50);
     const videoPath = path.join(tempDir, `${safeSlug}-${Date.now()}.mp4`);
 
@@ -163,7 +167,8 @@ async function generateAndUploadVideo(jobData) {
     try {
         const youtube = await getYouTubeClient();
 
-        // --- Music & Avatar ---
+      // --- Music & Avatar ---
+        // 🔥 डायरेक्ट 'ai_backend' और 'bg_music' लोकेशन फोर्स की गई है
         const targetDir = __dirname.includes('ai_backend') ? __dirname : path.join(process.cwd(), 'ai_backend');
         const bgMusicDir = path.join(targetDir, 'bg_music');
         
@@ -200,7 +205,7 @@ async function generateAndUploadVideo(jobData) {
 
         console.log(`🎥 Selected Anchor: ${selectedVideoFile} | 🎵 Voice: ${selectedVoice}`);;
 
-        // --- Text to Speech ---
+        // --- Text to Speech (Secret से Credentials उठाना) ---
         const ttsKeyVar = process.env.TTS_KEY_JSON;
         if (!ttsKeyVar || ttsKeyVar === "test" || ttsKeyVar === "temp_key") throw new Error("❌ TTS_KEY_JSON सीक्रेट नहीं मिला या Dummy सेट है!");
         
@@ -217,6 +222,7 @@ async function generateAndUploadVideo(jobData) {
 
        let cleanName = jobData.title.length > 50 ? jobData.title.substring(0, 50) : jobData.title;
         let script = "";
+        // 🔥 Smart Human-like Hooks
         if (jobCat === 'Result') {
             let rHooks = ["क्या आपने भी इसका एग्जाम दिया था? तो दिल थाम के बैठिये!", "जिस रिजल्ट का आपको इंतज़ार था, वो आ गया है!", "खुशखबरी! रिजल्ट आ गया है!"];
             script = `${rHooks[Math.floor(Math.random() * rHooks.length)]} ⚠️ ${cleanName} का रिजल्ट फाइनली डिक्लेयर हो चुका है। अपना रिजल्ट तुरंत चेक करने के लिए पहला कमेंट पढ़ें!`;
@@ -238,7 +244,7 @@ async function generateAndUploadVideo(jobData) {
         });
         fs.writeFileSync(audioPath, response.audioContent, 'binary');
 
-        // --- 🖼️ DYNAMIC THEME ENGINE ---
+        // --- 🖼️ DYNAMIC THEME ENGINE (OVERALL LAYOUT FIX) ---
         console.log('🖼️ स्मार्ट ऑटो-पोस्टर डिज़ाइन हो रहा है...');
         const width = 1080, height = 1920;
         const canvas = createCanvas(width, height);
@@ -320,8 +326,8 @@ async function generateAndUploadVideo(jobData) {
         let titleEndY = wrapText(ctx, jobData.title.toUpperCase(), width / 2, 530, 950, 105);
         ctx.shadowBlur = 0; 
         
-        // 🔥 1. DYNAMIC CTA: Dynamically pushed below the Title
-        let ctaY = titleEndY + 80;
+        // 🔥 1. DYNAMIC CTA POSITIONING
+        let ctaY = titleEndY + 50; // Proper gap below title
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle'; 
         
@@ -339,15 +345,15 @@ async function generateAndUploadVideo(jobData) {
             ctx.fillText("DOWNLOAD NOW", width / 2, ctaY);
         }
 
-        // 🔥 2. DYNAMIC INFO BOX: Safely below the CTA
+        // 🔥 2. DYNAMIC INFO BOX (Dark Background & White Text for High Contrast)
         let infoBoxStartY = ctaY + 80; 
-        let boxHeight = 320;
+        let boxHeight = 280;
         
         drawRoundedRect(ctx, 60, infoBoxStartY, 960, boxHeight, 40);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'; 
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'; // Darker box so text shines
         ctx.fill();
-        ctx.lineWidth = 5;
-        ctx.strokeStyle = activeTheme.accent; 
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#ffffff'; // White border to pop out
         ctx.stroke();
 
         ctx.font = 'bold 65px sans-serif';
@@ -355,20 +361,24 @@ async function generateAndUploadVideo(jobData) {
         let todayDate = new Date().toLocaleDateString('en-GB');
         
         if (jobCat === 'Result' || jobCat === 'Answer Key' || jobCat === 'Admit Card') {
-            ctx.fillStyle = activeTheme.accent;
-            ctx.fillText(`📌 Update: ${jobCat} Out!`, width / 2, infoBoxStartY + 100);
-            ctx.fillStyle = '#FF4500'; 
+            ctx.fillStyle = '#00FFFF'; // Cyan for label
+            ctx.fillText(`📌 Update: ${jobCat} Out!`, width / 2, infoBoxStartY + 90);
+            ctx.fillStyle = '#FFFFFF'; // Bright White for Data
             let showDate = (jobData.updateDate && jobData.updateDate !== 'undefined') ? jobData.updateDate : todayDate;
-            ctx.fillText(`📅 Date: ${showDate}`, width / 2, infoBoxStartY + 220);
+            ctx.fillText(`📅 Date: ${showDate}`, width / 2, infoBoxStartY + 200);
         } else {
-            ctx.fillStyle = activeTheme.accent;
+            ctx.fillStyle = '#00FFFF';
             let showStart = (jobData.startDate && jobData.startDate !== 'undefined') ? jobData.startDate : 'Apply Now';
-            ctx.fillText(`🚀 Starts: ${showStart}`, width / 2, infoBoxStartY + 100);
-            ctx.fillStyle = '#FF4500'; 
+            ctx.fillText(`🚀 Starts: ${showStart}`, width / 2, infoBoxStartY + 90);
+            ctx.fillStyle = '#FFFFFF'; 
             ctx.font = 'bold 75px sans-serif'; 
             let showLast = (jobData.lastDate && jobData.lastDate !== 'undefined') ? jobData.lastDate : 'Soon';
-            ctx.fillText(`⏳ Last Date: ${showLast}`, width / 2, infoBoxStartY + 220);
+            ctx.fillText(`⏳ Last Date: ${showLast}`, width / 2, infoBoxStartY + 200);
         }
+
+        // 🔥 3. DYNAMIC ANCHOR OVERLAY Y-POSITION (Prevents overlapping with box)
+        let anchorY = infoBoxStartY + boxHeight + 40; 
+        if (anchorY > 1250) anchorY = 1250; // Cap it so it doesn't cross footer
 
         // 3. PERFECT YELLOW FOOTER BOX
         ctx.fillStyle = '#ffcc00'; 
@@ -395,21 +405,22 @@ async function generateAndUploadVideo(jobData) {
 
         let filter, args;
 
+        // 🔥 4. AUDIO SYNC FIX (-ar 44100 -ac 2) & DYNAMIC ANCHOR POSITION APPLIED
         if (hasMusic) {
             filter = `[0:v]zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30[bg];` +
-                     `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=800:-1[anchor];` +
-                     `[bg][anchor]overlay=(main_w-overlay_w)/2:780[outv];` +
+                     `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=700:-1[anchor];` +
+                     `[bg][anchor]overlay=(main_w-overlay_w)/2:${anchorY}[outv];` +
                      `[2:a]volume=1.4[voice];[3:a]volume=0.10[bgm];[voice][bgm]amix=inputs=2:duration=first[a]`;
 
-            args = ['-y', '-loop', '1', '-i', finalPoster, '-stream_loop', '-1', '-an', '-i', finalAnchor, '-i', finalAudio, '-stream_loop', '-1', '-i', finalMusic, '-filter_complex', filter, '-map', '[outv]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'superfast', '-crf', '28', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-pix_fmt', 'yuv420p', finalVideoOut];
+            args = ['-y', '-loop', '1', '-i', finalPoster, '-stream_loop', '-1', '-an', '-i', finalAnchor, '-i', finalAudio, '-stream_loop', '-1', '-i', finalMusic, '-filter_complex', filter, '-map', '[outv]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'superfast', '-crf', '28', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2', '-shortest', '-pix_fmt', 'yuv420p', finalVideoOut];
         } else {
             console.log("⚠️ BG Music नहीं मिला, बिना म्यूजिक के रेंडर हो रहा है...");
             filter = `[0:v]zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30[bg];` +
-                     `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=800:-1[anchor];` +
-                     `[bg][anchor]overlay=(main_w-overlay_w)/2:780[outv];` +
+                     `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=700:-1[anchor];` +
+                     `[bg][anchor]overlay=(main_w-overlay_w)/2:${anchorY}[outv];` +
                      `[2:a]volume=1.4[a]`;
 
-            args = ['-y', '-loop', '1', '-i', finalPoster, '-stream_loop', '-1', '-an', '-i', finalAnchor, '-i', finalAudio, '-filter_complex', filter, '-map', '[outv]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'superfast', '-crf', '28', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-pix_fmt', 'yuv420p', finalVideoOut];
+            args = ['-y', '-loop', '1', '-i', finalPoster, '-stream_loop', '-1', '-an', '-i', finalAnchor, '-i', finalAudio, '-filter_complex', filter, '-map', '[outv]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'superfast', '-crf', '28', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2', '-shortest', '-pix_fmt', 'yuv420p', finalVideoOut];
         }
 
         await new Promise((resolve, reject) => {
@@ -453,7 +464,7 @@ async function generateAndUploadVideo(jobData) {
         });
         
         console.log('✅ यूट्यूब वीडियो लाइव! URL: https://youtu.be/' + res.data.id);
-        
+// --- 🖼️ 1. AUTO CUSTOM THUMBNAIL ---
         try {
             await youtube.thumbnails.set({
                 videoId: res.data.id,
@@ -466,7 +477,7 @@ async function generateAndUploadVideo(jobData) {
 
         // --- 📂 2. AUTO PLAYLIST SORTING ---
         try {
-            let playlistTitle = "Latest Govt Jobs"; 
+            let playlistTitle = "Latest Govt Jobs"; // सिर्फ Jobs और Vacancy के लिए
             if (jobCat === 'Result') playlistTitle = "Results & Updates";
             else if (jobCat === 'Admit Card') playlistTitle = "Admit Cards";
             else if (jobCat === 'Syllabus') playlistTitle = "Exam Syllabus";
@@ -497,7 +508,6 @@ async function generateAndUploadVideo(jobData) {
         } catch (pErr) {
             console.log('⚠️ प्लेलिस्ट में जोड़ने में दिक्कत आई:', pErr.message);
         }
-        
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
         const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
         if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
@@ -508,8 +518,10 @@ async function generateAndUploadVideo(jobData) {
             }).catch(() => console.log('टेलीग्राम एरर'));
         }
 
+        // --- 🚀 FACEBOOK & REELS (Call the function) ---
         await uploadToFacebook(videoPath, seoData.description);
 
+        // --- 💬 AUTO COMMENT ---
         console.log('⏳ 10 सेकंड का इंतज़ार... (कमेंट करने के लिए)');
         await new Promise(resolve => setTimeout(resolve, 10000));
 
@@ -533,6 +545,7 @@ async function generateAndUploadVideo(jobData) {
         console.error('❌ Error in Premium Video Engine:', err.message);
         return false;
     } finally {
+        // --- 🧹 क्लीनअप ---
         if(fs.existsSync(audioPath)) fs.unlinkSync(audioPath); 
         if(fs.existsSync(posterPath)) fs.unlinkSync(posterPath); 
         if(fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
@@ -541,6 +554,7 @@ async function generateAndUploadVideo(jobData) {
 
 module.exports = { generateAndUploadVideo };
 
+// ✅ GitHub Actions Execution Block
 if (require.main === module) {
     const payloadStr = process.env.JOB_DATA;
     if (payloadStr) {
