@@ -109,31 +109,33 @@ const generateDailyMocks = async () => {
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash-lite",
-        generationConfig: { maxOutputTokens: 8000, temperature: 0.4, responseMimeType: "application/json" },
-    });
+            model: "gemini-2.5-flash-lite",
+            generationConfig: { maxOutputTokens: 8000, temperature: 0.4, responseMimeType: "application/json" },
+        });
 
-    const prompt = `
+        const prompt = `
 Act as a Senior SEO Expert. Create a unique Mock Test for: "${randomTopic}".
-MANDATORY: Return ONLY JSON.
+MANDATORY: Return ONLY JSON compliance schema.
 {
   "seoTitle": "Engaging Title (Use Keywords like 'Important', 'Top Questions', 'Practice Set')",
   "metaDescription": "160 char SEO snippet about ${randomTopic}",
   "tags": ["exam", "mock test", "prep"],
   "questions": [
     {
-      "qText": "Hindi\\nEnglish",
-      "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
-     "correctOption": 0,
-      "qLogic": "Detailed explanation in Hindi & English"
-    }
-  ]
+      "qText": "Write the complete English question here\\nWrite the complete Hindi translation here",
+      "options": ["Option A Text", "Option B Text", "Option C Text", "Option D Text"],
+      "correctOption": 2,
+      "qLogic": "Detailed explanation in Hindi & English"
+    }
+  ]
 }
-CRITICAL: Distribute the "correctOption" randomly across 0, 1, 2, and 3 for all 25 questions. Do NOT make it 0 for every question.
-Generate exactly 25 bilingual questions.
+CRITICAL RULES FOR GENERATION:
+1. In "qText", you MUST provide the English question first, followed by a literal newline (\\n), followed by the Hindi translation. Do NOT include literal placeholder words like 'Hindi' or 'English' inside the text. Write actual exam questions.
+2. "correctOption" MUST be an integer (0 for A, 1 for B, 2 for C, 3 for D). You MUST dynamically shuffle and randomly distribute correct options across all 25 questions so that they are NOT all 0 (A). Ensure a completely organic and even distribution of A, B, C, and D answers across the entire set.
+Generate exactly 25 high-quality, completely bilingual questions.
 `;
 
-    try {
+    try {
         const resp = await model.generateContent(prompt);
         const text = resp.response?.candidates?.[0]?.content?.parts?.[0]?.text;
         let cleanedText = text.replace(/```json/g, "").replace(/```/g, "").trim();
