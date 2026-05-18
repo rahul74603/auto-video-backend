@@ -348,11 +348,17 @@ async function generateLongVideo() {
         // 🚀 YOUTUBE UPLOAD PROCESS
         // =========================================================
         const seoData = generateSEO(blogData, blogCat);
-        let cleanTitle = blogTitle.length > 40 ? blogTitle.substring(0, 40) + ".." : blogTitle;
         
-        let viralHooks = ["😱 बड़ी खुशखबरी!", "🔥 New Update Out!", "🚨 ज़रूर देखें!"];
+        // 🔥 HIGH-GROWTH SEO ENGINE FOR LONG EDUCATIONAL VIDEOS (Viral Hooks & Search Engine Optimization)
+        let cleanTitle = blogTitle.length > 50 ? blogTitle.substring(0, 50) + "..." : blogTitle;
+        let viralHooks = ["😱 यहाँ से फसेगा पूरा पेपर", "🔥 इसे बिना पढ़े मत जाना", "🚨 Official Big Update!", "🎯 100% Selection Notes जरूर देखें"];
         let vHook = viralHooks[Math.floor(Math.random() * viralHooks.length)];
-        let finalTitle = `${vHook} ${cleanTitle} | StudyGyaan #Education #GovtJobs`;
+        
+        let finalTitle = `${vHook} | ${cleanTitle} | StudyGyaan Official`;
+        if (finalTitle.length > 100) finalTitle = finalTitle.substring(0, 97) + '...';
+
+        let blogKeywords = seoData.tags ? seoData.tags.join(', ') : "StudyGyaan, Sarkari Result 2026, Exam Preparation";
+        seoData.description = `🔥 ${finalTitle}\n\n📌 इस टॉपिक की पूरी जानकारी और फ्री स्टडी मटेरियल डाउनलोड करने का डायरेक्ट लिंक यहाँ है 👇\n🔗 ${seoData.postLink}\n\n📚 Free Online Mock Test दें और Free PDF डाउनलोड करें:\n👉 https://studygyaan.in\n\n🚀 Daily Govt Jobs Update, Exam Analysis & Premium Study Notes के लिए विज़िट करें: StudyGyaan.in\n\n🎯 यह वीडियो आने वाले सभी महत्वपूर्ण कॉम्पिटिटिव एग्जाम्स (RRB NTPC, SSC CGL, CHSL, MTS, Railway, Police & State Exams 2026) की तैयारी के लिए सबसे ज़्यादा महत्वपूर्ण है।\n\n🏷️ Top Trending Keywords (SEO Search Boost):\n${blogKeywords}, StudyGyaan, StudyGyaan.in, Sarkari Result 2026, Govt Exam Preparation, General Knowledge Booster, Daily Educational News, Free Online Test Series, Free Notes PDF, Exam Analysis 2026\n\n#StudyGyaan #SarkariResult #ExamPreparation #GovtJobs2026 #FreePDFNotes #EducationalVideo #RRBNTPC #SSCCGL #SarkariNaukri`;
 
         console.log('🚀 यूट्यूब पर वीडियो अपलोड किया जा रहा है...');
         const res = await youtube.videos.insert({
