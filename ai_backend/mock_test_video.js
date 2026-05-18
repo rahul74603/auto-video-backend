@@ -491,10 +491,16 @@ async function generateMockTestVideo() {
         console.log(`✅ फुल ${totalQuestions} प्रश्नों का वीडियो तैयार: ${finalVideoPath}`);
 
         const youtube = await getYouTubeClient();
-        const seoDesc = `🔥 ${title} | ${subject} Mock Test\n\n📌 Take Free Mock Tests & Download PDF:\n👉 https://studygyaan.in\n\n#MockTest #StudyGyaan #ExamPreparation`;
         
-        let ytTitle = `${title} | Top ${totalQuestions} Questions | StudyGyaan`;
+        // 🔥 HIGH-GROWTH SEO ENGINE FOR MOCK TESTS (Viral Titles & Heavy Search Keywords)
+        let cleanSub = subject.toUpperCase();
+        let viralHooks = ["😱 यहाँ से फसेगा पेपर", "🔥 पूरा रट लो", "🚨 Direct Paper Leak Questions", "🎯 100% Selection Set"];
+        let selectedHook = viralHooks[Math.floor(Math.random() * viralHooks.length)];
+        
+        let ytTitle = `${selectedHook} | ${cleanSub} Mock Test: Top ${totalQuestions} Q&A | StudyGyaan`;
         if (ytTitle.length > 100) ytTitle = ytTitle.substring(0, 97) + '...'; 
+
+        const seoDesc = `🔥 ${ytTitle}\n\n📌 Free Online Mock Test दें और Free PDF डाउनलोड करें:\n👉 https://studygyaan.in\n\n🚀 इस वीडियो में ${cleanSub} के सबसे महत्वपूर्ण ${totalQuestions} प्रश्न (Bilingual Hindi/English) कवर किए गए हैं जो आने वाले सभी सरकारी एग्जाम्स (RRB NTPC, SSC CGL, CHSL, MTS, Railway, Police & State Exams 2026) के लिए सबसे ज़्यादा महत्वपूर्ण हैं।\n\n⏱️ Video Highlights / Topic Cover:\n- ${cleanSub} High Level Mock Test Series\n- Previous Year Expected Questions\n- Bilingual GK Science Maths Quiz with Timer\n\n🏷️ Top Trending Keywords (SEO Search Boost):\n${cleanSub} Mock Test, ${cleanSub} Important Questions, StudyGyaan, StudyGyaan.in, Sarkari Result 2026, Govt Exam Preparation, SSC GK Practice Set, RRB NTPC General Science, GK Quiz Hindi English, Top ${totalQuestions} Questions, Online Test Series Free, Live Mock Test 2026, Daily Job Alert\n\n#MockTest #${cleanSub.replace(/\s+/g, '')} #StudyGyaan #SarkariExam #ExamPrep #GKQuiz #RRBNTPC #SSCCGL #SarkariResult`; 
 
         let ytVideoId = ""; // 🔥 वीडियो ID को बाहर स्टोर करने के लिए
         console.log('🚀 यूट्यूब पर अपलोड हो रहा है...');
