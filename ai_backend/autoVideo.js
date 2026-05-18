@@ -443,16 +443,20 @@ async function generateAndUploadVideo(jobData) {
         // --- 🚀 YOUTUBE UPLOAD ---
         const seoData = generateSEO(jobData, jobCat); 
         
-        let maxTitleLen = jobCat !== 'Default' ? 45 : 55;
-        let cleanTitle = jobData.title.length > 40 ? jobData.title.substring(0, 40) + ".." : jobData.title;
-        
+        // 🔥 HIGH-GROWTH SEO ENGINE FOR JOB NOTIFICATIONS (Viral Clickbait Titles & Heavy Keyword Descriptions)
+        let cleanTitle = jobData.title.length > 50 ? jobData.title.substring(0, 50) + "..." : jobData.title;
         let viralHooks = [];
-        if (jobCat === 'Result') viralHooks = ["😱 जल्दी चेक करें!", "🔥 Result आ गया!", "🚨 90% फेल?"];
-        else if (jobCat === 'Admit Card') viralHooks = ["🚨 सेंटर चेक करें!", "🔥 Download Now!", "😱 Exam Date!"];
-        else viralHooks = ["😱 मौका मत छोड़ना!", "🔥 Apply Now!", "🚨 Notification Out!"];
+        if (jobCat === 'Result') viralHooks = ["😱 रिजल्ट जारी! तुरंत चेक करें", "🔥 Result Out Now! डायरेक्ट लिंक", "🚨 खुशखबरी! Official Result घोषित"];
+        else if (jobCat === 'Admit Card') viralHooks = ["🚨 एडमिट कार्ड जारी! डाउनलोड करें", "🔥 Admit Card Out! सेंटर देख लो", "😱 Exam Date घोषित! एडमिट कार्ड लिंक"];
+        else viralHooks = ["😱 बम्पर सरकारी नौकरी! आज ही फॉर्म भरें", "🔥 New Vacancy 2026 Out! Apply Now", "🚨 सीधी भर्ती नोटिफिकेशन जारी! मौका मत छोड़ना"];
         
         let vHook = viralHooks[Math.floor(Math.random() * viralHooks.length)];
-        let finalTitle = `${vHook} ${cleanTitle} ${jobCat !== 'Default' ? jobCat : 'Vacancy'} #Shorts #GovtJobs`;
+        let finalTitle = `${vHook} | ${cleanTitle} | StudyGyaan #Shorts`;
+        if (finalTitle.length > 100) finalTitle = finalTitle.substring(0, 97) + '...';
+
+        let jobKeywords = seoData.tags ? seoData.tags.join(', ') : "Sarkari Result 2026, New Vacancy 2026, Job Alert";
+        seoData.description = `🔥 ${finalTitle}\n\n📌 ऑनलाइन आवेदन करने / ऑफिशियल अपडेट चेक करने का डायरेक्ट लिंक यहाँ है 👇\n🔗 ${seoData.postLink}\n\n📚 Free PDF Material + Free Mock Tests डाउनलोड करें:\n👉 https://studygyaan.in\n\n🚀 Daily Govt Jobs Alert & Premium Study Notes के लिए विजिट करें: StudyGyaan.in\n\n🔔 सबसे तेज़ और 100% सटीक अपडेट के लिए अभी चैनल को सब्सक्राइब करें!\n\n🏷️ Trending Keywords (SEO Search Ranking Boost):\n${jobKeywords}, Sarkari Result 2026, Govt Jobs Notification, Latest Job Alert 2026, Employment News, Online Form Kaise Bhare, StudyGyaan, StudyGyaan.in, Free Exam Notes, Railway Recruitment 2026, SSC New Vacancy, Police Bharti 2026, State Level Jobs\n\n#GovtJobs #SarkariResult #NewVacancy2026 #JobAlert #StudyGyaan #SarkariNaukri #Shorts #ExamPreparation #JobNotification`;
+
         const res = await youtube.videos.insert({
             part: 'snippet,status',
             requestBody: {
