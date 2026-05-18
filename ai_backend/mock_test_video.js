@@ -395,6 +395,15 @@ async function generateMockTestVideo() {
                 }
             }
 
+            // 🔥 DYNAMIC OPTIONS SHUFFLER: पुराने टेस्ट्स में लगातार Option A आने की समस्या को जड़ से खत्म करने का जुगाड़
+            let correctIdx = (correctLabel || "A").charCodeAt(0) - 65;
+            let correctTarget = parsedOpts[correctIdx];
+            parsedOpts = parsedOpts.map(v => ({ v, s: Math.random() })).sort((a, b) => a.s - b.s).map(d => d.v);
+            let newIdx = parsedOpts.indexOf(correctTarget);
+            if (newIdx !== -1) {
+                correctLabel = String.fromCharCode(65 + newIdx);
+            }
+
             const q = {
                 qEn: qEn, qHi: qHi,
                 optA_En: parsedOpts[0] ? parsedOpts[0].en : "", optA_Hi: parsedOpts[0] ? parsedOpts[0].hi : "",
