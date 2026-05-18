@@ -144,18 +144,22 @@ async function runFastTrackLogic(sendLogs = console.log, apiKey) {
             
             const { data: html } = await axios.get(link, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 20000 });
             const $ = cheerio.load(html);
-            let extractedLinks = new Set();
+           let extractedLinks = new Set();
             
-            // 🛑 1. असली डायरेक्ट लिंक निकालने का 100% सटीक लॉजिक
-            const junkDomains = ["facebook.com", "twitter.com", "whatsapp.com", "telegram.me", "t.me", "instagram.com", "youtube.com"];
+            // 🛑 PERMANENT FIX: ब्लॉक लिस्ट में सोर्स वेबसाइट्स, गूगल एड्स और मीडिया एक्सटेंशन डाल दिए हैं ताकि सिर्फ असली ऑफिशियल लिंक्स ही निकलें
+            const junkDomains = [
+                "facebook.com", "twitter.com", "whatsapp.com", "telegram.me", "t.me", "instagram.com", "youtube.com",
+                "freejobalert.com", "sarkariexam.com", "feedburner", "google.com", "googleads", "wp-content", "uploads",
+                ".jpg", ".jpeg", ".png", ".gif", ".pdf"
+            ];
             
-            // टेबल के अंदर की पूरी लाइन (Row) का टेक्स्ट निकालेंगे ताकि Gemini को पता चले "Click Here" किस चीज़ का है
+            // टेबल के अंदर की पूरी लाइन (Row) का टेक्स्ट निकालेंगे ताकि Gemini को पता चले "Click Here" किस चीज़ का है
             $("table tr").each((i, tr) => {
                 let rowText = $(tr).text().replace(/\s+/g, ' ').trim(); // जैसे: "Download Admit Card Click Here"
                 $(tr).find('a').each((j, el) => {
                     let href = $(el).attr("href");
                     if (href && href.startsWith("http")) {
-                        let isJunk = junkDomains.some(domain => href.includes(domain));
+                        let isJunk = junkDomains.some(domain => href.toLowerCase().includes(domain));
                         if (!isJunk && rowText.length > 2) {
                             extractedLinks.add(`[Context: ${rowText}] -> (URL: ${href})`);
                         }
@@ -168,7 +172,7 @@ async function runFastTrackLogic(sendLogs = console.log, apiKey) {
                 let href = $(el).attr("href");
                 let text = $(el).text().trim();
                 if (href && href.startsWith("http") && text.length > 2) {
-                     let isJunk = junkDomains.some(domain => href.includes(domain));
+                     let isJunk = junkDomains.some(domain => href.toLowerCase().includes(domain));
                      if (!isJunk) {
                          extractedLinks.add(`[Context: ${text}] -> (URL: ${href})`);
                      }
