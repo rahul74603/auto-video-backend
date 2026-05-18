@@ -370,7 +370,15 @@ async function generateMockTestVideo() {
             let parsedOpts = [];
             let correctLabel = "A";
             
-            let correctOptSafe = rawQ.correctOption != null ? String(rawQ.correctOption).replace(/\*\*/g, '').replace(/\n/g, ' / ').trim() : "";
+           let correctOptSafe = rawQ.correctOption != null ? String(rawQ.correctOption).replace(/\*\*/g, '').replace(/\n/g, ' / ').trim() : "";
+
+            // 🔥 SVR SMART PARSER: अक्षरों (A, B, C, D), नंबर्स (0, 1, 2, 3) या "Option A" सबको ऑटो-मैप करेगा
+            let cleanCorrectOpt = cleanText(correctOptSafe).toUpperCase().replace("OPTION ", "").trim();
+            if (["A", "B", "C", "D"].includes(cleanCorrectOpt)) {
+                correctLabel = cleanCorrectOpt;
+            } else if (cleanCorrectOpt === "0" || cleanCorrectOpt === "1" || cleanCorrectOpt === "2" || cleanCorrectOpt === "3") {
+                correctLabel = String.fromCharCode(65 + parseInt(cleanCorrectOpt));
+            }
 
             for (let j = 0; j < 4; j++) {
                 let optStr = opts[j] != null ? String(opts[j]).replace(/\n/g, ' / ') : "";
@@ -379,13 +387,11 @@ async function generateMockTestVideo() {
                 let oHi = oParts.length > 1 ? cleanText(oParts[1]) : oEn;
                 parsedOpts.push({ en: oEn, hi: oHi });
                 
-                // 🔥 Index (0,1,2,3) और Text Comparison दोनों को सपोर्ट करने का फिक्स
-                if (correctOptSafe === "0" || correctOptSafe === "1" || correctOptSafe === "2" || correctOptSafe === "3") {
-                    if (parseInt(correctOptSafe) === j) {
+                // अगर डेटाबेस में पूरा टेक्स्ट आंसर लिखा है तो उसे मैच करेगा
+                if (!["A", "B", "C", "D", "0", "1", "2", "3"].includes(cleanCorrectOpt)) {
+                    if (cleanText(optStr).toUpperCase() === cleanCorrectOpt || cleanText(oParts[0]).toUpperCase() === cleanCorrectOpt) {
                         correctLabel = String.fromCharCode(65 + j);
                     }
-                } else if (correctOptSafe !== "" && cleanText(optStr) === correctOptSafe) {
-                    correctLabel = String.fromCharCode(65 + j); 
                 }
             }
 
@@ -436,8 +442,14 @@ async function generateMockTestVideo() {
                 concatContent += `file '${tVid}'\n`;
             }
 
-            await renderClip(aImg, aAud, aVid, false); 
+           await renderClip(aImg, aAud, aVid, false); 
             concatContent += `file '${aVid}'\n`;
+
+            // 🔥 2-SECOND PAUSE FIX: सही जवाब बोलने के बाद ग्रीन स्क्रीन 2 सेकंड के लिए रुकेगी
+            const aWaitVid = path.join(tempDir, `a_wait_vid_${i}.mp4`);
+            filesToClean.push(aWaitVid);
+            await renderClip(aImg, null, aWaitVid, true, 2); 
+            concatContent += `file '${aWaitVid}'\n`;
         }
 
         console.log(`🎬 आउट्रो जनरेट हो रहा है...`);
