@@ -124,15 +124,16 @@ MANDATORY: Return ONLY JSON.
     {
       "qText": "Hindi\\nEnglish",
       "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
-      "correctOption": 0,
-      "qLogic": "Detailed explanation in Hindi & English"
-    }
-  ]
+     "correctOption": 0,
+      "qLogic": "Detailed explanation in Hindi & English"
+    }
+  ]
 }
+CRITICAL: Distribute the "correctOption" randomly across 0, 1, 2, and 3 for all 25 questions. Do NOT make it 0 for every question.
 Generate exactly 25 bilingual questions.
 `;
 
-    try {
+    try {
         const resp = await model.generateContent(prompt);
         const text = resp.response?.candidates?.[0]?.content?.parts?.[0]?.text;
         let cleanedText = text.replace(/```json/g, "").replace(/```/g, "").trim();
