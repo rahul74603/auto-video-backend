@@ -322,7 +322,7 @@ async function generateMockTestVideo() {
     try {
         await setupHindiFont();
 
-        const snapshot = await db.collection('mock_tests').orderBy("createdAt", "desc").limit(10).get();
+        const snapshot = await db.collection('mock_tests').limit(300).get(); // 🔥 OrderBy हटाया और Limit बढ़ाया ताकि पुराने टेस्ट भी स्कैन हो सकें
         if (snapshot.empty) throw new Error("❌ कोई मॉक टेस्ट नहीं मिला!");
         
         let targetDoc = null;
@@ -379,7 +379,12 @@ async function generateMockTestVideo() {
                 let oHi = oParts.length > 1 ? cleanText(oParts[1]) : oEn;
                 parsedOpts.push({ en: oEn, hi: oHi });
                 
-                if (correctOptSafe !== "" && cleanText(optStr) === correctOptSafe) {
+                // 🔥 Index (0,1,2,3) और Text Comparison दोनों को सपोर्ट करने का फिक्स
+                if (correctOptSafe === "0" || correctOptSafe === "1" || correctOptSafe === "2" || correctOptSafe === "3") {
+                    if (parseInt(correctOptSafe) === j) {
+                        correctLabel = String.fromCharCode(65 + j);
+                    }
+                } else if (correctOptSafe !== "" && cleanText(optStr) === correctOptSafe) {
                     correctLabel = String.fromCharCode(65 + j); 
                 }
             }
