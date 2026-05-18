@@ -136,8 +136,8 @@ Generate exactly 25 bilingual questions.
         const resp = await model.generateContent(prompt);
         const text = resp.response?.candidates?.[0]?.content?.parts?.[0]?.text;
         let cleanedText = text.replace(/```json/g, "").replace(/```/g, "").trim();
+        cleanedText = cleanedText.replace(/\\(?!["\\\/bfnrtu])/g, ' / '); // 🔥 अवैध बैकस्लैश को सही स्लैश में बदलने का फिक्स
         const json = JSON.parse(cleanedText);
-
         if (json.questions && Array.isArray(json.questions)) {
             
             // ✅ UNIQUE TITLE & SLUG LOGIC (Canonical समस्या का समाधान)
