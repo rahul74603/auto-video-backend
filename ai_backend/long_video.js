@@ -239,9 +239,10 @@ async function generateLongVideo() {
     
     try {
         // 🔥 Setup Hindi Font
+       // 🔥 Setup Hindi Font
         await setupHindiFont();
 
-        const snapshot = await db.collection('blogs').orderBy("createdAt", "desc").limit(10).get();
+        const snapshot = await db.collection('blogs').limit(300).get(); // 🔥 OrderBy हटाया और Limit बढ़ाया ताकि पुराने ब्लॉग भी स्कैन हो सकें
         if (snapshot.empty) throw new Error("❌ कोई ब्लॉग नहीं मिला!");
         
         let targetBlogDoc = null;
