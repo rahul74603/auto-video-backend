@@ -85,22 +85,24 @@ async function generateVerticalStoryImage(title, category) {
 // ==========================================
 async function createStoryFromOldest(collectionName, storyType) {
     try {
-        // 🔥 पुराने पोस्ट्स को पहले निकालने का लॉजिक (Oldest First)
-        // यह सबसे पुराने पोस्ट से चेक करना शुरू करेगा और जिसकी स्टोरी नहीं बनी है, उसे उठा लेगा
-        const snapshot = await db.collection(collectionName)
-            .orderBy("createdAt", "asc") // asc = सबसे पुराना पहले
-            .get();
+        // 🔥 RANDOM POOL ENGINE: लेटेस्ट/पुराने का चक्कर खत्म, अब 300 रिकॉर्ड्स उठाकर रैंडमली स्टोरी बनाएगा
+        const snapshot = await db.collection(collectionName).limit(300).get();
 
-        let targetDoc = null;
-        for (let docItem of snapshot.docs) {
-            // अगर isStoryCreated फील्ड मौजूद नहीं है या false है, तो उसे पकड़ लेगा
+        let pendingDocs = [];
+        snapshot.forEach(docItem => {
             if (docItem.data().isStoryCreated !== true) {
-                targetDoc = docItem;
-                break; // जैसे ही बिना स्टोरी वाला पुराना पोस्ट मिलेगा, लूप रुक जाएगा
+                pendingDocs.push(docItem);
             }
+        });
+
+        // पूल में से किसी भी एक ब्लॉग को रैंडमली सिलेक्ट करेगा
+        let targetDoc = null;
+        if (pendingDocs.length > 0) {
+            targetDoc = pendingDocs[Math.floor(Math.random() * pendingDocs.length)];
         }
 
         if (!targetDoc) {
+
             console.log(`No pending ${collectionName} found for stories.`);
             return null;
         }
