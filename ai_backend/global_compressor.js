@@ -31,6 +31,13 @@ async function runGlobalBucketCleaner() {
         const [files] = await bucket.getFiles();
         console.log(`📦 Total items found in entire bucket: ${files.length}`);
 
+        // 🔥 नया लॉजिक: सभी फाइल्स को उनके साइज के हिसाब से घटते क्रम (Descending) में लगाना
+        files.sort((a, b) => {
+            const sizeA = parseInt(a.metadata.size || 0);
+            const sizeB = parseInt(b.metadata.size || 0);
+            return sizeB - sizeA; // सबसे भारी फाइलें लिस्ट में सबसे ऊपर आ जाएंगी
+        });
+
         // BATCH ENGINE: एक बार में सिर्फ 10 भारी फाइल्स प्रोसेस होंगी ताकि गिटहब टाइमआउट न हो
         let processedCount = 0;
         const MAX_BATCH_SIZE = 10; 
@@ -60,7 +67,7 @@ async function runGlobalBucketCleaner() {
                 continue;
             }
 
-            // 🛑 स्किप कंडीशन 2: अब हर PDF कंप्रेस होगी, सिर्फ webp को स्किप करेंगे। 2MB वाला रूल हटा दिया क्योंकि ठप्पा लगा दिया है।
+            // 🛑 स्किप कंडीशन 2: अब हर PDF कंप्रेस होगी, सिर्फ webp को स्किप करेंगे।
             if (ext === ".webp") continue;
 
             const tempLocalPath = path.join(os.tmpdir(), `raw_${Date.now()}${ext}`);
