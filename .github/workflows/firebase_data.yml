@@ -1,0 +1,26 @@
+name: StudyGyaan Deep Storage Scanner
+
+on:
+  workflow_dispatch: # मैनुअल रन करने वाला बटन (जब भी आपको बकेट स्कैन करनी हो)
+
+jobs:
+  scanner-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install Scanner Dependencies
+        run: |
+          npm install --legacy-peer-deps
+          npm install firebase-admin dotenv --legacy-peer-deps
+
+      - name: 🔍 RUN DEEP STORAGE SCANNER (Find Heavy Files)
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+        run: node ai_backend/storage_scanner.js
