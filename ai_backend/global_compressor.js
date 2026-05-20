@@ -1,4 +1,4 @@
-require("dotenv").config();
+// require("dotenv").config();
 const admin = require("firebase-admin");
 
 // 🔐 FIREBASE INITIALIZATION
@@ -10,7 +10,7 @@ if (!admin.apps.length) {
             credential: admin.credential.cert(serviceAccount),
             storageBucket: "studymaterial-406ad.firebasestorage.app"
         });
-        console.log("✅ Firebase SDK Initialized for EXACT RECOVERY!");
+        console.log("✅ Firebase SDK Initialized for BULLETPROOF RECOVERY!");
     } else {
         throw new Error("❌ SERVICE_ACCOUNT_JSON missing!");
     }
@@ -18,7 +18,7 @@ if (!admin.apps.length) {
 
 const bucket = admin.storage().bucket();
 
-// 🔥 सिर्फ और सिर्फ यही 47 फाइल्स रिकवर होंगी, बाकी कुछ नहीं!
+// 🔥 सिर्फ और सिर्फ यही 47 फाइल्स रिकवर होंगी
 const EXACT_FILES_TO_RESTORE = [
     "job_notifications/1774626642104_BEL-SET-Notification-2026-indgovtjobs.pdf",
     "job_notifications/1774838737119_SSB Sub Inspector Notification 2026 Copy.pdf",
@@ -69,46 +69,56 @@ const EXACT_FILES_TO_RESTORE = [
     "premium_content/KuCwULFEum71NBF8r5VJ/Railway static GK set 20 Inventions & Scientific Instruments.pdf"
 ];
 
-async function exactRecoveryEngine() {
+async function bulletproofRecovery() {
     try {
-        console.log("🚀 Starting Exact 47 Files Recovery...");
-        
-        // केवल सॉफ्ट-डिलीटेड फाइल्स ढूंढ रहे हैं
-        const [files] = await bucket.getFiles({ softDeleted: true });
+        console.log("🚀 Starting Bulletproof 47 Files Recovery...");
         let restoredCount = 0;
 
-        for (const file of files) {
-            // अगर यह फाइल हमारी लिस्ट में मौजूद है और डिलीटेड है
-            if (EXACT_FILES_TO_RESTORE.includes(file.name) && file.metadata && file.metadata.timeDeleted) {
-                console.log(`🔄 Downloading & Re-uploading: ${file.name}`);
+        for (const fileName of EXACT_FILES_TO_RESTORE) {
+            try {
+                // 1. इस फाइल के इतिहास के सभी वर्शन्स निकालो
+                const [versions] = await bucket.getFiles({ prefix: fileName, versions: true });
                 
-                try {
-                    // 1. फाइल को उसके जनरेशन आईडी से सीधे मेमोरी (Buffer) में डाउनलोड करो
-                    const [fileBuffer] = await bucket.file(file.name, { generation: file.metadata.generation }).download();
-                    
-                    // 2. डाउनलोड हुई मेमोरी फाइल को वापस नया (Active) बनाकर सेव कर दो
-                    await bucket.file(file.name).save(fileBuffer, {
-                        metadata: { contentType: 'application/pdf', cacheControl: "public, max-age=31536000" }
-                    });
-                    
-                    console.log(`✅ Success: ${file.name}`);
-                    restoredCount++;
-                } catch (err) {
-                    console.log(`❌ Error restoring ${file.name}: ${err.message}`);
+                let validDataVersion = null;
+
+                // 2. वह वर्जन ढूँढो जिसमें असली डेटा हो (0 Bytes का डिलीट मार्कर ना हो)
+                for (const v of versions) {
+                    const size = parseInt(v.metadata.size || 0);
+                    // असली फाइल जो 1MB (1048576 bytes) से बड़ी है, वही लेंगे
+                    if (size > 1048576) { 
+                        if (!validDataVersion || parseInt(validDataVersion.metadata.size) < size) {
+                            validDataVersion = v;
+                        }
+                    }
                 }
+
+                if (validDataVersion) {
+                    const sizeInMB = (parseInt(validDataVersion.metadata.size) / (1024 * 1024)).toFixed(2);
+                    console.log(`🔄 Restoring: ${fileName} (Found Real Data: ${sizeInMB} MB)`);
+                    
+                    // 3. उस पुराने असली डेटा वाले वर्जन को वापस लाइव कॉपी कर दो
+                    await bucket.file(fileName, { generation: validDataVersion.metadata.generation }).copy(bucket.file(fileName));
+                    console.log(`✅ Success: ${fileName}`);
+                    restoredCount++;
+                } else {
+                    console.log(`⚠️ Warning: No valid real data found in history for ${fileName}`);
+                }
+
+            } catch (err) {
+                console.error(`❌ Failed to restore ${fileName}:`, err.message);
             }
         }
 
         console.log("\n=============================================");
-        console.log(`🎉 47 FILES RECOVERY COMPLETED!`);
-        console.log(`✅ Total files brought back online: ${restoredCount}`);
+        console.log(`🎉 BULLETPROOF RECOVERY COMPLETED!`);
+        console.log(`✅ Total files brought back online: ${restoredCount} out of 47`);
         console.log("=============================================");
 
     } catch (error) {
-        console.error("❌ Recovery Engine Error:", error.message);
+        console.error("❌ Master Recovery Engine Error:", error.message);
     }
 }
 
 if (require.main === module) {
-    exactRecoveryEngine().then(() => process.exit(0)).catch(() => process.exit(1));
+    bulletproofRecovery().then(() => process.exit(0)).catch(() => process.exit(1));
 }
