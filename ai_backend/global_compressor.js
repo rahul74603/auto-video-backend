@@ -47,6 +47,11 @@ async function runGlobalBucketCleaner() {
             const sizeInBytes = parseInt(file.metadata.size || 0);
             const sizeInMB = sizeInBytes / (1024 * 1024);
 
+            // 🛑 स्किप कंडीशन 1: अगर फाइल पर हमारा 'isOptimized' का ठप्पा लगा है, तो उसे तुरंत छोड़ दो!
+            if (file.metadata && file.metadata.metadata && file.metadata.metadata.isOptimized === "true") {
+                continue;
+            }
+
             // 🗑️ 1. भारी वीडियो फाइल्स को तुरंत डिलीट करना
             if ([".mp4", ".avi", ".mkv", ".mov", ".3gp", ".webm"].includes(ext)) {
                 console.log(`🗑️ Deleting video file to clear space: ${file.name}`);
@@ -55,8 +60,7 @@ async function runGlobalBucketCleaner() {
                 continue;
             }
 
-            // 🛑 स्किप कंडीशन: 2MB से छोटी फाइल्स को छोड़ देना है, सिर्फ 2MB से बड़ी फाइल्स कंप्रेस होंगी
-            if (sizeInMB <= 2.0 && ext === ".pdf") continue;
+            // 🛑 स्किप कंडीशन 2: अब हर PDF कंप्रेस होगी, सिर्फ webp को स्किप करेंगे। 2MB वाला रूल हटा दिया क्योंकि ठप्पा लगा दिया है।
             if (ext === ".webp") continue;
 
             const tempLocalPath = path.join(os.tmpdir(), `raw_${Date.now()}${ext}`);
@@ -84,6 +88,7 @@ async function runGlobalBucketCleaner() {
                     // 📄 GHOSTSCRIPT COMPRESSION (HARDCORE SCANNED PDF REDUCTION)
                     console.log(`⚙️ Ghostscript running to compress images inside PDF...`);
                     try {
+                        // GitHub Actions me Ghostscript (gs) pehle se hota hai. Ye PDF ke andar ki heavy images ko sikod dega.
                         const gsCommand = `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/screen -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${tempOutputPath}" "${tempLocalPath}"`;
                         execSync(gsCommand);
                     } catch (gsError) {
@@ -103,10 +108,14 @@ async function runGlobalBucketCleaner() {
                 const newSizeInMB = newSizeInBytes / (1024 * 1024);
                 const newExt = path.extname(targetStoragePath).toLowerCase() || ext;
 
-                // 📤 ओरिजिनल पाथ पर ओवरराइट करना
+                // 📤 ओरिजिनल पाथ पर ओवरराइट करना और 'isOptimized' का ठप्पा लगाना
                 await bucket.upload(tempOutputPath, {
                     destination: targetStoragePath,
-                    metadata: { contentType: contentType, cacheControl: "public, max-age=31536000" }
+                    metadata: { 
+                        contentType: contentType, 
+                        cacheControl: "public, max-age=31536000",
+                        metadata: { isOptimized: "true" } // 🔥 यह लाइन सुनिश्चित करेगी कि फाइल दोबारा कभी प्रोसेस न हो
+                    }
                 });
 
                 if (file.name !== targetStoragePath) {
