@@ -85,12 +85,20 @@ async function generateVerticalStoryImage(title, category) {
 // ==========================================
 async function createStoryFromOldest(collectionName, storyType) {
     try {
-        // 🔥 LIFETIME INFINITE ENGINE: बिना लिमिट के सीधे सिर्फ वही डाक्यूमेंट्स उठाएगा जिनकी स्टोरी नहीं बनी है
-        const snapshot = await db.collection(collectionName).where("isStoryCreated", "!=", true).get();
+        // 🔥 GLOBAL FIELD-FREE SCANNER: बिना किसी क्वेरी फिल्टर के डेटा लाएगा ताकि मिसिंग फील्ड वाले पुराने ब्लॉग भी स्कैन हो सकें
+        const snapshot = await db.collection(collectionName).get();
 
-        let pendingDocs = snapshot.docs;
+        let pendingDocs = [];
+        snapshot.forEach(docItem => {
+            const data = docItem.data();
+            // अगर फील्ड मौजूद नहीं है, या false है, तो उसे पेंडिंग मानकर एरे में डाल देगा
+            if (!data || data.isStoryCreated !== true) {
+                pendingDocs.push(docItem);
+            }
+        });
 
         // पूल में से किसी भी एक ब्लॉग को रैंडमली सिलेक्ट करेगा
+
         let targetDoc = null;
         if (pendingDocs.length > 0) {
             targetDoc = pendingDocs[Math.floor(Math.random() * pendingDocs.length)];
