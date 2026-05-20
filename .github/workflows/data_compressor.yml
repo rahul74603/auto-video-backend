@@ -1,0 +1,54 @@
+name: StudyGyaan Lifetime Master Scheduler
+
+on:
+  schedule:
+    - cron: '30 4 * * *'  # सुबह 10:00 AM IST
+    - cron: '30 6 * * *'  # दोपहर 12:00 PM IST
+    - cron: '30 15 * * *' # रात 9:00 PM IST
+  workflow_dispatch: # मैनुअल रन करने वाला बटन
+
+jobs:
+  master-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install All Core Dependencies
+        run: |
+          npm install --legacy-peer-deps
+          npm install sharp pdf-lib firebase-admin dotenv
+
+      - name: 🔥 RUN GLOBAL COMPRESSOR (Old & New Data Sync)
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+        run: node ai_backend/global_compressor.js
+
+      - name: Trigger Mock Test Story (10 AM IST)
+        if: github.event.schedule == '30 4 * * *'
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node ai_backend/auto_stories.js mocktest
+
+      - name: Trigger Blog Story Noon (12 PM IST)
+        if: github.event.schedule == '30 6 * * *'
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node ai_backend/auto_stories.js blog
+
+      - name: Trigger Blog Story Night (9 PM IST)
+        if: github.event.schedule == '30 15 * * *'
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node ai_backend/auto_stories.js blog
