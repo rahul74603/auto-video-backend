@@ -2,6 +2,7 @@ require("dotenv").config();
 const admin = require("firebase-admin");
 const sharp = require("sharp");
 const { PDFDocument } = require("pdf-lib");
+const { execSync } = require("child_process");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
@@ -54,8 +55,7 @@ async function runGlobalBucketCleaner() {
                 continue;
             }
 
-            // 🛑 स्किप कंडीशन: जो पहले से काफी छोटी हैं (2MB से कम) या पहले से webp हैं
-            if (sizeInMB < 2.0 && ext === ".pdf") continue;
+            // 🛑 स्किप कंडीशन: अब हर PDF कंप्रेस होगी, ताकि आपका पैसा बचे। सिर्फ webp को स्किप करेंगे।
             if (ext === ".webp") continue;
 
             const tempLocalPath = path.join(os.tmpdir(), `raw_${Date.now()}${ext}`);
@@ -80,22 +80,16 @@ async function runGlobalBucketCleaner() {
                 await file.download({ destination: tempLocalPath });
 
                 if (ext === ".pdf") {
-                    // 📄 HARD PDF COMPRESSION & RE-SYNTHESIS (FIXED HIGH-COMPRESSION LOGIC)
-                    console.log(`⚙️ Re-scaling and flattening heavy PDF...`);
-                    const pdfBytes = fs.readFileSync(tempLocalPath);
-                    
-                    // FIXED: parseSpeed को नंबर '1' दिया गया है एरर रोकने के लिए
-                    const pdfDoc = await PDFDocument.load(pdfBytes, { 
-                        ignoreEncryption: true,
-                        parseSpeed: 1
-                    });
-                    
-                    const compressedPdfBytes = await pdfDoc.save({ 
-                        useObjectStreams: true,
-                        objectsPerStream: 100, 
-                        updateFieldPositions: false
-                    });
-                    fs.writeFileSync(tempOutputPath, compressedPdfBytes);
+                    // 📄 GHOSTSCRIPT COMPRESSION (HARDCORE SCANNED PDF REDUCTION)
+                    console.log(`⚙️ Ghostscript running to compress images inside PDF...`);
+                    try {
+                        // GitHub Actions me Ghostscript (gs) pehle se hota hai. Ye PDF ke andar ki heavy images ko sikod dega.
+                        const gsCommand = `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/screen -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${tempOutputPath}" "${tempLocalPath}"`;
+                        execSync(gsCommand);
+                    } catch (gsError) {
+                        console.log(`⚠️ GS Failed, fallback to normal copy: ${gsError.message}`);
+                        fs.copyFileSync(tempLocalPath, tempOutputPath);
+                    }
                 } else {
                     // 🖼️ IMAGE COMPRESSION
                     await sharp(tempLocalPath)
