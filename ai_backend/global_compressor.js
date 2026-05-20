@@ -9,7 +9,7 @@ if (!admin.apps.length) {
             credential: admin.credential.cert(JSON.parse(serviceAccountVar)),
             storageBucket: "studymaterial-406ad.firebasestorage.app"
         });
-        console.log("✅ SDK Initialized for BRUTE-FORCE RECOVERY!");
+        console.log("✅ SDK Initialized for DIRECT BUFFER RESCUE!");
     } else {
         throw new Error("❌ SERVICE_ACCOUNT_JSON missing!");
     }
@@ -67,46 +67,44 @@ const EXACT_FILES_TO_RESTORE = [
     "premium_content/KuCwULFEum71NBF8r5VJ/Railway static GK set 20 Inventions & Scientific Instruments.pdf"
 ];
 
-async function forceBufferRestore() {
-    console.log("🚀 Starting BRUTE-FORCE Recovery...");
+async function finalRescue() {
+    console.log("🚀 Starting Final Rescue Operation...");
     try {
-        // यह बिना किसी कंडीशन के बकेट का पूरा इतिहास (वर्शन्स) ले आएगा
-        const [files] = await bucket.getFiles({ versions: true });
-        let restoredSet = new Set();
+        // 🔥 softDeleted: true से वो फाइल्स मिलेंगी जो आपके पिछले लॉग में मिली थीं
+        const [files] = await bucket.getFiles({ softDeleted: true });
+        let restoredList = new Set();
 
         for (const file of files) {
-            // अगर फाइल लिस्ट में है और अब तक रिस्टोर नहीं हुई है
-            if (EXACT_FILES_TO_RESTORE.includes(file.name) && !restoredSet.has(file.name)) {
-                
+            // लिस्ट में नाम होना चाहिए और पहले से रिस्टोर ना हुई हो
+            if (EXACT_FILES_TO_RESTORE.includes(file.name) && !restoredList.has(file.name)) {
                 const size = parseInt(file.metadata.size || 0);
                 
-                // 0 byte के कचरे (डिलीट मार्कर) को इग्नोर करो, असली डेटा (1MB से ऊपर) पकड़ो
-                if (size > 1048576) {
-                    console.log(`⏳ Downloading original data for: ${file.name} (${(size/1024/1024).toFixed(2)} MB)`);
-                    
+                // 0 byte वाले डिलीट मार्कर (कचरे) को छोड़ना है
+                if (size > 100000) { 
+                    console.log(`📥 Downloading data for: ${file.name} (${(size/1024/1024).toFixed(2)} MB)`);
                     try {
-                        // 1. पुराने असली वर्जन को मेमोरी में डाउनलोड करो
+                        // 1. सीधा फाइल का डेटा डाउनलोड
                         const [buffer] = await file.download();
                         
-                        // 2. उसी नाम से उसे लाइव बकेट में बिलकुल नई फाइल की तरह सेव कर दो
+                        // 2. वापस उसी नाम से लाइव कर दो
                         await bucket.file(file.name).save(buffer, {
                             metadata: { contentType: "application/pdf" }
                         });
                         
-                        restoredSet.add(file.name);
-                        console.log(`✅ Restored Successfully!`);
+                        console.log(`✅ Fully Restored: ${file.name}`);
+                        restoredList.add(file.name); // दुबारा प्रोसेस होने से रोकने के लिए
                     } catch (err) {
-                        console.log(`❌ Failed: ${err.message}`);
+                        console.log(`❌ Error on ${file.name}: ${err.message}`);
                     }
                 }
             }
         }
-        console.log(`\n🎉 JOB DONE! Brought back ${restoredSet.size} out of 47 files.`);
+        console.log(`\n🎉 ALL DONE! Successfully restored ${restoredList.size} out of 47 files.`);
     } catch (e) {
         console.error("Crash:", e.message);
     }
 }
 
 if (require.main === module) {
-    forceBufferRestore().then(() => process.exit(0)).catch(() => process.exit(1));
+    finalRescue().then(() => process.exit(0)).catch(() => process.exit(1));
 }
