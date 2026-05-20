@@ -55,7 +55,8 @@ async function runGlobalBucketCleaner() {
                 continue;
             }
 
-            // 🛑 स्किप कंडीशन: अब हर PDF कंप्रेस होगी, ताकि आपका पैसा बचे। सिर्फ webp को स्किप करेंगे।
+            // 🛑 स्किप कंडीशन: 2MB से छोटी फाइल्स को छोड़ देना है, सिर्फ 2MB से बड़ी फाइल्स कंप्रेस होंगी
+            if (sizeInMB <= 2.0 && ext === ".pdf") continue;
             if (ext === ".webp") continue;
 
             const tempLocalPath = path.join(os.tmpdir(), `raw_${Date.now()}${ext}`);
@@ -83,7 +84,6 @@ async function runGlobalBucketCleaner() {
                     // 📄 GHOSTSCRIPT COMPRESSION (HARDCORE SCANNED PDF REDUCTION)
                     console.log(`⚙️ Ghostscript running to compress images inside PDF...`);
                     try {
-                        // GitHub Actions me Ghostscript (gs) pehle se hota hai. Ye PDF ke andar ki heavy images ko sikod dega.
                         const gsCommand = `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/screen -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${tempOutputPath}" "${tempLocalPath}"`;
                         execSync(gsCommand);
                     } catch (gsError) {
