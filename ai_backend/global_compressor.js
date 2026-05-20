@@ -84,13 +84,12 @@ async function runGlobalBucketCleaner() {
                     console.log(`⚙️ Re-scaling and flattening heavy PDF...`);
                     const pdfBytes = fs.readFileSync(tempLocalPath);
                     
-                    // भारी फोंट्स और मेटाडेटा को हटाने के लिए नया लोड कॉन्फ़िगरेशन
+                    // FIXED: parseSpeed को नंबर '1' दिया गया है एरर रोकने के लिए
                     const pdfDoc = await PDFDocument.load(pdfBytes, { 
                         ignoreEncryption: true,
-                        parseSpeed: 'fast'
+                        parseSpeed: 1
                     });
                     
-                    // पीडीएफ के अंदर के ऑब्जेक्ट्स को पूरी तरह से फ्लैट और कंप्रेस करना
                     const compressedPdfBytes = await pdfDoc.save({ 
                         useObjectStreams: true,
                         objectsPerStream: 100, 
