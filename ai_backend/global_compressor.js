@@ -1,4 +1,4 @@
-// require("dotenv").config();
+require("dotenv").config();
 const admin = require("firebase-admin");
 
 // 🔐 FIREBASE INITIALIZATION
@@ -10,7 +10,7 @@ if (!admin.apps.length) {
             credential: admin.credential.cert(serviceAccount),
             storageBucket: "studymaterial-406ad.firebasestorage.app"
         });
-        console.log("✅ Firebase SDK Initialized for BULLETPROOF RECOVERY!");
+        console.log("✅ Firebase SDK Initialized for NATIVE RESTORE!");
     } else {
         throw new Error("❌ SERVICE_ACCOUNT_JSON missing!");
     }
@@ -18,7 +18,7 @@ if (!admin.apps.length) {
 
 const bucket = admin.storage().bucket();
 
-// 🔥 सिर्फ और सिर्फ यही 47 फाइल्स रिकवर होंगी
+// 🔥 सिर्फ आपकी 47 फाइल्स की लिस्ट
 const EXACT_FILES_TO_RESTORE = [
     "job_notifications/1774626642104_BEL-SET-Notification-2026-indgovtjobs.pdf",
     "job_notifications/1774838737119_SSB Sub Inspector Notification 2026 Copy.pdf",
@@ -69,56 +69,46 @@ const EXACT_FILES_TO_RESTORE = [
     "premium_content/KuCwULFEum71NBF8r5VJ/Railway static GK set 20 Inventions & Scientific Instruments.pdf"
 ];
 
-async function bulletproofRecovery() {
+async function finalNativeRestore() {
     try {
-        console.log("🚀 Starting Bulletproof 47 Files Recovery...");
+        console.log("🚀 Starting Google Cloud Native Restore Engine...");
+        
+        // सिर्फ सॉफ्ट-डिलीटेड फाइल्स (जिसमें आपका 7MB+ का डेटा सेफ रखा है)
+        const [files] = await bucket.getFiles({ softDeleted: true });
         let restoredCount = 0;
 
-        for (const fileName of EXACT_FILES_TO_RESTORE) {
-            try {
-                // 1. इस फाइल के इतिहास के सभी वर्शन्स निकालो
-                const [versions] = await bucket.getFiles({ prefix: fileName, versions: true });
+        for (const file of files) {
+            // अगर फाइल लिस्ट में है
+            if (EXACT_FILES_TO_RESTORE.includes(file.name)) {
                 
-                let validDataVersion = null;
-
-                // 2. वह वर्जन ढूँढो जिसमें असली डेटा हो (0 Bytes का डिलीट मार्कर ना हो)
-                for (const v of versions) {
-                    const size = parseInt(v.metadata.size || 0);
-                    // असली फाइल जो 1MB (1048576 bytes) से बड़ी है, वही लेंगे
-                    if (size > 1048576) { 
-                        if (!validDataVersion || parseInt(validDataVersion.metadata.size) < size) {
-                            validDataVersion = v;
-                        }
+                const sizeInBytes = parseInt(file.metadata.size || 0);
+                const sizeInMB = (sizeInBytes / (1024 * 1024)).toFixed(2);
+                
+                // 0 byte वाले खाली डिलीट मार्कर को स्किप करेंगे, असली भारी फाइल पकड़ेंगे
+                if (sizeInBytes > 0) {
+                    console.log(`🔄 Native Restoring: ${file.name} (${sizeInMB} MB)`);
+                    try {
+                        // 🔥 यहाँ न कॉपी है न डाउनलोड, यह गूगल का ऑफिशियल रिस्टोर कमांड है
+                        await bucket.file(file.name, { generation: file.metadata.generation }).restore();
+                        console.log(`✅ Success: ${file.name}`);
+                        restoredCount++;
+                    } catch (err) {
+                        console.log(`❌ Error: ${err.message}`);
                     }
                 }
-
-                if (validDataVersion) {
-                    const sizeInMB = (parseInt(validDataVersion.metadata.size) / (1024 * 1024)).toFixed(2);
-                    console.log(`🔄 Restoring: ${fileName} (Found Real Data: ${sizeInMB} MB)`);
-                    
-                    // 3. उस पुराने असली डेटा वाले वर्जन को वापस लाइव कॉपी कर दो
-                    await bucket.file(fileName, { generation: validDataVersion.metadata.generation }).copy(bucket.file(fileName));
-                    console.log(`✅ Success: ${fileName}`);
-                    restoredCount++;
-                } else {
-                    console.log(`⚠️ Warning: No valid real data found in history for ${fileName}`);
-                }
-
-            } catch (err) {
-                console.error(`❌ Failed to restore ${fileName}:`, err.message);
             }
         }
 
         console.log("\n=============================================");
-        console.log(`🎉 BULLETPROOF RECOVERY COMPLETED!`);
-        console.log(`✅ Total files brought back online: ${restoredCount} out of 47`);
+        console.log(`🎉 47 FILES RECOVERY COMPLETED!`);
+        console.log(`✅ Total files restored successfully: ${restoredCount}`);
         console.log("=============================================");
 
     } catch (error) {
-        console.error("❌ Master Recovery Engine Error:", error.message);
+        console.error("❌ Fatal Error:", error.message);
     }
 }
 
 if (require.main === module) {
-    bulletproofRecovery().then(() => process.exit(0)).catch(() => process.exit(1));
+    finalNativeRestore().then(() => process.exit(0)).catch(() => process.exit(1));
 }
