@@ -5,12 +5,11 @@ const admin = require("firebase-admin");
 if (!admin.apps.length) {
     const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
     if (serviceAccountVar) {
-        const serviceAccount = JSON.parse(serviceAccountVar);
         admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
+            credential: admin.credential.cert(JSON.parse(serviceAccountVar)),
             storageBucket: "studymaterial-406ad.firebasestorage.app"
         });
-        console.log("✅ Firebase SDK Initialized for NATIVE RESTORE!");
+        console.log("✅ SDK Initialized for BRUTE-FORCE RECOVERY!");
     } else {
         throw new Error("❌ SERVICE_ACCOUNT_JSON missing!");
     }
@@ -18,7 +17,6 @@ if (!admin.apps.length) {
 
 const bucket = admin.storage().bucket();
 
-// 🔥 सिर्फ आपकी 47 फाइल्स की लिस्ट
 const EXACT_FILES_TO_RESTORE = [
     "job_notifications/1774626642104_BEL-SET-Notification-2026-indgovtjobs.pdf",
     "job_notifications/1774838737119_SSB Sub Inspector Notification 2026 Copy.pdf",
@@ -69,46 +67,46 @@ const EXACT_FILES_TO_RESTORE = [
     "premium_content/KuCwULFEum71NBF8r5VJ/Railway static GK set 20 Inventions & Scientific Instruments.pdf"
 ];
 
-async function finalNativeRestore() {
+async function forceBufferRestore() {
+    console.log("🚀 Starting BRUTE-FORCE Recovery...");
     try {
-        console.log("🚀 Starting Google Cloud Native Restore Engine...");
-        
-        // सिर्फ सॉफ्ट-डिलीटेड फाइल्स (जिसमें आपका 7MB+ का डेटा सेफ रखा है)
-        const [files] = await bucket.getFiles({ softDeleted: true });
-        let restoredCount = 0;
+        // यह बिना किसी कंडीशन के बकेट का पूरा इतिहास (वर्शन्स) ले आएगा
+        const [files] = await bucket.getFiles({ versions: true });
+        let restoredSet = new Set();
 
         for (const file of files) {
-            // अगर फाइल लिस्ट में है
-            if (EXACT_FILES_TO_RESTORE.includes(file.name)) {
+            // अगर फाइल लिस्ट में है और अब तक रिस्टोर नहीं हुई है
+            if (EXACT_FILES_TO_RESTORE.includes(file.name) && !restoredSet.has(file.name)) {
                 
-                const sizeInBytes = parseInt(file.metadata.size || 0);
-                const sizeInMB = (sizeInBytes / (1024 * 1024)).toFixed(2);
+                const size = parseInt(file.metadata.size || 0);
                 
-                // 0 byte वाले खाली डिलीट मार्कर को स्किप करेंगे, असली भारी फाइल पकड़ेंगे
-                if (sizeInBytes > 0) {
-                    console.log(`🔄 Native Restoring: ${file.name} (${sizeInMB} MB)`);
+                // 0 byte के कचरे (डिलीट मार्कर) को इग्नोर करो, असली डेटा (1MB से ऊपर) पकड़ो
+                if (size > 1048576) {
+                    console.log(`⏳ Downloading original data for: ${file.name} (${(size/1024/1024).toFixed(2)} MB)`);
+                    
                     try {
-                        // 🔥 यहाँ न कॉपी है न डाउनलोड, यह गूगल का ऑफिशियल रिस्टोर कमांड है
-                        await bucket.file(file.name, { generation: file.metadata.generation }).restore();
-                        console.log(`✅ Success: ${file.name}`);
-                        restoredCount++;
+                        // 1. पुराने असली वर्जन को मेमोरी में डाउनलोड करो
+                        const [buffer] = await file.download();
+                        
+                        // 2. उसी नाम से उसे लाइव बकेट में बिलकुल नई फाइल की तरह सेव कर दो
+                        await bucket.file(file.name).save(buffer, {
+                            metadata: { contentType: "application/pdf" }
+                        });
+                        
+                        restoredSet.add(file.name);
+                        console.log(`✅ Restored Successfully!`);
                     } catch (err) {
-                        console.log(`❌ Error: ${err.message}`);
+                        console.log(`❌ Failed: ${err.message}`);
                     }
                 }
             }
         }
-
-        console.log("\n=============================================");
-        console.log(`🎉 47 FILES RECOVERY COMPLETED!`);
-        console.log(`✅ Total files restored successfully: ${restoredCount}`);
-        console.log("=============================================");
-
-    } catch (error) {
-        console.error("❌ Fatal Error:", error.message);
+        console.log(`\n🎉 JOB DONE! Brought back ${restoredSet.size} out of 47 files.`);
+    } catch (e) {
+        console.error("Crash:", e.message);
     }
 }
 
 if (require.main === module) {
-    finalNativeRestore().then(() => process.exit(0)).catch(() => process.exit(1));
+    forceBufferRestore().then(() => process.exit(0)).catch(() => process.exit(1));
 }
