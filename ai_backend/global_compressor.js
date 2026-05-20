@@ -76,7 +76,6 @@ async function runGlobalBucketCleaner() {
                     const pdfBytes = fs.readFileSync(tempLocalPath);
                     const pdfDoc = await PDFDocument.load(pdfBytes);
                     
-                    // ऑब्जेक्ट स्ट्रीम्स का उपयोग करके बाइट्स को न्यूनतम लेवल पर सिकोड़ना
                     const compressedPdfBytes = await pdfDoc.save({ 
                         useObjectStreams: true,
                         addDefaultPage: false
@@ -86,7 +85,7 @@ async function runGlobalBucketCleaner() {
                     // 🖼️ IMAGE COMPRESSION
                     await sharp(tempLocalPath)
                         .resize({ width: 1280, withoutEnlargement: true, fit: 'inside' })
-                        .webp({ quality: 40 }) // 40% क्वालिटी ताकि साइज बहुत कम हो जाए
+                        .webp({ quality: 40 })
                         .toFile(tempOutputPath);
                 }
 
@@ -96,7 +95,7 @@ async function runGlobalBucketCleaner() {
                     metadata: { contentType: contentType, cacheControl: "public, max-age=31536000" }
                 });
 
-                // अगर इमेज का एक्सटेंशन बदल गया है (.png से .webp), तो पुरानी फाइल डिलीट करें
+                // अगर इमेज का एक्सटेंशन बदल गया है (.png से .webp), तो पुरानी...
                 if (file.name !== targetStoragePath) {
                     await file.delete();
                     console.log(`🗑️ Original format removed.`);
@@ -115,4 +114,9 @@ async function runGlobalBucketCleaner() {
     } catch (error) {
         console.error("❌ Master Overwrite Engine Error:", error.message);
     }
+}
+
+// 🔥 FIXED: सही फंक्शन नाम को यहाँ कॉल किया गया है
+if (require.main === module) {
+    runGlobalBucketCleaner().then(() => process.exit(0)).catch(() => process.exit(1));
 }
