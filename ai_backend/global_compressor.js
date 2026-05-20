@@ -104,6 +104,11 @@ async function runGlobalBucketCleaner() {
                         .toFile(tempOutputPath);
                 }
 
+                // 📊 नई फाइल का साइज कैलकुलेट करना
+                const newSizeInBytes = fs.statSync(tempOutputPath).size;
+                const newSizeInMB = newSizeInBytes / (1024 * 1024);
+                const newExt = path.extname(targetStoragePath).toLowerCase() || ext;
+
                 // 📤 ओरिजिनल पाथ पर ओवरराइट करना
                 await bucket.upload(tempOutputPath, {
                     destination: targetStoragePath,
@@ -114,7 +119,9 @@ async function runGlobalBucketCleaner() {
                     await file.delete();
                     console.log(`🗑️ Original format removed.`);
                 }
-                console.log(`✅ Successfully replaced with optimized version!`);
+                
+                // 📈 साइज और फॉर्मेट का लाइव रिपोर्ट लॉग प्रिंट करना
+                console.log(`✅ Success! Format: [${ext} ➡️ ${newExt}] | Size: [${sizeInMB.toFixed(2)} MB ➡️ ${newSizeInMB.toFixed(2)} MB]`);
                 processedCount++;
 
             } catch (procErr) {
