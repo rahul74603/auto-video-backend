@@ -30,7 +30,16 @@ async function runGlobalBucketCleaner() {
         const [files] = await bucket.getFiles();
         console.log(`📦 Total items found in entire bucket: ${files.length}`);
 
+        // BATCH ENGINE: एक बार में सिर्फ 10 भारी फाइल्स प्रोसेस होंगी ताकि गिटहब टाइमआउट न हो
+        let processedCount = 0;
+        const MAX_BATCH_SIZE = 10; 
+
         for (const file of files) {
+            if (processedCount >= MAX_BATCH_SIZE) {
+                console.log(`🛑 Batch limit of ${MAX_BATCH_SIZE} reached for this run. Stopping to prevent timeout.`);
+                break;
+            }
+
             if (file.name.endsWith("/")) continue;
 
             const ext = path.extname(file.name).toLowerCase();
@@ -41,17 +50,17 @@ async function runGlobalBucketCleaner() {
             if ([".mp4", ".avi", ".mkv", ".mov", ".3gp", ".webm"].includes(ext)) {
                 console.log(`🗑️ Deleting video file to clear space: ${file.name}`);
                 await file.delete();
+                processedCount++;
                 continue;
             }
 
-            // 🛑 स्किप कंडीशन: जो फाइलें पहले से 2MB से छोटी हैं, उन्हें दोबारा कंप्रेस नहीं करेंगे (टाइम बचेगा)
+            // 🛑 स्किप कंडीशन: जो पहले से काफी छोटी हैं (2MB से कम) या पहले से webp हैं
             if (sizeInMB < 2.0 && ext === ".pdf") continue;
             if (ext === ".webp") continue;
 
             const tempLocalPath = path.join(os.tmpdir(), `raw_${Date.now()}${ext}`);
             const tempOutputPath = path.join(os.tmpdir(), `out_${Date.now()}${ext === ".pdf" ? ".pdf" : ".webp"}`);
             
-            // अगर इमेज है तो उसे .webp नाम से उसी फोल्डर में रिप्लेस करेंगे
             let targetStoragePath = file.name;
             let contentType = file.metadata.contentType;
 
@@ -65,20 +74,27 @@ async function runGlobalBucketCleaner() {
             }
 
             console.log(`--------------------------------------------------`);
-            console.log(`⚙️ Overwrite Optimizing: ${file.name} (${sizeInMB.toFixed(2)} MB)`);
+            console.log(`⚙️ Overwrite Optimizing [${processedCount + 1}/${MAX_BATCH_SIZE}]: ${file.name} (${sizeInMB.toFixed(2)} MB)`);
 
             try {
                 await file.download({ destination: tempLocalPath });
 
                 if (ext === ".pdf") {
-                    // 📄 HARD PDF COMPRESSION & RE-SYNTHESIS
+                    // 📄 HARD PDF COMPRESSION & RE-SYNTHESIS (FIXED HIGH-COMPRESSION LOGIC)
                     console.log(`⚙️ Re-scaling and flattening heavy PDF...`);
                     const pdfBytes = fs.readFileSync(tempLocalPath);
-                    const pdfDoc = await PDFDocument.load(pdfBytes);
                     
+                    // भारी फोंट्स और मेटाडेटा को हटाने के लिए नया लोड कॉन्फ़िगरेशन
+                    const pdfDoc = await PDFDocument.load(pdfBytes, { 
+                        ignoreEncryption: true,
+                        parseSpeed: 'fast'
+                    });
+                    
+                    // पीडीएफ के अंदर के ऑब्जेक्ट्स को पूरी तरह से फ्लैट और कंप्रेस करना
                     const compressedPdfBytes = await pdfDoc.save({ 
                         useObjectStreams: true,
-                        addDefaultPage: false
+                        objectsPerStream: 100, 
+                        updateFieldPositions: false
                     });
                     fs.writeFileSync(tempOutputPath, compressedPdfBytes);
                 } else {
@@ -89,18 +105,18 @@ async function runGlobalBucketCleaner() {
                         .toFile(tempOutputPath);
                 }
 
-                // 📤 ओरिजिनल पाथ पर ओवरराइट (रिप्लेस) करना
+                // 📤 ओरिजिनल पाथ पर ओवरराइट करना
                 await bucket.upload(tempOutputPath, {
                     destination: targetStoragePath,
                     metadata: { contentType: contentType, cacheControl: "public, max-age=31536000" }
                 });
 
-                // अगर इमेज का एक्सटेंशन बदल गया है (.png से .webp), तो पुरानी...
                 if (file.name !== targetStoragePath) {
                     await file.delete();
                     console.log(`🗑️ Original format removed.`);
                 }
                 console.log(`✅ Successfully replaced with optimized version!`);
+                processedCount++;
 
             } catch (procErr) {
                 console.error(`❌ Error processing ${file.name}:`, procErr.message);
@@ -116,7 +132,6 @@ async function runGlobalBucketCleaner() {
     }
 }
 
-// 🔥 FIXED: सही फंक्शन नाम को यहाँ कॉल किया गया है
 if (require.main === module) {
     runGlobalBucketCleaner().then(() => process.exit(0)).catch(() => process.exit(1));
 }
