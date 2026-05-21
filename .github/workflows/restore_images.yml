@@ -1,4 +1,4 @@
-name: 🚑 Restore Deleted Images
+name: 🚑 Fix Image Links (JPG to WebP)
 
 on:
   workflow_dispatch:
@@ -16,10 +16,10 @@ jobs:
           node-version: '20'
 
       - name: Install Firebase Admin
-        # 🔥 Yahan --legacy-peer-deps add kar diya gaya hai taaki error na aaye
+        # 🔥 Yahan --legacy-peer-deps hai taaki npm error na aaye
         run: npm install firebase-admin dotenv --legacy-peer-deps
 
-      - name: 🚨 Run Recovery Script
+      - name: 🚨 Run Link Update Script
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
         run: node ai_backend/restore_images.js
