@@ -8,70 +8,74 @@ if (!admin.apps.length) {
         admin.initializeApp({
             credential: admin.credential.cert(serviceAccount)
         });
-        console.log("✅ Firebase Admin SDK Initialized!");
+        console.log("✅ Firebase Admin SDK Initialized for EMERGENCY REPAIR!");
     } else {
         throw new Error("❌ SERVICE_ACCOUNT_JSON missing!");
     }
 }
 
 const db = admin.firestore();
-
-// 🔥 YAHAN APNE DATABASE COLLECTIONS KE NAAM HAIN (Aapki site ke liye common naam daal diye hain)
 const collectionsToUpdate = ["blogs", "webstories", "posts", "articles", "news"]; 
 
-async function updateLinks() {
-    console.log("🚀 Starting Database Update: Replacing .jpg/.png with .webp...");
-    let totalUpdated = 0;
+async function emergencyFix() {
+    console.log("🚨 Starting Emergency Repair: Fixing 'Invalid Date' and Broken Image Links...");
+    let totalFixed = 0;
 
     for (const collectionName of collectionsToUpdate) {
         console.log(`\n📂 Scanning collection: ${collectionName}...`);
         try {
             const snapshot = await db.collection(collectionName).get();
-            if (snapshot.empty) {
-                console.log(`⚠️ No data found in ${collectionName}.`);
-                continue;
-            }
+            if (snapshot.empty) continue;
 
             for (const doc of snapshot.docs) {
                 const data = doc.data();
                 let needsUpdate = false;
 
-                // 🔄 Recursive function jo database ke andar har jagah photo ke link dhundhega
-                function replaceImageExt(obj) {
-                    if (typeof obj === 'string') {
-                        if (obj.includes('.jpg') || obj.includes('.png') || obj.includes('.jpeg') || 
-                            obj.includes('.JPG') || obj.includes('.PNG')) {
-                            needsUpdate = true;
-                            return obj.replace(/\.jpg/gi, '.webp')
-                                      .replace(/\.jpeg/gi, '.webp')
-                                      .replace(/\.png/gi, '.webp');
+                function fixData(obj) {
+                    if (obj === null || obj === undefined) return obj;
+
+                    if (typeof obj === 'object') {
+                        if (Array.isArray(obj)) {
+                            return obj.map(item => fixData(item));
                         }
-                        return obj;
-                    } else if (Array.isArray(obj)) {
-                        return obj.map(item => replaceImageExt(item));
-                    } else if (obj !== null && typeof obj === 'object') {
+
+                        // 🔥 FIX 1: RESTORE BROKEN DATES (Invalid Date Error)
+                        if (('_seconds' in obj && '_nanoseconds' in obj) || ('seconds' in obj && 'nanoseconds' in obj)) {
+                            needsUpdate = true;
+                            const sec = obj._seconds !== undefined ? obj._seconds : obj.seconds;
+                            const nano = obj._nanoseconds !== undefined ? obj._nanoseconds : obj.nanoseconds;
+                            return new admin.firestore.Timestamp(sec, nano); // Converting back to original Firebase Date Format
+                        }
+
                         const newObj = {};
                         for (const key in obj) {
-                            newObj[key] = replaceImageExt(obj[key]);
+                            // 🔥 FIX 2: REPAIR BROKEN .webp IMAGE TOKENS
+                            if (typeof obj[key] === 'string' && obj[key].includes('firebasestorage') && obj[key].includes('.webp') && obj[key].includes('token=')) {
+                                needsUpdate = true;
+                                // Remove the old invalid token that is blocking the image
+                                newObj[key] = obj[key].replace(/&token=[^&]+/, '').replace(/\?token=[^&]+$/, '');
+                            } else {
+                                newObj[key] = fixData(obj[key]);
+                            }
                         }
                         return newObj;
                     }
                     return obj;
                 }
 
-                const updatedData = replaceImageExt(data);
+                const fixedData = fixData(data);
 
                 if (needsUpdate) {
-                    await db.collection(collectionName).doc(doc.id).set(updatedData);
-                    console.log(`✅ Fixed photo links in document: ${doc.id}`);
-                    totalUpdated++;
+                    await db.collection(collectionName).doc(doc.id).set(fixedData);
+                    console.log(`✅ Fixed Date/Image in document: ${doc.id}`);
+                    totalFixed++;
                 }
             }
         } catch (err) {
-            console.log(`❌ Error scanning ${collectionName}: ${err.message}`);
+            console.log(`❌ Error in ${collectionName}: ${err.message}`);
         }
     }
-    console.log(`\n🎉 DONE! Total ${totalUpdated} posts/stories updated with .webp photos.`);
+    console.log(`\n🎉 EMERGENCY REPAIR DONE! Total ${totalFixed} posts fixed. PLEASE HARD REFRESH YOUR WEBSITE!`);
 }
 
-updateLinks();
+emergencyFix();
