@@ -1,0 +1,24 @@
+name: 🚑 Restore Deleted Images
+
+on:
+  workflow_dispatch: # Ye code GitHub me ek 'Run workflow' ka manual button bana dega
+
+jobs:
+  recover-files:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install Firebase Admin
+        run: npm install firebase-admin dotenv
+
+      - name: 🚨 Run Recovery Script
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+        run: node ai_backend/restore_images.js
