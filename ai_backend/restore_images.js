@@ -1,63 +1,77 @@
 require("dotenv").config();
 const admin = require("firebase-admin");
 
-// 🔐 FIREBASE INITIALIZATION
 if (!admin.apps.length) {
     const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
     if (serviceAccountVar) {
         const serviceAccount = JSON.parse(serviceAccountVar);
         admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
-            storageBucket: "studymaterial-406ad.firebasestorage.app"
+            credential: admin.credential.cert(serviceAccount)
         });
-        console.log("✅ Firebase SDK Initialized for Image Recovery!");
+        console.log("✅ Firebase Admin SDK Initialized!");
     } else {
         throw new Error("❌ SERVICE_ACCOUNT_JSON missing!");
     }
 }
 
-const bucket = admin.storage().bucket();
+const db = admin.firestore();
 
-async function recoverImages() {
-    console.log("🚨 Starting Image Recovery from Firebase Hidden Recycle Bin...");
-    try {
-        // Recycle bin aur deleted versions ki saari files nikalna
-        const [files] = await bucket.getFiles({ versions: true });
-        let recoveredCount = 0;
+// 🔥 YAHAN APNE DATABASE COLLECTIONS KE NAAM HAIN (Aapki site ke liye common naam daal diye hain)
+const collectionsToUpdate = ["blogs", "webstories", "posts", "articles", "news"]; 
 
-        for (const file of files) {
-            const isDeleted = file.metadata.timeDeleted; 
-            const ext = file.name.toLowerCase();
+async function updateLinks() {
+    console.log("🚀 Starting Database Update: Replacing .jpg/.png with .webp...");
+    let totalUpdated = 0;
 
-            // Sirf un files ko pakadna jo delete hui hain aur images hain
-            if (isDeleted && (ext.endsWith(".jpg") || ext.endsWith(".jpeg") || ext.endsWith(".png"))) {
-                console.log(`♻️ Found deleted image: ${file.name}`);
-                
-                try {
-                    const oldGenerationFile = bucket.file(file.name, { generation: file.metadata.generation });
-                    
-                    // Option A: Restore API use karna
-                    if (typeof oldGenerationFile.restore === 'function') {
-                        await oldGenerationFile.restore();
-                    } else {
-                        // Option B: Agar restore direct na ho to purani file ko wapas copy karna
-                        await oldGenerationFile.copy(bucket.file(file.name));
+    for (const collectionName of collectionsToUpdate) {
+        console.log(`\n📂 Scanning collection: ${collectionName}...`);
+        try {
+            const snapshot = await db.collection(collectionName).get();
+            if (snapshot.empty) {
+                console.log(`⚠️ No data found in ${collectionName}.`);
+                continue;
+            }
+
+            for (const doc of snapshot.docs) {
+                const data = doc.data();
+                let needsUpdate = false;
+
+                // 🔄 Recursive function jo database ke andar har jagah photo ke link dhundhega
+                function replaceImageExt(obj) {
+                    if (typeof obj === 'string') {
+                        if (obj.includes('.jpg') || obj.includes('.png') || obj.includes('.jpeg') || 
+                            obj.includes('.JPG') || obj.includes('.PNG')) {
+                            needsUpdate = true;
+                            return obj.replace(/\.jpg/gi, '.webp')
+                                      .replace(/\.jpeg/gi, '.webp')
+                                      .replace(/\.png/gi, '.webp');
+                        }
+                        return obj;
+                    } else if (Array.isArray(obj)) {
+                        return obj.map(item => replaceImageExt(item));
+                    } else if (obj !== null && typeof obj === 'object') {
+                        const newObj = {};
+                        for (const key in obj) {
+                            newObj[key] = replaceImageExt(obj[key]);
+                        }
+                        return newObj;
                     }
-                    
-                    recoveredCount++;
-                    console.log(`✅ Successfully Restored: ${file.name}`);
-                } catch (err) {
-                    console.log(`⚠️ Could not restore ${file.name}: ${err.message}`);
+                    return obj;
+                }
+
+                const updatedData = replaceImageExt(data);
+
+                if (needsUpdate) {
+                    await db.collection(collectionName).doc(doc.id).set(updatedData);
+                    console.log(`✅ Fixed photo links in document: ${doc.id}`);
+                    totalUpdated++;
                 }
             }
+        } catch (err) {
+            console.log(`❌ Error scanning ${collectionName}: ${err.message}`);
         }
-        
-        console.log(`\n🎉 Recovery Complete! Total ${recoveredCount} images restored.`);
-        console.log("🌐 Ab apni React website ko refresh karke check karein, saari photos wapas aa gayi hongi!");
-        
-    } catch (error) {
-        console.error("❌ Recovery Error:", error.message);
     }
+    console.log(`\n🎉 DONE! Total ${totalUpdated} posts/stories updated with .webp photos.`);
 }
 
-recoverImages();
+updateLinks();
