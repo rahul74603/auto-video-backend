@@ -1,7 +1,7 @@
 name: 🚑 Restore Deleted Images
 
 on:
-  workflow_dispatch: # Ye code GitHub me ek 'Run workflow' ka manual button bana dega
+  workflow_dispatch:
 
 jobs:
   recover-files:
@@ -16,7 +16,8 @@ jobs:
           node-version: '20'
 
       - name: Install Firebase Admin
-        run: npm install firebase-admin dotenv
+        # 🔥 Yahan --legacy-peer-deps add kar diya gaya hai taaki error na aaye
+        run: npm install firebase-admin dotenv --legacy-peer-deps
 
       - name: 🚨 Run Recovery Script
         env:
