@@ -3,15 +3,17 @@ const admin = require("firebase-admin");
 
 if (!admin.apps.length) {
     admin.initializeApp({
-        credential: admin.credential.cert(JSON.parse(process.env.SERVICE_ACCOUNT_JSON))
+        credential: admin.credential.cert(JSON.parse(process.env.SERVICE_ACCOUNT_JSON)),
+        storageBucket: "studymaterial-406ad.firebasestorage.app" // 🔥 Storage access ke liye
     });
 }
 
 const db = admin.firestore();
+const bucket = admin.storage().bucket();
 const collectionsToUpdate = ["blogs", "webstories", "posts", "articles", "news"];
 
-async function fixFinalLinks() {
-    console.log("🚀 FINAL FIX: Converting Raw GCS Links to Firebase Public Links...");
+async function autoHealLinks() {
+    console.log("🚑 STARTING AUTO-HEALER: Checking live Storage for missing images...");
     let totalFixed = 0;
 
     for (const collectionName of collectionsToUpdate) {
@@ -24,51 +26,67 @@ async function fixFinalLinks() {
                 const data = doc.data();
                 let needsUpdate = false;
 
-                function fixLinksInObject(obj) {
+                async function healObject(obj) {
                     if (obj === null || obj === undefined) return obj;
 
                     if (typeof obj === 'string') {
-                        let original = obj;
-                        
-                        // 🔥 FIX: Raw storage links ko Firebase Public links me badalna
-                        if (original.includes("storage.googleapis.com/studymaterial-406ad.firebasestorage.app")) {
-                            original = original.replace(/https:\/\/storage\.googleapis\.com\/studymaterial-406ad\.firebasestorage\.app\/([^"'\s>]+)/g, (match, path) => {
-                                const cleanPath = path.split('?')[0]; 
-                                return `https://firebasestorage.googleapis.com/v0/b/studymaterial-406ad.firebasestorage.app/o/${encodeURIComponent(cleanPath)}?alt=media`;
-                            });
-                            needsUpdate = true;
+                        // Agar link me .webp hai, to asli file check karenge
+                        if (obj.includes("firebasestorage.googleapis.com") && obj.includes(".webp")) {
+                            const match = obj.match(/\/o\/([^?]+)/);
+                            if (match) {
+                                const filePath = decodeURIComponent(match[1]);
+                                try {
+                                    const [exists] = await bucket.file(filePath).exists();
+                                    if (!exists) {
+                                        // WebP nahi mili, matlab ye naya blog hai! Try JPG
+                                        const jpgPath = filePath.replace('.webp', '.jpg');
+                                        const [jpgExists] = await bucket.file(jpgPath).exists();
+                                        if (jpgExists) {
+                                            needsUpdate = true;
+                                            return obj.replace('.webp', '.jpg'); // Wapas JPG kar diya
+                                        } else {
+                                            // Try PNG
+                                            const pngPath = filePath.replace('.webp', '.png');
+                                            const [pngExists] = await bucket.file(pngPath).exists();
+                                            if (pngExists) {
+                                                needsUpdate = true;
+                                                return obj.replace('.webp', '.png'); // Wapas PNG kar diya
+                                            }
+                                        }
+                                    }
+                                } catch (e) {
+                                    // Ignore storage errors
+                                }
+                            }
                         }
-                        
-                        // Security check: Agar koi firebase link hai jisme ?alt=media missing hai
-                        if (original.includes("firebasestorage.googleapis.com") && !original.includes("alt=media")) {
-                            original = original.replace(/(https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/studymaterial-406ad\.firebasestorage\.app\/o\/[^"'\s>?]+)/g, "$1?alt=media");
-                            needsUpdate = true;
-                        }
-
-                        return original;
+                        return obj;
                     } 
                     else if (Array.isArray(obj)) {
-                        return obj.map(item => fixLinksInObject(item));
+                        const arr = [];
+                        for (let i = 0; i < obj.length; i++) {
+                            arr.push(await healObject(obj[i]));
+                        }
+                        return arr;
                     } 
                     else if (typeof obj === 'object') {
-                        // 🛑 Dates (Timestamps) ko bilkul nahi chhedna hai (Pichli galti se seekh)
+                        // Date/Time ko bilkul safe rakhna hai
                         if (obj.constructor && obj.constructor.name === 'Timestamp') return obj;
                         if (('_seconds' in obj && '_nanoseconds' in obj) || ('seconds' in obj && 'nanoseconds' in obj)) return obj;
                         
                         const newObj = {};
                         for (const key in obj) {
-                            newObj[key] = fixLinksInObject(obj[key]);
+                            newObj[key] = await healObject(obj[key]);
                         }
                         return newObj;
                     }
                     return obj;
                 }
 
-                const fixedData = fixLinksInObject(data);
+                const healedData = await healObject(data);
 
                 if (needsUpdate) {
-                    await db.collection(collectionName).doc(doc.id).set(fixedData);
-                    console.log(`✅ Fixed format in document: ${doc.id}`);
+                    await db.collection(collectionName).doc(doc.id).set(healedData);
+                    console.log(`✅ Restored original image format for new post: ${doc.id}`);
                     totalFixed++;
                 }
             }
@@ -76,7 +94,7 @@ async function fixFinalLinks() {
             console.log(`❌ Error in ${collectionName}: ${err.message}`);
         }
     }
-    console.log(`\n🎉 PERFECT! Total ${totalFixed} posts updated to Official Firebase Links. PLEASE HARD REFRESH YOUR WEBSITE!`);
+    console.log(`\n🎉 AUTO-HEAL COMPLETE! Total ${totalFixed} new posts fixed. PLEASE HARD REFRESH YOUR WEBSITE!`);
 }
 
-fixFinalLinks();
+autoHealLinks();
