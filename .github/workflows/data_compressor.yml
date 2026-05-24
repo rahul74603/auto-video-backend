@@ -22,7 +22,7 @@ jobs:
       - name: Install All Core Dependencies
         run: |
           npm install --legacy-peer-deps
-          npm install sharp pdf-lib firebase-admin dotenv --legacy-peer-deps
+          npm install sharp pdf-lib firebase-admin dotenv firebase-functions --legacy-peer-deps
 
       - name: 🔥 Install Ghostscript & RUN GLOBAL COMPRESSOR
         env:
