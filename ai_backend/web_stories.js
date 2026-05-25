@@ -1,14 +1,12 @@
 const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 
-// Initialize Firebase Admin (Agar pehle se nahi hai toh)
 if (!admin.apps.length) {
     admin.initializeApp();
 }
 const db = admin.firestore();
 
 const renderWebStory = async (req, res) => {
-    // URL se story ki ID ya Slug nikalna
     const identifier = req.params.id;
 
     if (!identifier) {
@@ -19,18 +17,18 @@ const renderWebStory = async (req, res) => {
         let storyData = null;
         let storyId = identifier;
 
-        // 🛠️ 1. SMART URL LOGIC: Pehle Slug se dhoondho
+        // 1. Pehle slug se dhoondho
         const slugQuery = await db.collection("web_stories").where("slug", "==", identifier).limit(1).get();
-        
+
         if (!slugQuery.empty) {
             storyData = slugQuery.docs[0].data();
             storyId = slugQuery.docs[0].id;
         } else {
-            // Agar slug nahi mila, toh Document ID se dhoondho
+            // Slug nahi mila to doc ID se dhoondho
             const idDoc = await db.collection("web_stories").doc(identifier).get();
             if (idDoc.exists) {
                 storyData = idDoc.data();
-                // 🔥 SEO REDIRECTION: Agar doc mein slug hai aur user ID se aaya hai, toh Slug wale URL par 301 Redirect karo
+                // Slug wale URL par 301 redirect karo
                 if (storyData.slug && storyData.slug !== identifier) {
                     return res.redirect(301, `https://studygyaan.in/web-stories/${storyData.slug}`);
                 }
@@ -42,29 +40,32 @@ const renderWebStory = async (req, res) => {
         }
 
         const data = storyData;
-        
-        // 🛠️ 2. STORY TYPE IDENTIFICATION (Mocktest or Blog)
-        const storyType = String(data.storyType || 'mocktest').toLowerCase(); 
+        const storyType = String(data.storyType || 'mocktest').toLowerCase();
 
-        // Common Fields
         const title = data.title || "StudyGyaan Update";
         const slug = data.slug || storyId;
         const pageUrl = `https://studygyaan.in/web-stories/${slug}`;
-        
-        // 🔥 Smart Exam Background Image Fallback
+
+        // Cover image — jo auto_stories.js ne WebP me save ki hai wahi aayegi
         let coverImage = data.coverImage || "https://studygyaan.in/og-image.jpg";
         if (storyType === 'mocktest' && coverImage.includes('og-image.jpg')) {
-            coverImage = "https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?q=80&w=720&auto=format&fit=crop";
+            coverImage = "https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?q=80&w=1080&h=1920&auto=format&fit=crop";
         }
+
+        // ✅ auto_stories.js ne jo width/height/type save ki thi woh yahan use ho rahi hai
+        // Agar nahi hai (purani stories) to defaults use karo
+        const coverImageWidth  = data.coverImageWidth  || 1080;
+        const coverImageHeight = data.coverImageHeight || 1920;
+        const coverImageType   = data.coverImageType   || "image/webp";
 
         const applyLink = data.applyLink || "https://studygyaan.in";
         const publisher = "StudyGyaan";
         const publisherLogo = "https://studygyaan.in/logo.png";
-        
-        // Date Formatting for SEO
-        const publishedDate = data.createdAt && data.createdAt.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString();
+        const publishedDate = data.createdAt && data.createdAt.toDate
+            ? data.createdAt.toDate().toISOString()
+            : new Date().toISOString();
 
-        // 🔥 3. SMART INTERNAL LINKS FETCHING
+        // Internal links
         const blogSnap = await db.collection("blogs").orderBy("date", "desc").limit(2).get();
         let internalLinksHtml = "";
         if (!blogSnap.empty) {
@@ -76,7 +77,7 @@ const renderWebStory = async (req, res) => {
             internalLinksHtml += `</ul></div>`;
         }
 
-        // 🔥 4. DYNAMIC CONTENT LOGIC (Badges, Rows & Button Text)
+        // Dynamic content
         let badgeText = "";
         let badgeColor = "";
         let detailsHtml = "";
@@ -84,9 +85,8 @@ const renderWebStory = async (req, res) => {
         let metaDescription = "";
 
         if (storyType === 'blog') {
-            // BLOG SETTINGS
             badgeText = "📝 NEW BLOG POST";
-            badgeColor = "#059669"; // Green Theme
+            badgeColor = "#059669";
             outlinkText = "Read Full Blog";
             const desc = data.description || "Read this complete article to boost your knowledge and stay updated.";
             metaDescription = desc;
@@ -97,14 +97,11 @@ const renderWebStory = async (req, res) => {
                 ${internalLinksHtml}
             `;
         } else {
-            // 🎯 NEW MOCK TEST SETTINGS (Exam Dashboard Look)
             badgeText = "🎯 MOCK TEST LIVE";
-            badgeColor = "#2563eb"; // Blue Theme
+            badgeColor = "#2563eb";
             outlinkText = "Attempt Test Now";
-            
-            const smartDesc = `Check your preparation level! Attempt this high-level '${title}' with real exam-like questions and negative marking.`;
+            const smartDesc = `Check your preparation level! Attempt this high-level '${title}' with real exam-like questions.`;
             metaDescription = smartDesc;
-
             detailsHtml = `
                 <p class="story-desc">${smartDesc}</p>
                 <div class="test-stats">
@@ -116,7 +113,7 @@ const renderWebStory = async (req, res) => {
             `;
         }
 
-        // 🔥 5. ADVANCED JSON-LD SCHEMA FOR GOOGLE DISCOVER/SEARCH 🔥
+        // ✅ JSON-LD Schema — NewsArticle type Google Discover ke liye best hai
         const jsonLdMarkup = JSON.stringify({
             "@context": "https://schema.org",
             "@type": "NewsArticle",
@@ -125,7 +122,12 @@ const renderWebStory = async (req, res) => {
                 "@id": pageUrl
             },
             "headline": title,
-            "image": [coverImage],
+            "image": {
+                "@type": "ImageObject",
+                "url": coverImage,
+                "width": coverImageWidth,
+                "height": coverImageHeight
+            },
             "datePublished": publishedDate,
             "dateModified": publishedDate,
             "author": {
@@ -138,13 +140,16 @@ const renderWebStory = async (req, res) => {
                 "name": publisher,
                 "logo": {
                     "@type": "ImageObject",
-                    "url": publisherLogo
+                    "url": publisherLogo,
+                    "width": 600,
+                    "height": 60
                 }
             },
-            "description": metaDescription
+            "description": metaDescription,
+            "isAccessibleForFree": true
         });
 
-        // 🔥 6. GOOGLE AMP WEB STORY HTML 🔥
+        // ✅ FULL AMP HTML
         const html = `<!doctype html>
 <html amp lang="hi">
 <head>
@@ -156,44 +161,53 @@ const renderWebStory = async (req, res) => {
     <meta name="description" content="${metaDescription}">
     <link rel="canonical" href="${pageUrl}">
     <meta name="viewport" content="width=device-width,minimum-scale=1,initial-scale=1">
-    
     <meta name="robots" content="max-image-preview:large">
+
+    <!-- ✅ Open Graph — Google Discover in tags ko padhta hai -->
+    <meta property="og:type" content="article">
     <meta property="og:title" content="${title}">
     <meta property="og:description" content="${metaDescription}">
-    <meta property="og:image" content="${coverImage}">
     <meta property="og:url" content="${pageUrl}">
-    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="StudyGyaan">
+    <meta property="og:image" content="${coverImage}">
+    <meta property="og:image:width" content="${coverImageWidth}">
+    <meta property="og:image:height" content="${coverImageHeight}">
+    <meta property="og:image:type" content="${coverImageType}">
+    <meta property="article:published_time" content="${publishedDate}">
+    <meta property="article:modified_time" content="${publishedDate}">
+
+    <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="${title}">
     <meta name="twitter:description" content="${metaDescription}">
     <meta name="twitter:image" content="${coverImage}">
-    
-    <script type="application/ld+json">
-        ${jsonLdMarkup}
-    </script>
-    
-    <style amp-boilerplate>body{-webkit-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-moz-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-ms-animation:-amp-start 8s steps(1,end) 0s 1 normal both;animation:-amp-start 8s steps(1,end) 0s 1 normal both}@-webkit-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-moz-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-ms-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-o-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}</style><noscript><style amp-boilerplate>body{-webkit-animation:none;-moz-animation:none;-ms-animation:none;animation:none}</style></noscript>
-    
+
+    <!-- ✅ JSON-LD Structured Data — Discover ranking ke liye zaroori -->
+    <script type="application/ld+json">${jsonLdMarkup}</script>
+
+    <style amp-boilerplate>body{-webkit-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-moz-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-ms-animation:-amp-start 8s steps(1,end) 0s 1 normal both;animation:-amp-start 8s steps(1,end) 0s 1 normal both}@-webkit-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-moz-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-ms-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-o-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}</style>
+    <noscript><style amp-boilerplate>body{-webkit-animation:none;-moz-animation:none;-ms-animation:none;animation:none}</style></noscript>
+
     <style amp-custom>
       body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
       amp-story { color: white; }
-      
+
       .overlay {
         background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.9) 100%);
         width: 100%;
         height: 100%;
       }
-      
+
       .content-wrapper {
         display: flex;
         flex-direction: column;
         justify-content: flex-end;
         height: 100%;
-        padding: 0 24px 100px 24px; /* Space for swipe up button */
+        padding: 0 24px 100px 24px;
       }
-      
+
       .glass-box {
-        background: rgba(255, 255, 255, 0.1);
+        background: rgba(255,255,255,0.1);
         backdrop-filter: blur(15px);
         -webkit-backdrop-filter: blur(15px);
         border: 1px solid rgba(255,255,255,0.2);
@@ -201,37 +215,37 @@ const renderWebStory = async (req, res) => {
         padding: 24px;
         box-shadow: 0 10px 40px rgba(0,0,0,0.6);
       }
-      
-      .badge { 
-        background: ${badgeColor}; 
-        color: white; 
-        padding: 6px 12px; 
-        border-radius: 6px; 
-        font-size: 0.8rem; 
+
+      .badge {
+        background: ${badgeColor};
+        color: white;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 0.8rem;
         font-weight: 900;
-        text-transform: uppercase; 
+        text-transform: uppercase;
         letter-spacing: 1px;
-        margin-bottom: 16px; 
-        display: inline-block; 
+        margin-bottom: 16px;
+        display: inline-block;
       }
-      
-      h1 { 
-        font-size: 2rem; 
-        font-weight: 900; 
-        line-height: 1.2; 
-        margin-bottom: 16px; 
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.8); 
+
+      h1 {
+        font-size: 2rem;
+        font-weight: 900;
+        line-height: 1.2;
+        margin-bottom: 16px;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
       }
-      
-      .story-desc { 
-        font-size: 1.05rem; 
-        color: #f8fafc; 
-        line-height: 1.4; 
-        margin-bottom: 20px; 
-        font-weight: 600; 
-        text-shadow: 1px 1px 3px rgba(0,0,0,0.8); 
+
+      .story-desc {
+        font-size: 1.05rem;
+        color: #f8fafc;
+        line-height: 1.4;
+        margin-bottom: 20px;
+        font-weight: 600;
+        text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
       }
-      
+
       .detail-row {
         font-size: 1.1rem;
         font-weight: bold;
@@ -239,44 +253,27 @@ const renderWebStory = async (req, res) => {
         display: flex;
         align-items: center;
       }
-      
-      .highlight { margin-right: 8px;}
-      
-      /* NEW MOCK TEST STATS CSS */
-      .test-stats { 
-        display: flex; 
-        justify-content: space-between; 
-        gap: 8px; 
-        margin-top: 15px; 
-      }
-      .stat-box { 
-        flex: 1; 
-        background: rgba(0,0,0,0.5); 
-        border: 1px solid rgba(255,255,255,0.15); 
-        border-radius: 12px; 
-        padding: 12px 2px; 
-        text-align: center; 
-      }
-      .stat-icon { 
-        font-size: 1.4rem; 
-        display: block; 
-        margin-bottom: 4px; 
-      }
-      .stat-val { 
-        font-size: 1.1rem; 
-        font-weight: 900; 
-        color: #fff; 
-        display: block; 
-      }
-      .stat-label { 
-        font-size: 0.65rem; 
-        color: #cbd5e1; 
-        text-transform: uppercase; 
-        font-weight: bold; 
-        letter-spacing: 1px;
-      }
 
-      /* INTERNAL LINKS CSS */
+      .highlight { margin-right: 8px; }
+
+      .test-stats {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 15px;
+      }
+      .stat-box {
+        flex: 1;
+        background: rgba(0,0,0,0.5);
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 12px;
+        padding: 12px 2px;
+        text-align: center;
+      }
+      .stat-icon { font-size: 1.4rem; display: block; margin-bottom: 4px; }
+      .stat-val { font-size: 1.1rem; font-weight: 900; color: #fff; display: block; }
+      .stat-label { font-size: 0.65rem; color: #cbd5e1; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; }
+
       .related-box { margin-top: 15px; font-size: 0.95rem; color: #e2e8f0; background: rgba(0,0,0,0.4); padding: 10px; border-radius: 12px; }
       .related-box ul { padding-left: 20px; margin-top: 5px; margin-bottom: 0; }
       .related-box li { margin-bottom: 5px; }
@@ -290,13 +287,20 @@ const renderWebStory = async (req, res) => {
         publisher="${publisher}"
         publisher-logo-src="${publisherLogo}"
         poster-portrait-src="${coverImage}">
-        
+
       <amp-story-page id="page1">
-        
+
         <amp-story-grid-layer template="fill">
-          <amp-img src="${coverImage}" width="720" height="1280" layout="responsive" alt="Background"></amp-img>
+          <!-- ✅ AMP image width/height bhi Firestore se aa rahi hai -->
+          <amp-img
+            src="${coverImage}"
+            width="${coverImageWidth}"
+            height="${coverImageHeight}"
+            layout="responsive"
+            alt="${title}">
+          </amp-img>
         </amp-story-grid-layer>
-        
+
         <amp-story-grid-layer template="fill">
           <div class="overlay"></div>
         </amp-story-grid-layer>
@@ -314,26 +318,31 @@ const renderWebStory = async (req, res) => {
         <amp-story-page-outlink layout="nodisplay" theme="custom">
           <a href="${applyLink}">${outlinkText}</a>
         </amp-story-page-outlink>
-        
+
       </amp-story-page>
 
     </amp-story>
 </body>
 </html>`;
 
-        // Cache settings & Response
         res.set('Cache-Control', 'public, max-age=300, s-maxage=600');
         res.set('Content-Type', 'text/html');
         return res.status(200).send(html);
 
     } catch (error) {
-        console.error("❌ Web Story Generation Error:", error);
+        console.error("❌ Web Story Error:", error);
         return res.status(500).send("Server Error: Unable to load story");
     }
 };
 
-// 🚀 7. WEB STORIES SITEMAP GENERATOR (With Slug Support) 
-const generateStoriesSitemap = onRequest({ cors: true, timeoutSeconds: 60, memory: "256MiB" }, async (req, res) => {
+// ==========================================
+// 🗺️ WEB STORIES SITEMAP
+// ==========================================
+const generateStoriesSitemap = onRequest({
+    cors: true,
+    timeoutSeconds: 60,
+    memory: "256MiB"
+}, async (req, res) => {
     try {
         const snapshot = await db.collection("web_stories")
             .orderBy("createdAt", "desc")
@@ -345,25 +354,24 @@ const generateStoriesSitemap = onRequest({ cors: true, timeoutSeconds: 60, memor
 
         snapshot.forEach(doc => {
             const data = doc.data();
-            const storyId = doc.id;
-            // Sitemap me hamesha Slug use karein (agar available ho)
-            const slug = data.slug || storyId;
+            const slug = data.slug || doc.id;
             const pageUrl = `https://studygyaan.in/web-stories/${slug}`;
-            
-            // Fix Image URL and Title for XML safety
+
             let coverImage = data.coverImage || "https://studygyaan.in/og-image.jpg";
             coverImage = coverImage.replace(/&/g, '&amp;');
-            
+
             const title = (data.title || "StudyGyaan Web Story")
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            
-            const publishedDate = data.createdAt && data.createdAt.toDate 
-                ? data.createdAt.toDate().toISOString() 
+
+            const publishedDate = data.createdAt && data.createdAt.toDate
+                ? data.createdAt.toDate().toISOString()
                 : new Date().toISOString();
 
             xml += `  <url>\n`;
             xml += `    <loc>${pageUrl}</loc>\n`;
             xml += `    <lastmod>${publishedDate}</lastmod>\n`;
+            xml += `    <changefreq>weekly</changefreq>\n`;
+            xml += `    <priority>0.9</priority>\n`;
             xml += `    <image:image>\n`;
             xml += `      <image:loc>${coverImage}</image:loc>\n`;
             xml += `      <image:title>${title}</image:title>\n`;
@@ -378,7 +386,7 @@ const generateStoriesSitemap = onRequest({ cors: true, timeoutSeconds: 60, memor
         res.status(200).send(xml);
 
     } catch (error) {
-        console.error("❌ Web Story Sitemap Error:", error.message);
+        console.error("❌ Sitemap Error:", error.message);
         res.status(500).send("Internal Server Error");
     }
 });
