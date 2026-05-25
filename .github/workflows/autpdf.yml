@@ -1,0 +1,30 @@
+name: StudyGyaan PDF Generator
+
+on:
+  workflow_dispatch: # इसे आप मैन्युअली रन कर सकते हैं
+  schedule:
+    - cron: '0 5 * * *' # रोज़ सुबह 10:30 AM IST
+
+jobs:
+  pdf-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: |
+          npm install --legacy-peer-deps
+          # Puppeteer के लिए ज़रूरी Chromium इन्सटॉल करने के लिए अलग कमांड
+          npm install puppeteer firebase-admin dotenv @google/generative-ai --legacy-peer-deps
+
+      - name: 🔥 Run AutoPDF Engine
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node ai_backend/autoPdf.js
