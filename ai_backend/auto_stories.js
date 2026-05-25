@@ -109,13 +109,14 @@ async function generateVerticalStoryImage(title, category) {
 // ==========================================
 async function createStoryFromOldest(collectionName, storyType) {
     try {
-        const snapshot = await db.collection(collectionName)
-            .orderBy("createdAt", "asc")
-            .get();
+        // 🔥 FIX: 'orderBy' हटा दिया गया है ताकि बिना date वाले नए/पुराने blogs भी hide ना हों
+        const snapshot = await db.collection(collectionName).get();
 
         let targetDoc = null;
         for (let docItem of snapshot.docs) {
-            if (docItem.data().isStoryCreated !== true) {
+            const data = docItem.data();
+            // यह true और "true" (string) दोनों को अच्छे से हैंडल करेगा
+            if (data.isStoryCreated !== true && data.isStoryCreated !== "true") {
                 targetDoc = docItem;
                 break;
             }
