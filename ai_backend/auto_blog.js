@@ -511,7 +511,7 @@ function calculateQualityScore(words, headings, paragraphs, lists, tables) {
 
 async function generateAdvancedBlogContent(category, topic, writingStyle, structure) {
     const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.0-flash-exp",
+        model: "gemini-2.5-flash-lite",
         generationConfig: { 
             responseMimeType: "application/json",
             temperature: 0.9,
