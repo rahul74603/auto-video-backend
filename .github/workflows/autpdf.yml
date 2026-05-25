@@ -1,7 +1,7 @@
 name: StudyGyaan PDF Generator
 
 on:
-  workflow_dispatch: # इसे आप मैन्युअली रन कर सकते हैं
+  workflow_dispatch: # मैन्युअल बटन
   schedule:
     - cron: '0 5 * * *' # रोज़ सुबह 10:30 AM IST
 
@@ -19,8 +19,9 @@ jobs:
 
       - name: Install Dependencies
         run: |
+          # Ghostscript इन्सटॉल करें ताकि PDF कंप्रेस हो सके
+          sudo apt-get update && sudo apt-get install -y ghostscript
           npm install --legacy-peer-deps
-          # Puppeteer के लिए ज़रूरी Chromium इन्सटॉल करने के लिए अलग कमांड
           npm install puppeteer firebase-admin dotenv @google/generative-ai --legacy-peer-deps
 
       - name: 🔥 Run AutoPDF Engine
