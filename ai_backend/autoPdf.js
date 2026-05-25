@@ -44,7 +44,7 @@ async function generateSyllabusPDF(postData) {
 
     try {
         // 1. AI से सिलेबस जनरेट करना
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
         const prompt = `Act as an expert Sarkari Job Educator. Write a detailed Exam Pattern and Syllabus for "${postData.title}". Output STRICTLY in clean HTML. Use <table> for Exam Pattern and <ul> for syllabus. No markdown.`;
         
         const aiResult = await model.generateContent(prompt);
