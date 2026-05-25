@@ -44,7 +44,7 @@ async function generateSyllabusPDF(postData) {
 
     try {
         // 1. AI से सिलेबस जनरेट करना
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const prompt = `Act as an expert Sarkari Job Educator. Write a detailed Exam Pattern and Syllabus for "${postData.title}". Output STRICTLY in clean HTML. Use <table> for Exam Pattern and <ul> for syllabus. No markdown.`;
         
         const aiResult = await model.generateContent(prompt);
@@ -95,13 +95,20 @@ async function generateSyllabusPDF(postData) {
         await browser.close();
 
         // 4. Upload to Firebase
+        const { execSync } = require('child_process');
+        const fs = require('fs');
+        const tempOriginal = `/tmp/original_${Date.now()}.pdf`;
+        const tempCompressed = `/tmp/compressed_${Date.now()}.pdf`;
+        fs.writeFileSync(tempOriginal, pdfBuffer);
+        execSync(`gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/screen -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${tempCompressed}" "${tempOriginal}"`);
+        const compressedBuffer = fs.readFileSync(tempCompressed);
+
         const fileName = `syllabus/${postData.title.replace(/[^a-zA-Z0-9]/g, "_")}_Syllabus.pdf`;
         const file = bucket.file(fileName);
         
-        await file.save(pdfBuffer, { 
-            metadata: { contentType: 'application/pdf' }, 
-            public: true 
-        });
+        await file.save(compressedBuffer, { metadata: { contentType: 'application/pdf' }, public: true });
+        fs.unlinkSync(tempOriginal);
+        fs.unlinkSync(tempCompressed);
 
         const downloadURL = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
         console.log(`✅ PDF Success: ${downloadURL}`);
