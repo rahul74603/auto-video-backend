@@ -325,54 +325,283 @@ function generateBreadcrumbSchema(category, title, url) {
     }, null, 2)}\n</script>`;
 }
 
-async function getSmartInternalLinks(currentCategory, currentTags, limit = 6) {
+// =========================================================
+// 🔗 ADVANCED SMART INTERNAL LINKING SYSTEM
+// =========================================================
+
+async function fetchAllAvailableResources(category, keywords) {
+    const resources = {
+        blogs: [],
+        jobs: [],
+        mockTests: []
+    };
+
     try {
-        const links = [];
-        
-        // Category-based links
-        const categorySnapshot = await db.collection("blogs")
-            .where("category", "==", currentCategory)
+        // 🎯 Fetch Related Blogs (Same Category)
+        const categoryBlogsSnapshot = await db.collection("blogs")
+            .where("category", "==", category)
+            .where("status", "==", "published")
             .orderBy("date", "desc")
-            .limit(3)
+            .limit(10)
             .get();
-        
-        categorySnapshot.forEach(doc => {
+
+        categoryBlogsSnapshot.forEach(doc => {
             const data = doc.data();
-            links.push({
+            resources.blogs.push({
                 title: data.title,
                 url: `https://studygyaan.in/blog/${data.slug || doc.id}`,
                 category: data.category,
-                relevance: "same-category"
+                relevance: "same-category",
+                type: "blog"
             });
         });
-        
-        // Tag-based links
-        if (currentTags && currentTags.length > 0) {
-            const tagSnapshot = await db.collection("blogs")
-                .where("tags", "array-contains-any", currentTags.slice(0, 3))
+
+        // 🎯 Fetch Related Blogs (By Tags/Keywords)
+        if (keywords && keywords.length > 0) {
+            const tagBlogsSnapshot = await db.collection("blogs")
+                .where("tags", "array-contains-any", keywords.slice(0, 5))
+                .where("status", "==", "published")
                 .orderBy("date", "desc")
-                .limit(3)
+                .limit(10)
                 .get();
-            
-            tagSnapshot.forEach(doc => {
+
+            tagBlogsSnapshot.forEach(doc => {
                 const data = doc.data();
-                if (!links.find(l => l.url.includes(data.slug))) {
-                    links.push({
+                const exists = resources.blogs.find(b => b.url.includes(data.slug));
+                if (!exists) {
+                    resources.blogs.push({
                         title: data.title,
                         url: `https://studygyaan.in/blog/${data.slug || doc.id}`,
                         category: data.category,
-                        relevance: "related-tags"
+                        relevance: "related-tags",
+                        type: "blog"
                     });
                 }
             });
         }
+
+        // 💼 Fetch Related Jobs
+        const jobsSnapshot = await db.collection("jobs")
+            .where("status", "==", "active")
+            .orderBy("postedDate", "desc")
+            .limit(15)
+            .get();
+
+        jobsSnapshot.forEach(doc => {
+            const data = doc.data();
+            resources.jobs.push({
+                title: data.title || data.jobTitle || "Government Job",
+                url: `https://studygyaan.in/jobs/${doc.id}`,
+                category: data.category || "Government Jobs",
+                relevance: data.examName || data.department || "General",
+                type: "job"
+            });
+        });
+
+        // 📝 Fetch Related Mock Tests
+        const mockTestsSnapshot = await db.collection("mockTests")
+            .where("isActive", "==", true)
+            .orderBy("createdAt", "desc")
+            .limit(15)
+            .get();
+
+        mockTestsSnapshot.forEach(doc => {
+            const data = doc.data();
+            resources.mockTests.push({
+                title: data.title || data.testName || "Practice Test",
+                url: `https://studygyaan.in/mock-tests/${doc.id}`,
+                category: data.category || data.subject || "General",
+                relevance: data.examType || "Competitive Exam",
+                type: "mockTest"
+            });
+        });
+
+        console.log(`📊 Resources Found: ${resources.blogs.length} blogs, ${resources.jobs.length} jobs, ${resources.mockTests.length} mock tests`);
+
+        return resources;
+
+    } catch (error) {
+        console.error("❌ Error fetching resources:", error.message);
+        return resources;
+    }
+}
+
+async function generateSmartInternalLinks(category, keywords, topic) {
+    try {
+        console.log("🔗 Fetching all available resources...");
         
-        return links.slice(0, limit);
-    } catch (e) {
-        console.error("Internal links error:", e.message);
+        const allResources = await fetchAllAvailableResources(category, keywords);
+        
+        // AI will intelligently select links
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-2.5-flash-lite",
+            generationConfig: { 
+                temperature: 0.7,
+                maxOutputTokens: 2048
+            }
+        });
+
+        const resourcesJson = JSON.stringify({
+            blogs: allResources.blogs.slice(0, 15),
+            jobs: allResources.jobs.slice(0, 15),
+            mockTests: allResources.mockTests.slice(0, 15)
+        }, null, 2);
+
+        const linkPrompt = `You are an SEO expert who creates smart internal linking strategies.
+
+CURRENT BLOG TOPIC: "${topic}"
+CATEGORY: "${category}"
+KEYWORDS: ${keywords.join(', ')}
+
+AVAILABLE RESOURCES:
+${resourcesJson}
+
+TASK: Select 8-12 MOST RELEVANT resources (mix of blogs, jobs, and mock tests) that would genuinely help readers.
+
+RULES:
+- Choose resources that are contextually relevant to the topic
+- Mix different types: 4-6 blogs, 2-3 jobs, 2-3 mock tests
+- Prioritize high relevance
+- Avoid duplicates
+- Each link should add value to the reader
+
+Return ONLY a JSON array with selected resources:
+[
+  {
+    "title": "Resource title",
+    "url": "Full URL",
+    "type": "blog/job/mockTest",
+    "reason": "Why this is relevant (1 sentence)"
+  }
+]`;
+
+        const result = await model.generateContent(linkPrompt);
+        const responseText = result.response.text();
+        
+        // Clean and parse AI response
+        let cleaned = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
+        
+        if (!jsonMatch) {
+            console.log("⚠️ AI didn't return valid links, using fallback");
+            return createFallbackLinks(allResources);
+        }
+
+        const selectedLinks = JSON.parse(jsonMatch[0]);
+        console.log(`✅ AI selected ${selectedLinks.length} smart internal links`);
+        
+        return selectedLinks;
+
+    } catch (error) {
+        console.error("❌ Smart linking error:", error.message);
         return [];
     }
 }
+
+function createFallbackLinks(allResources) {
+    const fallback = [];
+    
+    // Add 4 random blogs
+    const shuffledBlogs = allResources.blogs.sort(() => 0.5 - Math.random()).slice(0, 4);
+    fallback.push(...shuffledBlogs.map(b => ({
+        title: b.title,
+        url: b.url,
+        type: "blog",
+        reason: "Related content"
+    })));
+    
+    // Add 2 random jobs
+    const shuffledJobs = allResources.jobs.sort(() => 0.5 - Math.random()).slice(0, 2);
+    fallback.push(...shuffledJobs.map(j => ({
+        title: j.title,
+        url: j.url,
+        type: "job",
+        reason: "Career opportunity"
+    })));
+    
+    // Add 2 random mock tests
+    const shuffledTests = allResources.mockTests.sort(() => 0.5 - Math.random()).slice(0, 2);
+    fallback.push(...shuffledTests.map(t => ({
+        title: t.title,
+        url: t.url,
+        type: "mockTest",
+        reason: "Practice test"
+    })));
+    
+    return fallback;
+}
+
+function createInternalLinksHTML(smartLinks) {
+    if (!smartLinks || smartLinks.length === 0) {
+        return "";
+    }
+
+    // Group by type
+    const blogs = smartLinks.filter(l => l.type === "blog");
+    const jobs = smartLinks.filter(l => l.type === "job");
+    const mockTests = smartLinks.filter(l => l.type === "mockTest");
+
+    let html = '<div class="related-resources-section" style="margin: 40px 0; padding: 30px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">';
+    
+    html += '<h2 style="color: #2c3e50; font-size: 28px; margin-bottom: 25px; text-align: center; border-bottom: 3px solid #3498db; padding-bottom: 15px;">📚 आपके लिए चुने गए महत्वपूर्ण संसाधन</h2>';
+
+    // Blogs Section
+    if (blogs.length > 0) {
+        html += '<div class="blogs-section" style="margin-bottom: 25px;">';
+        html += '<h3 style="color: #34495e; font-size: 22px; margin-bottom: 15px; display: flex; align-items: center;"><span style="margin-right: 10px;">📖</span> संबंधित लेख पढ़ें</h3>';
+        html += '<ul style="list-style: none; padding: 0;">';
+        blogs.forEach(link => {
+            html += `<li style="margin-bottom: 12px; padding: 12px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); transition: transform 0.2s;">
+                <a href="${link.url}" rel="bookmark" title="${link.title}" style="text-decoration: none; color: #2980b9; font-weight: 600; font-size: 16px; display: block;">
+                    🔗 ${link.title}
+                </a>
+                <small style="color: #7f8c8d; display: block; margin-top: 5px; font-size: 13px;">${link.reason || 'Related content'}</small>
+            </li>`;
+        });
+        html += '</ul></div>';
+    }
+
+    // Jobs Section
+    if (jobs.length > 0) {
+        html += '<div class="jobs-section" style="margin-bottom: 25px;">';
+        html += '<h3 style="color: #34495e; font-size: 22px; margin-bottom: 15px; display: flex; align-items: center;"><span style="margin-right: 10px;">💼</span> नौकरी के अवसर देखें</h3>';
+        html += '<ul style="list-style: none; padding: 0;">';
+        jobs.forEach(link => {
+            html += `<li style="margin-bottom: 12px; padding: 12px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                <a href="${link.url}" rel="bookmark" title="${link.title}" style="text-decoration: none; color: #27ae60; font-weight: 600; font-size: 16px; display: block;">
+                    🎯 ${link.title}
+                </a>
+                <small style="color: #7f8c8d; display: block; margin-top: 5px; font-size: 13px;">${link.reason || 'Job opportunity'}</small>
+            </li>`;
+        });
+        html += '</ul></div>';
+    }
+
+    // Mock Tests Section
+    if (mockTests.length > 0) {
+        html += '<div class="mock-tests-section" style="margin-bottom: 10px;">';
+        html += '<h3 style="color: #34495e; font-size: 22px; margin-bottom: 15px; display: flex; align-items: center;"><span style="margin-right: 10px;">📝</span> प्रैक्टिस टेस्ट दें</h3>';
+        html += '<ul style="list-style: none; padding: 0;">';
+        mockTests.forEach(link => {
+            html += `<li style="margin-bottom: 12px; padding: 12px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                <a href="${link.url}" rel="bookmark" title="${link.title}" style="text-decoration: none; color: #e74c3c; font-weight: 600; font-size: 16px; display: block;">
+                    ✍️ ${link.title}
+                </a>
+                <small style="color: #7f8c8d; display: block; margin-top: 5px; font-size: 13px;">${link.reason || 'Practice test'}</small>
+            </li>`;
+        });
+        html += '</ul></div>';
+    }
+
+    html += '<p style="text-align: center; margin-top: 20px; color: #7f8c8d; font-size: 14px;">💡 ये सभी संसाधन आपकी तैयारी को बेहतर बनाने के लिए चुने गए हैं</p>';
+    html += '</div>';
+
+    return html;
+}
+
+// =========================================================
+// 🛠️ OTHER UTILITY FUNCTIONS
+// =========================================================
 
 function generateAdvancedMetaTags(data) {
     const title = data.title.length > 60 ? data.title.substring(0, 57) + "..." : data.title;
@@ -537,7 +766,7 @@ function calculateQualityScore(words, headings, paragraphs, lists, tables) {
 async function generateAdvancedBlogContent(category, topic, writingStyle, structure, retryCount = 0) {
     try {
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-2.5-flash-lite",
+            model: "gemini-1.5-flash",
             generationConfig: { 
                 temperature: 0.85,
                 topP: 0.9,
@@ -623,7 +852,7 @@ Write exceptional content on "${topic}" that fully engages readers and clears al
 
 async function generateDailyBlog() {
     try {
-        console.log("🚀 Starting ADVANCED Auto-Blogger Engine v2.0...");
+        console.log("🚀 Starting ADVANCED Auto-Blogger Engine v2.1...");
         console.log("⏰ Time:", new Date().toLocaleString('hi-IN'));
 
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -692,15 +921,11 @@ async function generateDailyBlog() {
         const uniqueImagePrompt = generateDynamicImagePrompt(randomCat, rawTopic, writingStyle);
         const imageUrl = await generateAndUploadImage(uniqueImagePrompt, slug);
 
-        // 🔗 STEP 10: Get Smart Internal Links
-        console.log("🔗 Fetching smart internal links...");
-        const internalLinks = await getSmartInternalLinks(randomCat, blogData.keywords, 6);
-        
-        let linkHTML = '<div class="related-articles"><h2>📚 संबंधित महत्वपूर्ण लेख</h2><ul class="related-links">';
-        internalLinks.forEach(link => {
-            linkHTML += `<li><a href="${link.url}" rel="bookmark" title="${link.title}">${link.title}</a></li>`;
-        });
-        linkHTML += '</ul></div>';
+        // 🔗 STEP 10: AI-Powered Smart Internal Linking
+        console.log("🤖 AI is selecting smart internal links...");
+        const smartLinks = await generateSmartInternalLinks(randomCat, blogData.keywords, rawTopic);
+        const linkHTML = createInternalLinksHTML(smartLinks);
+        console.log(`✅ Added ${smartLinks.length} AI-selected internal links`);
 
         // 📋 STEP 11: Generate All Schema Markups
         const faqSchema = generateAdvancedFAQSchema(blogData.content);
@@ -746,9 +971,13 @@ async function generateDailyBlog() {
             imageUrl: imageUrl,
             imagePrompt: uniqueImagePrompt,
             
+            // Internal Links
+            internalLinks: smartLinks,
+            internalLinksCount: smartLinks.length,
+            
             // Attribution
             author: "StudyGyaan Team",
-            type: "auto-blog-v2",
+            type: "auto-blog-v2.1",
             
             // Timestamps
             date: admin.firestore.FieldValue.serverTimestamp(),
@@ -800,6 +1029,7 @@ async function generateDailyBlog() {
 📊 <b>Quality Score:</b> ${Math.round(finalQuality.score)}/100
 📝 <b>Words:</b> ${finalQuality.wordCount}
 ⏱️ <b>Reading Time:</b> ${finalQuality.readingTime} mins
+🔗 <b>Internal Links:</b> ${smartLinks.length} (AI-selected)
 ✍️ <b>Style:</b> ${writingStyle}
 
 🔗 <b>Read Here:</b> ${blogUrl}
@@ -833,6 +1063,7 @@ async function generateDailyBlog() {
         console.log(`📊 Quality: ${Math.round(finalQuality.score)}/100`);
         console.log(`📝 Words: ${finalQuality.wordCount}`);
         console.log(`⏱️ Reading: ${finalQuality.readingTime} mins`);
+        console.log(`🔗 AI Internal Links: ${smartLinks.length}`);
         console.log(`🎨 Image: ${imageUrl}`);
         console.log("=".repeat(60) + "\n");
 
@@ -854,7 +1085,7 @@ async function generateDailyBlog() {
 // =========================================================
 
 if (require.main === module) {
-    console.log("🎬 Auto-Blogger V2.0 Started...");
+    console.log("🎬 Auto-Blogger V2.1 Started...");
     console.log("⏰ Execution Time:", new Date().toLocaleString('hi-IN'));
     
     generateDailyBlog()
