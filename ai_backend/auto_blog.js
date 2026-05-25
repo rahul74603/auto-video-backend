@@ -337,198 +337,326 @@ async function fetchAllAvailableResources(category, keywords) {
     };
 
     try {
-        // 🎯 Fetch Related Blogs (Same Category)
-        const categoryBlogsSnapshot = await db.collection("blogs")
-            .where("category", "==", category)
-            .where("status", "==", "published")
-            .orderBy("date", "desc")
-            .limit(10)
-            .get();
+        console.log("📦 Fetching REAL data from Firestore...");
 
-        categoryBlogsSnapshot.forEach(doc => {
-            const data = doc.data();
-            resources.blogs.push({
-                title: data.title,
-                url: `https://studygyaan.in/blog/${data.slug || doc.id}`,
-                category: data.category,
-                relevance: "same-category",
-                type: "blog"
-            });
-        });
-
-        // 🎯 Fetch Related Blogs (By Tags/Keywords)
-        if (keywords && keywords.length > 0) {
-            const tagBlogsSnapshot = await db.collection("blogs")
-                .where("tags", "array-contains-any", keywords.slice(0, 5))
-                .where("status", "==", "published")
+        // ✅ BLOGS - slug nahi hai, doc ID use karo URL mein
+        try {
+            // Same category blogs
+            const categoryBlogsSnapshot = await db.collection("blogs")
+                .where("category", "==", category)
                 .orderBy("date", "desc")
-                .limit(10)
+                .limit(8)
                 .get();
 
-            tagBlogsSnapshot.forEach(doc => {
+            categoryBlogsSnapshot.forEach(doc => {
                 const data = doc.data();
-                const exists = resources.blogs.find(b => b.url.includes(data.slug));
-                if (!exists) {
+                // ✅ slug nahi hai toh doc.id use karo
+                const realSlug = data.slug || doc.id;
+                const realUrl = `https://studygyaan.in/blog/${realSlug}`;
+
+                if (data.title) {
                     resources.blogs.push({
                         title: data.title,
-                        url: `https://studygyaan.in/blog/${data.slug || doc.id}`,
-                        category: data.category,
-                        relevance: "related-tags",
+                        url: realUrl,
+                        docId: doc.id,
+                        category: data.category || category,
                         type: "blog"
                     });
                 }
             });
+
+            console.log(`✅ Same category blogs: ${resources.blogs.length}`);
+        } catch (e) {
+            console.log("⚠️ Category blogs error:", e.message);
         }
 
-        // 💼 Fetch Related Jobs
-        const jobsSnapshot = await db.collection("jobs")
-            .where("status", "==", "active")
-            .orderBy("postedDate", "desc")
-            .limit(15)
-            .get();
+        // Recent blogs (all categories)
+        try {
+            const recentBlogsSnapshot = await db.collection("blogs")
+                .orderBy("date", "desc")
+                .limit(20)
+                .get();
 
-        jobsSnapshot.forEach(doc => {
-            const data = doc.data();
-            resources.jobs.push({
-                title: data.title || data.jobTitle || "Government Job",
-                url: `https://studygyaan.in/jobs/${doc.id}`,
-                category: data.category || "Government Jobs",
-                relevance: data.examName || data.department || "General",
-                type: "job"
+            recentBlogsSnapshot.forEach(doc => {
+                const data = doc.data();
+                const realSlug = data.slug || doc.id;
+                const realUrl = `https://studygyaan.in/blog/${realSlug}`;
+
+                // Duplicate check
+                const exists = resources.blogs.find(b => b.docId === doc.id);
+
+                if (!exists && data.title) {
+                    resources.blogs.push({
+                        title: data.title,
+                        url: realUrl,
+                        docId: doc.id,
+                        category: data.category || "General",
+                        type: "blog"
+                    });
+                }
             });
-        });
 
-        // 📝 Fetch Related Mock Tests
-        const mockTestsSnapshot = await db.collection("mockTests")
-            .where("isActive", "==", true)
-            .orderBy("createdAt", "desc")
-            .limit(15)
-            .get();
+            console.log(`✅ Total blogs: ${resources.blogs.length}`);
+        } catch (e) {
+            console.log("⚠️ Recent blogs error:", e.message);
+        }
 
-        mockTestsSnapshot.forEach(doc => {
-            const data = doc.data();
-            resources.mockTests.push({
-                title: data.title || data.testName || "Practice Test",
-                url: `https://studygyaan.in/mock-tests/${doc.id}`,
-                category: data.category || data.subject || "General",
-                relevance: data.examType || "Competitive Exam",
-                type: "mockTest"
+        // ✅ JOBS - doc ID se URL banao
+        // Database mein: title ✅, category ✅, slug kabhi kabhi, url ❌
+        try {
+            const allJobsSnapshot = await db.collection("jobs")
+                .orderBy("createdAt", "desc")
+                .limit(20)
+                .get();
+
+            allJobsSnapshot.forEach(doc => {
+                const data = doc.data();
+
+                // ✅ slug hai toh use karo, nahi toh doc.id
+                const jobSlug = data.slug || doc.id;
+                const realUrl = `https://studygyaan.in/jobs/${jobSlug}`;
+
+                const jobTitle = data.title || "Government Job";
+
+                if (jobTitle) {
+                    resources.jobs.push({
+                        title: jobTitle,
+                        url: realUrl,
+                        docId: doc.id,
+                        category: data.category || "General",
+                        organization: data.organization || "",
+                        type: "job"
+                    });
+                }
             });
-        });
 
-        console.log(`📊 Resources Found: ${resources.blogs.length} blogs, ${resources.jobs.length} jobs, ${resources.mockTests.length} mock tests`);
+            console.log(`✅ Jobs fetched: ${resources.jobs.length}`);
+        } catch (e) {
+            // createdAt index nahi hai toh bina orderBy
+            try {
+                const allJobsSnapshot = await db.collection("jobs")
+                    .limit(20)
+                    .get();
+
+                allJobsSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    const jobSlug = data.slug || doc.id;
+                    const realUrl = `https://studygyaan.in/jobs/${jobSlug}`;
+                    const jobTitle = data.title || "Government Job";
+
+                    if (jobTitle) {
+                        resources.jobs.push({
+                            title: jobTitle,
+                            url: realUrl,
+                            docId: doc.id,
+                            category: data.category || "General",
+                            type: "job"
+                        });
+                    }
+                });
+                console.log(`✅ Jobs fetched (no-sort): ${resources.jobs.length}`);
+            } catch (e2) {
+                console.log("⚠️ Jobs error:", e2.message);
+            }
+        }
+
+        // ✅ MOCK TESTS - Collection empty hai abhi
+        // Jab data aaye tab automatically kaam karega
+        try {
+            const allTestsSnapshot = await db.collection("mockTests")
+                .limit(20)
+                .get();
+
+            if (!allTestsSnapshot.empty) {
+                allTestsSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    const testSlug = data.slug || doc.id;
+                    const realUrl = `https://studygyaan.in/mock-tests/${testSlug}`;
+                    const testTitle = data.title || data.testName || data.name || "Practice Test";
+
+                    if (testTitle) {
+                        resources.mockTests.push({
+                            title: testTitle,
+                            url: realUrl,
+                            docId: doc.id,
+                            type: "mockTest"
+                        });
+                    }
+                });
+            } else {
+                console.log("ℹ️ mockTests collection empty - skipping");
+            }
+        } catch (e) {
+            console.log("⚠️ MockTests error:", e.message);
+        }
+
+        // ✅ Final Summary
+        console.log("\n📊 REAL DATABASE RESOURCES:");
+        console.log(`   📖 Blogs: ${resources.blogs.length}`);
+        console.log(`   💼 Jobs: ${resources.jobs.length}`);
+        console.log(`   📝 Mock Tests: ${resources.mockTests.length}`);
+
+        if (resources.blogs.length > 0) {
+            console.log(`\n   📖 Sample Blog URL: ${resources.blogs[0].url}`);
+        }
+        if (resources.jobs.length > 0) {
+            console.log(`   💼 Sample Job URL: ${resources.jobs[0].url}`);
+        }
 
         return resources;
 
     } catch (error) {
-        console.error("❌ Error fetching resources:", error.message);
+        console.error("❌ fetchAllAvailableResources error:", error.message);
         return resources;
     }
 }
 
+// ✅ FIXED Smart Links Generator
 async function generateSmartInternalLinks(category, keywords, topic) {
     try {
-        console.log("🔗 Fetching all available resources...");
-        
+        console.log("🔗 Fetching real resources from database...");
+
         const allResources = await fetchAllAvailableResources(category, keywords);
-        
-        // AI will intelligently select links
-        const model = genAI.getGenerativeModel({ 
+
+        const totalResources = allResources.blogs.length +
+            allResources.jobs.length +
+            allResources.mockTests.length;
+
+        if (totalResources === 0) {
+            console.log("⚠️ No resources found in database, skipping links");
+            return [];
+        }
+
+        // AI se best links select karwao
+        const model = genAI.getGenerativeModel({
             model: "gemini-2.5-flash-lite",
-            generationConfig: { 
-                temperature: 0.7,
+            generationConfig: {
+                temperature: 0.5,
                 maxOutputTokens: 2048
             }
         });
 
         const resourcesJson = JSON.stringify({
             blogs: allResources.blogs.slice(0, 15),
-            jobs: allResources.jobs.slice(0, 15),
-            mockTests: allResources.mockTests.slice(0, 15)
-        }, null, 2);
+            jobs: allResources.jobs.slice(0, 10),
+            mockTests: allResources.mockTests.slice(0, 10)
+        });
 
-        const linkPrompt = `You are an SEO expert who creates smart internal linking strategies.
+        const linkPrompt = `You are an SEO expert. Select most relevant resources for this blog.
 
 CURRENT BLOG TOPIC: "${topic}"
 CATEGORY: "${category}"
-KEYWORDS: ${keywords.join(', ')}
 
-AVAILABLE RESOURCES:
+AVAILABLE REAL RESOURCES:
 ${resourcesJson}
 
-TASK: Select 8-12 MOST RELEVANT resources (mix of blogs, jobs, and mock tests) that would genuinely help readers.
+SELECT 5-8 most relevant. Use EXACT URLs from above data, do NOT modify URLs.
 
-RULES:
-- Choose resources that are contextually relevant to the topic
-- Mix different types: 4-6 blogs, 2-3 jobs, 2-3 mock tests
-- Prioritize high relevance
-- Avoid duplicates
-- Each link should add value to the reader
-
-Return ONLY a JSON array with selected resources:
+Return ONLY JSON array:
 [
   {
-    "title": "Resource title",
-    "url": "Full URL",
+    "title": "exact title from data",
+    "url": "exact url from data unchanged",
     "type": "blog/job/mockTest",
-    "reason": "Why this is relevant (1 sentence)"
+    "reason": "relevance in Hindi"
   }
 ]`;
 
         const result = await model.generateContent(linkPrompt);
         const responseText = result.response.text();
-        
-        // Clean and parse AI response
-        let cleaned = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+        let cleaned = responseText
+            .replace(/```json\n?/g, '')
+            .replace(/```\n?/g, '')
+            .trim();
+
         const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
-        
+
         if (!jsonMatch) {
-            console.log("⚠️ AI didn't return valid links, using fallback");
-            return createFallbackLinks(allResources);
+            console.log("⚠️ AI selection failed, using fallback");
+            return createSmartFallbackLinks(allResources, category);
         }
 
         const selectedLinks = JSON.parse(jsonMatch[0]);
-        console.log(`✅ AI selected ${selectedLinks.length} smart internal links`);
-        
-        return selectedLinks;
+
+        // ✅ Verify every URL is from our real database
+        const allRealUrls = [
+            ...allResources.blogs.map(b => b.url),
+            ...allResources.jobs.map(j => j.url),
+            ...allResources.mockTests.map(t => t.url)
+        ];
+
+        const verifiedLinks = selectedLinks.filter(link => {
+            const isReal = allRealUrls.includes(link.url);
+            if (!isReal) {
+                console.log(`⚠️ Fake URL blocked: ${link.url}`);
+            }
+            return isReal;
+        });
+
+        console.log(`✅ Real verified links: ${verifiedLinks.length}/${selectedLinks.length}`);
+
+        // Kam links hain toh fallback se fill karo
+        if (verifiedLinks.length < 3) {
+            return createSmartFallbackLinks(allResources, category);
+        }
+
+        return verifiedLinks;
 
     } catch (error) {
-        console.error("❌ Smart linking error:", error.message);
+        console.error("❌ generateSmartInternalLinks error:", error.message);
         const allResources = await fetchAllAvailableResources(category, keywords);
-        return createFallbackLinks(allResources);
+        return createSmartFallbackLinks(allResources, category);
     }
 }
 
-function createFallbackLinks(allResources) {
+// ✅ Fallback - Only Real URLs
+function createSmartFallbackLinks(allResources, category) {
     const fallback = [];
-    
-    // Add 4 random blogs
-    const shuffledBlogs = allResources.blogs.sort(() => 0.5 - Math.random()).slice(0, 4);
-    fallback.push(...shuffledBlogs.map(b => ({
+
+    // Same category blogs first
+    const sameCategory = allResources.blogs
+        .filter(b => b.category === category)
+        .slice(0, 3);
+    fallback.push(...sameCategory.map(b => ({
         title: b.title,
         url: b.url,
         type: "blog",
-        reason: "Related content"
+        reason: "इसी category का related article"
     })));
-    
-    // Add 2 random jobs
-    const shuffledJobs = allResources.jobs.sort(() => 0.5 - Math.random()).slice(0, 2);
-    fallback.push(...shuffledJobs.map(j => ({
-        title: j.title,
-        url: j.url,
-        type: "job",
-        reason: "Career opportunity"
+
+    // Other blogs
+    const otherBlogs = allResources.blogs
+        .filter(b => b.category !== category)
+        .slice(0, 3);
+    fallback.push(...otherBlogs.map(b => ({
+        title: b.title,
+        url: b.url,
+        type: "blog",
+        reason: "पढ़ने योग्य महत्वपूर्ण लेख"
     })));
-    
-    // Add 2 random mock tests
-    const shuffledTests = allResources.mockTests.sort(() => 0.5 - Math.random()).slice(0, 2);
-    fallback.push(...shuffledTests.map(t => ({
-        title: t.title,
-        url: t.url,
-        type: "mockTest",
-        reason: "Practice test"
-    })));
-    
+
+    // Jobs
+    allResources.jobs.slice(0, 3).forEach(j => {
+        fallback.push({
+            title: j.title,
+            url: j.url,
+            type: "job",
+            reason: "नई सरकारी नौकरी अभी apply करें"
+        });
+    });
+
+    // Mock Tests (if available)
+    allResources.mockTests.slice(0, 2).forEach(t => {
+        fallback.push({
+            title: t.title,
+            url: t.url,
+            type: "mockTest",
+            reason: "प्रैक्टिस के लिए फ्री टेस्ट दें"
+        });
+    });
+
+    console.log(`📎 Fallback links: ${fallback.length} (all real URLs)`);
     return fallback;
 }
 
