@@ -494,7 +494,8 @@ Return ONLY a JSON array with selected resources:
 
     } catch (error) {
         console.error("❌ Smart linking error:", error.message);
-        return [];
+        const allResources = await fetchAllAvailableResources(category, keywords);
+        return createFallbackLinks(allResources);
     }
 }
 
@@ -745,7 +746,7 @@ function checkAdvancedContentQuality(content) {
         hasFormatting: strongCount >= 8,
         hasLinks: linkCount >= 0,
         readingTime: Math.ceil(wordCount / 200),
-        score: calculateQualityScore(wordCount, headingCount, paragraphCount, listCount, tableCount)
+        score: calculateQualityScore(wordCount, headingCount, paragraphs, listCount, tableCount)
     };
 }
 
@@ -766,7 +767,7 @@ function calculateQualityScore(words, headings, paragraphs, lists, tables) {
 async function generateAdvancedBlogContent(category, topic, writingStyle, structure, retryCount = 0) {
     try {
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash",
+            model: "gemini-2.5-flash-lite",
             generationConfig: { 
                 temperature: 0.85,
                 topP: 0.9,
@@ -877,7 +878,7 @@ async function generateDailyBlog() {
         console.log(`🏗️ Content Structure: ${contentStructure}`);
 
         // 🤖 STEP 5: Generate Content with AI
-        console.log("🤖 Generating content with Gemini AI...");
+        console.log("🤖 Generating content with Gemini 2.5 Flash Lite...");
         const blogData = await generateAdvancedBlogContent(randomCat, rawTopic, writingStyle, contentStructure);
         
         console.log("✅ Content Generated Successfully!");
