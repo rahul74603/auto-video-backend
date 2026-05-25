@@ -1,10 +1,10 @@
 require("dotenv").config();
-const { onRequest } = require("firebase-functions/v2/https"); // 👈 Changed to onRequest
+const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const axios = require("axios");
 const { google } = require("googleapis");
+const sharp = require("sharp"); // ✅ WebP conversion ke liye
 
-// ✅ GitHub Secrets से Service Account JSON उठाना
 if (!admin.apps.length) {
     const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
     if (serviceAccountVar) {
@@ -17,11 +17,12 @@ if (!admin.apps.length) {
         admin.initializeApp();
     }
 }
+
 const db = admin.firestore();
-const bucket = admin.storage().bucket("studymaterial-406ad.firebasestorage.app"); // 🔥 Storage Bucket Add Kiya
+const bucket = admin.storage().bucket("studymaterial-406ad.firebasestorage.app");
 
 // ==========================================
-// 🛠️ SEO & IMAGE HELPERS
+// 🛠️ HELPERS
 // ==========================================
 
 function createSlug(title) {
@@ -39,134 +40,153 @@ async function notifyGoogle(url) {
             scopes: ["https://www.googleapis.com/auth/indexing"]
         });
         await jwtClient.authorize();
-        await axios.post("https://indexing.googleapis.com/v3/urlNotifications:publish", 
-            { url: url, type: "URL_UPDATED" }, 
+        await axios.post(
+            "https://indexing.googleapis.com/v3/urlNotifications:publish",
+            { url: url, type: "URL_UPDATED" },
             { headers: { Authorization: `Bearer ${jwtClient.credentials.access_token}` } }
         );
-        console.log("🚀 Web Story Indexed for Discover:", url);
+        console.log("🚀 Google Indexing API called for:", url);
     } catch (err) {
         console.error("❌ Story Indexing Error:", err.message);
     }
 }
 
-// 🔥 NEW: 9:16 VERTICAL IMAGE GENERATOR (For GSC Error Fix)
+// ==========================================
+// 🖼️ WEBP VERTICAL IMAGE GENERATOR
+// Pollinations se PNG download → Sharp se WebP convert → Firebase upload
+// ==========================================
 async function generateVerticalStoryImage(title, category) {
     try {
-        console.log("🎨 Generating Vertical Image for Story...");
-        const imagePrompt = `Vertical 9:16 portrait educational poster for ${category}: ${title}, vibrant, no text, clean UI background`;
-        
-        // Google Discover ke liye resolution 1080x1920 kiya gaya hai
+        console.log("🎨 Generating WebP Vertical Image...");
+
+        const imagePrompt = `Vertical 9:16 portrait educational poster for ${category}: ${title}, vibrant, no text, clean background`;
         const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=1080&height=1920&nologo=true&quality=high`;
-        
-        const imgRes = await axios.get(pollUrl, { 
-            responseType: 'arraybuffer', 
+
+        // Step 1: Raw image download karo
+        const imgRes = await axios.get(pollUrl, {
+            responseType: 'arraybuffer',
             timeout: 30000,
             headers: { "User-Agent": "Mozilla/5.0" }
         });
-        
-        const fileName = `web_stories_images/story_${Date.now()}.png`;
+
+        // Step 2: Sharp se WebP convert karo (30-50% size reduction)
+        const webpBuffer = await sharp(Buffer.from(imgRes.data, 'binary'))
+            .resize(1080, 1920, { fit: 'cover', position: 'center' })
+            .webp({
+                quality: 85,
+                effort: 6,
+                lossless: false
+            })
+            .toBuffer();
+
+        console.log(`✅ WebP converted. Size: ${(webpBuffer.length / 1024).toFixed(1)} KB`);
+
+        // Step 3: Firebase me WebP save karo
+        const fileName = `web_stories_images/story_${Date.now()}.webp`;
         const file = bucket.file(fileName);
-        
-        await file.save(Buffer.from(imgRes.data, 'binary'), {
-            metadata: { contentType: 'image/png', cacheControl: 'public, max-age=31536000' },
+
+        await file.save(webpBuffer, {
+            metadata: {
+                contentType: 'image/webp',
+                cacheControl: 'public, max-age=31536000'
+            },
             public: true
         });
-        
-        return `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+
+        const webpUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+        console.log("✅ WebP Image Uploaded:", webpUrl);
+        return webpUrl;
+
     } catch (imgError) {
-        console.error("❌ Story Image Generation Failed:", imgError.message);
-        // Fallback: Default High-Quality Vertical Image
+        console.error("❌ WebP Generation Failed:", imgError.message);
+        // Fallback image (already 9:16 vertical)
         return "https://images.unsplash.com/photo-1532012197267-da84d127e765?q=80&w=1080&h=1920&auto=format&fit=crop";
     }
 }
 
 // ==========================================
-// 🛠️ मास्टर फंक्शन (SMART ENGINE)
+// 🛠️ MASTER FUNCTION
 // ==========================================
 async function createStoryFromOldest(collectionName, storyType) {
     try {
-        // 🔥 GLOBAL FIELD-FREE SCANNER: बिना किसी क्वेरी फिल्टर के डेटा लाएगा ताकि मिसिंग फील्ड वाले पुराने ब्लॉग भी स्कैन हो सकें
-        const snapshot = await db.collection(collectionName).get();
-
-        let pendingDocs = [];
-        snapshot.forEach(docItem => {
-            const data = docItem.data();
-            // अगर फील्ड मौजूद नहीं है, या false है, तो उसे पेंडिंग मानकर एरे में डाल देगा
-            if (!data || data.isStoryCreated !== true) {
-                pendingDocs.push(docItem);
-            }
-        });
-
-        // पूल में से किसी भी एक ब्लॉग को रैंडमली सिलेक्ट करेगा
+        const snapshot = await db.collection(collectionName)
+            .orderBy("createdAt", "asc")
+            .get();
 
         let targetDoc = null;
-        if (pendingDocs.length > 0) {
-            targetDoc = pendingDocs[Math.floor(Math.random() * pendingDocs.length)];
+        for (let docItem of snapshot.docs) {
+            if (docItem.data().isStoryCreated !== true) {
+                targetDoc = docItem;
+                break;
+            }
         }
 
         if (!targetDoc) {
-
-
             console.log(`No pending ${collectionName} found for stories.`);
             return null;
         }
 
         const doc = targetDoc;
         const data = doc.data();
+
         let finalTitle = data.title || "New Update";
         if (storyType === 'mocktest' && !data.title) {
             finalTitle = data.testName || "New Mock Test";
         }
 
-        // 🔥 SMART SEO URL LOGIC
-        const originalSlug = data.slug || doc.id; 
+        const originalSlug = data.slug || doc.id;
         const storySlug = data.slug || createSlug(finalTitle);
-
         const path = storyType === 'mocktest' ? 'test' : 'blog';
         const applyLink = `https://studygyaan.in/${path}/${originalSlug}`;
         const storyUrl = `https://studygyaan.in/web-stories/${storySlug}`;
+        const description = data.metaDescription || data.description || `Attempt this free ${storyType} on StudyGyaan.`;
 
-        // 🔥 GENERATE VERTICAL POSTER
+        // ✅ WebP image generate karo
         const verticalCoverImage = await generateVerticalStoryImage(finalTitle, data.category || storyType);
 
-        // 🔥 FULL SEO DATA MERGE
+        // ✅ Firestore me save karo
+        // NOTE: coverImageWidth, coverImageHeight, coverImageType yahan save ho raha hai
+        // web_stories.js inhe og:image tags me use karta hai — Discover ke liye zaroori hai
         await db.collection("web_stories").doc(storySlug).set({
             title: finalTitle,
             slug: storySlug,
-            description: data.metaDescription || data.description || `Attempt this free ${storyType} on StudyGyaan.`,
+            description: description,
             tags: data.tags || ["studygyaan", storyType, "education"],
-            coverImage: verticalCoverImage, // ✅ Nayi 9:16 Vertical Image use hogi
+            coverImage: verticalCoverImage,
+            coverImageWidth: 1080,          // ✅ web_stories.js me og:image:width ke liye
+            coverImageHeight: 1920,         // ✅ web_stories.js me og:image:height ke liye
+            coverImageType: "image/webp",   // ✅ web_stories.js me og:image:type ke liye
             applyLink: applyLink,
             organization: data.organization || "StudyGyaan",
             vacancies: data.vacancies || "Check Now",
             lastDate: data.lastDate || "Apply Fast",
             category: data.category || "Education",
             author: data.author || "Rahul Sir",
-            storyType: storyType, 
+            storyType: storyType,
             questions: data.totalQuestions || (data.questions ? data.questions.length : "50"),
             duration: data.durationMinutes || "30",
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        // 📝 Mark original document as processed
+        // ✅ Original document mark karo
         await db.collection(collectionName).doc(doc.id).update({
             isStoryCreated: true
         });
 
-        console.log(`✅ Story created with SEO Slug & Vertical Image: ${storySlug}`);
+        console.log(`✅ Story created: ${storySlug}`);
 
-        // 🌐 AUTO INDEXING
+        // ✅ Google Auto Indexing
         await notifyGoogle(storyUrl);
 
-        // 📢 TELEGRAM ALERT
+        // ✅ Telegram Alert
         const botToken = process.env.TELEGRAM_BOT_TOKEN;
         const chatId = process.env.TELEGRAM_CHAT_ID;
         if (botToken && chatId) {
             const badge = storyType === 'blog' ? "📱 NEW BLOG STORY" : "🎯 MOCK TEST STORY";
-            const msg = `<b>${badge}</b>\n\n${finalTitle}\n\n⚡ <b>Quick View (Web Story):</b>\n<a href="${storyUrl}">${storyUrl}</a>`;
+            const msg = `<b>${badge} [WebP ✅]</b>\n\n${finalTitle}\n\n⚡ <b>Quick View (Web Story):</b>\n<a href="${storyUrl}">${storyUrl}</a>`;
             await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
                 chat_id: chatId, text: msg, parse_mode: 'HTML'
-            }).catch(e => console.log("Telegram Error in Auto Story"));
+            }).catch(e => console.log("Telegram Error:", e.message));
         }
 
         return storySlug;
@@ -177,12 +197,13 @@ async function createStoryFromOldest(collectionName, storyType) {
 }
 
 // ==========================================
-// 🚀 HTTP API: 12:00 PM (BLOG STORY) - GitHub Call Karega
+// 🚀 HTTP APIs
 // ==========================================
+
 exports.triggerBlogStoryNoon = onRequest({
     timeoutSeconds: 300,
     memory: "512MiB",
-    secrets: ["SERVICE_ACCOUNT_JSON", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"] 
+    secrets: ["SERVICE_ACCOUNT_JSON", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]
 }, async (req, res) => {
     const storySlug = await createStoryFromOldest('blogs', 'blog');
     return res.status(200).json({
@@ -192,13 +213,10 @@ exports.triggerBlogStoryNoon = onRequest({
     });
 });
 
-// ==========================================
-// 🚀 HTTP API: 9:00 PM (BLOG STORY) - GitHub Call Karega
-// ==========================================
 exports.triggerBlogStoryNight = onRequest({
     timeoutSeconds: 300,
     memory: "512MiB",
-    secrets: ["SERVICE_ACCOUNT_JSON", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"] 
+    secrets: ["SERVICE_ACCOUNT_JSON", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]
 }, async (req, res) => {
     const storySlug = await createStoryFromOldest('blogs', 'blog');
     return res.status(200).json({
@@ -208,39 +226,36 @@ exports.triggerBlogStoryNight = onRequest({
     });
 });
 
-// ==========================================
-// 🚀 HTTP API: सुबह 10:00 AM (MOCK TEST STORY) - GitHub Call Karega
-// ==========================================
 exports.triggerMockStoryMorning = onRequest({
     timeoutSeconds: 300,
     memory: "512MiB",
-    secrets: ["SERVICE_ACCOUNT_JSON", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"] 
+    secrets: ["SERVICE_ACCOUNT_JSON", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]
 }, async (req, res) => {
-    const storySlug = await createStoryFromOldest('mock_tests', 'mocktest'); 
+    const storySlug = await createStoryFromOldest('mock_tests', 'mocktest');
     return res.status(200).json({
         success: true,
         message: "Morning Mock Test Story API Executed",
         generatedStory: storySlug || "No pending mock tests found"
     });
 });
+
 // ==========================================
-// ✅ GitHub Actions Execution Block (Direct Run)
+// ✅ GitHub Actions Direct Run
 // ==========================================
 if (require.main === module) {
-    // Command line argument लेगा, जैसे: node auto_stories.js blog या node auto_stories.js mocktest
-    const action = process.argv[2] || "blog"; 
+    const action = process.argv[2] || "blog";
     const collection = action === "mocktest" ? "mock_tests" : "blogs";
     const storyType = action === "mocktest" ? "mocktest" : "blog";
 
     console.log(`🚀 Running auto_stories.js directly for: ${storyType}`);
-    
+
     createStoryFromOldest(collection, storyType)
         .then(slug => {
-            console.log(`✅ Execution complete. Generated Story: ${slug || "No pending items"}`);
+            console.log(`✅ Done. Generated Story: ${slug || "No pending items"}`);
             process.exit(0);
         })
         .catch(err => {
-            console.error(`❌ Execution failed: ${err.message}`);
+            console.error(`❌ Failed: ${err.message}`);
             process.exit(1);
         });
 }
