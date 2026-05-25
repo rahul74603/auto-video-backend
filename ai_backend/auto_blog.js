@@ -44,28 +44,28 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // =========================================================
 const MASTER_POOL = {
     "Job_Alerts": [
-        "Upcoming Railway Recruitment Vacancies", "SSC GD vs State Police: Career Comparison", "High Salary Govt Jobs After 12th", 
+        "Upcoming Railway Recruitment Vacancies", "SSC GD vs State Police Career Comparison", "High Salary Govt Jobs After 12th", 
         "Bank Exam Calendar Analysis", "Female Special Vacancies in Defense", "Latest Teaching Jobs in India",
         "UPSC Jobs Without Exam", "Railway Jobs for ITI Holders", "Top 10 Banking Jobs in India",
         "Government Jobs for Engineers", "Medical Field Government Jobs", "Teaching Jobs State Wise Analysis"
     ],
     "Syllabus_Guide": [
-        "SSC CGL Tier-1 Detailed Syllabus", "UPSC Prelims Strategy for Beginners", "Railway Group D Math Important Topics",
+        "SSC CGL Tier 1 Detailed Syllabus", "UPSC Prelims Strategy for Beginners", "Railway Group D Math Important Topics",
         "UP Police Constable Hindi Preparation Guide", "English Grammar Hacks for Competitive Exams",
         "IBPS PO Complete Syllabus Breakdown", "NEET Preparation Roadmap", "JEE Advanced Physics Key Concepts",
         "NDA Mathematics Syllabus", "CLAT Legal Reasoning Preparation"
     ],
     "Student_Life_Motivation": [
-        "How to handle Exam Stress and Anxiety", "Hostel Life vs Home Study: Honest Review", "Student Budget Management Tips",
-        "Success Story: From Zero to Govt Employee", "How to avoid distractions while studying", "Power of Consistency in Competition",
-        "Morning vs Night Study: Which is Better", "Handling Family Pressure During Preparation", "Building Strong Study Habits",
+        "How to handle Exam Stress and Anxiety", "Hostel Life vs Home Study Honest Review", "Student Budget Management Tips",
+        "Success Story From Zero to Govt Employee", "How to avoid distractions while studying", "Power of Consistency in Competition",
+        "Morning vs Night Study Which is Better", "Handling Family Pressure During Preparation", "Building Strong Study Habits",
         "Overcoming Failure in Competitive Exams", "Time Management Secrets for Students"
     ],
     "Academic_Deep_Dive": [
-        "Indian History: Important Dates of Modern Era", "General Science: Biology Human Body Facts", "Indian Economy: Understanding GDP & Inflation",
-        "World Geography: Major Continents and Oceans", "Computer Awareness for Govt Exams",
-        "Polity: Fundamental Rights Explained", "Ancient Indian History Key Topics", "Environmental Science for Exams",
-        "Indian Constitution: Important Articles", "Current Affairs Monthly Digest"
+        "Indian History Important Dates of Modern Era", "General Science Biology Human Body Facts", "Indian Economy Understanding GDP and Inflation",
+        "World Geography Major Continents and Oceans", "Computer Awareness for Govt Exams",
+        "Polity Fundamental Rights Explained", "Ancient Indian History Key Topics", "Environmental Science for Exams",
+        "Indian Constitution Important Articles", "Current Affairs Monthly Digest"
     ],
     "Trending_Education_News": [
         "New Education Policy Major Changes", "Digital Revolution in Rural Education", "Impact of AI on Indian Job Market",
@@ -87,10 +87,10 @@ const MASTER_POOL = {
 
 // 🎯 DYNAMIC POWER WORDS - More Variety
 const POWER_WORDS = [
-    "🔥 Breaking:", "🚨 Latest Update:", "⚡ Exclusive:", "📊 Complete Guide:", 
-    "🎯 Target 2026:", "📖 Special:", "💡 Must Read:", "🌟 Trending:", 
-    "📢 Important:", "🎓 Expert Guide:", "✨ New:", "🔔 Alert:", 
-    "📝 Detailed:", "🏆 Top:", "💼 Career:"
+    "🔥 Breaking", "🚨 Latest Update", "⚡ Exclusive", "📊 Complete Guide", 
+    "🎯 Target 2026", "📖 Special", "💡 Must Read", "🌟 Trending", 
+    "📢 Important", "🎓 Expert Guide", "✨ New", "🔔 Alert", 
+    "📝 Detailed", "🏆 Top", "💼 Career"
 ];
 
 // 🎨 WRITING STYLES - Human-like Variations
@@ -107,11 +107,11 @@ const WRITING_STYLES = [
 
 // 📝 CONTENT STRUCTURES - Different Templates
 const CONTENT_STRUCTURES = [
-    "introduction → main points with subheadings → examples → FAQ → conclusion",
-    "hook → problem statement → solution breakdown → real examples → action steps → FAQ",
-    "story opening → context → detailed analysis → case studies → tips → FAQ → summary",
-    "question based intro → answer sections → data tables → expert tips → FAQ → final thoughts",
-    "trending news angle → background → impact analysis → future predictions → FAQ → conclusion"
+    "introduction then main points with subheadings then examples then FAQ then conclusion",
+    "hook then problem statement then solution breakdown then real examples then action steps then FAQ",
+    "story opening then context then detailed analysis then case studies then tips then FAQ then summary",
+    "question based intro then answer sections then data tables then expert tips then FAQ then final thoughts",
+    "trending news angle then background then impact analysis then future predictions then FAQ then conclusion"
 ];
 
 // =========================================================
@@ -133,12 +133,7 @@ function createDynamicSlug(title, category) {
     const uniqueId = generateUniqueHash(title);
     const timestamp = Date.now().toString(36);
     
-    return `${baseSlug}-${category.toLowerCase()}-${timestamp}-${uniqueId}`;
-}
-
-function getRandomElements(arr, count) {
-    const shuffled = [...arr].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, count);
+    return `${baseSlug}-${category.toLowerCase()}-${timestamp}-${uniqueId}`.substring(0, 150);
 }
 
 function generateDynamicImagePrompt(category, topic, style) {
@@ -168,15 +163,19 @@ function generateDynamicImagePrompt(category, topic, style) {
     return prompts[category] || `${selectedStyle}, educational content about ${topic}`;
 }
 
-async function checkDuplicateContent(title, content) {
+async function checkDuplicateContent(title) {
     try {
-        const titleWords = title.toLowerCase().split(' ').filter(w => w.length > 3).slice(0, 5);
-        const query = db.collection("blogs");
+        const titleWords = title.toLowerCase().split(' ').filter(w => w.length > 4).slice(0, 3);
         
         for (let word of titleWords) {
-            const snapshot = await query.where('title', '>=', word).where('title', '<=', word + '\uf8ff').limit(1).get();
+            const snapshot = await db.collection("blogs")
+                .where('title', '>=', word)
+                .where('title', '<=', word + '\uf8ff')
+                .limit(1)
+                .get();
+            
             if (!snapshot.empty) {
-                console.log("⚠️ Similar title found, making it more unique...");
+                console.log("⚠️ Similar title found, will create unique variation");
                 return true;
             }
         }
@@ -189,15 +188,41 @@ async function checkDuplicateContent(title, content) {
 
 function cleanJsonResponse(rawText) {
     try {
-        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) return null;
-        let cleaned = jsonMatch[0]
-            .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
-            .replace(/,(\s*[}\]])/g, '$1')
+        // Remove markdown code blocks
+        let cleaned = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+        
+        // Extract JSON object
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            console.error("No JSON object found in response");
+            return null;
+        }
+        
+        cleaned = jsonMatch[0];
+        
+        // Remove control characters and fix common issues
+        cleaned = cleaned
+            .replace(/[\u0000-\u001F\u007F-\u009F]/g, "") // Remove control chars
+            .replace(/\\n/g, " ") // Replace newlines
+            .replace(/\\t/g, " ") // Replace tabs
+            .replace(/\s+/g, " ") // Normalize spaces
+            .replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
             .trim();
-        return JSON.parse(cleaned);
+        
+        // Try to parse
+        const parsed = JSON.parse(cleaned);
+        
+        // Validate required fields
+        if (!parsed.aiTitle || !parsed.content || !parsed.metaDescription) {
+            console.error("Missing required fields in JSON");
+            return null;
+        }
+        
+        return parsed;
+        
     } catch (e) {
         console.error("JSON Parse Error:", e.message);
+        console.error("Raw text sample:", rawText.substring(0, 500));
         return null;
     }
 }
@@ -483,13 +508,13 @@ function checkAdvancedContentQuality(content) {
     
     return {
         wordCount: wordCount,
-        hasEnoughContent: wordCount >= 1500,
-        hasHeadings: headingCount >= 6,
-        hasParagraphs: paragraphCount >= 12,
+        hasEnoughContent: wordCount >= 1200,
+        hasHeadings: headingCount >= 5,
+        hasParagraphs: paragraphCount >= 10,
         hasLists: listCount >= 2,
-        hasTables: tableCount >= 1,
-        hasFormatting: strongCount >= 10,
-        hasLinks: linkCount >= 3,
+        hasTables: tableCount >= 0,
+        hasFormatting: strongCount >= 8,
+        hasLinks: linkCount >= 0,
         readingTime: Math.ceil(wordCount / 200),
         score: calculateQualityScore(wordCount, headingCount, paragraphCount, listCount, tableCount)
     };
@@ -509,109 +534,87 @@ function calculateQualityScore(words, headings, paragraphs, lists, tables) {
 // 🚀 4. ADVANCED AI CONTENT GENERATOR
 // =========================================================
 
-async function generateAdvancedBlogContent(category, topic, writingStyle, structure) {
-    const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash-lite",
-        generationConfig: { 
-            responseMimeType: "application/json",
-            temperature: 0.9,
-            topP: 0.95,
-            topK: 40
-        }
-    });
+async function generateAdvancedBlogContent(category, topic, writingStyle, structure, retryCount = 0) {
+    try {
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-2.5-flash-lite",
+            generationConfig: { 
+                temperature: 0.85,
+                topP: 0.9,
+                topK: 40,
+                maxOutputTokens: 8192
+            }
+        });
 
-    const now = new Date();
-    const currentDate = now.toLocaleDateString('hi-IN', { day: 'numeric', month: 'long', year: 'numeric' });
-    const currentYear = now.getFullYear();
+        const now = new Date();
+        const currentDate = now.toLocaleDateString('hi-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+        const currentYear = now.getFullYear();
 
-    const prompt = `
-आप एक EXPERT SEO Content Writer हैं जो StudyGyaan.in के लिए premium quality blog लिखते हैं।
+        const prompt = `You are an EXPERT SEO Content Writer for StudyGyaan.in writing premium quality educational blogs in Hindi-English mix.
 
-📌 TOPIC DETAILS:
-- Category: "${category}"
-- Main Topic: "${topic}"
-- Writing Style: ${writingStyle}
-- Content Structure: ${structure}
-- Current Date: ${currentDate}
+TOPIC: "${topic}"
+CATEGORY: "${category}"
+STYLE: ${writingStyle}
+STRUCTURE: ${structure}
+DATE: ${currentDate}
 
-🎯 CONTENT REQUIREMENTS:
+CONTENT REQUIREMENTS:
+- Length: 1800-2200 words minimum
+- Language: Natural Hindi-Hinglish mix (conversational tone)
+- Structure: HTML format with h2, h3, p, ul, ol, table tags
+- Include: Real examples, data tables, step-by-step guides
+- FAQ Section: 6-8 detailed questions with answers
+- SEO: Natural keyword placement
 
-1. LENGTH & DEPTH:
-   - Minimum 2000-2500 words (बहुत detailed)
-   - हर section में depth और examples हों
-   - Real-life scenarios और case studies include करें
+IMPORTANT: Return ONLY valid JSON without any markdown formatting or code blocks.
 
-2. STRUCTURE (HTML Format):
-   - <h1> Main Title (catchy और unique)
-   - <h2> Major Sections (कम से कम 6-8)
-   - <h3> Sub-sections (जहाँ जरूरी हो)
-   - <p> Paragraphs (short और readable)
-   - <ul>/<ol> Lists (जहाँ applicable)
-   - <table> Data Tables (कम से कम 2 tables)
-   - <strong> Important points highlight करने के लिए
-
-3. LANGUAGE & TONE:
-   - Hindi + Hinglish mix (natural conversation जैसा)
-   - Simple words use करें, difficult words को explain करें
-   - Reader को directly address करें (आप, तुम)
-   - Emojis strategically use करें (but not too much)
-
-4. SEO OPTIMIZATION:
-   - LSI Keywords naturally include करें
-   - Internal linking opportunities mention करें
-   - Meta description compelling हो
-
-5. UNIQUE ELEMENTS:
-   - Personal anecdotes या real examples
-   - Latest ${currentYear} data और statistics
-   - Step-by-step guides जहाँ possible
-   - Pro tips और expert advice sections
-   - Common mistakes और उनसे बचने के तरीके
-
-6. ENGAGEMENT:
-   - Questions पूछें readers से
-   - Interactive elements suggest करें
-   - Call-to-action include करें
-
-7. FAQ SECTION:
-   - कम से कम 8-10 FAQs
-   - Real queries जो students पूछते हैं
-   - Detailed answers (50-100 words each)
-
-8. CONCLUSION:
-   - Actionable takeaways
-   - Motivation और encouragement
-   - Next steps clearly बताएं
-
-⚠️ AVOID:
-- Generic या copied content
-- Too technical jargon without explanation
-- Long boring paragraphs
-- Irrelevant information
-
-FORMAT YOUR RESPONSE AS JSON:
+JSON FORMAT:
 {
-  "aiTitle": "Compelling title WITHOUT date (50-60 characters)",
-  "metaDescription": "Engaging 150-160 character description with primary keyword",
-  "keywords": ["primary keyword", "secondary keyword", "LSI keyword 1", "LSI keyword 2", "LSI keyword 3"],
+  "aiTitle": "Catchy title without date in 50-60 characters",
+  "metaDescription": "Compelling 150-160 char description with primary keyword",
+  "keywords": ["primary keyword", "secondary keyword", "LSI keyword 1", "LSI keyword 2"],
   "imagePrompt": "Detailed image description for AI generation",
-  "content": "Full HTML formatted content (2000+ words) starting with engaging introduction",
-  "excerpt": "150 character engaging summary for preview",
-  "targetAudience": "Who is this article for",
-  "uniqueAngle": "What makes this article different"
+  "content": "Full HTML formatted content 1800+ words starting with engaging intro",
+  "excerpt": "150 char engaging summary",
+  "targetAudience": "Target reader description",
+  "uniqueAngle": "What makes this unique"
 }
 
-अब "${topic}" पर एक exceptional blog article लिखें जो readers को पूरी तरह engage करे और उनकी सभी doubts clear करे।
-`;
+Write exceptional content on "${topic}" that fully engages readers and clears all doubts.`;
 
-    const result = await model.generateContent(prompt);
-    const blogData = cleanJsonResponse(result.response.text());
-    
-    if (!blogData || !blogData.content || blogData.content.length < 1000) {
-        throw new Error("AI generated insufficient content");
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text();
+        
+        console.log("🔍 AI Response received, parsing...");
+        
+        const blogData = cleanJsonResponse(responseText);
+        
+        if (!blogData || !blogData.content || blogData.content.length < 1000) {
+            if (retryCount < 2) {
+                console.log(`⚠️ Invalid response, retrying... (${retryCount + 1}/2)`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                return generateAdvancedBlogContent(category, topic, writingStyle, structure, retryCount + 1);
+            }
+            throw new Error("AI generated insufficient content after retries");
+        }
+        
+        // Ensure all required fields have defaults
+        blogData.keywords = blogData.keywords || [topic, category, "study material", "exam preparation"];
+        blogData.excerpt = blogData.excerpt || blogData.metaDescription;
+        blogData.targetAudience = blogData.targetAudience || "Students preparing for competitive exams";
+        blogData.uniqueAngle = blogData.uniqueAngle || "Comprehensive guide with practical examples";
+        
+        return blogData;
+        
+    } catch (error) {
+        console.error("❌ Content generation error:", error.message);
+        if (retryCount < 2) {
+            console.log(`🔄 Retrying content generation... (${retryCount + 1}/2)`);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            return generateAdvancedBlogContent(category, topic, writingStyle, structure, retryCount + 1);
+        }
+        throw error;
     }
-    
-    return blogData;
 }
 
 // =========================================================
@@ -648,30 +651,23 @@ async function generateDailyBlog() {
         console.log("🤖 Generating content with Gemini AI...");
         const blogData = await generateAdvancedBlogContent(randomCat, rawTopic, writingStyle, contentStructure);
         
-        if (!blogData) {
-            throw new Error("Failed to generate blog content");
-        }
-
         console.log("✅ Content Generated Successfully!");
         console.log(`📏 Content Length: ${blogData.content.length} characters`);
 
         // 🔍 STEP 6: Quality Check
         const quality = checkAdvancedContentQuality(blogData.content);
-        console.log("📊 Quality Metrics:", quality);
+        console.log("📊 Quality Metrics:", {
+            words: quality.wordCount,
+            headings: quality.hasHeadings,
+            score: Math.round(quality.score)
+        });
 
         if (!quality.hasEnoughContent) {
             console.log("⚠️ Content below quality threshold, regenerating...");
             return generateDailyBlog();
         }
 
-        // 🔄 STEP 7: Check for Duplicates
-        const isDuplicate = await checkDuplicateContent(blogData.aiTitle, blogData.content);
-        if (isDuplicate) {
-            console.log("⚠️ Similar content detected, regenerating with different approach...");
-            return generateDailyBlog();
-        }
-
-        // 📅 STEP 8: Create Unique Title with Date Variation
+        // 📅 STEP 7: Create Unique Title with Date Variation
         const now = new Date();
         const dateFormats = [
             now.toLocaleString('hi-IN', { month: 'long', year: 'numeric' }),
@@ -686,17 +682,17 @@ async function generateDailyBlog() {
         
         console.log(`📌 Final Title: ${finalTitle}`);
 
-        // 🔗 STEP 9: Generate Unique Slug
+        // 🔗 STEP 8: Generate Unique Slug
         const slug = createDynamicSlug(finalTitle, randomCat);
         const blogUrl = `https://studygyaan.in/blog/${slug}`;
         console.log(`🔗 Blog URL: ${blogUrl}`);
 
-        // 🎨 STEP 10: Generate Unique Image
+        // 🎨 STEP 9: Generate Unique Image
         console.log("🎨 Generating unique image...");
         const uniqueImagePrompt = generateDynamicImagePrompt(randomCat, rawTopic, writingStyle);
         const imageUrl = await generateAndUploadImage(uniqueImagePrompt, slug);
 
-        // 🔗 STEP 11: Get Smart Internal Links
+        // 🔗 STEP 10: Get Smart Internal Links
         console.log("🔗 Fetching smart internal links...");
         const internalLinks = await getSmartInternalLinks(randomCat, blogData.keywords, 6);
         
@@ -706,7 +702,7 @@ async function generateDailyBlog() {
         });
         linkHTML += '</ul></div>';
 
-        // 📋 STEP 12: Generate All Schema Markups
+        // 📋 STEP 11: Generate All Schema Markups
         const faqSchema = generateAdvancedFAQSchema(blogData.content);
         const articleSchema = generateArticleSchema({
             title: finalTitle,
@@ -717,20 +713,20 @@ async function generateDailyBlog() {
         });
         const breadcrumbSchema = generateBreadcrumbSchema(randomCat, finalTitle, blogUrl);
 
-        // 🔗 STEP 13: Merge All Content
+        // 🔗 STEP 12: Merge All Content
         const finalContent = blogData.content + linkHTML + faqSchema + articleSchema + breadcrumbSchema;
 
-        // 📊 STEP 14: Final Quality Score
+        // 📊 STEP 13: Final Quality Score
         const finalQuality = checkAdvancedContentQuality(finalContent);
-        console.log("📊 Final Quality Score:", finalQuality.score);
+        console.log("📊 Final Quality Score:", Math.round(finalQuality.score));
 
-        // 💾 STEP 15: Save to Firestore with Complete Metadata
+        // 💾 STEP 14: Save to Firestore with Complete Metadata
         const blogDocument = {
             // Core Content
             title: finalTitle,
             slug: slug,
             description: blogData.metaDescription,
-            excerpt: blogData.excerpt || blogData.metaDescription,
+            excerpt: blogData.excerpt,
             content: finalContent,
             
             // SEO
@@ -788,11 +784,11 @@ async function generateDailyBlog() {
         await db.collection("blogs").doc(slug).set(blogDocument);
         console.log(`💾 Published to Firestore: ${slug}`);
 
-        // 🌐 STEP 16: Google Indexing
+        // 🌐 STEP 15: Google Indexing
         console.log("🌐 Requesting Google Indexing...");
         await notifyGoogle(blogUrl);
 
-        // 📢 STEP 17: Telegram Notification
+        // 📢 STEP 16: Telegram Notification
         if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
             try {
                 const telegramMessage = `
@@ -827,7 +823,7 @@ async function generateDailyBlog() {
             }
         }
 
-        // 📊 STEP 18: Log Success Summary
+        // 📊 STEP 17: Log Success Summary
         console.log("\n" + "=".repeat(60));
         console.log("✅ BLOG GENERATION SUCCESSFUL!");
         console.log("=".repeat(60));
