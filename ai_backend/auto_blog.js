@@ -746,7 +746,8 @@ function checkAdvancedContentQuality(content) {
         hasFormatting: strongCount >= 8,
         hasLinks: linkCount >= 0,
         readingTime: Math.ceil(wordCount / 200),
-        score: calculateQualityScore(wordCount, headingCount, paragraphs, listCount, tableCount)
+        // ✅ FIXED - Changed 'paragraphs' to 'paragraphCount'
+        score: calculateQualityScore(wordCount, headingCount, paragraphCount, listCount, tableCount)
     };
 }
 
