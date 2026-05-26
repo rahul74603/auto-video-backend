@@ -219,7 +219,8 @@ const handleGenerateAINote = async () => {
 
     setAiGenerating(true);
     try {
-        const response = await fetch("https://generatepremiumnote-hf6vlh5cpq-uc.a.run.app", {
+        // ✅ यहाँ अपना नया वर्सेल लिंक डालें
+        const response = await fetch("https://studygyaan-api.vercel.app/api/generatePremiumNote", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
