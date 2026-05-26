@@ -30,19 +30,22 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 const bucket = admin.storage().bucket("studymaterial-406ad.firebasestorage.app");
 
-// ✅ API Key Check
+// ✅ Safe API Key Check (सर्वर क्रैश से बचाने के लिए)
 const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) {
-    console.error("❌ CRITICAL: GEMINI_API_KEY is missing!");
-    process.exit(1);
+let genAI = null;
+if (apiKey) {
+    genAI = new GoogleGenerativeAI(apiKey);
+} else {
+    console.warn("⚠️ Warning: GEMINI_API_KEY is missing in Firebase, but server is safe.");
 }
-const genAI = new GoogleGenerativeAI(apiKey);
 
 // 📄 PDF GENERATOR ENGINE
 async function generateSyllabusPDF(postData) {
     console.log(`📄 PDF Generation Started for: ${postData.title}`);
 
     try {
+        if (!genAI) throw new Error("AI Setup failed: API Key is missing. Check your Secrets.");
+        
         // 1. AI से सिलेबस जनरेट करना
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
         const prompt = `Act as an expert Sarkari Job Educator. Write a detailed Exam Pattern and Syllabus for "${postData.title}". Output STRICTLY in clean HTML. Use <table> for Exam Pattern and <ul> for syllabus. No markdown.`;
