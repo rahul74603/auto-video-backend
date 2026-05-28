@@ -1,330 +1,638 @@
 // @ts-nocheck
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { db } from '../firebase/config'; 
-import { doc, getDoc, updateDoc, increment } from 'firebase/firestore'; 
-import { Calendar, User, Tag, Clock, ChevronLeft, Share2, ExternalLink, Flame, ShoppingCart, ArrowRight, BookOpen, Sparkles, FileSearch } from 'lucide-react';
+import { db } from '../firebase/config';
+import {
+    doc, getDoc, updateDoc, increment,
+    collection, query, where, limit, getDocs
+} from 'firebase/firestore';
+import {
+    Calendar, User, Tag, Clock, ChevronLeft,
+    Share2, ExternalLink, Flame, ShoppingCart,
+    ArrowRight, Sparkles, FileSearch, Eye,
+    Copy, Check
+} from 'lucide-react';
 import { toast } from 'sonner';
-import SEO from '../components/SEO'; 
+import SEO from '../components/SEO';
 
-const BlogPost = () => {
-  const { id } = useParams();
-  const [blog, setBlog] = useState<any>(null);
-  const [globalSettings, setGlobalSettings] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [voted, setVoted] = useState(false); 
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const loadAllData = async () => {
-      try {
-        setLoading(true);
-        if (id) {
-          const blogRef = doc(db, "blogs", id);
-          const blogSnap = await getDoc(blogRef);
-          
-          if (blogSnap.exists()) {
-            const blogData = blogSnap.data();
-            setBlog(blogData);
-          }
-
-          const settingsRef = doc(db, "site_settings", "global");
-          const settingsSnap = await getDoc(settingsRef);
-          
-          if (settingsSnap.exists()) {
-            setGlobalSettings(settingsSnap.data());
-          } else {
-            setGlobalSettings({
-              sidebarLinks: [
-                { name: "New Govt Job Details", url: "#" },
-                { name: "Best Free Study Materials", url: "#" }
-              ],
-              relatedBlogs: [
-                { title: "SSC CGL 2024: पूरी जानकारी और सिलेबस", url: "#" },
-                { title: "रेलवे ग्रुप D: पिछले साल के पेपर डाउनलोड करें", url: "#" }
-              ],
-              premiumBoxTitle: "Premium Material Notes",
-              premiumBoxDesc: "100% सफलता के लिए श्रेणी-वार महत्वपूर्ण सवालों का असली संग्रह।",
-              bottomBarText: "📢 Premium Notes: पिछले 10 साल के रिपीटेड सवालों का पूरा बंडल",
-              premiumPrice: "69",
-              mrpPrice: "499",
-              discountPercent: "85"
-            });
-          }
-        }
-      } catch (error) {
-        console.error("Error loading data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadAllData();
-    window.scrollTo(0, 0);
-  }, [id]);
-
-  const sellingPrice = Math.round(
-    Number(globalSettings?.mrpPrice || 499) * (1 - Number(globalSettings?.discountPercent || 85) / 100)
-  );
-
-  const handleFeedback = async (type: 'yes' | 'no') => {
-    if (voted) return toast.info("आप पहले ही अपनी राय दे चुके हैं!");
-    
+// =========================================================
+// 🛠️ HELPERS
+// =========================================================
+function formatDate(dateField) {
+    if (!dateField) return new Date().toLocaleDateString('hi-IN');
     try {
-      const docRef = doc(db, "blogs", id!);
-      await updateDoc(docRef, {
-        [type === 'yes' ? 'real_likes' : 'real_dislikes']: increment(1)
-      });
-      setVoted(true);
-      toast.success("फीडबैक देने के लिए धन्यवाद! आपकी राय सुरक्षित है।");
-    } catch (err) {
-      toast.error("फीडबैक सेव नहीं हो सका।");
+        // Firestore Timestamp
+        if (dateField?.seconds) {
+            return new Date(dateField.seconds * 1000).toLocaleDateString('hi-IN');
+        }
+        // Firestore toDate()
+        if (dateField?.toDate) {
+            return dateField.toDate().toLocaleDateString('hi-IN');
+        }
+        // String/Number
+        return new Date(dateField).toLocaleDateString('hi-IN');
+    } catch {
+        return new Date().toLocaleDateString('hi-IN');
     }
-  };
+}
 
-  const loopColors = [
+function getIsoDate(dateField) {
+    if (!dateField) return new Date().toISOString();
+    try {
+        if (dateField?.seconds) return new Date(dateField.seconds * 1000).toISOString();
+        if (dateField?.toDate) return dateField.toDate().toISOString();
+        return new Date(dateField).toISOString();
+    } catch {
+        return new Date().toISOString();
+    }
+}
+
+function estimateReadTime(content) {
+    if (!content) return '5 मिनट';
+    const text = content.replace(/<[^>]*>/g, '');
+    const words = text.split(/\s+/).length;
+    const minutes = Math.ceil(words / 200);
+    return `${minutes} मिनट`;
+}
+
+// =========================================================
+// 🎨 COLORS
+// =========================================================
+const LOOP_COLORS = [
     { bg: "bg-rose-50", border: "border-rose-200 hover:border-rose-400", text: "text-rose-900", iconText: "text-rose-600" },
     { bg: "bg-blue-50", border: "border-blue-200 hover:border-blue-400", text: "text-blue-900", iconText: "text-blue-600" },
     { bg: "bg-emerald-50", border: "border-emerald-200 hover:border-emerald-400", text: "text-emerald-900", iconText: "text-emerald-600" },
     { bg: "bg-amber-50", border: "border-amber-200 hover:border-amber-400", text: "text-amber-900", iconText: "text-amber-600" },
     { bg: "bg-purple-50", border: "border-purple-200 hover:border-purple-400", text: "text-purple-900", iconText: "text-purple-600" }
-  ];
+];
 
-  const sidebarUpdates = (globalSettings?.relatedBlogs || []).slice(0, 5);
-  const pageQuickLinks = globalSettings?.sidebarLinks || [];
+const LINK_GRADIENTS = [
+    "bg-gradient-to-r from-blue-600 to-cyan-500 shadow-blue-500/30",
+    "bg-gradient-to-r from-purple-600 to-fuchsia-500 shadow-purple-500/30",
+    "bg-gradient-to-r from-orange-500 to-red-500 shadow-orange-500/30",
+    "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-emerald-500/30",
+    "bg-gradient-to-r from-rose-500 to-pink-500 shadow-rose-500/30"
+];
 
-  if (loading || !globalSettings) return <div className="flex justify-center items-center min-h-screen font-hindi text-blue-600 font-bold text-sm">प्रोफेशनल डेटा लोड हो रहा है... 🔍</div>;
-  if (!blog) return <div className="text-center py-10 font-hindi text-sm font-bold text-gray-500">लेख नहीं मिला! 🥲</div>;
+// =========================================================
+// 🚀 MAIN COMPONENT
+// =========================================================
+const BlogPost = () => {
+    const { id } = useParams(); // slug या id दोनों handle करेगा
+    const navigate = useNavigate();
 
-  // 🔥 ARTICLE SCHEMA FOR GOOGLE DISCOVER / SEARCH 🔥
-  const articleSchema = {
-    "@context": "https://schema.org",
-    "@type": "Article",
-    "mainEntityOfPage": {
-      "@type": "WebPage",
-      "@id": `https://studygyaan.in/blog/${id}`
-    },
-    "headline": blog.title,
-    "description": blog.description || `Read full article about ${blog.title} on StudyGyaan. Best educational materials and updates.`,
-    "image": blog.imageUrl || "https://studygyaan.in/og-image.jpg",
-    "author": {
-      "@type": "Person",
-      "name": blog.author || "Rahul Sir",
-      "url": "https://studygyaan.in/about-us"
-    },
-    "publisher": {
-      "@type": "Organization",
-      "name": "StudyGyaan",
-      "logo": {
-        "@type": "ImageObject",
-        "url": "https://studygyaan.in/logo.png"
-      }
-    },
-    "datePublished": blog.date?.seconds ? new Date(blog.date.seconds * 1000).toISOString() : new Date().toISOString(),
-    "dateModified": blog.date?.seconds ? new Date(blog.date.seconds * 1000).toISOString() : new Date().toISOString()
-  };
+    const [blog, setBlog] = useState(null);
+    const [globalSettings, setGlobalSettings] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [notFound, setNotFound] = useState(false);
+    const [voted, setVoted] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const [docId, setDocId] = useState(null); // Actual Firestore doc ID
 
-  return (
-    <div className="min-h-screen bg-[#F8FAFC] font-hindi antialiased pb-16 md:pb-20">
-      
-      {/* 🔥 DYNAMIC SEO TAGS */}
-      <SEO 
-        customTitle={`${blog.title} - StudyGyaan 2026`}
-        customDescription={blog.description || `Read full article about ${blog.title} on StudyGyaan. Best educational materials and updates.`}
-        customUrl={`https://studygyaan.in/blog/${id}`}
-        customImage={blog.imageUrl || "https://studygyaan.in/og-image.jpg"}
-      />
+    // =========================================================
+    // 📡 DATA FETCH - Slug और ID दोनों handle करता है
+    // =========================================================
+    useEffect(() => {
+        const loadData = async () => {
+            try {
+                setLoading(true);
+                setNotFound(false);
 
-      {/* 🔥 JSON-LD INJECTION */}
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(articleSchema) }} />
+                if (!id) {
+                    setNotFound(true);
+                    return;
+                }
 
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-100 px-3 md:px-6 h-12 md:h-14 flex items-center justify-between shadow-sm">
-        <button onClick={() => navigate(-1)} className="flex items-center text-slate-600 hover:text-blue-600 font-bold transition-colors text-xs md:text-sm bg-slate-100/50 px-2.5 py-1.5 rounded-lg border border-slate-200">
-          <ChevronLeft className="w-4 h-4 md:w-5 md:h-5 mr-1" aria-hidden="true" /> वापस जाएँ
-        </button>
-        <div className="text-blue-700 font-black text-base md:text-lg tracking-tight">StudyGyaan</div>
-        <div className="w-8 md:w-10"></div> 
-      </nav>
+                let blogData = null;
+                let foundDocId = null;
 
-      <header className="relative w-full h-[25vh] md:h-[40vh] bg-slate-900 overflow-hidden">
-<img 
-  src={blog.imageUrl || 'https://via.placeholder.com/1200x600'} 
-  className="w-full h-full object-cover opacity-30" 
-  alt={blog.title || "StudyGyaan Blog Banner"} 
-  fetchPriority="high" 
-/>
-        <div className="absolute inset-0 bg-gradient-to-t from-[#F8FAFC] via-slate-900/50 to-transparent"></div>
-        <div className="absolute bottom-0 left-0 w-full p-4 md:p-8 text-left">
-          <div className="max-w-7xl mx-auto px-2 md:px-4">
-            <span className="bg-blue-600 text-white text-[9px] md:text-xs font-black px-2 py-1 rounded-md uppercase tracking-tighter mb-2 md:mb-4 inline-block shadow-md">
-              Official Study Material
-            </span>
-            {/* ✅ SEO FIX: H1 Tag for Main Title */}
-            <h1 className="text-xl md:text-4xl font-black text-slate-900 leading-[1.2] break-words max-w-4xl drop-shadow-md">
-              {blog.title}
-            </h1>
-          </div>
-        </div>
-      </header>
+                // ✅ Step 1: Slug से ढूंढो (SEO-friendly URLs)
+                try {
+                    const slugQuery = query(
+                        collection(db, "blogs"),
+                        where("slug", "==", id),
+                        limit(1)
+                    );
+                    const slugSnap = await getDocs(slugQuery);
 
-      <main className="max-w-7xl mx-auto px-2 md:px-4 py-4 md:py-8 relative z-20">
-        
-        <div className="flex flex-col md:flex-row gap-4 md:gap-8 items-start">
-          
-          <div className="w-full md:w-[65%] min-w-0">
-            <article className="bg-white rounded-2xl md:rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 overflow-hidden">
-              
-              <div className="flex flex-wrap items-center gap-2 md:gap-4 p-3 md:p-5 border-b border-slate-100 text-slate-600 text-[10px] md:text-sm font-bold bg-slate-50/50">
-                <div className="flex items-center bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-slate-200"><User className="w-3.5 h-3.5 md:w-4 md:h-4 mr-1 md:mr-1.5 text-blue-500" aria-hidden="true" /> {blog.author || "Rahul Sir"}</div>
-                <div className="flex items-center bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-slate-200"><Calendar className="w-3.5 h-3.5 md:w-4 md:h-4 mr-1 md:mr-1.5 text-blue-500" aria-hidden="true" /> {blog.date ? new Date(blog.date.seconds * 1000).toLocaleDateString('hi-IN') : new Date().toLocaleDateString('hi-IN')}</div>
-                <div className="flex items-center bg-orange-50 text-orange-700 px-2.5 py-1.5 rounded-lg shadow-sm border border-orange-200"><Clock className="w-3.5 h-3.5 md:w-4 md:h-4 mr-1 md:mr-1.5" aria-hidden="true" /> 10 साल का निचोड़</div>
-              </div>
+                    if (!slugSnap.empty) {
+                        blogData = slugSnap.docs[0].data();
+                        foundDocId = slugSnap.docs[0].id;
+                    }
+                } catch (slugErr) {
+                    console.warn("Slug query failed:", slugErr.message);
+                }
 
-              <div className="p-4 md:p-8">
-                <div 
-                  className="
-                    prose prose-sm md:prose-base max-w-none 
-                    text-slate-700 
-                    [&_p]:!text-left [&_span]:!text-left [&_div]:!text-left
-                    [word-break:break-word]
-                    prose-p:leading-relaxed prose-p:mb-5
-                    prose-strong:text-blue-900 prose-strong:font-black
-                    prose-headings:text-slate-900 prose-headings:font-black prose-headings:mb-3 
-                    prose-ul:space-y-2 prose-ul:mb-5 prose-li:marker:text-blue-500
-                    prose-img:rounded-xl md:prose-img:rounded-2xl prose-img:shadow-md
-                  "
-                  dangerouslySetInnerHTML={{ __html: blog.content }} 
+                // ✅ Step 2: Doc ID से ढूंढो (fallback)
+                if (!blogData) {
+                    const directRef = doc(db, "blogs", id);
+                    const directSnap = await getDoc(directRef);
+                    if (directSnap.exists()) {
+                        blogData = directSnap.data();
+                        foundDocId = directSnap.id;
+                    }
+                }
+
+                if (!blogData) {
+                    setNotFound(true);
+                    return;
+                }
+
+                setBlog(blogData);
+                setDocId(foundDocId);
+
+                // ✅ View Count Increment
+                try {
+                    await updateDoc(doc(db, "blogs", foundDocId), {
+                        views: increment(1)
+                    });
+                } catch {
+                    // View count fail होने पर page नहीं रुकना चाहिए
+                }
+
+                // ✅ Global Settings
+                const settingsSnap = await getDoc(
+                    doc(db, "site_settings", "global")
+                );
+                if (settingsSnap.exists()) {
+                    setGlobalSettings(settingsSnap.data());
+                } else {
+                    setGlobalSettings(getDefaultSettings());
+                }
+
+            } catch (error) {
+                console.error("Error loading blog:", error);
+                setNotFound(true);
+            } finally {
+                setLoading(false);
+                window.scrollTo(0, 0);
+            }
+        };
+
+        loadData();
+    }, [id]);
+
+    // =========================================================
+    // 🔧 DEFAULT SETTINGS
+    // =========================================================
+    function getDefaultSettings() {
+        return {
+            sidebarLinks: [
+                { name: "New Govt Job Details", url: "/govt-jobs" },
+                { name: "Best Free Study Materials", url: "/free-study-material" }
+            ],
+            relatedBlogs: [
+                { title: "SSC CGL 2025: पूरी जानकारी और सिलेबस", url: "/blog" },
+                { title: "Railway Group D: Preparation Guide", url: "/blog" }
+            ],
+            premiumBoxTitle: "Premium Material Notes",
+            premiumBoxDesc: "100% सफलता के लिए श्रेणी-वार महत्वपूर्ण सवालों का असली संग्रह।",
+            bottomBarText: "📢 Premium Notes: पिछले 10 साल के रिपीटेड सवालों का पूरा बंडल",
+            premiumPrice: "69",
+            mrpPrice: "499",
+            discountPercent: "85"
+        };
+    }
+
+    // =========================================================
+    // 💬 FEEDBACK
+    // =========================================================
+    const handleFeedback = useCallback(async (type) => {
+        if (voted) return toast.info("आप पहले ही अपनी राय दे चुके हैं!");
+        if (!docId) return;
+
+        try {
+            await updateDoc(doc(db, "blogs", docId), {
+                [type === 'yes' ? 'real_likes' : 'real_dislikes']: increment(1)
+            });
+            setVoted(true);
+            toast.success("फीडबैक देने के लिए धन्यवाद! 🙏");
+        } catch {
+            toast.error("फीडबैक सेव नहीं हो सका।");
+        }
+    }, [voted, docId]);
+
+    // =========================================================
+    // 📤 SHARE
+    // =========================================================
+    const handleShare = useCallback(async () => {
+        const shareUrl = window.location.href;
+        const shareTitle = blog?.title || 'StudyGyaan Blog';
+
+        // ✅ Native Share API (Mobile)
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: shareTitle,
+                    text: blog?.description || shareTitle,
+                    url: shareUrl
+                });
+                return;
+            } catch {
+                // User cancelled या not supported
+            }
+        }
+
+        // ✅ Clipboard fallback
+        try {
+            await navigator.clipboard.writeText(shareUrl);
+            setCopied(true);
+            toast.success("लिंक कॉपी हो गया! 📋");
+            setTimeout(() => setCopied(false), 3000);
+        } catch {
+            toast.error("Share नहीं हो सका।");
+        }
+    }, [blog]);
+
+    // =========================================================
+    // 💰 PRICE CALCULATION
+    // =========================================================
+    const sellingPrice = Math.round(
+        Number(globalSettings?.mrpPrice || 499) *
+        (1 - Number(globalSettings?.discountPercent || 85) / 100)
+    );
+
+    // =========================================================
+    // 🔄 LOADING STATE
+    // =========================================================
+    if (loading) {
+        return (
+            <div className="flex flex-col justify-center items-center min-h-screen gap-3">
+                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <p className="font-hindi text-blue-600 font-bold text-sm">
+                    लोड हो रहा है...
+                </p>
+            </div>
+        );
+    }
+
+    // =========================================================
+    // ❌ 404 STATE
+    // =========================================================
+    if (notFound || !blog) {
+        return (
+            <>
+                {/* ✅ 404 के लिए noIndex */}
+                <SEO
+                    customTitle="Blog Not Found | StudyGyaan"
+                    customDescription="यह ब्लॉग पोस्ट नहीं मिली।"
+                    noIndex={true}
+                    noFollow={false}
                 />
-
-                <section className="mt-8 md:mt-12 p-4 md:p-6 bg-blue-50/50 rounded-xl md:rounded-3xl border border-blue-100 text-center shadow-inner">
-                  {/* ✅ SEO FIX: Replaced h4 with h3 for Semantic HTML */}
-                  <h3 className="text-[12px] md:text-base font-black text-slate-800 mb-3 md:mb-5">क्या यह आर्टिकल आपके लिए फायदेमंद रहा?</h3>
-                  <div className="flex justify-center gap-3 md:gap-5">
-                    <button onClick={() => handleFeedback('yes')} className={`px-4 py-2 md:px-8 md:py-2.5 rounded-lg md:rounded-xl text-[10px] md:text-sm font-black transition-all shadow-md flex items-center gap-2 ${voted ? 'bg-slate-200 text-slate-400' : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'}`}> हाँ 👍 </button>
-                    <button onClick={() => handleFeedback('no')} className={`px-4 py-2 md:px-8 md:py-2.5 rounded-lg md:rounded-xl text-[10px] md:text-sm font-black transition-all shadow-md flex items-center gap-2 ${voted ? 'bg-slate-200 text-slate-400' : 'bg-white text-slate-700 border-2 border-slate-200 hover:bg-slate-50 active:scale-95'}`}> नहीं 👎 </button>
-                  </div>
-                  {voted && <p className="mt-3 md:mt-4 text-[9px] md:text-xs text-blue-600 font-bold bg-white inline-block px-3 py-1.5 rounded-full shadow-sm border border-blue-100">आपकी राय सेव कर ली गई है। धन्यवाद!</p>}
-                </section>
-                {/* ✅ SEO FIX: Internal Links Section (Fixes 'No outgoing links' and 'Orphan page' error) */}
-                <div className="bg-blue-50/50 p-6 md:p-8 rounded-[2rem] border border-blue-100 shadow-sm mt-8">
-                  <h2 className="text-sm md:text-xl font-black text-slate-800 mb-5 uppercase tracking-tight flex items-center gap-2">
-                    <FileSearch size={20} className="text-blue-600" aria-hidden="true" /> Explore More on StudyGyaan
-                  </h2>
-                  <div className="flex flex-wrap gap-3">
-                    <a href="/govt-jobs" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Latest Govt Jobs</a>
-                    <a href="/free-study-material" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Study Material</a>
-                    <a href="/test" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Mock Tests</a>
-                    <a href="/blog" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Sarkari Yojana & Blogs</a>
-                  </div>
+                <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-4">
+                    <div className="text-6xl">🥲</div>
+                    <h1 className="text-xl font-black text-slate-800 font-hindi">
+                        ब्लॉग नहीं मिला!
+                    </h1>
+                    <p className="text-slate-500 text-sm font-hindi text-center">
+                        यह आर्टिकल delete हो गया है या link गलत है।
+                    </p>
+                    <button
+                        onClick={() => navigate('/blog')}
+                        className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-sm hover:bg-blue-700 transition-all"
+                    >
+                        सभी Blogs देखें →
+                    </button>
                 </div>
-              </div>
-            </article>
-          </div>
+            </>
+        );
+    }
 
-          <aside className="w-full md:w-[35%] space-y-4 md:space-y-6 sticky top-12 md:top-16">
-            
-             {sidebarUpdates.length > 0 && (
-              <section className="bg-white/80 backdrop-blur-xl p-4 md:p-6 rounded-2xl md:rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 relative overflow-hidden">
-                  <div className="absolute -top-10 -right-10 w-32 h-32 bg-purple-100 rounded-full blur-3xl opacity-60 pointer-events-none"></div>
-                  {/* ✅ SEO FIX: Replaced h3 with h2 for Sidebar Semantic HTML */}
-                  <h2 className="text-sm md:text-lg font-black text-slate-900 mb-4 flex items-center relative z-10 border-b border-slate-100 pb-3">
-                    <Sparkles className="w-4 h-4 md:w-5 md:h-5 mr-1.5 md:mr-2 text-purple-600 animate-pulse" aria-hidden="true" /> 
-                    <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-700 to-pink-600"> ट्रेंडिंग आर्टिकल्स 🔥 </span>
-                  </h2>
-                  <ul className="space-y-3 relative z-10">
-                      {sidebarUpdates.map((blogInfo: any, index: number) => {
-                          if (!blogInfo.title) return null;
-                          const style = loopColors[index % loopColors.length];
-                          return (
-                            <li 
-                              key={index} 
-                              onClick={() => blogInfo.url && window.open(blogInfo.url, '_blank')}
-                              className={`group cursor-pointer border-2 ${style.border} ${style.bg} p-3 md:p-4 rounded-xl md:rounded-2xl transition-all hover:-translate-y-1 shadow-sm hover:shadow-md flex items-center justify-between`}
-                            >
-                                <div className="flex-1 pr-3">
-                                    <span className={`block text-[13px] md:text-[16px] font-black ${style.text} line-clamp-2 min-h-[2.8em] leading-snug`}>
-                                        {blogInfo.title}
+    // =========================================================
+    // 📊 SEO DATA PREP
+    // =========================================================
+    const blogSlug = blog.slug || docId || id;
+    const canonicalUrl = `https://studygyaan.in/blog/${blogSlug}`;
+    const publishedIso = getIsoDate(blog.date || blog.createdAt);
+    const readTime = estimateReadTime(blog.content);
+    const seoTitle = blog.title
+        ? `${blog.title} | StudyGyaan`
+        : 'StudyGyaan Blog';
+    const seoDesc = blog.description
+        || blog.metaDescription
+        || `${blog.title} - पूरी जानकारी StudyGyaan पर पढ़ें।`;
+
+    const sidebarUpdates = (globalSettings?.relatedBlogs || []).slice(0, 5);
+    const pageQuickLinks = globalSettings?.sidebarLinks || [];
+
+    // =========================================================
+    // 🎨 RENDER
+    // =========================================================
+    return (
+        <div className="min-h-screen bg-[#F8FAFC] font-hindi antialiased pb-20">
+
+            {/* ✅ SEO - Article type with all props */}
+            <SEO
+                customTitle={seoTitle}
+                customDescription={seoDesc}
+                customUrl={canonicalUrl}
+                customImage={blog.imageUrl || "https://studygyaan.in/og-image.jpg"}
+                customKeywords={blog.tags
+                    ? blog.tags.join(', ')
+                    : `${blog.category || 'Education'}, StudyGyaan, ${blog.title}`}
+                ogType="article"
+                publishedDate={publishedIso}
+                modifiedDate={publishedIso}
+                author={blog.author || "Rahul Sir"}
+                category={blog.category || "Education"}
+            />
+
+            {/* ✅ Navbar */}
+            <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-100 px-3 md:px-6 h-12 md:h-14 flex items-center justify-between shadow-sm">
+                <button
+                    onClick={() => navigate(-1)}
+                    className="flex items-center text-slate-600 hover:text-blue-600 font-bold transition-colors text-xs md:text-sm bg-slate-100/50 px-2.5 py-1.5 rounded-lg border border-slate-200"
+                    aria-label="वापस जाएँ"
+                >
+                    <ChevronLeft className="w-4 h-4 mr-1" aria-hidden="true" />
+                    वापस जाएँ
+                </button>
+
+                <a
+                    href="/"
+                    className="text-blue-700 font-black text-base md:text-lg tracking-tight"
+                    aria-label="StudyGyaan Home"
+                >
+                    StudyGyaan
+                </a>
+
+                {/* ✅ Share Button - Working! */}
+                <button
+                    onClick={handleShare}
+                    className="flex items-center gap-1 text-slate-600 hover:text-blue-600 font-bold text-xs bg-slate-100/50 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors"
+                    aria-label="Share करें"
+                >
+                    {copied
+                        ? <Check className="w-4 h-4 text-green-500" />
+                        : <Share2 className="w-4 h-4" aria-hidden="true" />
+                    }
+                    <span className="hidden md:inline">
+                        {copied ? 'Copied!' : 'Share'}
+                    </span>
+                </button>
+            </nav>
+
+            {/* ✅ Hero Image */}
+            <header className="relative w-full h-[25vh] md:h-[40vh] bg-slate-900 overflow-hidden">
+                <img
+                    src={blog.imageUrl || '/og-image.jpg'}
+                    className="w-full h-full object-cover opacity-30"
+                    alt={blog.title}
+                    fetchpriority="high"
+                    width="1200"
+                    height="630"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#F8FAFC] via-slate-900/50 to-transparent" />
+                <div className="absolute bottom-0 left-0 w-full p-4 md:p-8">
+                    <div className="max-w-7xl mx-auto px-2 md:px-4">
+                        {blog.category && (
+                            <span className="bg-blue-600 text-white text-[9px] md:text-xs font-black px-2 py-1 rounded-md uppercase tracking-tighter mb-2 inline-block">
+                                {blog.category}
+                            </span>
+                        )}
+                        {/* ✅ H1 - Proper semantic */}
+                        <h1 className="text-xl md:text-4xl font-black text-slate-900 leading-[1.2] break-words max-w-4xl drop-shadow-md">
+                            {blog.title}
+                        </h1>
+                    </div>
+                </div>
+            </header>
+
+            {/* ✅ Main Content */}
+            <main className="max-w-7xl mx-auto px-2 md:px-4 py-4 md:py-8">
+                <div className="flex flex-col md:flex-row gap-4 md:gap-8 items-start">
+
+                    {/* Article Column */}
+                    <div className="w-full md:w-[65%] min-w-0">
+                        <article
+                            className="bg-white rounded-2xl md:rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 overflow-hidden"
+                            itemScope
+                            itemType="https://schema.org/BlogPosting"
+                        >
+                            {/* Meta Bar */}
+                            <div className="flex flex-wrap items-center gap-2 md:gap-3 p-3 md:p-5 border-b border-slate-100 text-slate-600 text-[10px] md:text-sm font-bold bg-slate-50/50">
+                                <div className="flex items-center bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-slate-200">
+                                    <User className="w-3.5 h-3.5 mr-1 text-blue-500" aria-hidden="true" />
+                                    <span itemProp="author">{blog.author || "Rahul Sir"}</span>
+                                </div>
+                                <div className="flex items-center bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-slate-200">
+                                    <Calendar className="w-3.5 h-3.5 mr-1 text-blue-500" aria-hidden="true" />
+                                    <time
+                                        itemProp="datePublished"
+                                        dateTime={publishedIso}
+                                    >
+                                        {formatDate(blog.date || blog.createdAt)}
+                                    </time>
+                                </div>
+                                <div className="flex items-center bg-orange-50 text-orange-700 px-2.5 py-1.5 rounded-lg shadow-sm border border-orange-200">
+                                    <Clock className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
+                                    {readTime} पढ़ें
+                                </div>
+                                {/* ✅ View Count */}
+                                {blog.views && (
+                                    <div className="flex items-center bg-green-50 text-green-700 px-2.5 py-1.5 rounded-lg shadow-sm border border-green-200">
+                                        <Eye className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
+                                        {blog.views.toLocaleString('hi-IN')} views
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Content */}
+                            <div className="p-4 md:p-8">
+                                <div
+                                    className="prose prose-sm md:prose-base max-w-none text-slate-700 [&_p]:!text-left [word-break:break-word] prose-p:leading-relaxed prose-p:mb-5 prose-strong:text-blue-900 prose-strong:font-black prose-headings:text-slate-900 prose-headings:font-black prose-headings:mb-3 prose-ul:space-y-2 prose-ul:mb-5 prose-li:marker:text-blue-500 prose-img:rounded-xl prose-img:shadow-md"
+                                    dangerouslySetInnerHTML={{ __html: blog.content }}
+                                    itemProp="articleBody"
+                                />
+
+                                {/* Feedback */}
+                                <section className="mt-8 p-4 md:p-6 bg-blue-50/50 rounded-xl md:rounded-3xl border border-blue-100 text-center">
+                                    <h3 className="text-xs md:text-base font-black text-slate-800 mb-3">
+                                        क्या यह आर्टिकल आपके लिए फायदेमंद रहा?
+                                    </h3>
+                                    <div className="flex justify-center gap-3">
+                                        <button
+                                            onClick={() => handleFeedback('yes')}
+                                            disabled={voted}
+                                            className={`px-4 py-2 md:px-8 md:py-2.5 rounded-lg text-[10px] md:text-sm font-black transition-all shadow-md ${voted ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'}`}
+                                        >
+                                            हाँ 👍
+                                        </button>
+                                        <button
+                                            onClick={() => handleFeedback('no')}
+                                            disabled={voted}
+                                            className={`px-4 py-2 md:px-8 md:py-2.5 rounded-lg text-[10px] md:text-sm font-black transition-all shadow-md ${voted ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-700 border-2 border-slate-200 hover:bg-slate-50 active:scale-95'}`}
+                                        >
+                                            नहीं 👎
+                                        </button>
+                                    </div>
+                                    {voted && (
+                                        <p className="mt-3 text-[9px] md:text-xs text-blue-600 font-bold">
+                                            आपकी राय सेव हो गई। धन्यवाद! 🙏
+                                        </p>
+                                    )}
+                                </section>
+
+                                {/* ✅ Internal Links */}
+                                <div className="bg-blue-50/50 p-6 rounded-[2rem] border border-blue-100 mt-8">
+                                    <h2 className="text-sm md:text-xl font-black text-slate-800 mb-5 uppercase flex items-center gap-2">
+                                        <FileSearch size={20} className="text-blue-600" aria-hidden="true" />
+                                        Explore More on StudyGyaan
+                                    </h2>
+                                    <div className="flex flex-wrap gap-3">
+                                        {[
+                                            { href: "/govt-jobs", label: "Latest Govt Jobs" },
+                                            { href: "/free-study-material", label: "Free Study Material" },
+                                            { href: "/test", label: "Free Mock Tests" },
+                                            { href: "/blog", label: "All Blogs" },
+                                            { href: "/web-stories", label: "Web Stories" }
+                                        ].map(link => (
+                                            <a
+                                                key={link.href}
+                                                href={link.href}
+                                                className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm"
+                                            >
+                                                {link.label}
+                                            </a>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </article>
+                    </div>
+
+                    {/* Sidebar */}
+                    <aside className="w-full md:w-[35%] space-y-4 md:space-y-6 md:sticky md:top-16">
+
+                        {/* Trending */}
+                        {sidebarUpdates.length > 0 && (
+                            <section className="bg-white/80 backdrop-blur-xl p-4 md:p-6 rounded-2xl border border-white/60 shadow-sm">
+                                <h2 className="text-sm md:text-lg font-black text-slate-900 mb-4 flex items-center border-b border-slate-100 pb-3">
+                                    <Sparkles className="w-4 h-4 mr-1.5 text-purple-600" aria-hidden="true" />
+                                    <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-700 to-pink-600">
+                                        ट्रेंडिंग आर्टिकल्स 🔥
+                                    </span>
+                                </h2>
+                                <ul className="space-y-3" role="list">
+                                    {sidebarUpdates.map((blogInfo, index) => {
+                                        if (!blogInfo.title) return null;
+                                        const style = LOOP_COLORS[index % LOOP_COLORS.length];
+                                        return (
+                                            <li key={index}>
+                                                <a
+                                                    href={blogInfo.url || '/blog'}
+                                                    target={blogInfo.url?.startsWith('http') ? '_blank' : '_self'}
+                                                    rel={blogInfo.url?.startsWith('http') ? 'noopener noreferrer' : undefined}
+                                                    className={`group border-2 ${style.border} ${style.bg} p-3 md:p-4 rounded-xl transition-all hover:-translate-y-1 shadow-sm hover:shadow-md flex items-center justify-between`}
+                                                >
+                                                    <span className={`flex-1 pr-3 text-[13px] font-black ${style.text} line-clamp-2`}>
+                                                        {blogInfo.title}
+                                                    </span>
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-white shadow-sm shrink-0 group-hover:scale-110 transition-transform ${style.iconText}`}>
+                                                        <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                                                    </div>
+                                                </a>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            </section>
+                        )}
+
+                        {/* Quick Links */}
+                        {pageQuickLinks.length > 0 && (
+                            <section className="bg-white/80 p-4 md:p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                                <h2 className="text-sm md:text-lg font-black text-slate-900 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
+                                    <Tag size={18} className="text-blue-600" aria-hidden="true" />
+                                    महत्वपूर्ण लिंक्स 🔗
+                                </h2>
+                                <ul className="space-y-3" role="list">
+                                    {pageQuickLinks.map((item, index) => (
+                                        <li key={index}>
+                                            <a
+                                                href={item.url || '#'}
+                                                target={item.url?.startsWith('http') ? '_blank' : '_self'}
+                                                rel={item.url?.startsWith('http') ? 'noopener noreferrer' : undefined}
+                                                className={`group flex items-center justify-between p-3 md:p-4 rounded-xl transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 ${LINK_GRADIENTS[index % LINK_GRADIENTS.length]} text-white`}
+                                            >
+                                                <div className="flex items-center gap-2.5 flex-1">
+                                                    <div className="bg-white/20 p-1.5 rounded-lg shrink-0">
+                                                        <ExternalLink size={14} className="text-white" aria-hidden="true" />
+                                                    </div>
+                                                    <span className="font-black text-[12px] md:text-[15px] leading-snug">
+                                                        {item.title || item.name}
+                                                    </span>
+                                                </div>
+                                                <ArrowRight size={16} className="text-white/70 group-hover:translate-x-1 transition-all shrink-0 ml-1" aria-hidden="true" />
+                                            </a>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </section>
+                        )}
+
+                        {/* Premium Box */}
+                        {globalSettings && (
+                            <section className="p-4 md:p-6 bg-gradient-to-br from-blue-700 via-indigo-800 to-slate-900 rounded-2xl md:rounded-[2rem] text-white shadow-2xl border-b-4 border-black/20">
+                                <p className="font-black text-sm md:text-xl mb-1.5 italic flex items-center gap-2 text-yellow-300">
+                                    <ShoppingCart size={18} aria-hidden="true" />
+                                    {globalSettings.premiumBoxTitle}
+                                </p>
+                                <p className="text-[10px] md:text-xs opacity-90 mb-4 leading-relaxed">
+                                    {globalSettings.premiumBoxDesc}
+                                </p>
+                                <div className="flex items-center gap-2 mb-4 bg-white/10 p-2 md:p-3 rounded-xl border border-white/10">
+                                    <span className="line-through text-white/50 text-[10px] font-bold">
+                                        ₹{globalSettings.mrpPrice}
+                                    </span>
+                                    <span className="bg-red-500 text-white text-[8px] md:text-[10px] font-black px-2 py-0.5 rounded">
+                                        {globalSettings.discountPercent}% OFF
+                                    </span>
+                                    <span className="text-sm md:text-xl font-black text-yellow-400 ml-auto">
+                                        ₹{sellingPrice}
                                     </span>
                                 </div>
-                                <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center bg-white shadow-sm shrink-0 group-hover:scale-110 transition-transform ${style.iconText}`}>
-                                    <ArrowRight className="w-4 h-4 md:w-5 md:h-5" aria-hidden="true" />
-                                </div>
-                            </li>
-                          );
-                      })}
-                  </ul>
-              </section>
-            )}
-
-             {pageQuickLinks.length > 0 && (
-              <section className="bg-white/80 backdrop-blur-xl p-4 md:p-6 rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-blue-100 rounded-bl-full opacity-60 pointer-events-none"></div>
-                  {/* ✅ SEO FIX: Replaced h3 with h2 */}
-                  <h2 className="text-sm md:text-lg font-black text-slate-900 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2 relative z-10">
-                      <Tag size={18} className="text-blue-600 animate-bounce" aria-hidden="true" /> महत्वपूर्ण लिंक्स 🔗
-                  </h2>
-                  <ul className="space-y-3 relative z-10">
-                      {pageQuickLinks.map((item: any, index: number) => {
-                          const linkGradients = [
-                            "bg-gradient-to-r from-blue-600 to-cyan-500 shadow-blue-500/30",
-                            "bg-gradient-to-r from-purple-600 to-fuchsia-500 shadow-purple-500/30",
-                            "bg-gradient-to-r from-orange-500 to-red-500 shadow-orange-500/30",
-                            "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-emerald-500/30",
-                            "bg-gradient-to-r from-rose-500 to-pink-500 shadow-rose-500/30"
-                          ];
-                          const bgClass = linkGradients[index % linkGradients.length];
-
-                          return (
-                             <li 
-                               key={index} 
-                               onClick={() => item.url && item.url !== "#" && window.open(item.url, '_blank')} 
-                               className={`group flex items-center justify-between p-3 md:p-4 rounded-xl md:rounded-2xl transition-all duration-300 cursor-pointer shadow-md hover:shadow-xl hover:-translate-y-1 ${bgClass} text-white`}
-                             >
-                                <div className="flex items-start gap-2.5 w-full">
-                                   <div className="bg-white/20 p-1.5 rounded-lg shrink-0 mt-0.5 group-hover:scale-110 transition-transform">
-                                      <ExternalLink size={14} className="text-white md:w-4 md:h-4" aria-hidden="true" />
-                                   </div>
-                                   <span className="font-black text-[12px] md:text-[15px] leading-snug tracking-wide pr-2">
-                                       {item.title || item.name}
-                                   </span>
-                                </div>
-                                <ArrowRight size={16} className="text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0 ml-1 self-center" aria-hidden="true" />
-                             </li>
-                          )
-                      })}
-                  </ul>
-              </section>
-            )}
-
-            <section className="p-4 md:p-6 bg-gradient-to-br from-blue-700 via-indigo-800 to-slate-900 rounded-2xl md:rounded-[2rem] text-white shadow-2xl relative overflow-hidden border-b-4 border-black/20">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-3xl group-hover:scale-150 transition-all duration-700 pointer-events-none"></div>
-                <div className="font-black text-[14px] md:text-xl mb-1.5 italic flex items-center gap-2 relative z-10 text-yellow-300">
-                  <ShoppingCart size={18} className="md:w-5 md:h-5 animate-bounce" aria-hidden="true" /> {globalSettings.premiumBoxTitle}
+                                <a
+                                    href="/premium-notes"
+                                    className="block w-full bg-yellow-400 text-blue-900 font-black py-2.5 md:py-3.5 rounded-xl text-center text-[12px] md:text-sm hover:bg-yellow-300 active:scale-95 shadow-xl transition-transform"
+                                >
+                                    अभी खरीदें →
+                                </a>
+                            </section>
+                        )}
+                    </aside>
                 </div>
-                <p className="text-[10px] md:text-xs opacity-90 mb-4 leading-relaxed relative z-10">{globalSettings.premiumBoxDesc}</p>
-                
-                <div className="flex items-center gap-2 mb-4 bg-white/10 p-2 md:p-3 rounded-xl border border-white/10 relative z-10 backdrop-blur-sm">
-                    <span className="line-through text-white/50 text-[10px] md:text-[12px] font-bold">₹{globalSettings.mrpPrice}</span>
-                    <span className="bg-red-500 text-white text-[8px] md:text-[10px] font-black px-2 py-0.5 rounded shadow-sm"> {globalSettings.discountPercent}% OFF </span>
-                    <div className="text-[14px] md:text-xl font-black text-yellow-400 ml-auto font-mono">₹{sellingPrice}</div>
-                </div>
-                <button onClick={() => navigate('/premium-notes')} className="w-full relative z-10 bg-yellow-400 text-blue-900 font-black py-2.5 md:py-3.5 rounded-xl md:rounded-2xl text-[12px] md:text-sm hover:bg-yellow-300 active:scale-95 shadow-xl transition-transform"> अभी खरीदें </button>
-            </section>
-          </aside>
-        </div>
-      </main>
+            </main>
 
-      <div className="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-xl border-t border-slate-200 py-2 px-3 md:py-3 md:px-4 z-[100] shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
-        <div className="max-w-5xl mx-auto flex flex-row justify-between items-center gap-2">
-          <div className="flex flex-col">
-             <span className="text-[10px] md:text-xs font-black text-red-600 flex items-center gap-1 uppercase tracking-wider"> <Flame className="w-3 h-3 md:w-4 md:h-4 text-orange-500 animate-pulse" aria-hidden="true" /> OFFER: {globalSettings.discountPercent}% OFF </span>
-             <span className="hidden md:inline text-[13px] font-bold text-slate-600 mt-1">{globalSettings.bottomBarText}</span>
-             <span className="md:hidden text-[12px] font-black text-slate-900 mt-0.5">अनलॉक: ₹{sellingPrice}</span>
-          </div>
-          <button onClick={() => navigate('/premium-notes')} className="bg-blue-700 text-white font-black py-2 px-6 md:py-2.5 md:px-8 rounded-xl hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/30 active:scale-95 flex items-center justify-center gap-1.5 text-[12px] md:text-sm"> <span className="hidden md:inline">सिर्फ ₹{sellingPrice} में अनलॉक करें</span> <span className="md:hidden">अनलॉक करें</span> <ArrowRight className="w-4 h-4" aria-hidden="true" /> </button>
+            {/* ✅ Bottom Bar */}
+            <div className="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-xl border-t border-slate-200 py-2 px-3 md:py-3 md:px-4 z-[100] shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
+                <div className="max-w-5xl mx-auto flex justify-between items-center gap-2">
+                    <div className="flex flex-col">
+                        <span className="text-[10px] md:text-xs font-black text-red-600 flex items-center gap-1 uppercase">
+                            <Flame className="w-3 h-3 text-orange-500 animate-pulse" aria-hidden="true" />
+                            OFFER: {globalSettings?.discountPercent}% OFF
+                        </span>
+                        <span className="hidden md:inline text-[13px] font-bold text-slate-600 mt-1">
+                            {globalSettings?.bottomBarText}
+                        </span>
+                        <span className="md:hidden text-[12px] font-black text-slate-900 mt-0.5">
+                            अनलॉक: ₹{sellingPrice}
+                        </span>
+                    </div>
+                    <a
+                        href="/premium-notes"
+                        className="bg-blue-700 text-white font-black py-2 px-6 md:py-2.5 md:px-8 rounded-xl hover:bg-blue-800 transition-all shadow-lg active:scale-95 flex items-center gap-1.5 text-[12px] md:text-sm"
+                    >
+                        <span className="hidden md:inline">
+                            सिर्फ ₹{sellingPrice} में अनलॉक करें
+                        </span>
+                        <span className="md:hidden">अनलॉक करें</span>
+                        <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                    </a>
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default BlogPost;
