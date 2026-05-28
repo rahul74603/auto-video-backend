@@ -1,383 +1,571 @@
 require("dotenv").config();
 const { onRequest } = require("firebase-functions/v2/https");
-const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore"); // ✅ Written→Created
 const admin = require("firebase-admin");
-
 const axios = require("axios");
 const { google } = require("googleapis");
 const cheerio = require("cheerio");
 const Parser = require("rss-parser");
-const parser = new Parser();
 
+// =========================================================
+// 🔐 FIREBASE INIT
+// =========================================================
 if (!admin.apps.length) {
     const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
     const config = {
         projectId: "studymaterial-406ad",
         storageBucket: "studymaterial-406ad.firebasestorage.app"
     };
-
     if (serviceAccountVar && serviceAccountVar !== "undefined") {
         try {
-            const serviceAccount = JSON.parse(serviceAccountVar);
             admin.initializeApp({
                 ...config,
-                credential: admin.credential.cert(serviceAccount)
+                credential: admin.credential.cert(JSON.parse(serviceAccountVar))
             });
-            console.log("✅ Firebase initialized with Service Account & Bucket");
+            console.log("✅ Firebase initialized");
         } catch (e) {
-            console.error("❌ JSON Parse Error:", e.message);
+            console.error("❌ Init error:", e.message);
             admin.initializeApp(config);
         }
     } else {
         admin.initializeApp(config);
-        console.log("✅ Firebase initialized with Default Auth");
     }
 }
+
 const db = admin.firestore();
-
-const { generateAndUploadVideo } = require("./autoVideo.js");
-const { generateSyllabusPDF } = require("./autoPdf.js");
-
+const parser = new Parser();
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
+// =========================================================
+// 🛠️ HELPERS
+// =========================================================
 function createSlug(title) {
-    return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-');
+    if (!title) return "update";
+    return title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .substring(0, 80);
 }
 
-// ✅ Updated to Google Indexing v3
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ✅ Category detection - comprehensive
+const CATEGORY_PATTERNS = {
+    'Result': ['result', 'results', 'merit list', 'final list', 'selected candidates'],
+    'Admit Card': ['admit card', 'call letter', 'hall ticket', 'e-admit', 'admit-card'],
+    'Answer Key': ['answer key', 'answer-key', 'official key', 'provisional key', 'objection key'],
+    'Syllabus': ['syllabus', 'exam pattern', 'curriculum', 'scheme of examination']
+};
+
+function detectCategory(title) {
+    const lower = (title || '').toLowerCase();
+    for (const [category, patterns] of Object.entries(CATEGORY_PATTERNS)) {
+        if (patterns.some(p => lower.includes(p))) return category;
+    }
+    return null;
+}
+
+// ✅ Junk domains list
+const JUNK_DOMAINS = [
+    "facebook.com", "twitter.com", "whatsapp.com", "telegram.me", "t.me",
+    "instagram.com", "youtube.com", "freejobalert.com", "sarkariexam.com",
+    "feedburner", "google.com", "googleads", "wp-content", "uploads",
+    ".jpg", ".jpeg", ".png", ".gif", ".webp"
+];
+
+function isJunkUrl(url) {
+    return JUNK_DOMAINS.some(d => url.toLowerCase().includes(d));
+}
+
+// =========================================================
+// 🔔 GOOGLE INDEXING
+// =========================================================
 async function notifyGoogle(url) {
     try {
-        const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
-        if (!serviceAccountVar || serviceAccountVar === "undefined") {
-            console.log("⚠️ Skipping Google Indexing: SERVICE_ACCOUNT_JSON not found.");
-            return;
-        }
+        const key = JSON.parse(process.env.SERVICE_ACCOUNT_JSON || '{}');
+        if (!key.client_email) return;
 
-        const key = JSON.parse(serviceAccountVar);
-
-        const jwtClient = new google.auth.JWT({
+        const jwt = new google.auth.JWT({
             email: key.client_email,
             key: key.private_key.replace(/\\n/g, '\n'),
             scopes: ["https://www.googleapis.com/auth/indexing"]
         });
 
-        await jwtClient.authorize();
-
-        await axios.post("https://indexing.googleapis.com/v3/urlNotifications:publish", {
-            url: url, type: "URL_UPDATED"
-        }, {
-            headers: { Authorization: `Bearer ${jwtClient.credentials.access_token}` }
-        });
-
-        console.log("🚀 Indexing API Success:", url);
+        await jwt.authorize();
+        await axios.post(
+            "https://indexing.googleapis.com/v3/urlNotifications:publish",
+            { url, type: "URL_UPDATED" },
+            { headers: { Authorization: `Bearer ${jwt.credentials.access_token}` } }
+        );
+        console.log("🚀 Indexed:", url);
     } catch (err) {
-        console.error("❌ Indexing API Error:", err.message);
+        console.error("❌ Indexing failed:", err.message);
     }
 }
 
-/* ========================================== */
-/* 🔥 SHARED FAST TRACK LOGIC (SMART MODE)  */
-/* ========================================== */
+// =========================================================
+// 🌐 PAGE SCRAPER
+// =========================================================
+async function scrapePage(url) {
+    const { data: html } = await axios.get(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StudyGyaanBot/1.0)' },
+        timeout: 20000
+    });
 
-async function runFastTrackLogic(sendLogs = console.log, apiKey) {
-    sendLogs("🚀 Starting Smart Fast-Track Scraper (Live Output Mode)...");
-    const sources = [
+    const $ = cheerio.load(html);
+    $('script, style, nav, footer, header, .sidebar').remove();
+
+    const links = new Set();
+
+    // Table links
+    $("table tr").each((i, tr) => {
+        const rowText = $(tr).text().replace(/\s+/g, ' ').trim();
+        $(tr).find('a').each((j, el) => {
+            const href = $(el).attr("href");
+            if (href?.startsWith("http") && !isJunkUrl(href) && rowText.length > 3) {
+                links.add(`[Context: ${rowText.substring(0, 100)}] -> (URL: ${href})`);
+            }
+        });
+    });
+
+    // Paragraph links
+    $(".post-body p a, .entry-content p a, article a").each((i, el) => {
+        const href = $(el).attr("href");
+        const text = $(el).text().trim();
+        if (href?.startsWith("http") && !isJunkUrl(href) && text.length > 2) {
+            links.add(`[Context: ${text}] -> (URL: ${href})`);
+        }
+    });
+
+    return Array.from(links).join("\n").substring(0, 3500);
+}
+
+// =========================================================
+// 🤖 AI EXTRACTOR
+// =========================================================
+async function extractWithAI(linksText, category, title, apiKey) {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+
+    const prompt = `Extract information for a ${category} update.
+
+Title: "${title}"
+Links found: ${linksText}
+
+Return ONLY valid JSON (no markdown):
+{
+  "title": "Clean official name without extra words",
+  "slug": "seo-slug-max-60-chars",
+  "directLink": "exact official direct URL for ${category}",
+  "shortInfo": "2-3 line description in simple Hindi/English",
+  "org": "Organization name",
+  "updateDate": "Date if found"
+}
+
+IMPORTANT: directLink must be the exact download/view URL, not a generic page URL.`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text()
+        .replace(/```json/g, '')
+        .replace(/```/g, '')
+        .trim();
+
+    return JSON.parse(text);
+}
+
+// =========================================================
+// 🔥 CORE SCRAPING LOGIC
+// =========================================================
+async function runFastTrackLogic(logger = console.log, apiKey) {
+    logger("🚀 Fast-Track Scraper Started...");
+
+    if (!apiKey) {
+        logger("❌ No API key provided!");
+        return [];
+    }
+
+    const RSS_SOURCES = [
         'https://www.freejobalert.com/feed/',
         'https://www.sarkariexam.com/feed',
         'https://feeds.feedburner.com/SarkariExam'
     ];
-    
+
+    // ✅ Collect RSS items
     let allItems = [];
-    for (let url of sources) {
+    for (const url of RSS_SOURCES) {
         try {
-            sendLogs(`📡 Fetching Source: ${url}`);
-            const response = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 15000 });
-            let feed = await parser.parseString(response.data);
-            if (feed && feed.items) {
-                sendLogs(`✅ [${url}] से ${feed.items.length} आइटम्स मिले।`);
+            logger(`📡 Fetching: ${url}`);
+            const response = await axios.get(url, {
+                headers: { 'User-Agent': 'Mozilla/5.0' },
+                timeout: 15000
+            });
+            const feed = await parser.parseString(response.data);
+            if (feed?.items) {
                 allItems.push(...feed.items);
+                logger(`✅ ${feed.items.length} items from ${url}`);
             }
-        } catch (err) { sendLogs(`⚠️ Source Failed [${url}]: ${err.message}`); }
+        } catch (err) {
+            logger(`⚠️ Source failed [${url}]: ${err.message}`);
+        }
     }
 
     if (allItems.length === 0) {
-        sendLogs("❌ किसी भी वेबसाइट से कोई डेटा नहीं मिला।");
+        logger("❌ No items found from any source");
         return [];
     }
 
-    let uniqueItems = [];
-    const now = new Date();
-    const dateSuffix = now.toLocaleString('en-IN', { month: 'short', year: 'numeric' }).toLowerCase().replace(' ', '-');
-    
-    // 🔥 यहाँ API Key फंक्शन के पैरामीटर (incoming key) से लोड होगी
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
-    
+    // ✅ Date suffix for slugs
+    const dateSuffix = new Date().toLocaleString('en-IN', {
+        month: 'short', year: 'numeric'
+    }).toLowerCase().replace(' ', '-');
+
     const results = [];
+    let processed = 0;
+    const MAX_ITEMS = 5; // ✅ Max per run
 
-    sendLogs(`🔍 कुल ${allItems.length} आइटम्स की जांच शुरू हो रही है...`);
+    logger(`🔍 Scanning ${allItems.length} items (max ${MAX_ITEMS} to save)...`);
 
-    for (const item of allItems.slice(0, 40)) { 
+    for (const item of allItems) {
+        if (results.length >= MAX_ITEMS) break;
+
+        const title = (item.title || '').trim();
+        const link = (item.link || item.guid || '').trim();
+
+        if (!title || !link || link.includes('127.0.0.1')) continue;
+
+        // ✅ Category detection
+        const category = detectCategory(title);
+        if (!category) continue;
+
+        // ✅ Duplicate check
+        const docId = Buffer.from(link)
+            .toString('base64')
+            .replace(/[/+=]/g, '_')
+            .substring(0, 80);
+
+        const alreadyDone = await db.collection("processed_links").doc(docId).get();
+        if (alreadyDone.exists) {
+            logger(`⏭️ Already processed: ${title}`);
+            continue;
+        }
+
         try {
-            const title = item.title || "No Title";
-            const link = item.link || "No Link";
-            const titleLower = title.toLowerCase();
-            
-            // 🛑 सख्त फिल्टर
-            let category = "";
-            if (titleLower.includes("result")) category = "Result";
-            else if (titleLower.includes("admit card") || titleLower.includes("call letter") || titleLower.includes("hall ticket")) category = "Admit Card";
-            else if (titleLower.includes("answer key")) category = "Answer Key";
-            else if (titleLower.includes("syllabus")) category = "Syllabus";
+            logger(`🎯 [${category}] Processing: ${title}`);
 
-            if (!category) {
-                continue; 
-            }
+            // Scrape page
+            const linksText = await scrapePage(link);
+            logger(`📋 Found ${linksText.split('\n').length} links`);
 
-            const existingDoc = await db.collection("fast_track").where("originalLink", "==", link).limit(1).get();
-            if (!existingDoc.empty) {
+            // AI extract
+            const extracted = await extractWithAI(linksText, category, title, apiKey);
+
+            const finalTitle = extracted.title || title;
+            const baseSlug = extracted.slug || createSlug(finalTitle);
+            const finalSlug = `${baseSlug}-${dateSuffix}`;
+
+            // ✅ Slug duplicate check
+            const slugExists = await db.collection("fast_track").doc(finalSlug).get();
+            if (slugExists.exists) {
+                logger(`⏭️ Slug exists: ${finalSlug}`);
                 continue;
             }
 
-            sendLogs(`🎯 Processing Match [${category}]: ${title}`);
-            
-            const { data: html } = await axios.get(link, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 20000 });
-            const $ = cheerio.load(html);
-           let extractedLinks = new Set();
-            
-            // 🛑 PERMANENT FIX: ब्लॉक लिस्ट में सोर्स वेबसाइट्स, गूगल एड्स और मीडिया एक्सटेंशन डाल दिए हैं ताकि सिर्फ असली ऑफिशियल लिंक्स ही निकलें
-            const junkDomains = [
-                "facebook.com", "twitter.com", "whatsapp.com", "telegram.me", "t.me", "instagram.com", "youtube.com",
-                "freejobalert.com", "sarkariexam.com", "feedburner", "google.com", "googleads", "wp-content", "uploads",
-                ".jpg", ".jpeg", ".png", ".gif", ".pdf"
-            ];
-            
-            // टेबल के अंदर की पूरी लाइन (Row) का टेक्स्ट निकालेंगे ताकि Gemini को पता चले "Click Here" किस चीज़ का है
-            $("table tr").each((i, tr) => {
-                let rowText = $(tr).text().replace(/\s+/g, ' ').trim(); // जैसे: "Download Admit Card Click Here"
-                $(tr).find('a').each((j, el) => {
-                    let href = $(el).attr("href");
-                    if (href && href.startsWith("http")) {
-                        let isJunk = junkDomains.some(domain => href.toLowerCase().includes(domain));
-                        if (!isJunk && rowText.length > 2) {
-                            extractedLinks.add(`[Context: ${rowText}] -> (URL: ${href})`);
-                        }
-                    }
-                });
-            });
-
-            // अगर टेबल के बाहर पैराग्राफ में लिंक है
-            $(".post-body p a, .entry-content p a").each((i, el) => {
-                let href = $(el).attr("href");
-                let text = $(el).text().trim();
-                if (href && href.startsWith("http") && text.length > 2) {
-                     let isJunk = junkDomains.some(domain => href.toLowerCase().includes(domain));
-                     if (!isJunk) {
-                         extractedLinks.add(`[Context: ${text}] -> (URL: ${href})`);
-                     }
-                }
-            });
-
-            let finalLinksText = Array.from(extractedLinks).join("\n").substring(0, 3500);
-            const prompt = `Extract Info for ${category}. URL LIST: ${finalLinksText}
-            Return ONLY valid JSON: { "title": "Clean Name", "slug": "slug", "directLink": "Exact Official Download/Result URL", "metaDesc": "desc" }
-            IMPORTANT: Do not return the generic post URL. Look at the [Context] and find the exact working Direct Link for the ${category}.`;
-            
-            const aiResult = await model.generateContent(prompt);
-            let cleanJson = JSON.parse(aiResult.response.text().replace(/```json|```/gi, "").trim());
-
-            // 🛑 2. 10 सेकंड का ब्रेक (429 Rate Limit Error रोकने के लिए)
-            sendLogs(`⏳ 10 सेकंड का ब्रेक ले रहा है...`);
-            await new Promise(resolve => setTimeout(resolve, 10000));
-
-            const seoSlug = `${cleanJson.slug || createSlug(cleanJson.title || title)}-${dateSuffix}`;
-            await db.collection("fast_track").doc(seoSlug).set({
-                title: cleanJson.title || title,
-                slug: seoSlug,
-                directLink: cleanJson.directLink || link,
-                description: cleanJson.metaDesc || "",
+            // ✅ Save to Firestore
+            await db.collection("fast_track").doc(finalSlug).set({
+                title: finalTitle,
+                slug: finalSlug,
+                directLink: extracted.directLink || link,
+                shortInfo: extracted.shortInfo || '',
+                org: extracted.org || '',
+                updateDate: extracted.updateDate || '',
+                description: extracted.shortInfo || '',
                 category,
                 originalLink: link,
                 status: "draft",
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
 
-            results.push({ title: cleanJson.title || title, category });
-            sendLogs(`✅ Saved: ${seoSlug}`);
+            // ✅ Mark as processed
+            await db.collection("processed_links").doc(docId).set({
+                link,
+                slug: finalSlug,
+                category,
+                processedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
 
-        } catch (err) { sendLogs(`⚠️ Loop Error: ${err.message}`); }
+            results.push({ title: finalTitle, category, slug: finalSlug });
+            logger(`✅ Saved (${results.length}/${MAX_ITEMS}): ${finalTitle}`);
+
+            processed++;
+
+            // ✅ Rate limiting
+            logger(`⏳ Waiting 8 seconds...`);
+            await sleep(8000);
+
+        } catch (err) {
+            logger(`⚠️ Failed [${title}]: ${err.message}`);
+            // Continue with next item
+            await sleep(2000);
+        }
     }
-    
-    sendLogs(`🎉 Cycle Complete! Found ${results.length} new items.`);
+
+    logger(`🎉 Complete! ${results.length} new items saved`);
     return results;
 }
 
-/* ============================= */
-/* 🌐 MANUAL TRIGGER API        */
-/* ============================= */
-exports.fetchFastTrackUpdates = onRequest(
-    { cors: true, timeoutSeconds: 300, memory: "1GiB", secrets: ["GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON"] },
-    async (req, res) => {
-        const SECRET_KEY = "StudyGyaan_FastTrack_786";
-        if (req.query.key !== SECRET_KEY) return res.status(401).send("Unauthorized");
-        try {
-            // मैन्युअल ट्रिगर में हम Firebase Secret से की (Key) पास करेंगे
-            const data = await runFastTrackLogic(console.log, process.env.GEMINI_API_KEY);
-            res.json({ success: true, updatesFound: data.length, data });
-        } catch (error) { res.status(500).send(error.message); }
+// =========================================================
+// 1️⃣ MANUAL API TRIGGER
+// =========================================================
+exports.fetchFastTrackUpdates = onRequest({
+    cors: false, // ✅ Server-only
+    timeoutSeconds: 300,
+    memory: "1GiB",
+    secrets: ["GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON"]
+}, async (req, res) => {
+
+    // ✅ Header से auth check
+    const authKey = req.headers['x-auth-key'];
+    const EXPECTED_KEY = process.env.FAST_TRACK_SECRET || "StudyGyaan_FastTrack_786";
+
+    if (authKey !== EXPECTED_KEY) {
+        console.warn("❌ Unauthorized access");
+        return res.status(401).json({ error: "Unauthorized" });
     }
-);
 
-/* ============================= */
-/* 🚀 FREE HTTP API RUN (GitHub) */
-/* ============================= */
-exports.triggerFastTrackUpdates = onRequest(
-    { timeoutSeconds: 300, memory: "1GiB" }, // यहाँ secrets हटा दिया है
-    async (req, res) => {
-        const incomingKey = req.headers['x-gemini-key'];
-        const authToken = req.headers['x-auth-token'];
-
-        // सुरक्षा जांच
-        if (authToken !== "StudyGyaan_FastTrack_786") return res.status(401).send("Unauthorized");
-        if (!incomingKey) return res.status(400).send("Missing API Key");
-
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        res.setHeader('Transfer-Encoding', 'chunked');
-
-        const sendLogs = (msg) => { res.write(`${msg}\n`); console.log(msg); };
-
-        try {
-            const data = await runFastTrackLogic(sendLogs, incomingKey);
-            res.write(`\n🎉 Total New Items Processed: ${data.length}\n`);
-            res.end();
-        } catch (error) {
-            res.write(`\n❌ Error: ${error.message}\n`);
-            res.end();
-        }
+    try {
+        const data = await runFastTrackLogic(console.log, process.env.GEMINI_API_KEY);
+        res.json({ success: true, count: data.length, data });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
     }
-);
+});
 
-/* ============================================================== */
-/* 📢 TELEGRAM, WHATSAPP, VIDEO & PDF AUTO-TRIGGER                */
-/* ============================================================== */
+// =========================================================
+// 2️⃣ GITHUB ACTIONS STREAMING API
+// =========================================================
+exports.triggerFastTrackUpdates = onRequest({
+    timeoutSeconds: 300,
+    memory: "1GiB"
+}, async (req, res) => {
 
-exports.onFastTrackApprovedSendTelegram = onDocumentWritten(
-    { 
-        document: "fast_track/{docId}", 
-        memory: "2GiB", 
-        timeoutSeconds: 540,
-        secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON", "GMAIL_CREDENTIALS", "YOUTUBE_TOKEN", "TTS_KEY_JSON", "FB_PAGE_ID", "FB_PAGE_TOKEN"] 
-    }, 
-    async (event) => {
-        if (!event.data.after.exists) return null;
+    const authToken = req.headers['x-auth-token'];
+    const incomingKey = req.headers['x-gemini-key'];
 
-        const newValue = event.data.after.data();
-        const previousValue = event.data.before.exists ? event.data.before.data() : null;
+    if (authToken !== "StudyGyaan_FastTrack_786") {
+        return res.status(401).send("Unauthorized");
+    }
+    if (!incomingKey) {
+        return res.status(400).send("Missing x-gemini-key header");
+    }
 
-        console.log(`🚀 Fast Track Triggered for: ${newValue.title}`);
-        
-        const currentStatus = (newValue.status || "").toString().toLowerCase().trim();
-        
-      if (currentStatus !== 'draft' && newValue.telegramSent !== true) {
-    
-            let publishTime = new Date().toISOString();
-            if (newValue.createdAt && typeof newValue.createdAt.toDate === 'function') {
-                publishTime = newValue.createdAt.toDate().toISOString();
-            }
+    // ✅ Streaming response
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Transfer-Encoding', 'chunked');
 
-            const jsonLd = {
-                "@context": "https://schema.org",
-                "@type": "NewsArticle",
-                "headline": newValue.title,
-                "image": ["https://studygyaan.in/og-image.jpg"], 
-                "datePublished": publishTime,
-                "dateModified": new Date().toISOString(),
-                "description": newValue.description || newValue.title,
-                "author": { "@type": "Person", "name": "Rahul Sir", "url": "https://studygyaan.in" },
-                "publisher": { 
-                    "@type": "Organization",
-                    "name": "StudyGyaan",
-                    "logo": { "@type": "ImageObject", "url": "https://studygyaan.in/logo.png" }
-                }
-            };
-            
-            await admin.firestore().collection("fast_track").doc(event.params.docId).update({ schemaMarkup: JSON.stringify(jsonLd) });
+    const logger = (msg) => {
+        res.write(`${msg}\n`);
+        console.log(msg);
+    };
 
-            const studyGyaanUrl = `https://studygyaan.in/update/${event.params.docId}`;
-            await notifyGoogle(studyGyaanUrl);
+    try {
+        const data = await runFastTrackLogic(logger, incomingKey);
+        res.write(`\n✅ Complete! Total saved: ${data.length}\n`);
+    } catch (err) {
+        res.write(`\n❌ Error: ${err.message}\n`);
+    } finally {
+        res.end();
+    }
+});
 
-            let icon = "📌";
-            if (newValue.category === "Result") icon = "🏆";
-            else if (newValue.category === "Admit Card") icon = "🎫";
-            else if (newValue.category === "Answer Key") icon = "🔑";
+// =========================================================
+// 3️⃣ FIRESTORE TRIGGER - Approve होने पर Notify
+// =========================================================
+exports.onFastTrackApprovedSendTelegram = onDocumentCreated({
+    // ✅ Written → Created (edit पर trigger नहीं होगा)
+    // Note: यह नई documents पर ही trigger होगा
+    // Status approval के लिए अलग trigger बनाना होगा
+    document: "fast_track/{docId}",
+    memory: "2GiB",
+    timeoutSeconds: 540,
+    secrets: [
+        "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+        "GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON",
+        "GMAIL_CREDENTIALS", "YOUTUBE_TOKEN",
+        "TTS_KEY_JSON", "FB_PAGE_ID", "FB_PAGE_TOKEN"
+    ]
+}, async (event) => {
+    const snap = event.data;
+    if (!snap) return null;
 
-            // --- 📱 1. TELEGRAM ---
-            const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
-            const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID; 
+    const item = snap.data();
+    const docId = event.params.docId;
 
-            if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
-                const message = `🚨 <b>New ${newValue.category} Out!</b> 🚨\n\n` +
-                                `${icon} <b>${newValue.title}</b>\n\n` +
-                                `📖 <b>Read More & Apply:</b> \n${studyGyaanUrl}\n\n` +
-                                `🚀 Join @studygyaan_official for fastest updates!`;
-                try {
-                    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-                        chat_id: TELEGRAM_CHAT_ID, text: message, parse_mode: 'HTML', disable_web_page_preview: false 
-                    });
-                    console.log("✅ Telegram Alert Sent Successfully!");
-                    
-                    await admin.firestore().collection("fast_track").doc(event.params.docId).update({ telegramSent: true });
-
-                } catch (error) {
-                    console.error("❌ Telegram API failed:", error.message); 
-                }
-            }
-
-            // --- 🟢 2. WHATSAPP ---
-            const serverIP = "34.58.150.88";
-            const channelId = "120363425475163322@newsletter";
-            const whatsappMessage = `🚨 *New ${newValue.category} Update!* 🚨\n\n${icon} *${newValue.title}*\n\n🔗 *Read More & Apply:*\n${studyGyaanUrl}`;
-            try {
-                await axios.post(`http://${serverIP}:3000/send-job`, { targetId: channelId, messageText: whatsappMessage, linkPreview: true });
-                console.log("✅ WhatsApp Alert Sent!");
-            } catch (err) { console.error("❌ WhatsApp Error:", err.message); }
-
-            // --- 🎬 3. VIDEO & 📄 PDF ---
-            console.log("⏳ Running Background Video/PDF Engine...");
-
-            let videoPromise = Promise.resolve();
-            if (!newValue.videoSent) {
-                videoPromise = generateAndUploadVideo({ ...newValue, id: event.params.docId })
-                    .then(async (videoSuccess) => {
-                        if (videoSuccess) {
-                            await db.collection("fast_track").doc(event.params.docId).update({ videoSent: true });
-                            console.log("✅ Video Uploaded Successfully!");
-                        }
-                    })
-                    .catch(e => console.log("❌ Video error: ", e.message));
-            }
-            
-            let pdfPromise = Promise.resolve(); 
-            const pdfCategories = ["Syllabus", "Admit Card", "Result"];
-            if (pdfCategories.includes(newValue.category)) {
-                pdfPromise = generateSyllabusPDF(newValue)
-                    .then(async (pdfLink) => {
-                        if (pdfLink) {
-                            await db.collection("fast_track").doc(event.params.docId).update({ syllabusPDF: pdfLink });
-                            console.log("✅ PDF Link saved to DB!");
-                        }
-                    })
-                    .catch(e => console.log("❌ PDF error: ", e.message));
-            }
-
-            await Promise.all([videoPromise, pdfPromise]);
-            console.log("🎯 All Fast Track Background Tasks Completed!");
-       } else {
-            console.log(`⏭️ Trigger Ignored: Ya to yeh 'draft' hai ya msg pehle hi ja chuka hai.`);
-        }
+    // ✅ Draft items notify नहीं करो
+    if (item.status === 'draft') {
+        console.log(`⏭️ Draft, skipping: ${item.title}`);
         return null;
     }
-);
 
+    console.log(`🚀 Processing: ${item.title} [${item.category}]`);
+
+    const itemUrl = `https://studygyaan.in/update/${item.slug || docId}`;
+
+    // ✅ Schema save
+    try {
+        const publishTime = item.createdAt?.toDate?.()?.toISOString()
+            || new Date().toISOString();
+
+        const schema = {
+            "@context": "https://schema.org",
+            "@type": "NewsArticle",
+            "headline": item.title,
+            "image": ["https://studygyaan.in/og-image.jpg"],
+            "datePublished": publishTime,
+            "dateModified": new Date().toISOString(),
+            "description": item.description || item.shortInfo || item.title,
+            "author": {
+                "@type": "Organization",
+                "name": "StudyGyaan",
+                "url": "https://studygyaan.in"
+            },
+            "publisher": {
+                "@type": "Organization",
+                "name": "StudyGyaan",
+                "logo": {
+                    "@type": "ImageObject",
+                    "url": "https://studygyaan.in/logo.png"
+                }
+            }
+        };
+
+        await db.collection("fast_track").doc(docId).update({
+            schemaMarkup: JSON.stringify(schema)
+        });
+    } catch (schemaErr) {
+        console.error("Schema error:", schemaErr.message);
+    }
+
+    // ✅ Google Indexing
+    await notifyGoogle(itemUrl).catch(e => console.log("Index skip:", e.message));
+
+    // ✅ Category icon
+    const icons = {
+        'Result': '🏆',
+        'Admit Card': '🎫',
+        'Answer Key': '🔑',
+        'Syllabus': '📚'
+    };
+    const icon = icons[item.category] || '📌';
+
+    // ✅ Telegram
+    const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+    const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+    if (BOT_TOKEN && CHAT_ID) {
+        const msg = `🚨 <b>New ${item.category}!</b>\n\n` +
+            `${icon} <b>${item.title}</b>\n\n` +
+            `📖 <b>Full Details:</b>\n${itemUrl}\n\n` +
+            `🔔 @studygyaan_official`;
+
+        try {
+            await axios.post(
+                `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+                {
+                    chat_id: CHAT_ID,
+                    text: msg,
+                    parse_mode: 'HTML',
+                    disable_web_page_preview: false
+                }
+            );
+            console.log("✅ Telegram sent!");
+        } catch (tgErr) {
+            console.error("Telegram error:", tgErr.message);
+        }
+    }
+
+    // ✅ WhatsApp - Env variable से
+    const WA_SERVER = process.env.WHATSAPP_SERVER_URL;
+    if (WA_SERVER) {
+        const waMsg = `🚨 *New ${item.category}!*\n\n${icon} *${item.title}*\n\n🔗 ${itemUrl}`;
+        axios.post(`${WA_SERVER}/send-job`, {
+            targetId: "120363425475163322@newsletter",
+            messageText: waMsg,
+            linkPreview: true
+        }).catch(e => console.log("WhatsApp skip:", e.message));
+    }
+
+    // ✅ Video Generation
+    try {
+        let generateVideo;
+        try {
+            ({ generateAndUploadVideo: generateVideo } = require('./autoVideo.js'));
+        } catch {
+            generateVideo = null;
+        }
+
+        if (generateVideo) {
+            const success = await generateVideo({ ...item, id: docId });
+            if (success) {
+                await db.collection("fast_track").doc(docId)
+                    .update({ videoSent: true })
+                    .catch(() => {});
+                console.log("✅ Video uploaded!");
+            }
+        }
+    } catch (videoErr) {
+        console.error("Video error:", videoErr.message);
+    }
+
+    // ✅ PDF Generation
+    const pdfCategories = ["Syllabus", "Admit Card", "Result"];
+    if (pdfCategories.includes(item.category)) {
+        try {
+            let generatePDF;
+            try {
+                ({ generateSyllabusPDF: generatePDF } = require('./autoPdf.js'));
+            } catch {
+                generatePDF = null;
+            }
+
+            if (generatePDF) {
+                const pdfUrl = await generatePDF(item);
+                if (pdfUrl) {
+                    await db.collection("fast_track").doc(docId)
+                        .update({ syllabusPDF: pdfUrl })
+                        .catch(() => {});
+                    console.log("✅ PDF saved:", pdfUrl);
+                }
+            }
+        } catch (pdfErr) {
+            console.error("PDF error:", pdfErr.message);
+        }
+    }
+
+    console.log(`✅ All tasks complete for: ${item.title}`);
+    return null;
+});
+
+// =========================================================
+// ✅ EXPORT FOR GITHUB ACTIONS
+// =========================================================
 exports.runFastTrackLogic = runFastTrackLogic;
+
+if (require.main === module) {
+    const apiKey = process.argv[2] || process.env.GEMINI_API_KEY;
+    console.log("🤖 CLI Mode Started...");
+
+    runFastTrackLogic(console.log, apiKey)
+        .then(results => {
+            console.log(`✅ Done: ${results.length} items saved`);
+            process.exit(0);
+        })
+        .catch(err => {
+            console.error("❌ Failed:", err.message);
+            process.exit(1);
+        });
+}
