@@ -1,470 +1,999 @@
 // @ts-nocheck
-import React, { useState, useEffect, useRef } from 'react';
+import React, {
+    useState, useEffect, useRef,
+    useCallback, useMemo
+} from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-    Briefcase, FileText, Clock, Banknote, Users, GraduationCap, 
-    MapPin, CheckCircle, ExternalLink, Edit, Trash2, FilePenLine, 
-    Plus, X, AlignLeft, Tag, Image as ImageIcon, ShoppingCart, Save, 
-    UploadCloud, ShieldCheck 
+import {
+    Briefcase, Banknote, ExternalLink,
+    Edit, Trash2, Plus, X, Save,
+    UploadCloud, ShieldCheck, AlertTriangle,
+    CheckCircle, Loader2, Eye, EyeOff
 } from 'lucide-react';
-
 import { db, storage } from '../../../firebase/config';
-import { collection, addDoc, getDocs, query, where, deleteDoc, doc, updateDoc, setDoc } from 'firebase/firestore';
+import {
+    collection, addDoc, getDocs, query,
+    where, deleteDoc, doc, updateDoc,
+    setDoc, orderBy, limit
+} from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
+// =========================================================
+// 🛠️ CONSTANTS
+// =========================================================
 const JOB_CATEGORIES = [
-    { id: 'ssc', name: 'SSC Exams' }, { id: 'banking', name: 'Banking Exams' }, { id: 'railway', name: 'Railway Exams' },
-    { id: 'upsc', name: 'UPSC & Civil Services' }, { id: 'defense', name: 'Defense & Police' }, { id: 'teaching', name: 'Teaching Exams' },
-    { id: 'engineering', name: 'Engineering / PSU' }, { id: 'medical', name: 'Medical / Nurse' }, { id: 'state', name: 'State Govt Exams' },
-    { id: 'other', name: 'Post Office / Other' }, { id: 'all', name: 'All Jobs Box' }
+    { id: 'ssc', name: 'SSC Exams' },
+    { id: 'banking', name: 'Banking Exams' },
+    { id: 'railway', name: 'Railway Exams' },
+    { id: 'upsc', name: 'UPSC & Civil Services' },
+    { id: 'defense', name: 'Defense & Police' },
+    { id: 'teaching', name: 'Teaching Exams' },
+    { id: 'engineering', name: 'Engineering / PSU' },
+    { id: 'medical', name: 'Medical / Nurse' },
+    { id: 'state', name: 'State Govt Exams' },
+    { id: 'other', name: 'Post Office / Other' }
 ];
 
+const INITIAL_FORM = {
+    title: '', organization: '', vacancies: '', location: 'All India',
+    advtNo: '', startDate: '', lastDate: '', qualification: '',
+    ageLimit: '', minAge: '18', salary: '', applyLink: '',
+    category: 'ssc', description: '', officialSiteLink: '',
+    applicationFee: '', selectionProcess: '', eligibility: '',
+    notificationLink: '', feeGen: '', feeOBC: '', feeSCST: '',
+    feeFemale: '', price: '', imageUrl: '', isLive: true
+};
+
+// =========================================================
+// 🛠️ HELPERS
+// =========================================================
+function createSlug(title) {
+    return title
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .substring(0, 80);
+}
+
+function formatDateForInput(dateStr) {
+    if (!dateStr) return '';
+    try {
+        // DD/MM/YYYY or DD-MM-YYYY → YYYY-MM-DD
+        const ddmmyyyy = dateStr.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
+        if (ddmmyyyy) {
+            return `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
+        }
+        const d = new Date(dateStr);
+        if (!isNaN(d.getTime())) {
+            return d.toISOString().split('T')[0];
+        }
+        return '';
+    } catch {
+        return '';
+    }
+}
+
+// ✅ Firebase Function के through GitHub trigger करो
+// PAT कभी Frontend में नहीं आएगा!
+async function triggerGitHubAction(eventType, payload) {
+    try {
+        // Firebase Function call करो जो server-side PAT use करेगा
+        const res = await fetch('https://us-central1-studymaterial-406ad.cloudfunctions.net/triggerGitHub', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // ✅ Admin token for auth
+                'x-admin-token': localStorage.getItem('sg_admin_token') || ''
+            },
+            body: JSON.stringify({ eventType, payload })
+        });
+        if (res.ok) {
+            console.log(`✅ GitHub Action triggered: ${eventType}`);
+        }
+    } catch (err) {
+        console.error('GitHub trigger failed:', err.message);
+        // Silent fail - main job still saved
+    }
+}
+
+// =========================================================
+// 🗑️ DELETE CONFIRMATION MODAL
+// =========================================================
+const DeleteModal = ({ jobTitle, onConfirm, onCancel, loading }) => (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-red-100 rounded-full">
+                    <AlertTriangle size={20} className="text-red-600" />
+                </div>
+                <h3 className="font-black text-gray-900">Delete Confirm करें?</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-1">यह Job permanently delete होगी:</p>
+            <p className="text-sm font-black text-gray-900 mb-6 p-3 bg-gray-50 rounded-xl">
+                {jobTitle}
+            </p>
+            <div className="flex gap-3">
+                <button
+                    onClick={onCancel}
+                    className="flex-1 py-2.5 border-2 border-gray-200 rounded-xl font-black text-sm text-gray-600 hover:bg-gray-50 transition-all"
+                >
+                    Cancel
+                </button>
+                <button
+                    onClick={onConfirm}
+                    disabled={loading}
+                    className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-black text-sm hover:bg-red-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                    {loading
+                        ? <Loader2 size={16} className="animate-spin" />
+                        : <Trash2 size={16} />
+                    }
+                    Delete
+                </button>
+            </div>
+        </div>
+    </div>
+);
+
+// =========================================================
+// 📝 FORM FIELD COMPONENT (Reusable)
+// =========================================================
+const FormField = ({
+    label, value, onChange, type = 'text',
+    placeholder = '', required = false,
+    className = '', disabled = false
+}) => (
+    <div className={className}>
+        <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-1 block">
+            {label} {required && <span className="text-red-500">*</span>}
+        </label>
+        <input
+            type={type}
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            placeholder={placeholder}
+            required={required}
+            disabled={disabled}
+            className="w-full p-2.5 border-2 border-gray-100 rounded-xl font-bold text-sm focus:border-blue-500 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white"
+        />
+    </div>
+);
+
+// =========================================================
+// 🚀 MAIN COMPONENT
+// =========================================================
 const AdminBrowseTab = () => {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const draftData = location.state?.draftData;
+
+    // State
     const [posts, setPosts] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [showUploadForm, setShowUploadForm] = useState(false);
+    const [fetchLoading, setFetchLoading] = useState(false);
+    const [showForm, setShowForm] = useState(false);
     const [postType, setPostType] = useState('JOB');
     const [editingId, setEditingId] = useState(null);
     const [currentDraftId, setCurrentDraftId] = useState(null);
-    
-    const [pdfFile, setPdfFile] = useState(null); 
-    
+    const [pdfFile, setPdfFile] = useState(null);
+    const [imageFile, setImageFile] = useState(null);
+    const [deleteModal, setDeleteModal] = useState(null);
+    const [deleteLoading, setDeleteLoading] = useState(false);
+    const [toast, setToast] = useState(null);
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const [formData, setFormData] = useState(INITIAL_FORM);
     const isSubmitting = useRef(false);
 
-    const navigate = useNavigate();
-    const location = useLocation(); 
-    const draftData = location.state?.draftData; 
+    // =========================================================
+    // 🍞 TOAST NOTIFICATION
+    // =========================================================
+    const showToast = useCallback((message, type = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 4000);
+    }, []);
 
-    const [formData, setFormData] = useState({
-        title: '', organization: '', vacancies: '', location: '', advtNo: '', startDate: '', lastDate: '',
-        qualification: '', ageLimit: '', minAge: '', salary: '', applyLink: '', category: 'ssc', description: '',
-        officialSiteLink: '', applicationFee: '', selectionProcess: '', eligibility: '',
-        notificationLink: '', feeGen: '', feeOBC: '', feeSCST: '', feeFemale: '',
-        price: '', imageUrl: ''
-    });
+    // =========================================================
+    // 📝 FORM FIELD UPDATER (No stale state bug)
+    // =========================================================
+    const updateField = useCallback((field, value) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+    }, []);
 
-    const formatDateForInput = (dateStr) => {
-    if (!dateStr) return '';
-
-    try {
-        const parsedDate = new Date(dateStr);
-        if (!isNaN(parsedDate.getTime())) {
-            const year = parsedDate.getFullYear();
-            const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
-            const day = String(parsedDate.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
+    // =========================================================
+    // 📡 FETCH POSTS
+    // =========================================================
+    const fetchContent = useCallback(async () => {
+        setFetchLoading(true);
+        try {
+            const q = query(
+                collection(db, "jobs"),
+                where("type", "in", ["JOB", "AFFILIATE"]),
+                orderBy("updatedAt", "desc"),
+                limit(100) // ✅ Limit add किया!
+            );
+            const snap = await getDocs(q);
+            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setPosts(data);
+        } catch (err) {
+            console.error("Fetch error:", err);
+            showToast("Jobs load नहीं हो सकी: " + err.message, 'error');
+        } finally {
+            setFetchLoading(false);
         }
+    }, [showToast]);
 
-        const cleanedDate = dateStr.replace(/[\/.]/g, '-');
-        const secondAttempt = new Date(cleanedDate);
-        
-        if (!isNaN(secondAttempt.getTime())) {
-            return secondAttempt.toISOString().split('T')[0];
-        }
+    useEffect(() => { fetchContent(); }, [fetchContent]);
 
-        return ''; 
-    } catch (e) {
-        return '';
-    }
-};
-
+    // =========================================================
+    // 📋 DRAFT DATA LOAD
+    // =========================================================
     useEffect(() => {
-        if (draftData) {
-            const actualData = { ...(draftData[0] || {}), ...draftData };
+        if (!draftData) return;
 
-            setFormData(prev => ({
-                ...prev,
-                title: actualData.title || '',
-                organization: actualData.organization || '',
-                vacancies: actualData.vacancies || '',
-                location: actualData.location || 'All India',
-                advtNo: actualData.advtNo || '',
-                startDate: formatDateForInput(actualData.startDate),
-                lastDate: formatDateForInput(actualData.lastDate),
-                qualification: actualData.qualification || '',
-                ageLimit: actualData.ageLimit || '',
-                minAge: actualData.minAge || '18',
-                salary: actualData.salary || '',
-                applyLink: actualData.applyLink || '',
-                category: actualData.category || 'ssc',
-                description: actualData.description || '',
-                officialSiteLink: actualData.officialSiteLink || '',
-                applicationFee: actualData.applicationFee || '',
-                selectionProcess: actualData.selectionProcess || '',
-                eligibility: actualData.eligibility || '',
-                notificationLink: actualData.notificationLink || '',
-                feeGen: actualData.feeGen || '',
-                feeOBC: actualData.feeOBC || '',
-                feeSCST: actualData.feeSCST || '',
-                feeFemale: actualData.feeFemale || '',
-                price: actualData.price || '',
-                imageUrl: actualData.imageUrl || ''
-            }));
+        const data = draftData[0] || draftData;
+        setFormData({
+            ...INITIAL_FORM,
+            title: data.title || '',
+            organization: data.organization || '',
+            vacancies: data.vacancies || '',
+            location: data.location || 'All India',
+            advtNo: data.advtNo || '',
+            startDate: formatDateForInput(data.startDate),
+            lastDate: formatDateForInput(data.lastDate),
+            qualification: data.qualification || '',
+            ageLimit: data.ageLimit || '',
+            minAge: data.minAge || '18',
+            salary: data.salary || '',
+            applyLink: data.applyLink || '',
+            category: data.category || 'ssc',
+            description: data.description || '',
+            officialSiteLink: data.officialSiteLink || '',
+            applicationFee: data.applicationFee || '',
+            selectionProcess: data.selectionProcess || '',
+            eligibility: data.eligibility || '',
+            notificationLink: data.notificationLink || '',
+            feeGen: data.feeGen || '',
+            feeOBC: data.feeOBC || '',
+            feeSCST: data.feeSCST || '',
+            feeFemale: data.feeFemale || '',
+            price: data.price || '',
+            imageUrl: data.imageUrl || '',
+            isLive: true
+        });
 
-            setPostType(actualData.type || 'JOB');
-            setShowUploadForm(true);
-            setEditingId(null); 
-            
-            const targetId = location.state?.draftId || actualData.id || actualData.docId;
-            setCurrentDraftId(targetId);
-        }
+        setPostType(data.type || 'JOB');
+        setCurrentDraftId(location.state?.draftId || data.id || data.docId);
+        setShowForm(true);
     }, [draftData]);
 
+    // =========================================================
+    // 📤 FILE UPLOAD HELPER
+    // =========================================================
+    async function uploadFile(file, folder) {
+        if (!file) return null;
+        const ext = file.name.split('.').pop();
+        const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${ext}`;
+        const storageRef = ref(storage, fileName);
+        await uploadBytes(storageRef, file);
+        return await getDownloadURL(storageRef);
+    }
+
+    // =========================================================
+    // 💾 SAVE DRAFT ONLY
+    // =========================================================
     const handleUpdateDraftOnly = async () => {
-        const finalDraftId = currentDraftId || location.state?.draftId || (draftData && draftData.id);
-        
-        if (!finalDraftId) {
-            alert("❌ Error: Draft ID is completely missing! Refresh and try again.");
+        const draftId = currentDraftId;
+        if (!draftId) {
+            showToast("Draft ID नहीं मिला!", 'error');
             return;
         }
 
         setLoading(true);
         try {
-            let finalNotificationLink = formData.notificationLink || "";
-
+            let notificationLink = formData.notificationLink;
             if (pdfFile) {
-                const storageRef = ref(storage, `job_notifications/draft_${Date.now()}_${pdfFile.name}`);
-                await uploadBytes(storageRef, pdfFile);
-                finalNotificationLink = await getDownloadURL(storageRef);
+                notificationLink = await uploadFile(pdfFile, 'job_notifications');
             }
 
-            const rawPayload = { 
-                ...formData, 
-                notificationLink: finalNotificationLink, 
-                type: postType, 
-                updatedAt: new Date().toISOString() 
+            let imageUrl = formData.imageUrl;
+            if (imageFile) {
+                imageUrl = await uploadFile(imageFile, 'job_images');
+            }
+
+            const payload = {
+                ...formData,
+                notificationLink,
+                imageUrl,
+                type: postType,
+                updatedAt: new Date().toISOString()
             };
-            
-            const cleanPayload = Object.fromEntries(Object.entries(rawPayload).filter(([_, v]) => v !== undefined));
 
-            await setDoc(doc(db, "job_drafts", String(finalDraftId)), cleanPayload, { merge: true });
-            
-            alert(`✅ DRAFT SAVED SUCCESSFULLY!\n\nAll your text changes and file uploads are securely saved.`);
-            
-            setShowUploadForm(false);
+            // undefined values हटाओ
+            const clean = Object.fromEntries(
+                Object.entries(payload).filter(([, v]) => v !== undefined)
+            );
+
+            await setDoc(doc(db, "job_drafts", String(draftId)), clean, { merge: true });
+
+            showToast("✅ Draft Successfully Save हो गया!");
+            setShowForm(false);
             setPdfFile(null);
-            
-            navigate('/secret-admin', { replace: true, state: { activeTab: 'JOBS AI' } });
-            
-        } catch (err) { 
-            console.error(err);
-            alert("❌ Save Failed: " + err.message); 
-        } finally { 
-            setLoading(false); 
-        }
-    };
+            setImageFile(null);
+            navigate('/sg-admin', { replace: true, state: { activeTab: 'JOBS AI' } });
 
-    useEffect(() => { fetchContent(); }, []);
-
-    const fetchContent = async () => {
-        try {
-            const q = query(collection(db, "jobs"), where("type", "in", ["JOB", "AFFILIATE"]));
-            const s = await getDocs(q);
-            const data = s.docs.map(d => ({ id: d.id, ...d.data() }));
-            data.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
-            setPosts(data);
-        } catch (err) { console.error(err); }
-    };
-
-    const sendTelegramJugad = async (jobData, docId) => {
-        const BOT_TOKEN = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
-        const CHAT_ID = import.meta.env.VITE_TELEGRAM_CHAT_ID;
-
-        const message = `🚨 *New Govt Job Alert!* 🚨\n\n` +
-                        `📌 *Post:* ${jobData.title || 'Official Update'}\n` +
-                        `🏢 *Dept:* ${jobData.organization || 'Govt Department'}\n` +
-                        `🎓 *Qualification:* ${jobData.qualification || 'Check Notification'}\n` +
-                        `⏳ *Last Date:* ${jobData.lastDate || 'Not specified'}\n\n` +
-                        `🔗 *Apply & Read Full Details:* \nhttps://studygyaan.in/job/${docId}\n\n` +
-                        `Join @studygyaan_channel for fastest updates!`;
-
-        const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-
-        try {
-            await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    chat_id: CHAT_ID,
-                    text: message,
-                    parse_mode: 'Markdown',
-                    disable_web_page_preview: true
-                })
-            });
-        } catch (err) { console.error("❌ Telegram Jugad Failed:", err); }
-    };
-
-    // 🚀 NEW: GitHub Action Trigger specifically for Telegram
-    const triggerTelegramViaGitHub = async (jobData, docId, type) => {
-        const GITHUB_PAT = import.meta.env.VITE_GITHUB_PAT;
-        const GITHUB_OWNER = import.meta.env.VITE_GITHUB_OWNER; 
-        const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO;   
-
-        if (!GITHUB_PAT || !GITHUB_OWNER || !GITHUB_REPO) {
-            console.warn("⚠️ GitHub Credentials missing in .env, Telegram via GitHub skipped.");
-            return;
-        }
-
-        const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/dispatches`;
-
-        try {
-            await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json',
-                    'Authorization': `token ${GITHUB_PAT}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    event_type: 'send_telegram_alert', // 👈 Yeh naam YAML file se match kar raha hai
-                    client_payload: { 
-                        jobData: jobData,
-                        docId: docId,
-                        type: type 
-                    }
-                })
-            });
-            console.log("✅ GitHub Action Triggered for Telegram!");
         } catch (err) {
-            console.error("❌ GitHub Action for Telegram Failed:", err);
+            showToast("Save Failed: " + err.message, 'error');
+        } finally {
+            setLoading(false);
         }
     };
 
-    // 🚀 NEW: GitHub Actions Webhook Trigger
-    const triggerGitHubVideoRender = async (jobData) => {
-        const GITHUB_PAT = import.meta.env.VITE_GITHUB_PAT;
-        const GITHUB_OWNER = import.meta.env.VITE_GITHUB_OWNER; 
-        const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO;   
-
-        if (!GITHUB_PAT || !GITHUB_OWNER || !GITHUB_REPO) {
-            console.warn("GitHub Credentials missing in .env, video render skipped.");
-            return;
-        }
-
-        const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/dispatches`;
-
-        try {
-            await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json',
-                    'Authorization': `token ${GITHUB_PAT}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    event_type: 'generate_video', // Ye nam GitHub yml se match karega
-                    client_payload: {
-                        jobData: jobData
-                    }
-                })
-            });
-            console.log("✅ GitHub Action Triggered for Video!");
-        } catch (err) {
-            console.error("❌ GitHub Action Failed:", err);
-        }
-    };
-
+    // =========================================================
+    // 🚀 PUBLISH / UPDATE
+    // =========================================================
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (isSubmitting.current) return;
+
+        // Validation
+        if (!formData.title.trim()) {
+            showToast("Title जरूरी है!", 'error');
+            return;
+        }
+
         isSubmitting.current = true;
         setLoading(true);
 
         try {
-            let finalNotificationLink = formData.notificationLink || "";
-
+            // File uploads
+            let notificationLink = formData.notificationLink;
             if (pdfFile) {
-                const storageRef = ref(storage, `job_notifications/${Date.now()}_${pdfFile.name}`);
-                await uploadBytes(storageRef, pdfFile);
-                finalNotificationLink = await getDownloadURL(storageRef);
+                notificationLink = await uploadFile(pdfFile, 'job_notifications');
             }
 
-            const rawPayload = { 
-                ...formData, 
-                notificationLink: finalNotificationLink, 
-                type: postType, 
-                updatedAt: new Date().toISOString() 
+            let imageUrl = formData.imageUrl;
+            if (imageFile) {
+                imageUrl = await uploadFile(imageFile, 'job_images');
+            }
+
+            // ✅ Slug generate करो
+            const slug = createSlug(formData.title);
+
+            const payload = {
+                ...formData,
+                notificationLink,
+                imageUrl,
+                type: postType,
+                slug,
+                isLive: true, // ✅ Always live when published
+                updatedAt: new Date().toISOString()
             };
-            const cleanPayload = Object.fromEntries(Object.entries(rawPayload).filter(([_, v]) => v !== undefined));
-            
+
+            const clean = Object.fromEntries(
+                Object.entries(payload).filter(([, v]) => v !== undefined)
+            );
+
             if (editingId) {
-                await setDoc(doc(db, "jobs", String(editingId)), cleanPayload, { merge: true });
-                alert("Updated Live Post Successfully! ✅");
+                // ✅ UPDATE existing
+                await setDoc(doc(db, "jobs", String(editingId)), clean, { merge: true });
+                showToast("✅ Live Post Update हो गया!");
+
             } else {
+                // ✅ CREATE new
                 let liveJobId;
 
-                // 🚀 MAHA-FIX: अगर AI ड्राफ्ट है, तो ड्राफ्ट की ID (जो कि स्लग है) को ही लाइव जॉब की ID बनाओ
                 if (currentDraftId) {
+                    // Draft से publish - Draft ID use करो
                     liveJobId = String(currentDraftId);
-                    await setDoc(doc(db, "jobs", liveJobId), { 
-                        ...cleanPayload, 
-                        slug: liveJobId, // डेटा के अंदर भी स्लग सेव कर दो
-                        createdAt: new Date().toISOString() 
+                    await setDoc(doc(db, "jobs", liveJobId), {
+                        ...clean,
+                        slug: liveJobId,
+                        createdAt: new Date().toISOString()
                     });
-                    
-                    // पब्लिश होने के बाद ड्राफ्ट से डिलीट कर दो
-                    await deleteDoc(doc(db, "job_drafts", liveJobId));
+                    // Draft delete करो
+                    await deleteDoc(doc(db, "job_drafts", liveJobId))
+                        .catch(() => {}); // Silent fail ok
                 } else {
-                    // अगर बिना AI के डायरेक्ट मैन्युअली जॉब ऐड की है, तो रैंडम ID बनेगी
-                    const docRef = await addDoc(collection(db, "jobs"), { 
-                        ...cleanPayload, 
-                        createdAt: new Date().toISOString() 
+                    // Manual add
+                    const docRef = await addDoc(collection(db, "jobs"), {
+                        ...clean,
+                        createdAt: new Date().toISOString()
                     });
                     liveJobId = docRef.id;
+                    // ✅ Slug update करो doc ID से
+                    await updateDoc(doc(db, "jobs", liveJobId), {
+                        slug: createSlug(formData.title) || liveJobId
+                    });
                 }
 
-               if (postType === 'JOB' || postType === 'FAST_TRACK') {
-                    // 🔥 Firebase को बाईपास करके डायरेक्ट GitHub को आर्डर
-                    await triggerTelegramViaGitHub(cleanPayload, liveJobId, postType);
-                    
-                    // Video Trigger (अब सही स्लग के साथ जाएगा)
-                    await triggerGitHubVideoRender({ ...cleanPayload, id: liveJobId, slug: liveJobId });
+                // ✅ GitHub Actions trigger (Server-side PAT use होगा)
+                if (postType === 'JOB') {
+                    await triggerGitHubAction('send_telegram_alert', {
+                        jobData: clean,
+                        docId: liveJobId,
+                        type: postType
+                    });
+                    await triggerGitHubAction('generate_video', {
+                        jobData: { ...clean, id: liveJobId, slug: liveJobId }
+                    });
                 }
 
-                alert("Published Live Successfully! 🚀");
+                showToast("🚀 Job Successfully Publish हो गई!");
             }
 
-            setShowUploadForm(false);
-            setPdfFile(null); 
-            fetchContent(); 
+            // Reset
+            setShowForm(false);
+            setPdfFile(null);
+            setImageFile(null);
+            setEditingId(null);
+            setCurrentDraftId(null);
+            setFormData(INITIAL_FORM);
+            await fetchContent();
             navigate(location.pathname, { replace: true, state: {} });
 
-        } catch (err) { 
-            alert("Error: " + err.message); 
-        } finally { 
-            setLoading(false); 
-            isSubmitting.current = false; 
+        } catch (err) {
+            showToast("Error: " + err.message, 'error');
+        } finally {
+            setLoading(false);
+            isSubmitting.current = false;
         }
     };
 
-    const handleEdit = (p) => {
-        setEditingId(p.id);
-        setPostType(p.type);
-        setFormData({ ...formData, ...p });
-        setPdfFile(null); 
-        setCurrentDraftId(null); 
-        setShowUploadForm(true);
+    // =========================================================
+    // ✏️ EDIT
+    // =========================================================
+    const handleEdit = useCallback((post) => {
+        setEditingId(post.id);
+        setPostType(post.type || 'JOB');
+        setFormData({
+            ...INITIAL_FORM,
+            ...post,
+            startDate: formatDateForInput(post.startDate),
+            lastDate: formatDateForInput(post.lastDate)
+        });
+        setPdfFile(null);
+        setImageFile(null);
+        setCurrentDraftId(null);
+        setShowForm(true);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, []);
+
+    // =========================================================
+    // 🗑️ DELETE
+    // =========================================================
+    const handleDeleteConfirm = async () => {
+        if (!deleteModal) return;
+        setDeleteLoading(true);
+        try {
+            await deleteDoc(doc(db, "jobs", deleteModal.id));
+            setPosts(prev => prev.filter(p => p.id !== deleteModal.id));
+            showToast("✅ Job Delete हो गई!");
+        } catch (err) {
+            showToast("Delete Failed: " + err.message, 'error');
+        } finally {
+            setDeleteLoading(false);
+            setDeleteModal(null);
+        }
     };
 
+    // =========================================================
+    // 🔍 FILTERED POSTS
+    // =========================================================
+    const filteredPosts = useMemo(() => {
+        if (!searchQuery) return posts;
+        const q = searchQuery.toLowerCase();
+        return posts.filter(p =>
+            p.title?.toLowerCase().includes(q) ||
+            p.organization?.toLowerCase().includes(q)
+        );
+    }, [posts, searchQuery]);
+
+    // =========================================================
+    // 🔄 FORM RESET & CLOSE
+    // =========================================================
+    const handleClose = useCallback(() => {
+        setShowForm(false);
+        setPdfFile(null);
+        setImageFile(null);
+        setEditingId(null);
+        setCurrentDraftId(null);
+        setFormData(INITIAL_FORM);
+        navigate(location.pathname, { replace: true, state: {} });
+    }, [navigate, location.pathname]);
+
+    // =========================================================
+    // 🎨 RENDER
+    // =========================================================
     return (
-        <div className="mt-16 md:mt-24 bg-white rounded-xl shadow-lg border p-3 md:p-6 animate-in fade-in w-full overflow-hidden font-hindi">
-            {!showUploadForm ? (
+        <div className="mt-16 md:mt-24 bg-white rounded-xl shadow-lg border p-3 md:p-6 font-hindi">
+
+            {/* ✅ Toast Notification */}
+            {toast && (
+                <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-2xl shadow-2xl font-black text-sm flex items-center gap-2 animate-in slide-in-from-right ${toast.type === 'error'
+                    ? 'bg-red-600 text-white'
+                    : 'bg-green-600 text-white'
+                }`}>
+                    {toast.type === 'error'
+                        ? <AlertTriangle size={16} />
+                        : <CheckCircle size={16} />
+                    }
+                    {toast.message}
+                </div>
+            )}
+
+            {/* ✅ Delete Modal */}
+            {deleteModal && (
+                <DeleteModal
+                    jobTitle={deleteModal.title}
+                    onConfirm={handleDeleteConfirm}
+                    onCancel={() => setDeleteModal(null)}
+                    loading={deleteLoading}
+                />
+            )}
+
+            {/* =========================================================
+                LIST VIEW
+            ========================================================= */}
+            {!showForm ? (
                 <>
-                    <div className="flex gap-2 mb-6 justify-center">
-                        <button onClick={() => { setPostType('JOB'); setEditingId(null); setCurrentDraftId(null); setFormData({...formData, title: '', notificationLink: ''}); setShowUploadForm(true); }} className="px-6 py-2 bg-blue-600 text-white rounded-xl font-black text-xs uppercase shadow-lg hover:bg-blue-700 transition-all active:scale-95">ADD NEW JOB</button>
-                        
-                        <button onClick={() => { setPostType('AFFILIATE'); setEditingId(null); setCurrentDraftId(null); setFormData({...formData, title: ''}); setShowUploadForm(true); }} className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-black text-xs uppercase shadow-lg hover:bg-emerald-700 transition-all active:scale-95">ADD PRODUCT</button>
+                    {/* Action Buttons */}
+                    <div className="flex flex-wrap gap-2 mb-5 justify-between items-center">
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => {
+                                    setPostType('JOB');
+                                    setEditingId(null);
+                                    setCurrentDraftId(null);
+                                    setFormData(INITIAL_FORM);
+                                    setShowForm(true);
+                                }}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-xl font-black text-xs uppercase shadow-lg hover:bg-blue-700 transition-all active:scale-95 flex items-center gap-1.5"
+                            >
+                                <Plus size={14} />
+                                New Job
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setPostType('AFFILIATE');
+                                    setEditingId(null);
+                                    setCurrentDraftId(null);
+                                    setFormData(INITIAL_FORM);
+                                    setShowForm(true);
+                                }}
+                                className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-black text-xs uppercase shadow-lg hover:bg-emerald-700 transition-all active:scale-95 flex items-center gap-1.5"
+                            >
+                                <Plus size={14} />
+                                Product
+                            </button>
+                        </div>
+
+                        {/* Search */}
+                        <input
+                            type="search"
+                            placeholder="Search jobs..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            className="px-3 py-2 border border-gray-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 w-full md:w-64"
+                        />
                     </div>
-                    <div className="space-y-3">
-                        {posts.map(p => (
-                            <div key={p.id} className="flex flex-col sm:flex-row justify-between sm:items-center p-4 border rounded-2xl bg-white shadow-sm hover:border-blue-300 transition-all gap-3">
-                                <div className="truncate flex-1">
-                                    <span className={`text-[8px] font-black px-2 py-0.5 rounded uppercase mr-2 ${p.type === 'JOB' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>{p.type}</span>
-                                    <span className="font-bold text-gray-700 text-sm md:text-base">{p.title}</span>
+
+                    {/* Posts List */}
+                    {fetchLoading ? (
+                        <div className="flex justify-center py-10">
+                            <Loader2 size={24} className="animate-spin text-blue-600" />
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {filteredPosts.length === 0 ? (
+                                <div className="text-center py-10 text-gray-400 font-bold text-sm">
+                                    {searchQuery ? 'कोई result नहीं मिला' : 'कोई Job नहीं है अभी'}
                                 </div>
-                                <div className="flex gap-2 shrink-0">
-                                    <button onClick={() => handleEdit(p)} className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-colors"><Edit size={16} /></button>
-                                    <button onClick={() => { if(confirm("Delete this?")) deleteDoc(doc(db, "jobs", p.id)).then(fetchContent); }} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"><Trash2 size={16} /></button>
+                            ) : filteredPosts.map(post => (
+                                <div
+                                    key={post.id}
+                                    className="flex flex-col sm:flex-row justify-between sm:items-center p-3 md:p-4 border rounded-xl bg-white shadow-sm hover:border-blue-200 hover:shadow-md transition-all gap-2"
+                                >
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                        {/* Type Badge */}
+                                        <span className={`shrink-0 text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${post.type === 'JOB'
+                                            ? 'bg-blue-100 text-blue-700'
+                                            : 'bg-green-100 text-green-700'
+                                        }`}>
+                                            {post.type}
+                                        </span>
+                                        {/* Live Status */}
+                                        <span className={`shrink-0 text-[8px] font-black px-2 py-0.5 rounded-full ${post.isLive === false
+                                            ? 'bg-red-100 text-red-600'
+                                            : 'bg-emerald-100 text-emerald-700'
+                                        }`}>
+                                            {post.isLive === false ? 'Draft' : 'Live'}
+                                        </span>
+                                        <span className="font-bold text-gray-800 text-sm truncate">
+                                            {post.title}
+                                        </span>
+                                    </div>
+
+                                    <div className="flex gap-1.5 shrink-0">
+                                        {/* View */}
+                                        <a
+                                            href={`/job/${post.slug || post.id}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                                            title="Live Preview"
+                                        >
+                                            <Eye size={14} />
+                                        </a>
+                                        {/* Edit */}
+                                        <button
+                                            onClick={() => handleEdit(post)}
+                                            className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-colors"
+                                            title="Edit"
+                                        >
+                                            <Edit size={14} />
+                                        </button>
+                                        {/* Delete */}
+                                        <button
+                                            onClick={() => setDeleteModal({ id: post.id, title: post.title })}
+                                            className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                                            title="Delete"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    )}
                 </>
             ) : (
+
+            /* =========================================================
+                FORM VIEW
+            ========================================================= */
                 <div className="max-w-5xl mx-auto">
+                    {/* Form Header */}
                     <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-xl font-black text-blue-700 uppercase tracking-tight">{editingId ? 'Edit Live' : (currentDraftId ? 'Review Draft' : 'Add New')} {postType}</h3>
-                        <button onClick={() => {setShowUploadForm(false); setPdfFile(null); navigate(location.pathname, { replace: true, state: {} });}} className="p-2 bg-gray-100 rounded-full text-gray-400 hover:text-red-500 transition-colors"><X size={24}/></button>
+                        <div>
+                            <h3 className="text-lg font-black text-blue-700 uppercase">
+                                {editingId ? '✏️ Edit' : currentDraftId ? '📋 Review Draft' : '➕ Add New'} {postType}
+                            </h3>
+                            {currentDraftId && !editingId && (
+                                <p className="text-xs text-gray-500 font-bold mt-0.5">
+                                    Draft ID: {currentDraftId}
+                                </p>
+                            )}
+                        </div>
+                        <button
+                            onClick={handleClose}
+                            className="p-2 bg-gray-100 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                            aria-label="Close Form"
+                        >
+                            <X size={20} />
+                        </button>
                     </div>
-                    
-                    <form onSubmit={handleSubmit} className="space-y-4">
+
+                    <form onSubmit={handleSubmit} className="space-y-5">
+
+                        {/* Basic Info */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="md:col-span-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">Post Title *</label>
-                                <input value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold text-sm focus:border-blue-500 outline-none transition-all" required placeholder="Enter Job Title..." />
+                                <FormField
+                                    label="Post Title"
+                                    value={formData.title}
+                                    onChange={v => updateField('title', v)}
+                                    placeholder="e.g. SSC CGL 2025 Recruitment"
+                                    required
+                                />
+                                {/* ✅ Slug Preview */}
+                                {formData.title && (
+                                    <p className="text-[9px] text-gray-400 font-bold mt-1">
+                                        🔗 URL: /job/{createSlug(formData.title)}
+                                    </p>
+                                )}
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">Category</label>
-                                <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold text-sm bg-white outline-none">
-                                    {JOB_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-1 block">
+                                    Category
+                                </label>
+                                <select
+                                    value={formData.category}
+                                    onChange={e => updateField('category', e.target.value)}
+                                    className="w-full p-2.5 border-2 border-gray-100 rounded-xl font-bold text-sm bg-white outline-none focus:border-blue-500"
+                                >
+                                    {JOB_CATEGORIES.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
                                 </select>
                             </div>
                         </div>
 
+                        {/* JOB SPECIFIC FIELDS */}
                         {postType === 'JOB' && (
-                            <div className="space-y-4 animate-in slide-in-from-top-2">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50/50 p-4 rounded-2xl border-2 border-gray-100">
-                                    <div><label className="text-[10px] font-black text-gray-400 uppercase">Organization</label><input value={formData.organization} onChange={e => setFormData({...formData, organization: e.target.value})} className="w-full p-3 border rounded-xl font-bold text-sm" placeholder="e.g. SSC, UPSC" /></div>
-                                    <div><label className="text-[10px] font-black text-gray-400 uppercase">Advt No</label><input value={formData.advtNo} onChange={e => setFormData({...formData, advtNo: e.target.value})} className="w-full p-3 border rounded-xl font-bold text-sm" placeholder="01/2026" /></div>
-                                    <div><label className="text-[10px] font-black text-gray-400 uppercase">Start Date</label><input type="date" value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})} className="w-full p-3 border rounded-xl text-sm font-bold" /></div>
-                                    <div><label className="text-[10px] font-black text-gray-400 uppercase">Last Date</label><input type="date" value={formData.lastDate} onChange={e => setFormData({...formData, lastDate: e.target.value})} className="w-full p-3 border rounded-xl text-sm font-bold" /></div>
+                            <div className="space-y-4">
+
+                                {/* Basic Job Info */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl border-2 border-gray-100">
+                                    <FormField
+                                        label="Organization"
+                                        value={formData.organization}
+                                        onChange={v => updateField('organization', v)}
+                                        placeholder="e.g. SSC, UPSC, Railway"
+                                    />
+                                    <FormField
+                                        label="Advt No"
+                                        value={formData.advtNo}
+                                        onChange={v => updateField('advtNo', v)}
+                                        placeholder="01/2025"
+                                    />
+                                    <FormField
+                                        label="Start Date"
+                                        value={formData.startDate}
+                                        onChange={v => updateField('startDate', v)}
+                                        type="date"
+                                    />
+                                    <FormField
+                                        label="Last Date"
+                                        value={formData.lastDate}
+                                        onChange={v => updateField('lastDate', v)}
+                                        type="date"
+                                    />
                                 </div>
 
-                                <div className="bg-blue-50 p-5 rounded-2xl border-2 border-blue-100 shadow-sm">
-                                    <h4 className="text-xs font-black text-blue-700 mb-4 uppercase flex items-center gap-2 tracking-widest"><ShieldCheck size={16}/> Job Specifications</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                                        <div><label className="text-[9px] font-black text-blue-400 uppercase">Total Vacancies</label><input value={formData.vacancies} onChange={e => setFormData({...formData, vacancies: e.target.value})} className="w-full p-2.5 border-2 border-white rounded-xl bg-white text-sm font-black text-blue-900" placeholder="e.g. 5000+" /></div>
-                                        <div><label className="text-[9px] font-black text-blue-400 uppercase">Pay Scale (Salary)</label><input value={formData.salary} onChange={e => setFormData({...formData, salary: e.target.value})} className="w-full p-2.5 border-2 border-white rounded-xl bg-white text-sm font-black text-blue-900" placeholder="₹21,700 - 69,100" /></div>
-                                        <div><label className="text-[9px] font-black text-blue-400 uppercase">Qualification</label><input value={formData.qualification} onChange={e => setFormData({...formData, qualification: e.target.value})} className="w-full p-2.5 border-2 border-white rounded-xl bg-white text-sm font-black text-blue-900" placeholder="10th, 12th, Degree" /></div>
+                                {/* Job Specs */}
+                                <div className="bg-blue-50 p-4 rounded-2xl border-2 border-blue-100">
+                                    <h4 className="text-xs font-black text-blue-700 mb-4 uppercase flex items-center gap-2">
+                                        <ShieldCheck size={14} />
+                                        Job Specifications
+                                    </h4>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
+                                        <FormField
+                                            label="Total Vacancies"
+                                            value={formData.vacancies}
+                                            onChange={v => updateField('vacancies', v)}
+                                            placeholder="5000+"
+                                        />
+                                        <FormField
+                                            label="Salary"
+                                            value={formData.salary}
+                                            onChange={v => updateField('salary', v)}
+                                            placeholder="₹21,700 - 69,100"
+                                        />
+                                        <FormField
+                                            label="Qualification"
+                                            value={formData.qualification}
+                                            onChange={v => updateField('qualification', v)}
+                                            placeholder="10th/12th/Degree"
+                                        />
+                                        <FormField
+                                            label="Min Age"
+                                            value={formData.minAge}
+                                            onChange={v => updateField('minAge', v)}
+                                            placeholder="18"
+                                        />
+                                        <FormField
+                                            label="Max Age"
+                                            value={formData.ageLimit}
+                                            onChange={v => updateField('ageLimit', v)}
+                                            placeholder="25/30"
+                                        />
+                                        <FormField
+                                            label="Location"
+                                            value={formData.location}
+                                            onChange={v => updateField('location', v)}
+                                            placeholder="All India"
+                                        />
                                     </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                        <div><label className="text-[9px] font-black text-blue-400 uppercase">Min Age</label><input value={formData.minAge} onChange={e => setFormData({...formData, minAge: e.target.value})} className="w-full p-2.5 border-2 border-white rounded-xl bg-white text-sm font-black text-blue-900" placeholder="18" /></div>
-                                        <div><label className="text-[9px] font-black text-blue-400 uppercase">Max Age</label><input value={formData.ageLimit} onChange={e => setFormData({...formData, ageLimit: e.target.value})} className="w-full p-2.5 border-2 border-white rounded-xl bg-white text-sm font-black text-blue-900" placeholder="25/30" /></div>
-                                        <div><label className="text-[9px] font-black text-blue-400 uppercase">Job Location</label><input value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} className="w-full p-2.5 border-2 border-white rounded-xl bg-white text-sm font-black text-blue-900" placeholder="All India" /></div>
-                                        <div><label className="text-[9px] font-black text-blue-400 uppercase">Selection Process</label><input value={formData.selectionProcess} onChange={e => setFormData({...formData, selectionProcess: e.target.value})} className="w-full p-2.5 border-2 border-white rounded-xl bg-white text-sm font-black text-blue-900" placeholder="Written/PET" /></div>
+                                    <FormField
+                                        label="Selection Process"
+                                        value={formData.selectionProcess}
+                                        onChange={v => updateField('selectionProcess', v)}
+                                        placeholder="Written Test / Interview / Merit"
+                                    />
+                                    <div className="mt-3">
+                                        <FormField
+                                            label="Extra Eligibility"
+                                            value={formData.eligibility}
+                                            onChange={v => updateField('eligibility', v)}
+                                            placeholder="Physical requirements, etc."
+                                        />
                                     </div>
-                                    <div className="mt-4"><label className="text-[9px] font-black text-blue-400 uppercase">Physical Eligibility / Extra Details</label><input value={formData.eligibility} onChange={e => setFormData({...formData, eligibility: e.target.value})} className="w-full p-2.5 border-2 border-white rounded-xl bg-white text-sm font-black text-blue-900" placeholder="Chest: 80cm, Height: 170cm..." /></div>
                                 </div>
 
-                                <div className="bg-yellow-50 p-5 rounded-2xl border-2 border-yellow-100">
-                                    <h4 className="text-xs font-black text-yellow-700 mb-4 uppercase flex items-center gap-2 tracking-widest"><Banknote size={16}/> Application Fees (₹)</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                        <div><label className="text-[9px] font-black text-yellow-600 uppercase">General/OBC/EWS</label><input value={formData.feeGen} onChange={e => setFormData({...formData, feeGen: e.target.value})} className="w-full p-2.5 border-2 border-white rounded-xl bg-white text-sm font-black text-yellow-900" placeholder="₹500" /></div>
-                                        <div><label className="text-[9px] font-black text-yellow-600 uppercase">SC / ST / PH</label><input value={formData.feeSCST} onChange={e => setFormData({...formData, feeSCST: e.target.value})} className="w-full p-2.5 border-2 border-white rounded-xl bg-white text-sm font-black text-yellow-900" placeholder="₹0" /></div>
-                                        <div><label className="text-[9px] font-black text-yellow-600 uppercase">Female</label><input value={formData.feeFemale} onChange={e => setFormData({...formData, feeFemale: e.target.value})} className="w-full p-2.5 border-2 border-white rounded-xl bg-white text-sm font-black text-yellow-900" placeholder="₹100" /></div>
-                                        <div><label className="text-[9px] font-black text-yellow-600 uppercase">Other Fee</label><input value={formData.feeOBC} onChange={e => setFormData({...formData, feeOBC: e.target.value})} className="w-full p-2.5 border-2 border-white rounded-xl bg-white text-sm font-black text-yellow-900" placeholder="Any other" /></div>
+                                {/* Fees */}
+                                <div className="bg-yellow-50 p-4 rounded-2xl border-2 border-yellow-100">
+                                    <h4 className="text-xs font-black text-yellow-700 mb-4 uppercase flex items-center gap-2">
+                                        <Banknote size={14} />
+                                        Application Fees
+                                    </h4>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                        <FormField
+                                            label="Gen/OBC/EWS"
+                                            value={formData.feeGen}
+                                            onChange={v => updateField('feeGen', v)}
+                                            placeholder="₹500"
+                                        />
+                                        <FormField
+                                            label="SC/ST/PH"
+                                            value={formData.feeSCST}
+                                            onChange={v => updateField('feeSCST', v)}
+                                            placeholder="₹0"
+                                        />
+                                        <FormField
+                                            label="Female"
+                                            value={formData.feeFemale}
+                                            onChange={v => updateField('feeFemale', v)}
+                                            placeholder="₹100"
+                                        />
+                                        <FormField
+                                            label="Other"
+                                            value={formData.feeOBC}
+                                            onChange={v => updateField('feeOBC', v)}
+                                            placeholder="Any other"
+                                        />
                                     </div>
-                                    <div className="mt-4"><label className="text-[9px] font-black text-yellow-600 uppercase">Fee Description (Text Area)</label><textarea value={formData.applicationFee} onChange={e => setFormData({...formData, applicationFee: e.target.value})} rows={2} className="w-full p-3 border-2 border-white rounded-xl bg-white text-sm font-bold outline-none" placeholder="Online payment only, SBI Challan etc..." /></div>
+                                    <div className="mt-3">
+                                        <label className="text-[9px] font-black text-yellow-700 uppercase mb-1 block">
+                                            Fee Description
+                                        </label>
+                                        <textarea
+                                            value={formData.applicationFee}
+                                            onChange={e => updateField('applicationFee', e.target.value)}
+                                            rows={2}
+                                            className="w-full p-3 border-2 border-white rounded-xl bg-white text-sm font-bold outline-none"
+                                            placeholder="Online payment only, SBI Challan etc..."
+                                        />
+                                    </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-red-50/50 p-5 rounded-2xl border-2 border-red-100">
-                                    <div className="flex flex-col gap-2">
-                                        <label className="text-[10px] font-black text-red-600 uppercase flex items-center gap-1"><UploadCloud size={14}/> Upload PDF or Image (Pic)</label>
-                                        <input type="file" accept="application/pdf, image/*" onChange={(e) => setPdfFile(e.target.files[0])} className="w-full p-2 text-xs border-2 border-red-200 rounded-xl bg-white font-bold text-red-700 cursor-pointer file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-black file:bg-red-100 file:text-red-700 hover:file:bg-red-200" />
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] text-red-400 font-bold italic">OR</span>
-                                            <input value={formData.notificationLink} onChange={e => setFormData({...formData, notificationLink: e.target.value})} disabled={!!pdfFile} className={`flex-1 p-2.5 border-2 border-red-100 rounded-xl text-xs font-black text-red-700 bg-white outline-none ${pdfFile ? 'opacity-50 cursor-not-allowed bg-gray-100' : ''}`} placeholder="Paste https:// link here..." />
+                                {/* Links & Files */}
+                                <div className="bg-red-50 p-4 rounded-2xl border-2 border-red-100">
+                                    <h4 className="text-xs font-black text-red-700 mb-4 uppercase">
+                                        Links & Files
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                                        {/* PDF Upload */}
+                                        <div>
+                                            <label className="text-[9px] font-black text-red-600 uppercase mb-1 flex items-center gap-1">
+                                                <UploadCloud size={12} />
+                                                Notification PDF / Image
+                                            </label>
+                                            <input
+                                                type="file"
+                                                accept="application/pdf,image/*"
+                                                onChange={e => setPdfFile(e.target.files[0])}
+                                                className="w-full p-2 text-xs border-2 border-red-200 rounded-xl bg-white font-bold cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-black file:bg-red-100 file:text-red-700"
+                                            />
+                                            <p className="text-[9px] text-gray-400 mt-1">या नीचे link paste करो</p>
+                                            <input
+                                                value={formData.notificationLink}
+                                                onChange={e => updateField('notificationLink', e.target.value)}
+                                                disabled={!!pdfFile}
+                                                placeholder="https://..."
+                                                className="w-full mt-1 p-2 border border-red-200 rounded-xl text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed bg-white"
+                                            />
                                         </div>
+
+                                        {/* Job Image Upload */}
+                                        <div>
+                                            <label className="text-[9px] font-black text-blue-600 uppercase mb-1 flex items-center gap-1">
+                                                <UploadCloud size={12} />
+                                                Job Featured Image
+                                            </label>
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={e => setImageFile(e.target.files[0])}
+                                                className="w-full p-2 text-xs border-2 border-blue-200 rounded-xl bg-white font-bold cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-black file:bg-blue-100 file:text-blue-700"
+                                            />
+                                            <p className="text-[9px] text-gray-400 mt-1">या URL paste करो</p>
+                                            <input
+                                                value={formData.imageUrl}
+                                                onChange={e => updateField('imageUrl', e.target.value)}
+                                                disabled={!!imageFile}
+                                                placeholder="https://..."
+                                                className="w-full mt-1 p-2 border border-blue-200 rounded-xl text-xs font-bold disabled:opacity-40 bg-white"
+                                            />
+                                        </div>
+
+                                        <FormField
+                                            label="Apply Online Link"
+                                            value={formData.applyLink}
+                                            onChange={v => updateField('applyLink', v)}
+                                            placeholder="https://..."
+                                        />
+                                        <FormField
+                                            label="Official Website"
+                                            value={formData.officialSiteLink}
+                                            onChange={v => updateField('officialSiteLink', v)}
+                                            placeholder="https://..."
+                                        />
                                     </div>
-                                    <div><label className="text-[10px] font-black text-blue-600 uppercase flex items-center gap-1 mt-1"><ExternalLink size={14}/> Apply Online Link</label><input value={formData.applyLink} onChange={e => setFormData({...formData, applyLink: e.target.value})} className="w-full p-3 border-2 border-blue-100 rounded-xl text-sm font-black text-blue-700 bg-white outline-none mt-1" placeholder="https://..." /></div>
-                                    <div><label className="text-[10px] font-black text-gray-600 uppercase flex items-center gap-1 mt-1"><Briefcase size={14}/> Official Website</label><input value={formData.officialSiteLink} onChange={e => setFormData({...formData, officialSiteLink: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl text-sm font-black text-gray-700 bg-white outline-none mt-1" placeholder="https://..." /></div>
                                 </div>
                             </div>
                         )}
 
+                        {/* AFFILIATE FIELDS */}
                         {postType === 'AFFILIATE' && (
-                            <div className="space-y-4 bg-green-50 p-6 rounded-2xl border-2 border-green-100">
+                            <div className="bg-green-50 p-5 rounded-2xl border-2 border-green-100 space-y-4">
+                                <h4 className="text-xs font-black text-green-700 uppercase">
+                                    Product Details
+                                </h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div><label className="text-[10px] font-black text-green-700 uppercase">Product Price (₹)</label><input value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full p-3 border-2 border-white rounded-xl font-black text-sm text-green-900" placeholder="999" /></div>
-                                    <div><label className="text-[10px] font-black text-green-700 uppercase">Product Image URL</label><input value={formData.imageUrl} onChange={e => setFormData({...formData, imageUrl: e.target.value})} className="w-full p-3 border-2 border-white rounded-xl text-sm text-green-900" placeholder="https://..." /></div>
+                                    <FormField
+                                        label="Price (₹)"
+                                        value={formData.price}
+                                        onChange={v => updateField('price', v)}
+                                        placeholder="999"
+                                    />
+                                    <FormField
+                                        label="Product Image URL"
+                                        value={formData.imageUrl}
+                                        onChange={v => updateField('imageUrl', v)}
+                                        placeholder="https://..."
+                                    />
+                                    <div className="md:col-span-2">
+                                        <FormField
+                                            label="Affiliate Buy Link"
+                                            value={formData.applyLink}
+                                            onChange={v => updateField('applyLink', v)}
+                                            placeholder="Amazon/Flipkart URL..."
+                                        />
+                                    </div>
                                 </div>
-                                <div><label className="text-[10px] font-black text-green-800 uppercase">Affiliate Buy Link</label><input value={formData.applyLink} onChange={e => setFormData({...formData, applyLink: e.target.value})} className="w-full p-3 border-2 border-green-300 rounded-xl text-sm font-black text-green-900 bg-white" placeholder="Amazon/Flipkart URL..." /></div>
                             </div>
                         )}
 
+                        {/* Description */}
                         <div>
-                            <label className="text-[10px] font-black text-gray-400 uppercase mb-1 block tracking-widest">Full Detailed Description</label>
-                            <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} rows={14} className="w-full p-5 border-2 border-gray-100 rounded-2xl font-medium text-sm focus:border-blue-500 outline-none transition-all leading-relaxed" placeholder="Enter full job details here (HTML/Markdown supported)..." />
+                            <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-1 block">
+                                Full Description
+                            </label>
+                            <textarea
+                                value={formData.description}
+                                onChange={e => updateField('description', e.target.value)}
+                                rows={12}
+                                className="w-full p-4 border-2 border-gray-100 rounded-2xl font-medium text-sm focus:border-blue-500 outline-none transition-all leading-relaxed"
+                                placeholder="Job की पूरी जानकारी यहाँ लिखें..."
+                            />
                         </div>
 
-                        <div className="flex flex-col sm:flex-row gap-4 mt-4">
+                        {/* Action Buttons */}
+                        <div className="flex flex-col sm:flex-row gap-3 pt-2 pb-8">
+
+                            {/* Save Draft (only for AI drafts) */}
                             {currentDraftId && !editingId && (
-                                <button type="button" onClick={handleUpdateDraftOnly} disabled={loading} className="w-full sm:w-1/2 flex justify-center items-center gap-2 py-4 bg-slate-200 text-slate-700 rounded-2xl font-black uppercase text-sm border-2 border-slate-300 active:scale-95 transition-all">
-                                    {loading ? "SAVING..." : <><Edit size={20}/> UPDATE DRAFT ONLY</>}
+                                <button
+                                    type="button"
+                                    onClick={handleUpdateDraftOnly}
+                                    disabled={loading}
+                                    className="flex-1 flex justify-center items-center gap-2 py-3.5 bg-slate-100 text-slate-700 rounded-2xl font-black uppercase text-sm border-2 border-slate-200 hover:bg-slate-200 active:scale-95 transition-all disabled:opacity-50"
+                                >
+                                    {loading
+                                        ? <Loader2 size={18} className="animate-spin" />
+                                        : <><Edit size={18} /> Draft Save करो</>
+                                    }
                                 </button>
                             )}
-                            <button type="submit" disabled={loading} className={`w-full ${currentDraftId && !editingId ? 'sm:w-1/2' : ''} flex justify-center items-center gap-3 py-4 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-2xl font-black shadow-2xl transition-all uppercase text-sm active:scale-95 disabled:opacity-50`}>
-                                {loading ? <div className="w-5 h-5 border-4 border-white border-t-transparent rounded-full animate-spin"></div> : <><Save size={20}/> {editingId ? "UPDATE LIVE POST" : "PUBLISH LIVE POST"}</>}
+
+                            {/* Publish Button */}
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="flex-1 flex justify-center items-center gap-2 py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-2xl font-black uppercase text-sm shadow-xl hover:from-blue-700 hover:to-blue-800 active:scale-95 transition-all disabled:opacity-50"
+                            >
+                                {loading ? (
+                                    <Loader2 size={18} className="animate-spin" />
+                                ) : (
+                                    <>
+                                        <Save size={18} />
+                                        {editingId ? 'Update Live Post' : 'Publish Live 🚀'}
+                                    </>
+                                )}
                             </button>
                         </div>
                     </form>
