@@ -2,7 +2,6 @@
 const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 
-// Initialize Firebase if not already initialized
 if (!admin.apps.length) {
     admin.initializeApp();
 }
@@ -11,115 +10,481 @@ const db = admin.firestore();
 const WEBSITE_URL = "https://studygyaan.in";
 
 // =========================================================
-// 1. DYNAMIC SITEMAP GENERATOR 
+// 🛠️ HELPER FUNCTIONS
 // =========================================================
-exports.generateSitemap = onRequest({ 
-    timeoutSeconds: 540, 
-    memory: "1GiB", 
-    secrets: ["SERVICE_ACCOUNT_JSON"] 
+
+function safeXml(str) {
+    if (!str) return "";
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
+
+function getIsoDate(timeSource, fallback) {
+    if (!timeSource) return fallback || new Date().toISOString();
+    if (timeSource.toDate) return timeSource.toDate().toISOString();
+    return new Date(timeSource).toISOString();
+}
+
+function getUtcDate(timeSource, fallback) {
+    if (!timeSource) return fallback || new Date().toUTCString();
+    if (timeSource.toDate) return timeSource.toDate().toUTCString();
+    return new Date(timeSource).toUTCString();
+}
+
+// =========================================================
+// 1. SITEMAP INDEX (Master Sitemap)
+// =========================================================
+exports.generateSitemapIndex = onRequest({
+    timeoutSeconds: 60,
+    memory: "256MiB"
 }, async (req, res) => {
     try {
-        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
-        const staticPages = ["", "/govt-jobs", "/free-study-material", "/e-books", "/premium-notes", "/contact-us", "/about-us", "/privacy-policy", "/terms-conditions", "/blog", "/test", "/web-stories", "/fasttrack"];
         const now = new Date().toISOString();
 
-        // Static Pages
-        staticPages.forEach(p => {
-            xml += `  <url>\n    <loc>${WEBSITE_URL}${p}</loc>\n    <lastmod>${now}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
-        });
-
-        const collections = [
-            { name: "blogs", route: "blog", priority: "0.9", freq: "daily" }, 
-            { name: "mock_tests", route: "test", priority: "0.7", freq: "weekly" }, 
-            { name: "web_stories", route: "web-stories", priority: "0.6", freq: "daily" }, 
-            { name: "fasttrack", route: "fasttrack", priority: "0.5", freq: "monthly" }
+        const sitemaps = [
+            `${WEBSITE_URL}/sitemap-main`,
+            `${WEBSITE_URL}/sitemap-blogs`,
+            `${WEBSITE_URL}/sitemap-jobs`,
+            `${WEBSITE_URL}/sitemap-tests`,
+            `${WEBSITE_URL}/sitemap-stories`,
+            `${WEBSITE_URL}/sitemap-news`
         ];
 
-        // Dynamic Collections (Blogs, Tests, Stories)
-        for (const config of collections) {
-            const snap = await db.collection(config.name).select("updatedAt", "createdAt", "slug").get();
-            snap.forEach(doc => {
-                const data = doc.data();
-                const timeSource = data.updatedAt || data.createdAt;
-                const updateTime = timeSource ? (timeSource.toDate ? timeSource.toDate().toISOString() : new Date(timeSource).toISOString()) : now;
-                
-                const slugOrId = data.slug ? data.slug : doc.id;
-                const safeId = slugOrId.replace(/&/g, '&amp;');
-                
-                xml += `  <url>\n    <loc>${WEBSITE_URL}/${config.route}/${safeId}</loc>\n    <lastmod>${updateTime}</lastmod>\n    <changefreq>${config.freq}</changefreq>\n    <priority>${config.priority}</priority>\n  </url>\n`;
-            });
-        }
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+        xml += `<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
 
-        // Jobs Collection (Dynamic Routing)
-        const jobsSnap = await db.collection("jobs").select("type", "updatedAt", "createdAt", "slug").get();
-        jobsSnap.forEach(doc => {
-            const data = doc.data();
-            const typeValue = (data.type || "").toUpperCase();
-            const route = typeValue === 'COURSE' ? 'course' : 'job'; 
-            
-            const timeSource = data.updatedAt || data.createdAt;
-            const updateTime = timeSource ? (timeSource.toDate ? timeSource.toDate().toISOString() : new Date(timeSource).toISOString()) : now;
-            
-            const slugOrId = data.slug ? data.slug : doc.id;
-            const safeId = slugOrId.replace(/&/g, '&amp;');
-            
-            xml += `  <url>\n    <loc>${WEBSITE_URL}/${route}/${safeId}</loc>\n    <lastmod>${updateTime}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n`;
+        sitemaps.forEach(url => {
+            xml += `  <sitemap>\n`;
+            xml += `    <loc>${url}</loc>\n`;
+            xml += `    <lastmod>${now}</lastmod>\n`;
+            xml += `  </sitemap>\n`;
         });
 
-        xml += `</urlset>`;
-        res.set('Cache-Control', 'public, max-age=300, s-maxage=600');
-        res.set('Content-Type', 'text/xml').status(200).send(xml);
-    } catch (error) { 
-        console.error("❌ Sitemap Error:", error.message);
-        res.status(500).send("Error generating sitemap"); 
+        xml += `</sitemapindex>`;
+
+        res.set('Cache-Control', 'public, max-age=3600, s-maxage=7200');
+        res.set('Content-Type', 'text/xml; charset=utf-8');
+        res.status(200).send(xml);
+    } catch (error) {
+        console.error("❌ Sitemap Index Error:", error.message);
+        res.status(500).send("Error");
     }
 });
 
 // =========================================================
-// 2. FULL SEO RSS FEED GENERATOR (Google News Approved)
+// 2. MAIN STATIC PAGES SITEMAP
 // =========================================================
-exports.generateRss = onRequest(async (req, res) => {
+exports.generateSitemapMain = onRequest({
+    timeoutSeconds: 60,
+    memory: "256MiB"
+}, async (req, res) => {
+    try {
+        const now = new Date().toISOString();
+
+        const staticPages = [
+            { path: "", priority: "1.0", freq: "daily" },
+            { path: "/govt-jobs", priority: "0.9", freq: "daily" },
+            { path: "/blog", priority: "0.9", freq: "daily" },
+            { path: "/test", priority: "0.9", freq: "daily" },
+            { path: "/web-stories", priority: "0.9", freq: "daily" },
+            { path: "/free-study-material", priority: "0.8", freq: "weekly" },
+            { path: "/e-books", priority: "0.8", freq: "weekly" },
+            { path: "/premium-notes", priority: "0.8", freq: "weekly" },
+            { path: "/fasttrack", priority: "0.7", freq: "weekly" },
+            { path: "/about-us", priority: "0.6", freq: "monthly" },
+            { path: "/contact-us", priority: "0.6", freq: "monthly" },
+            { path: "/privacy-policy", priority: "0.5", freq: "monthly" },
+            { path: "/terms-conditions", priority: "0.5", freq: "monthly" }
+        ];
+
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+        xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+
+        staticPages.forEach(p => {
+            xml += `  <url>\n`;
+            xml += `    <loc>${WEBSITE_URL}${p.path}</loc>\n`;
+            xml += `    <lastmod>${now}</lastmod>\n`;
+            xml += `    <changefreq>${p.freq}</changefreq>\n`;
+            xml += `    <priority>${p.priority}</priority>\n`;
+            xml += `  </url>\n`;
+        });
+
+        xml += `</urlset>`;
+
+        res.set('Cache-Control', 'public, max-age=3600, s-maxage=7200');
+        res.set('Content-Type', 'text/xml; charset=utf-8');
+        res.status(200).send(xml);
+    } catch (error) {
+        console.error("❌ Main Sitemap Error:", error.message);
+        res.status(500).send("Error");
+    }
+});
+
+// =========================================================
+// 3. BLOGS SITEMAP (With Images - Google Discover के लिए)
+// =========================================================
+exports.generateSitemapBlogs = onRequest({
+    timeoutSeconds: 300,
+    memory: "512MiB"
+}, async (req, res) => {
+    try {
+        const now = new Date().toISOString();
+
+        // ✅ image namespace add किया
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+        xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"\n`;
+        xml += `        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n`;
+
+        const snap = await db.collection("blogs")
+            .orderBy("createdAt", "desc")
+            .limit(1000)
+            .get();
+
+        snap.forEach(doc => {
+            const data = doc.data();
+            const slugOrId = data.slug || doc.id;
+            const safeSlug = safeXml(slugOrId);
+            const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
+            const imageUrl = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
+            const imageTitle = safeXml(data.title || "StudyGyaan Blog");
+            const imageCaption = safeXml(data.category || "Education");
+
+            xml += `  <url>\n`;
+            xml += `    <loc>${WEBSITE_URL}/blog/${safeSlug}</loc>\n`;
+            xml += `    <lastmod>${updateTime}</lastmod>\n`;
+            xml += `    <changefreq>weekly</changefreq>\n`;
+            xml += `    <priority>0.9</priority>\n`;
+            // ✅ Image tag - Google Discover ranking boost
+            xml += `    <image:image>\n`;
+            xml += `      <image:loc>${imageUrl}</image:loc>\n`;
+            xml += `      <image:title>${imageTitle}</image:title>\n`;
+            xml += `      <image:caption>${imageCaption}</image:caption>\n`;
+            xml += `    </image:image>\n`;
+            xml += `  </url>\n`;
+        });
+
+        xml += `</urlset>`;
+
+        res.set('Cache-Control', 'public, max-age=300, s-maxage=600');
+        res.set('Content-Type', 'text/xml; charset=utf-8');
+        res.status(200).send(xml);
+    } catch (error) {
+        console.error("❌ Blogs Sitemap Error:", error.message);
+        res.status(500).send("Error");
+    }
+});
+
+// =========================================================
+// 4. JOBS SITEMAP (With Images)
+// =========================================================
+exports.generateSitemapJobs = onRequest({
+    timeoutSeconds: 300,
+    memory: "512MiB"
+}, async (req, res) => {
+    try {
+        const now = new Date().toISOString();
+
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+        xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"\n`;
+        xml += `        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n`;
+
+        const snap = await db.collection("jobs")
+            .orderBy("createdAt", "desc")
+            .limit(1000)
+            .get();
+
+        snap.forEach(doc => {
+            const data = doc.data();
+            const typeValue = (data.type || "").toUpperCase();
+            const route = typeValue === 'COURSE' ? 'course' : 'job';
+            const slugOrId = data.slug || doc.id;
+            const safeSlug = safeXml(slugOrId);
+            const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
+            const imageUrl = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
+            const imageTitle = safeXml(data.title || "StudyGyaan Job Update");
+
+            xml += `  <url>\n`;
+            xml += `    <loc>${WEBSITE_URL}/${route}/${safeSlug}</loc>\n`;
+            xml += `    <lastmod>${updateTime}</lastmod>\n`;
+            xml += `    <changefreq>daily</changefreq>\n`;
+            xml += `    <priority>1.0</priority>\n`;
+            xml += `    <image:image>\n`;
+            xml += `      <image:loc>${imageUrl}</image:loc>\n`;
+            xml += `      <image:title>${imageTitle}</image:title>\n`;
+            xml += `    </image:image>\n`;
+            xml += `  </url>\n`;
+        });
+
+        xml += `</urlset>`;
+
+        res.set('Cache-Control', 'public, max-age=300, s-maxage=600');
+        res.set('Content-Type', 'text/xml; charset=utf-8');
+        res.status(200).send(xml);
+    } catch (error) {
+        console.error("❌ Jobs Sitemap Error:", error.message);
+        res.status(500).send("Error");
+    }
+});
+
+// =========================================================
+// 5. MOCK TESTS SITEMAP
+// =========================================================
+exports.generateSitemapTests = onRequest({
+    timeoutSeconds: 300,
+    memory: "512MiB"
+}, async (req, res) => {
+    try {
+        const now = new Date().toISOString();
+
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+        xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+
+        const snap = await db.collection("mock_tests")
+            .orderBy("createdAt", "desc")
+            .limit(500)
+            .get();
+
+        snap.forEach(doc => {
+            const data = doc.data();
+            const slugOrId = data.slug || doc.id;
+            const safeSlug = safeXml(slugOrId);
+            const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
+
+            xml += `  <url>\n`;
+            xml += `    <loc>${WEBSITE_URL}/test/${safeSlug}</loc>\n`;
+            xml += `    <lastmod>${updateTime}</lastmod>\n`;
+            xml += `    <changefreq>weekly</changefreq>\n`;
+            xml += `    <priority>0.7</priority>\n`;
+            xml += `  </url>\n`;
+        });
+
+        xml += `</urlset>`;
+
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=1200');
+        res.set('Content-Type', 'text/xml; charset=utf-8');
+        res.status(200).send(xml);
+    } catch (error) {
+        console.error("❌ Tests Sitemap Error:", error.message);
+        res.status(500).send("Error");
+    }
+});
+
+// =========================================================
+// 6. WEB STORIES SITEMAP (Special Format)
+// =========================================================
+exports.generateSitemapStories = onRequest({
+    timeoutSeconds: 300,
+    memory: "512MiB"
+}, async (req, res) => {
+    try {
+        const now = new Date().toISOString();
+
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+        xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"\n`;
+        xml += `        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n`;
+
+        const snap = await db.collection("web_stories")
+            .orderBy("createdAt", "desc")
+            .limit(500)
+            .get();
+
+        snap.forEach(doc => {
+            const data = doc.data();
+            const slug = data.slug || doc.id;
+            const safeSlug = safeXml(slug);
+            const updateTime = getIsoDate(data.createdAt, now);
+            const coverImage = safeXml(
+                data.coverImage || `${WEBSITE_URL}/og-image.jpg`
+            );
+            const imageTitle = safeXml(data.title || "StudyGyaan Web Story");
+
+            xml += `  <url>\n`;
+            xml += `    <loc>${WEBSITE_URL}/web-stories/${safeSlug}</loc>\n`;
+            xml += `    <lastmod>${updateTime}</lastmod>\n`;
+            xml += `    <changefreq>weekly</changefreq>\n`;
+            xml += `    <priority>0.9</priority>\n`;
+            xml += `    <image:image>\n`;
+            xml += `      <image:loc>${coverImage}</image:loc>\n`;
+            xml += `      <image:title>${imageTitle}</image:title>\n`;
+            xml += `    </image:image>\n`;
+            xml += `  </url>\n`;
+        });
+
+        xml += `</urlset>`;
+
+        res.set('Cache-Control', 'public, max-age=300, s-maxage=600');
+        res.set('Content-Type', 'text/xml; charset=utf-8');
+        res.status(200).send(xml);
+    } catch (error) {
+        console.error("❌ Stories Sitemap Error:", error.message);
+        res.status(500).send("Error");
+    }
+});
+
+// =========================================================
+// 7. GOOGLE NEWS SITEMAP (Last 2 Days Only)
+// =========================================================
+exports.generateSitemapNews = onRequest({
+    timeoutSeconds: 120,
+    memory: "256MiB"
+}, async (req, res) => {
+    try {
+        // ✅ News sitemap - sirf last 2 din ke articles
+        const twoDaysAgo = new Date();
+        twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+        xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"\n`;
+        xml += `        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">\n`;
+
+        const snap = await db.collection("blogs")
+            .orderBy("createdAt", "desc")
+            .limit(100)
+            .get();
+
+        snap.forEach(doc => {
+            const data = doc.data();
+            if (!data.createdAt) return;
+
+            const pubDate = data.createdAt.toDate
+                ? data.createdAt.toDate()
+                : new Date(data.createdAt);
+
+            // ✅ सिर्फ 2 दिन पुराने articles
+            if (pubDate < twoDaysAgo) return;
+
+            const slugOrId = data.slug || doc.id;
+            const safeSlug = safeXml(slugOrId);
+            const pubIso = pubDate.toISOString();
+            const newsTitle = safeXml(data.title || "StudyGyaan Update");
+            const category = safeXml(data.category || "Education");
+
+            xml += `  <url>\n`;
+            xml += `    <loc>${WEBSITE_URL}/blog/${safeSlug}</loc>\n`;
+            xml += `    <news:news>\n`;
+            xml += `      <news:publication>\n`;
+            xml += `        <news:name>StudyGyaan</news:name>\n`;
+            xml += `        <news:language>hi</news:language>\n`;
+            xml += `      </news:publication>\n`;
+            xml += `      <news:publication_date>${pubIso}</news:publication_date>\n`;
+            xml += `      <news:title>${newsTitle}</news:title>\n`;
+            xml += `      <news:keywords>${category}, StudyGyaan, Sarkari Naukri, Exam Preparation</news:keywords>\n`;
+            xml += `    </news:news>\n`;
+            xml += `  </url>\n`;
+        });
+
+        xml += `</urlset>`;
+
+        // ✅ News sitemap cache कम रखो - fresh content
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=120');
+        res.set('Content-Type', 'text/xml; charset=utf-8');
+        res.status(200).send(xml);
+    } catch (error) {
+        console.error("❌ News Sitemap Error:", error.message);
+        res.status(500).send("Error");
+    }
+});
+
+// =========================================================
+// 8. FULL SEO RSS FEED (Google News Approved)
+// =========================================================
+exports.generateRss = onRequest({
+    timeoutSeconds: 120,
+    memory: "256MiB"
+}, async (req, res) => {
     try {
         const now = new Date().toUTCString();
-        // 🔥 UPDATE: Added atom namespace for strict validation
-        let rss = `<?xml version="1.0" encoding="UTF-8" ?>\n<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom">\n<channel>\n<title>StudyGyaan</title>\n<link>${WEBSITE_URL}</link>\n`;
-        
-        // 🔥 UPDATE: Added atom:link and language tags for Google News perfection
-        rss += `<atom:link href="${WEBSITE_URL}/rss" rel="self" type="application/rss+xml" />\n`;
-        rss += `<description>Latest Updates for Govt Jobs & Study Materials</description>\n<language>hi</language>\n<lastBuildDate>${now}</lastBuildDate>\n`;
+        const nowIso = new Date().toISOString();
 
-        // Fetch Data including Author & Category for Google News
-        const blogsSnap = await db.collection("blogs").orderBy("createdAt", "desc").limit(50).select("title", "createdAt", "slug", "description", "imageUrl", "author", "category").get();
-        
-        blogsSnap.forEach(doc => {
+        let rss = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+        rss += `<rss version="2.0"\n`;
+        rss += `  xmlns:dc="http://purl.org/dc/elements/1.1/"\n`;
+        rss += `  xmlns:atom="http://www.w3.org/2005/Atom"\n`;
+        rss += `  xmlns:media="http://search.yahoo.com/mrss/">\n`; // ✅ Media namespace
+        rss += `<channel>\n`;
+        rss += `  <title>StudyGyaan - Sarkari Naukri &amp; Exam Preparation</title>\n`;
+        rss += `  <link>${WEBSITE_URL}</link>\n`;
+        rss += `  <description>Latest Govt Jobs, Mock Tests, Free Study Material &amp; Exam Updates</description>\n`;
+        rss += `  <language>hi</language>\n`;
+        rss += `  <lastBuildDate>${now}</lastBuildDate>\n`;
+        rss += `  <managingEditor>admin@studygyaan.in (StudyGyaan)</managingEditor>\n`;
+        rss += `  <webMaster>admin@studygyaan.in (StudyGyaan)</webMaster>\n`;
+        rss += `  <copyright>2025 StudyGyaan.in All Rights Reserved</copyright>\n`;
+        rss += `  <ttl>60</ttl>\n`; // ✅ 60 min cache
+        // ✅ atom:link - RSS validator के लिए जरूरी
+        rss += `  <atom:link href="${WEBSITE_URL}/rss" rel="self" type="application/rss+xml"/>\n`;
+        // ✅ Channel image
+        rss += `  <image>\n`;
+        rss += `    <url>${WEBSITE_URL}/logo.png</url>\n`;
+        rss += `    <title>StudyGyaan</title>\n`;
+        rss += `    <link>${WEBSITE_URL}</link>\n`;
+        rss += `    <width>144</width>\n`;
+        rss += `    <height>144</height>\n`;
+        rss += `  </image>\n`;
+
+        const snap = await db.collection("blogs")
+            .orderBy("createdAt", "desc")
+            .limit(50)
+            .get();
+
+        snap.forEach(doc => {
             const d = doc.data();
-            const pubDate = d.createdAt ? (d.createdAt.toDate ? d.createdAt.toDate().toUTCString() : new Date(d.createdAt).toUTCString()) : now;
-            
-            const slugOrId = d.slug ? d.slug : doc.id;
-            const safeId = slugOrId.replace(/&/g, '&amp;');
-            
-            const desc = d.description ? d.description.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : "Read more on StudyGyaan";
-            const imageUrl = d.imageUrl ? d.imageUrl.replace(/&/g, '&amp;') : `${WEBSITE_URL}/og-image.jpg`;
-            const authorName = d.author ? d.author.replace(/&/g, '&amp;') : "Rahul Sir";
-            const categoryName = d.category ? d.category.replace(/&/g, '&amp;') : "Education News";
+            const slugOrId = d.slug || doc.id;
+            const pubDate = getUtcDate(d.createdAt, now);
+            const pubIso = getIsoDate(d.createdAt, nowIso);
+
+            const itemTitle = d.title || "StudyGyaan Update";
+            const itemUrl = `${WEBSITE_URL}/blog/${slugOrId}`;
+            const desc = d.description
+                ? d.description.substring(0, 500)
+                : "Read more on StudyGyaan.in";
+            const imageUrl = d.imageUrl || `${WEBSITE_URL}/og-image.jpg`;
+            const authorName = d.author || "Rahul Sir";
+            const categoryName = d.category || "Education";
 
             rss += `  <item>\n`;
-            rss += `    <title><![CDATA[${d.title}]]></title>\n`;
-            rss += `    <link>${WEBSITE_URL}/blog/${safeId}</link>\n`;
-            rss += `    <description><![CDATA[${desc}]]></description>\n`;
-            rss += `    <category><![CDATA[${categoryName}]]></category>\n`; 
-            rss += `    <dc:creator><![CDATA[${authorName}]]></dc:creator>\n`; 
-            rss += `    <enclosure url="${imageUrl}" length="0" type="image/jpeg" />\n`; 
+            rss += `    <title><![CDATA[${itemTitle}]]></title>\n`;
+            rss += `    <link>${itemUrl}</link>\n`;
+            rss += `    <guid isPermaLink="true">${itemUrl}</guid>\n`; // ✅ Fixed
             rss += `    <pubDate>${pubDate}</pubDate>\n`;
-            rss += `    <guid>${WEBSITE_URL}/blog/${safeId}</guid>\n`;
+            rss += `    <description><![CDATA[${desc}]]></description>\n`;
+            rss += `    <category><![CDATA[${categoryName}]]></category>\n`;
+            rss += `    <dc:creator><![CDATA[${authorName}]]></dc:creator>\n`;
+            rss += `    <dc:date>${pubIso}</dc:date>\n`; // ✅ ISO date add
+            // ✅ media:content - Google Discover image boost
+            rss += `    <media:content\n`;
+            rss += `      url="${safeXml(imageUrl)}"\n`;
+            rss += `      medium="image"\n`;
+            rss += `      type="image/jpeg"\n`;
+            rss += `      width="1200"\n`;
+            rss += `      height="630"/>\n`;
+            // ✅ media:thumbnail
+            rss += `    <media:thumbnail url="${safeXml(imageUrl)}" width="300" height="200"/>\n`;
             rss += `  </item>\n`;
         });
 
         rss += `</channel>\n</rss>`;
+
         res.set('Cache-Control', 'public, max-age=300, s-maxage=600');
-        res.set('Content-Type', 'text/xml').status(200).send(rss);
-    } catch (error) { 
+        res.set('Content-Type', 'application/rss+xml; charset=utf-8');
+        res.status(200).send(rss);
+    } catch (error) {
         console.error("❌ RSS Error:", error.message);
-        res.status(500).send("Error generating RSS Feed"); 
+        res.status(500).send("Error generating RSS");
     }
+});
+
+// =========================================================
+// 9. OLD SINGLE SITEMAP (Backward Compatibility)
+// =========================================================
+exports.generateSitemap = onRequest({
+    timeoutSeconds: 540,
+    memory: "1GiB"
+}, async (req, res) => {
+    // Redirect to sitemap index
+    res.redirect(301, `${WEBSITE_URL}/sitemap`);
 });
