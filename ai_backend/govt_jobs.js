@@ -1,181 +1,143 @@
 require("dotenv").config();
 const { onRequest } = require("firebase-functions/v2/https");
-const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore"); // ✅ Written → Created
 const admin = require("firebase-admin");
 const axios = require("axios");
 const { google } = require("googleapis");
 const cheerio = require("cheerio");
 const Parser = require('rss-parser');
-const parser = new Parser();
 
-// ✅ Firebase Initialization with Secrets
+// =========================================================
+// 🔐 FIREBASE INIT
+// =========================================================
 if (!admin.apps.length) {
     const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
     if (serviceAccountVar) {
         const serviceAccount = JSON.parse(serviceAccountVar);
         admin.initializeApp({
             credential: admin.credential.cert(serviceAccount),
-            projectId: "studymaterial-406ad" 
+            projectId: "studymaterial-406ad"
         });
-        console.log("✅ Firebase initialized with Secrets");
+        console.log("✅ Firebase initialized");
     } else {
         admin.initializeApp();
-        console.log("✅ Firebase initialized with Default Auth");
     }
 }
 const db = admin.firestore();
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const parser = new Parser();
 
-// 🔥 URL Slug Generator (Missing Function Added)
+// =========================================================
+// 🛠️ HELPERS
+// =========================================================
 function createSlug(title) {
-    return title ? title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-+/g, '-') : "govt-job";
+    if (!title) return "govt-job";
+    return title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .substring(0, 80);
 }
 
-// ✅ notifyGoogle function updated for v3 (From auto_blog.js)
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
-// ✅ notifyGoogle function updated for v3 (From auto_blog.js)
+// ✅ Skip keywords - comprehensive list
+const SKIP_KEYWORDS = [
+    'admit card', 'result', 'answer key', 'cut off', 'cutoff',
+    'merit list', 'interview schedule', 'exam date', 'syllabus',
+    'hall ticket', 'call letter'
+];
+
+function shouldSkipTitle(title) {
+    if (!title) return true;
+    const lower = title.toLowerCase();
+    return SKIP_KEYWORDS.some(kw => lower.includes(kw));
+}
+
+// =========================================================
+// 🔔 GOOGLE INDEXING API
+// =========================================================
 async function notifyGoogle(url) {
     try {
         const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
-        if (!serviceAccountVar || serviceAccountVar === "undefined") {
-            console.log("⚠️ Skipping Google Indexing: SERVICE_ACCOUNT_JSON not found.");
-            return;
-        }
-        
+        if (!serviceAccountVar) return;
+
         const key = JSON.parse(serviceAccountVar);
-        
         const jwtClient = new google.auth.JWT({
             email: key.client_email,
             key: key.private_key.replace(/\\n/g, '\n'),
             scopes: ["https://www.googleapis.com/auth/indexing"]
         });
-        
+
         await jwtClient.authorize();
-        
-        await axios.post("https://indexing.googleapis.com/v3/urlNotifications:publish", {
-            url: url, type: "URL_UPDATED"
-        }, {
-            headers: { Authorization: `Bearer ${jwtClient.credentials.access_token}` }
-        });
-        
-        console.log("🚀 Indexing API Success:", url);
+        await axios.post(
+            "https://indexing.googleapis.com/v3/urlNotifications:publish",
+            { url, type: "URL_UPDATED" },
+            { headers: { Authorization: `Bearer ${jwtClient.credentials.access_token}` } }
+        );
+        console.log("🚀 Google Indexing:", url);
     } catch (err) {
-        console.error("❌ Indexing API Error:", err.message);
+        console.error("❌ Indexing Error:", err.message);
     }
 }
 
-/* ========================================== */
-/* 🔥 SHARED SCRAPING LOGIC (NO REQ/RES DEPS) */
-/* ========================================== */
-
-async function scrapeGovtJobsLogic() {
-    console.log("🚀 Starting Govt Jobs Scraper Logic...");
-    const rssUrl = 'https://www.indgovtjobs.in/feeds/posts/default?alt=rss';
-    
-    const feed = await parser.parseURL(rssUrl);
-    // ✅ 40 की लिमिट रखी है ताकि अंदर तक नई जॉब्स मिल सकें
-    const latestItems = feed.items.slice(0, 40); 
-    const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash-lite", 
-        generationConfig: { responseMimeType: "application/json" } 
+// =========================================================
+// 🤖 AI JOB DATA EXTRACTOR
+// =========================================================
+async function extractJobDataWithAI(scrapedContent, jobLink) {
+    const model = genAI.getGenerativeModel({
+        model: "gemini-2.5-flash-lite",
+        generationConfig: { responseMimeType: "application/json" }
     });
 
-    let addedCount = 0;
+    const todayDate = new Date().toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
 
-    // 🔥 UNIQUE SLUG के लिए Current Month-Year
-    const now = new Date();
-    const dateSuffix = now.toLocaleString('en-IN', { month: 'short', year: 'numeric' }).toLowerCase().replace(' ', '-');
+    const prompt = `Act as a Precise Job Data Specialist. Extract details ONLY from the scraped data.
+Follow these mapping rules to fill EVERY field:
 
-    // 🔥 SEO के लिए पुराने ब्लॉग्स के लिंक उठाना
-    const relatedBlogs = await db.collection("blogs").orderBy("createdAt", "desc").limit(2).get();
-    let internalLinks = [];
-    relatedBlogs.forEach(b => internalLinks.push({ title: b.data().title, slug: b.data().slug || b.id }));
-
-    for (const item of latestItems) {
-        const titleText = item.title || "";
-        if (titleText.toLowerCase().includes('admit card') || 
-            titleText.toLowerCase().includes('result') || 
-            titleText.toLowerCase().includes('answer key') ||
-            titleText.toLowerCase().includes('cut off')) {
-            continue;
-        }
-
-        let jobLink = (item.link || item.guid || "").trim();
-        if (!jobLink || jobLink.includes('127.0.0.1')) continue;
-
-        const docId = Buffer.from(jobLink).toString('base64').replace(/\//g, '_').replace(/\+/g, '-');
-        const alreadyProcessed = await db.collection("processed_links").doc(docId).get();
-        if (alreadyProcessed.exists) continue;
-
-        try {
-            console.log(`📡 Precision Scraping from: ${jobLink}`);
-
-            const { data: html } = await axios.get(jobLink, { 
-                headers: { 'User-Agent': 'Mozilla/5.0' },
-                timeout: 25000 
-            });
-            
-            const $ = cheerio.load(html);
-            $('script, style, nav, footer, header').remove();
-            
-            $("table a, .post-body a").each((i, el) => {
-                const linkText = $(el).text().trim();
-                const href = $(el).attr("href");
-                if (href && href.startsWith("http")) {
-                    $(el).text(`${linkText} (URL: ${href})`); 
-                }
-            });
-
-            let tableContent = "";
-            $('table').each((i, el) => {
-                tableContent += "\n--- TABLE START ---\n";
-                tableContent += $(el).text().replace(/\s\s+/g, ' ').trim();
-                tableContent += "\n--- TABLE END ---\n";
-            });
-
-            let mainBody = $('.post-body').text() || $('body').text();
-            mainBody = mainBody.replace(/\s\s+/g, ' ').trim();
-
-            const finalScrapedData = `TABLES:\n${tableContent}\n\nMAIN TEXT:\n${mainBody}`.substring(0, 15000);
-            const todayDate = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric', month: 'long', day: 'numeric' });
-            
-            const prompt = `
-Act as a Precise Job Data Specialist. Extract details ONLY from the scraped data provided below.
-Follow these EXACT mapping rules (Hindi/English/Synonyms) to fill EVERY field. Do not leave fields blank if data exists in any form:
-
-1. title: Look for "Job Title", "Post Name", "Name of Post", "Name of the Post", "Post", "Recruitment of", "Job Role", "Vacancy Name", "पद का नाम", "पद", "भर्ती".
-2. startDate: Look for "Start Date", "Application Start Date", "Apply Online Starting Date", "Opening Date", "Date of Commencement", "Online Application Start", "प्रारंभ तिथि", "शुरू होने की तिथि", "आवेदन शुरू". Return exactly as found.
-3. lastDate: Look for "Last Date", "Closing Date", "End of Date", "Deadline", "Apply Online Last Date", "Last Date to Apply", "Due Date", "अंतिम तिथि", "Antim Tithi", "आवेदन की अंतिम तिथि". Return exactly as found.
-4. vacancies: Look for "Vacancies", "Total Vacancy", "Posts", "Total Posts", "No. of Vacancies", "Number of Posts", "Total Vacancies", "कुल पद", "रिक्तियां", "पदों की संख्या". Extract numbers only if possible.
-5. organization: Look for "Organization", "Organized By", "Recruiting Organization", "Department", "Board", "Name of Department", "Company", "संस्था", "विभाग", "भर्ती बोर्ड".
-6. salary: Look for "Salary", "Pay Scale", "Pay Level", "Pay Matrix", "Remuneration", "Stipend", "Basic Pay", "वेतन", "सैलरी", "पे स्केल".
-7. age constraints: Look for "Age Limit", "Age Limit as on", "Age", "Age Criteria", "आयु सीमा", "उम्र". Put minimum age in "minAge" and maximum age in "ageLimit".
-8. advtNo: Look for "Advt. No.", "Advt No.", "Advertisement No", "Notification No", "Employment Notice", "EN No", "विज्ञापन संख्या". Extract the exact value.
-9. qualification: Look for "Qualification", "Education", "Educational Qualification", "Eligibility", "Education Qualification", "Required Qualification", "शैक्षणिक योग्यता", "योग्यता".
-10. location: Look for "Job Location", "State", "Place of Posting", "Posting", "Location", "नौकरी का स्थान", "स्थान".
-11. selectionProcess: Look for "Selection Process", "Selection Procedure", "Method of Selection", "चयन प्रक्रिया", "चयन का तरीका".
-12. eligibility: Look for "Physical", "PST", "PET", "Height", "Chest", "Physical Standards", "शारीरिक योग्यता", "Extra Details".
-13. feeGen: Look for "General", "UR", "Unreserved", "सामान्य", "GEN". Extract fee amount.
-14. feeOBC: Look for "OBC", "BC", "EWS", "MOBC", "अन्य पिछड़ा वर्ग". Extract fee amount.
-15. feeSCST: Look for "SC", "ST", "PH", "PwBD", "PWD", "अनुसूचित जाति", " अनुसूचित जनजाति". Extract fee amount.
-16. feeFemale: Look for "Female", "Women", "महिला". Extract fee amount.
-17. applicationFee: Look for "Payment Mode", "Fee Mode", "Fee Details", "भुगतान का प्रकार".
-18. notificationLink: MUST extract the URL inside brackets like (URL: https://...).
-19. applyLink: MUST extract the URL inside brackets like (URL: https://...). Defaults to "${jobLink}".
-20. officialSiteLink: MUST extract the URL inside brackets like (URL: https://...).
-21. isExpired: Compare 'lastDate' with Today's Date (${todayDate}). If passed, return true.
+1. title: "Job Title", "Post Name", "Name of Post", "पद का नाम"
+2. startDate: "Start Date", "Application Start Date", "Opening Date", "प्रारंभ तिथि"
+3. lastDate: "Last Date", "Closing Date", "अंतिम तिथि", "आवेदन की अंतिम तिथि"
+4. vacancies: "Vacancies", "Total Posts", "कुल पद" - extract numbers
+5. organization: "Organization", "Department", "Board", "संस्था", "विभाग"
+6. salary: "Salary", "Pay Scale", "Pay Matrix", "वेतन"
+7. minAge/ageLimit: "Age Limit", "आयु सीमा"
+8. advtNo: "Advt. No.", "Advertisement No", "विज्ञापन संख्या"
+9. qualification: "Qualification", "Educational Qualification", "योग्यता"
+10. location: "Job Location", "State", "Place of Posting", "स्थान"
+11. selectionProcess: "Selection Process", "चयन प्रक्रिया"
+12. eligibility: "Physical Standards", "PST", "PET", "शारीरिक योग्यता"
+13. feeGen: General/UR fee amount
+14. feeSCST: SC/ST/PH fee amount
+15. feeFemale: Female fee amount
+16. feeOBC: OBC/EWS fee amount
+17. applicationFee: Payment mode description
+18. notificationLink: URL from brackets like (URL: https://...)
+19. applyLink: Apply URL from brackets, default "${jobLink}"
+20. officialSiteLink: Official website URL
+21. isExpired: Compare lastDate with today (${todayDate}), return true if expired
+22. category: Identify from: ssc, banking, railway, upsc, defense, teaching, state, engineering, other
 
 SCRAPED DATA:
-${finalScrapedData}
+${scrapedContent}
 
-STRICT JSON SCHEMA:
+Return ONLY this JSON (no markdown):
 {
   "title": "",
-  "slug": "seo-friendly-slug-url",
-  "metaDesc": "160 char meta description for SEO",
-  "category": "Identify: ssc, banking, railway, upsc, defense, teaching, state, engineering, or other",
+  "slug": "seo-friendly-slug",
+  "metaDescription": "160 char SEO description",
+  "category": "ssc",
   "organization": "",
   "advtNo": "",
   "startDate": "",
@@ -196,133 +158,348 @@ STRICT JSON SCHEMA:
   "notificationLink": "",
   "applyLink": "${jobLink}",
   "officialSiteLink": "",
-  "description": "Professional 3-4 line summary in Hinglish about this job.",
+  "description": "3-4 line Hinglish summary",
   "isExpired": false
 }`;
 
-            const result = await model.generateContent(prompt);
-            const aiResponse = await result.response;
-            let aiText = aiResponse.text().replace(/```json|```/g, "").trim();
+    const result = await model.generateContent(prompt);
+    let text = result.response.text()
+        .replace(/```json/g, '')
+        .replace(/```/g, '')
+        .trim();
 
-            let jobData = JSON.parse(aiText);
-            if (Array.isArray(jobData)) jobData = jobData[0];
-
-            const getVal = (key) => {
-                if (!jobData) return "";
-                const foundKey = Object.keys(jobData).find(k => k.toLowerCase() === key.toLowerCase());
-                return foundKey ? jobData[foundKey] : "";
-            };
-
-            const finalTitle = getVal("title");
-            if (getVal("isExpired") === true || !finalTitle) {
-                await db.collection("processed_links").doc(docId).set({ link: jobLink, processedAt: admin.firestore.FieldValue.serverTimestamp(), note: "Skipped by AI" });
-                continue; 
-            }
-
-            // ✅ FIX: Admin Panel के लिए 'job_drafts' कलेक्शन में 'pending' स्टेटस के साथ सेव कर रहा है
-            // 🔥 UNIQUE SLUG: Base Slug में Date Suffix जोड़ दिया ताकि Canonical Error न आए
-            const baseSlug = getVal("slug") || createSlug(finalTitle);
-            const seoSlug = `${baseSlug}-${dateSuffix}`;
-
-            // ✅ FIX: Admin Panel के लिए 'job_drafts' कलेक्शन में 'pending' स्टेटस के साथ सेव कर रहा है
-            await db.collection("job_drafts").doc(seoSlug).set({
-                title: finalTitle,
-                slug: seoSlug,
-                internalLinks: internalLinks, // ✅ Internal links
-                description: getVal("metaDesc") || getVal("description"), // ✅ SEO Meta Description
-                category: getVal("category") || "other",
-                organization: getVal("organization"),
-                advtNo: getVal("advtNo"),
-                startDate: getVal("startDate"),
-                lastDate: getVal("lastDate"),
-                vacancies: getVal("vacancies"),
-                salary: getVal("salary"),
-                qualification: getVal("qualification"),
-                minAge: getVal("minAge"),
-                ageLimit: getVal("ageLimit"),
-                location: getVal("location"),
-                selectionProcess: getVal("selectionProcess"),
-                eligibility: getVal("eligibility"),
-                feeGen: getVal("feeGen"),
-                feeSCST: getVal("feeSCST"),
-                feeFemale: getVal("feeFemale"),
-                feeOBC: getVal("feeOBC"),
-                applicationFee: getVal("applicationFee"),
-                notificationLink: getVal("notificationLink"),
-                applyLink: getVal("applyLink") || jobLink,
-                officialSiteLink: getVal("officialSiteLink"),
-                description: getVal("description"),
-                originalLink: jobLink,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                status: "pending", // 👈 Admin panel ki demand ke hisab se wapas "pending" kiya
-                type: "JOB"
-            });
-
-            await db.collection("processed_links").doc(docId).set({ link: jobLink, processedAt: admin.firestore.FieldValue.serverTimestamp() });
-            addedCount++;
-            if (addedCount >= 5) break; 
-        } catch (err) { console.error(`Failed: ${jobLink}`, err.message); }
-    }
-    return addedCount;
+    let data = JSON.parse(text);
+    if (Array.isArray(data)) data = data[0];
+    return data;
 }
 
-/* ========================================== */
-/* 1️⃣ AUTO FETCH JOBS API (HTTP TRIGGER)     */
-/* ========================================== */
+// =========================================================
+// 🌐 WEB SCRAPER
+// =========================================================
+async function scrapeJobPage(url) {
+    const { data: html } = await axios.get(url, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml'
+        },
+        timeout: 25000
+    });
 
-exports.fetchLatestGovtJobs = onRequest({ 
-    cors: true, 
-    timeoutSeconds: 300, 
-    memory: "1GiB" 
+    const $ = cheerio.load(html);
+    $('script, style, nav, footer, header, .sidebar, #sidebar').remove();
+
+    // Links को text में convert करो ताकि AI पढ़ सके
+    $("table a, .post-body a, article a").each((i, el) => {
+        const text = $(el).text().trim();
+        const href = $(el).attr("href");
+        if (href && href.startsWith("http")) {
+            $(el).replaceWith(`${text} (URL: ${href})`);
+        }
+    });
+
+    // Tables extract करो
+    let tableContent = "";
+    $('table').each((i, el) => {
+        tableContent += "\n--- TABLE ---\n";
+        tableContent += $(el).text().replace(/\s\s+/g, ' ').trim();
+        tableContent += "\n";
+    });
+
+    // Main body
+    const mainBody = ($('.post-body, article, .entry-content, main').first().text()
+        || $('body').text())
+        .replace(/\s\s+/g, ' ')
+        .trim();
+
+    return `TABLES:\n${tableContent}\n\nCONTENT:\n${mainBody}`.substring(0, 15000);
+}
+
+// =========================================================
+// 🔥 CORE SCRAPING LOGIC
+// =========================================================
+async function scrapeGovtJobsLogic(maxJobs = 5) {
+    console.log("🚀 Govt Jobs Scraper Started...");
+
+    const rssUrl = 'https://www.indgovtjobs.in/feeds/posts/default?alt=rss';
+    const feed = await parser.parseURL(rssUrl);
+    const items = feed.items.slice(0, 50); // ✅ 50 scan करो, 5 save करो
+
+    // ✅ Date suffix for unique slugs
+    const now = new Date();
+    const dateSuffix = now.toLocaleString('en-IN', {
+        month: 'short',
+        year: 'numeric'
+    }).toLowerCase().replace(' ', '-');
+
+    // ✅ Internal links for SEO
+    let internalLinks = [];
+    try {
+        const recentBlogs = await db.collection("blogs")
+            .orderBy("createdAt", "desc")
+            .limit(3)
+            .get();
+        recentBlogs.forEach(b => {
+            const data = b.data();
+            internalLinks.push({
+                title: data.title,
+                slug: data.slug || b.id
+            });
+        });
+    } catch (e) {
+        console.warn("Internal links fetch failed:", e.message);
+    }
+
+    let savedCount = 0;
+
+    for (const item of items) {
+        if (savedCount >= maxJobs) break;
+
+        const titleText = (item.title || '').trim();
+
+        // ✅ Skip non-job content
+        if (shouldSkipTitle(titleText)) {
+            console.log(`⏭️ Skipped: ${titleText}`);
+            continue;
+        }
+
+        const jobLink = (item.link || item.guid || '').trim();
+        if (!jobLink || jobLink.includes('127.0.0.1')) continue;
+
+        // ✅ Duplicate check
+        const docId = Buffer.from(jobLink)
+            .toString('base64')
+            .replace(/\//g, '_')
+            .replace(/\+/g, '-')
+            .substring(0, 100);
+
+        const alreadyDone = await db.collection("processed_links").doc(docId).get();
+        if (alreadyDone.exists) {
+            console.log(`⏭️ Already processed: ${titleText}`);
+            continue;
+        }
+
+        try {
+            console.log(`📡 Scraping: ${jobLink}`);
+            const scrapedContent = await scrapeJobPage(jobLink);
+
+            console.log(`🤖 AI Processing: ${titleText}`);
+            const jobData = await extractJobDataWithAI(scrapedContent, jobLink);
+
+            const finalTitle = jobData.title || titleText;
+
+            // ✅ Skip expired jobs
+            if (jobData.isExpired === true) {
+                console.log(`⏭️ Expired job skipped: ${finalTitle}`);
+                await db.collection("processed_links").doc(docId).set({
+                    link: jobLink,
+                    processedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    note: "Expired"
+                });
+                continue;
+            }
+
+            if (!finalTitle || finalTitle.length < 5) {
+                console.log(`⏭️ No valid title found`);
+                continue;
+            }
+
+            // ✅ Unique slug with date
+            const baseSlug = jobData.slug || createSlug(finalTitle);
+            const finalSlug = `${baseSlug}-${dateSuffix}`;
+
+            // ✅ Check slug duplicate
+            const slugExists = await db.collection("job_drafts").doc(finalSlug).get();
+            if (slugExists.exists) {
+                console.log(`⏭️ Slug already exists: ${finalSlug}`);
+                continue;
+            }
+
+            // ✅ FIXED: No duplicate description key!
+            const draftPayload = {
+                title: finalTitle,
+                slug: finalSlug,
+                type: "JOB",
+                status: "pending",
+                // ✅ metaDescription अलग field में
+                metaDescription: jobData.metaDescription || '',
+                // ✅ description एक ही बार
+                description: jobData.description || '',
+                category: jobData.category || 'other',
+                organization: jobData.organization || '',
+                advtNo: jobData.advtNo || '',
+                startDate: jobData.startDate || '',
+                lastDate: jobData.lastDate || '',
+                vacancies: jobData.vacancies || '',
+                salary: jobData.salary || '',
+                qualification: jobData.qualification || '',
+                minAge: jobData.minAge || '',
+                ageLimit: jobData.ageLimit || '',
+                location: jobData.location || '',
+                selectionProcess: jobData.selectionProcess || '',
+                eligibility: jobData.eligibility || '',
+                feeGen: jobData.feeGen || '',
+                feeSCST: jobData.feeSCST || '',
+                feeFemale: jobData.feeFemale || '',
+                feeOBC: jobData.feeOBC || '',
+                applicationFee: jobData.applicationFee || '',
+                notificationLink: jobData.notificationLink || '',
+                applyLink: jobData.applyLink || jobLink,
+                officialSiteLink: jobData.officialSiteLink || '',
+                originalLink: jobLink,
+                internalLinks: internalLinks,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+
+            // undefined values remove करो
+            const cleanPayload = Object.fromEntries(
+                Object.entries(draftPayload).filter(([, v]) => v !== undefined)
+            );
+
+            await db.collection("job_drafts").doc(finalSlug).set(cleanPayload);
+            await db.collection("processed_links").doc(docId).set({
+                link: jobLink,
+                slug: finalSlug,
+                title: finalTitle,
+                processedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            savedCount++;
+            console.log(`✅ Saved (${savedCount}/${maxJobs}): ${finalTitle}`);
+
+            // ✅ Rate limiting - API को overwhelm न करो
+            await sleep(2000);
+
+        } catch (err) {
+            console.error(`❌ Failed: ${jobLink} | ${err.message}`);
+            // Continue with next item
+        }
+    }
+
+    console.log(`🎯 Scraping Complete: ${savedCount} jobs saved`);
+    return savedCount;
+}
+
+// =========================================================
+// 1️⃣ HTTP TRIGGER - Scraper API
+// =========================================================
+exports.fetchLatestGovtJobs = onRequest({
+    cors: false, // ✅ CORS disabled - Server-only endpoint
+    timeoutSeconds: 300,
+    memory: "1GiB",
+    secrets: ["SERVICE_ACCOUNT_JSON", "GEMINI_API_KEY"]
 }, async (req, res) => {
-    const SECRET_KEY = "StudyGyaan_786_Secure";
-    if (req.query.key !== SECRET_KEY) return res.status(401).send("Unauthorized");
+
+    // ✅ Method check
+    if (req.method !== 'POST' && req.method !== 'GET') {
+        return res.status(405).send("Method Not Allowed");
+    }
+
+    // ✅ Authorization Header से check करो (URL में नहीं!)
+    const authHeader = req.headers['x-scraper-key'];
+    const SCRAPER_KEY = process.env.SCRAPER_SECRET_KEY || "StudyGyaan_786_Secure";
+
+    if (authHeader !== SCRAPER_KEY) {
+        console.warn("❌ Unauthorized scraper access attempt");
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // ✅ Rate limiting - Last run check
+    try {
+        const lastRunDoc = await db.collection("system_configs").doc("scraper_status").get();
+        if (lastRunDoc.exists) {
+            const lastRun = lastRunDoc.data().lastRun?.toDate();
+            if (lastRun) {
+                const minutesSinceLastRun = (Date.now() - lastRun.getTime()) / 60000;
+                if (minutesSinceLastRun < 30) {
+                    return res.json({
+                        success: false,
+                        message: `Rate limited. Last run ${Math.round(minutesSinceLastRun)} mins ago. Wait ${Math.round(30 - minutesSinceLastRun)} more mins.`
+                    });
+                }
+            }
+        }
+
+        // Update last run time
+        await db.collection("system_configs").doc("scraper_status").set({
+            lastRun: admin.firestore.FieldValue.serverTimestamp(),
+            status: "running"
+        });
+
+    } catch (e) {
+        console.warn("Rate limit check failed:", e.message);
+    }
 
     try {
-        const count = await scrapeGovtJobsLogic();
-        res.json({ success: true, message: `${count} New jobs saved to drafts!` });
+        const count = await scrapeGovtJobsLogic(5);
+
+        await db.collection("system_configs").doc("scraper_status").set({
+            lastRun: admin.firestore.FieldValue.serverTimestamp(),
+            status: "completed",
+            lastCount: count
+        }, { merge: true });
+
+        res.json({
+            success: true,
+            message: `${count} new jobs saved to drafts!`,
+            timestamp: new Date().toISOString()
+        });
     } catch (error) {
+        console.error("❌ Scraper Error:", error.message);
+
+        await db.collection("system_configs").doc("scraper_status").set({
+            status: "error",
+            lastError: error.message
+        }, { merge: true }).catch(() => {});
+
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-/* ========================================== */
-/* 2️⃣ MANUAL PUBLISH TRIGGER (SOCIALS + VIDEO) */
-/* ========================================== */
-
-exports.onJobApprovedSendTelegram = onDocumentWritten({
+// =========================================================
+// 2️⃣ FIRESTORE TRIGGER - Job Published होने पर
+// =========================================================
+exports.onJobPublishedNotify = onDocumentCreated({
+    // ✅ Written → Created (सिर्फ नई job पर trigger, edit पर नहीं!)
     document: "jobs/{jobId}",
-    secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON", "GMAIL_CREDENTIALS", "YOUTUBE_TOKEN", "TTS_KEY_JSON"],
-    timeoutSeconds: 540, 
-    memory: "2GiB", 
-    cpu: 1 
+    secrets: [
+        "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+        "GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON",
+        "GMAIL_CREDENTIALS", "YOUTUBE_TOKEN", "TTS_KEY_JSON"
+    ],
+    timeoutSeconds: 540,
+    memory: "2GiB",
+    cpu: 1
 }, async (event) => {
-    if (!event.data.after.exists) return null;
+    const snap = event.data;
+    if (!snap) return null;
 
-    const newJob = event.data.after.data();
+    const job = snap.data();
+    const jobId = event.params.jobId;
 
-    // 🔥 MAHA-JUGAD: Status ki spelling ka jhanjhat hi khatam!
-    // Agar telegramSent 'true' nahi hai, to msg bhej do aur lock lagado.
-    if (newJob.telegramSent !== true) {
-        console.log(`🚀 Processing Started (Maha-Jugad Activated): ${newJob.title}`);
-        const blogUrl = `https://studygyaan.in/job/${event.params.jobId}`;
+    // ✅ Only JOB type, not AFFILIATE/COURSE
+    if (job.type !== 'JOB' && job.type !== undefined) {
+        console.log(`⏭️ Skipping non-JOB type: ${job.type}`);
+        return null;
+    }
 
-        // 🔥 Google Jobs Widget के लिए 100% Valid 'JobPosting' Schema (Crash-Proof)
-        let publishTime = new Date().toISOString();
-        if (newJob.createdAt && typeof newJob.createdAt.toDate === 'function') {
-            publishTime = newJob.createdAt.toDate().toISOString();
-        }
+    const jobUrl = `https://studygyaan.in/job/${job.slug || jobId}`;
+    console.log(`🚀 New Job Published: ${job.title} | ${jobUrl}`);
 
-       const jsonLd = {
+    // ✅ JobPosting Schema save करो
+    try {
+        const publishTime = job.createdAt?.toDate?.()?.toISOString()
+            || new Date().toISOString();
+
+        const jobSchema = {
             "@context": "https://schema.org/",
             "@type": "JobPosting",
-            "title": newJob.title,
-            "description": newJob.description || newJob.title,
+            "title": job.title || '',
+            "description": job.description || job.title || '',
             "datePosted": publishTime,
             "employmentType": "FULL_TIME",
             "hiringOrganization": {
                 "@type": "Organization",
-                "name": newJob.organization || "Govt Department",
+                "name": job.organization || "Govt Department",
                 "sameAs": "https://studygyaan.in",
                 "logo": "https://studygyaan.in/logo.png"
             },
@@ -330,108 +507,149 @@ exports.onJobApprovedSendTelegram = onDocumentWritten({
                 "@type": "Place",
                 "address": {
                     "@type": "PostalAddress",
-                    "addressRegion": newJob.location || "India",
+                    "addressRegion": job.location || "India",
                     "addressCountry": "IN"
                 }
+            },
+            "validThrough": job.lastDate || '',
+            "identifier": {
+                "@type": "PropertyValue",
+                "name": job.organization || "StudyGyaan",
+                "value": job.advtNo || jobId
             }
         };
 
-        // 🔥 Google Jobs Widget के लिए Salary Add (अगर AI ने निकाली है)
-        if (newJob.salary && newJob.salary.length > 2) {
-            jsonLd.baseSalary = {
+        // Salary अगर है तो add करो
+        if (job.salary && job.salary.length > 2) {
+            jobSchema.baseSalary = {
                 "@type": "MonetaryAmount",
                 "currency": "INR",
                 "value": {
                     "@type": "QuantitativeValue",
-                    "value": newJob.salary
+                    "description": job.salary
                 }
             };
         }
 
-        await admin.firestore().collection("jobs").doc(event.params.jobId).update({ schemaMarkup: JSON.stringify(jsonLd) });
-
-        // 1. Google Indexing
-        notifyGoogle(blogUrl).catch(e => console.log("Indexing Skip"));
-
-        
-        let videoDetails = "Video process initiated...";
-        try {
-            if (!newJob.videoSent) {
-                // 🔥 Lazy Load: केवल ज़रूरत पड़ने पर भारी फाइल लोड करें
-                const { generateAndUploadVideo } = require('./autoVideo'); 
-                
-                // 🔥 Slug Fix: अगर डेटा में slug है तो वो भेजें, नहीं तो ID भेजें
-                const videoSuccess = await generateAndUploadVideo({ 
-                    ...newJob, 
-                    id: event.params.jobId,
-                    slug: newJob.slug || event.params.jobId // 👈 यह पक्का करेगा कि Slug वीडियो इंजन तक पहुँचे
-                });
-
-                if (videoSuccess) {
-                    await admin.firestore().collection("jobs").doc(event.params.jobId).update({ videoSent: true });
-                    videoDetails = "✅ Video & Facebook Uploaded!";
-                }
-            } else {
-                videoDetails = "✅ Video already processed.";
-            }
-        } catch (vErr) {
-            console.error("❌ Video Engine Error:", vErr.message);
-            videoDetails = "⚠️ Video/FB Failed but sending Telegram...";
-        }
-
-
-        // 3. Telegram Alert
-        const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
-        const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID; 
-
-        if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
-            const telegramMessage = `<b>🚨 New Govt Job Alert! 🚨</b>\n\n` +
-                `📌 <b>Post:</b> ${newJob.title}\n` +
-                `🏢 <b>Dept:</b> ${newJob.organization || 'Govt Dept'}\n` +
-                `🎓 <b>Qualification:</b> ${newJob.qualification || 'Check Details'}\n` +
-                `⏳ <b>Last Date:</b> ${newJob.lastDate || 'Apply Soon'}\n\n` +
-                `📖 <b>पूरा विवरण यहाँ देखें:</b>\n${blogUrl}\n\n` +
-                `🎬 <i>Status: ${videoDetails}</i>\n\n` +
-                `🚀 Join @studygyaan_official for updates!`;
-
-            try {
-                await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-                    chat_id: TELEGRAM_CHAT_ID,
-                    text: telegramMessage, 
-                    parse_mode: 'HTML'
-                });
-                console.log("✅ Telegram Sent!");
-
-                // 🔥 Lock: Ab dobara edit hone par msg nahi jayega
-                await admin.firestore().collection("jobs").doc(event.params.jobId).update({ telegramSent: true });
-
-            } catch (tgErr) {
-                console.error("❌ Telegram Error:", tgErr.message);
-            }
-        }
-
-        // 4. WhatsApp
-        const whatsappMessage = `🚨 *New Govt Job Alert!* 🚨\n\n📌 *Post:* ${newJob.title}\n🔗 *Full Details:* ${blogUrl}`;
-        axios.post(`http://34.58.150.88:3000/send-job`, { 
-            targetId: "120363425475163322@newsletter", 
-            messageText: whatsappMessage 
-        }).catch(() => console.log("WhatsApp skip"));
-
-    } else {
-        console.log(`⏭️ Skipped: Iska Telegram pehle hi ja chuka hai (telegramSent === true).`);
+        await db.collection("jobs").doc(jobId).update({
+            schemaMarkup: JSON.stringify(jobSchema)
+        });
+        console.log("✅ Job Schema saved");
+    } catch (schemaErr) {
+        console.error("Schema save error:", schemaErr.message);
     }
+
+    // ✅ Google Indexing
+    await notifyGoogle(jobUrl).catch(e =>
+        console.log("Indexing skip:", e.message)
+    );
+
+    // ✅ Video Generation
+    let videoStatus = "Not attempted";
+    try {
+        let generateVideo;
+        try {
+            ({ generateAndUploadVideo: generateVideo } = require('./autoVideo'));
+        } catch (importErr) {
+            console.warn("autoVideo not found:", importErr.message);
+            generateVideo = null;
+        }
+
+        if (generateVideo) {
+            const success = await generateVideo({
+                ...job,
+                id: jobId,
+                slug: job.slug || jobId
+            });
+            videoStatus = success ? "✅ Video uploaded!" : "⚠️ Video failed";
+
+            if (success) {
+                await db.collection("jobs").doc(jobId)
+                    .update({ videoGenerated: true })
+                    .catch(() => {});
+            }
+        } else {
+            videoStatus = "⏭️ Video module not available";
+        }
+    } catch (videoErr) {
+        console.error("Video error:", videoErr.message);
+        videoStatus = `❌ Video error: ${videoErr.message.substring(0, 50)}`;
+    }
+
+    // ✅ Telegram Notification
+    const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+    const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+    if (BOT_TOKEN && CHAT_ID) {
+        const msg = `🚨 <b>New Govt Job Alert!</b>\n\n` +
+            `📌 <b>Post:</b> ${job.title || 'New Job'}\n` +
+            `🏢 <b>Dept:</b> ${job.organization || 'Govt Department'}\n` +
+            `🎓 <b>Qualification:</b> ${job.qualification || 'Check Details'}\n` +
+            `⏳ <b>Last Date:</b> ${job.lastDate || 'Apply Soon'}\n` +
+            `💼 <b>Vacancies:</b> ${job.vacancies || 'Check Notification'}\n\n` +
+            `📖 <b>Full Details:</b>\n${jobUrl}\n\n` +
+            `🎬 ${videoStatus}\n\n` +
+            `🔔 @studygyaan_official`;
+
+        try {
+            await axios.post(
+                `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+                {
+                    chat_id: CHAT_ID,
+                    text: msg,
+                    parse_mode: 'HTML',
+                    disable_web_page_preview: false
+                }
+            );
+            console.log("✅ Telegram sent!");
+        } catch (tgErr) {
+            console.error("Telegram error:", tgErr.message);
+        }
+    }
+
+    // ✅ WhatsApp (Environment variable से IP लो)
+    const WA_SERVER = process.env.WHATSAPP_SERVER_URL;
+    if (WA_SERVER) {
+        const waMsg = `🚨 *New Govt Job Alert!*\n\n📌 *${job.title}*\n\n🔗 Details:\n${jobUrl}`;
+        axios.post(`${WA_SERVER}/send-job`, {
+            targetId: "120363425475163322@newsletter",
+            messageText: waMsg
+        }).catch(e => console.log("WhatsApp skip:", e.message));
+    }
+
+    console.log(`✅ Job notification complete: ${job.title}`);
     return null;
 });
 
-/* ========================================== */
-/* 3️⃣ GITHUB ACTIONS CLI RUNNER               */
-/* ========================================== */
-
-exports.runJobScraper = async () => {
+// =========================================================
+// 3️⃣ GITHUB ACTIONS CLI RUNNER
+// =========================================================
+exports.runJobScraper = async (maxJobs = 5) => {
     try {
-        const count = await scrapeGovtJobsLogic();
-        console.log(`🎯 Scraper Result: ${count} New jobs saved to job_drafts!`);
+        console.log("🤖 CLI Scraper Started...");
+        const count = await scrapeGovtJobsLogic(maxJobs);
+        console.log(`🎯 Done: ${count} jobs saved to job_drafts`);
+        return count;
     } catch (error) {
-        console.error("❌ Scraper Failed:", error.message);
+        console.error("❌ CLI Scraper Failed:", error.message);
+        throw error;
     }
 };
+
+// =========================================================
+// ✅ Direct Run Support (GitHub Actions)
+// =========================================================
+if (require.main === module) {
+    const maxJobs = parseInt(process.argv[2]) || 5;
+    console.log(`🚀 Running scraper for ${maxJobs} jobs...`);
+
+    scrapeGovtJobsLogic(maxJobs)
+        .then(count => {
+            console.log(`✅ Complete: ${count} jobs saved`);
+            process.exit(0);
+        })
+        .catch(err => {
+            console.error("❌ Failed:", err.message);
+            process.exit(1);
+        });
+}
