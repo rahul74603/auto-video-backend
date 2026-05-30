@@ -2,7 +2,7 @@ name: 🎬 Auto Video Generator
 
 on:
   repository_dispatch:
-    types: [generate_video]
+    types: [generate_video, generate_job_video, generate_fasttrack_video]
 
 jobs:
   render-video:
