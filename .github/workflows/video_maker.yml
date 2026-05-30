@@ -1,4 +1,4 @@
-name: Auto Video Generator (Free Server)
+name: 🎬 Auto Video Generator
 
 on:
   repository_dispatch:
@@ -7,46 +7,62 @@ on:
 jobs:
   render-video:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     defaults:
       run:
         working-directory: ai_backend
 
     steps:
-      - name: Checkout Code
+      - name: 📥 Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: 🔍 Debug Data
+        run: |
+          echo "================================"
+          echo "Title : ${{ github.event.client_payload.jobData.title }}"
+          echo "Slug  : ${{ github.event.client_payload.jobData.slug }}"
+          echo "Cat   : ${{ github.event.client_payload.jobData.category }}"
+          echo "================================"
+
+      - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install System Dependencies
+      - name: 🔧 System Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libjpeg-dev \
+            libgif-dev \
+            librsvg2-dev
 
-      - name: Clean workspace
+      - name: 📦 NPM Install
         run: |
-          rm -rf node_modules
-          rm -rf ai_backend/node_modules
-          rm -f package-lock.json
-          rm -f ai_backend/package-lock.json
+          rm -rf node_modules package-lock.json
+          npm install
 
-      - name: Install Dependencies
-        run: npm install
-
-      - name: Run Video Engine
+      - name: 🎬 Generate Video
         env:
-          # 🔐 नया GitHub टोकन यहाँ मैप कर दिया है
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          
-          # 🧠 बाकी सभी सीक्रेट्स सीधे env से (फाइल बनाने की ज़रूरत नहीं)
-          JOB_DATA: ${{ toJson(github.event.client_payload.jobData) }}
-          GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
-          YOUTUBE_TOKEN: ${{ secrets.YOUTUBE_TOKEN }}
-          TTS_KEY_JSON: ${{ secrets.TTS_KEY_JSON }}
+          JOB_DATA:             ${{ toJson(github.event.client_payload.jobData) }}
+          GMAIL_CREDENTIALS:    ${{ secrets.GMAIL_CREDENTIALS }}
+          YOUTUBE_TOKEN:        ${{ secrets.YOUTUBE_TOKEN }}
+          TTS_KEY_JSON:         ${{ secrets.TTS_KEY_JSON }}
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
-          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
-          FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
+          FB_PAGE_ID:           ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_TOKEN:        ${{ secrets.FB_PAGE_TOKEN }}
+          TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID }}
         run: node autoVideo.js
+
+      - name: ✅ Success
+        if: success()
+        run: echo "🎉 Video YouTube पर Live!"
+
+      - name: ❌ Failed
+        if: failure()
+        run: echo "💥 Video fail! Logs check करें।"
