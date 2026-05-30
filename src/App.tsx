@@ -4,7 +4,8 @@ import {
     BrowserRouter as Router,
     Routes,
     Route,
-    Navigate
+    Navigate,
+    useParams
 } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import { LanguageProvider } from '@/context/LanguageContext';
@@ -12,12 +13,9 @@ import { Toaster } from 'react-hot-toast';
 import SEO from './components/SEO';
 
 // =========================================================
-// 🚀 CRITICAL PATH - Direct Imports (LCP के लिए)
+// 🚀 CRITICAL PATH - Direct Imports
 // =========================================================
 import Navigation from '@/sections/Navigation';
-
-// ✅ SiteSettingsProvider - Ads.jsx से import
-// (एक ही Firestore read, सब components share करें)
 import { SiteSettingsProvider, PromoBanner } from './sections/Ads';
 
 // =========================================================
@@ -73,7 +71,7 @@ const AboutUs = lazy(() => import('./pages/AboutUs'));
 const Disclaimer = lazy(() => import('./pages/Disclaimer'));
 const ShippingPolicy = lazy(() => import('./pages/ShippingPolicy'));
 
-// Admin
+// Admin (NO GUARD - Direct access)
 const AdminPanel = lazy(() => import('./pages/AdminPage'));
 const AdminBlogWriter = lazy(() => import('./pages/AdminBlogWriter'));
 const AdminSidebarControl = lazy(() => import('./pages/admin/AdminSidebarControl'));
@@ -92,23 +90,7 @@ const PopupAd = lazy(() =>
 );
 
 // =========================================================
-// 🔒 ADMIN GUARD
-// =========================================================
-const AdminGuard = ({ children }) => {
-    // ✅ VITE_ADMIN_TOKEN env variable से compare
-    const expectedToken = import.meta.env.VITE_ADMIN_TOKEN;
-    const storedToken = localStorage.getItem('sg_admin_token');
-
-    // ✅ Both must exist and match
-    if (!expectedToken || !storedToken || storedToken !== expectedToken) {
-        return <Navigate to="/" replace />;
-    }
-
-    return children;
-};
-
-// =========================================================
-// 📦 PAGE WRAPPER (Consistent padding)
+// 📦 PAGE WRAPPER
 // =========================================================
 const PageWrapper = memo(({ children, className = "" }) => (
     <div className={`pt-14 md:pt-20 ${className}`}>
@@ -145,13 +127,20 @@ const CategoryRoute = ({ category, pageTitle, description }) => (
 );
 
 // =========================================================
+// 🔄 FASTTRACK REDIRECT
+// =========================================================
+const FastTrackRedirect = () => {
+    const { id } = useParams();
+    return <Navigate to={`/update/${id}`} replace />;
+};
+
+// =========================================================
 // 🌐 MAIN APP
 // =========================================================
 function App() {
     return (
         <HelmetProvider>
             <Router>
-                {/* ✅ SiteSettingsProvider - एक Firestore read, सब share करें */}
                 <SiteSettingsProvider>
                     <LanguageProvider>
 
@@ -164,25 +153,20 @@ function App() {
                             }}
                         />
 
-                        {/* ✅ Default SEO */}
                         <SEO />
 
                         <div className="min-h-screen bg-white">
 
-                            {/* ✅ Promo Banner - Ads.jsx से */}
                             <PromoBanner />
 
-                            {/* Header Ad */}
                             <div style={{ minHeight: '36px' }}>
                                 <Suspense fallback={<SilentLoader />}>
                                     <HeaderAd />
                                 </Suspense>
                             </div>
 
-                            {/* Navigation - Critical (Direct import) */}
                             <Navigation />
 
-                            {/* Main Content */}
                             <main>
                                 <Suspense fallback={<PageLoader />}>
                                     <Routes>
@@ -212,7 +196,7 @@ function App() {
                                             }
                                         />
 
-                                        {/* 📂 CATEGORY PAGES ✅ All wrapped */}
+                                        {/* 📂 CATEGORY PAGES */}
                                         <Route
                                             path="/admit-card"
                                             element={
@@ -393,12 +377,10 @@ function App() {
                                                 </PageWrapper>
                                             }
                                         />
-                                        {/* ✅ /fasttrack → /update redirect (id नहीं है तो) */}
                                         <Route
                                             path="/fasttrack"
                                             element={<Navigate to="/govt-jobs" replace />}
                                         />
-                                        {/* ✅ /fasttrack/:id → /update/:id redirect */}
                                         <Route
                                             path="/fasttrack/:id"
                                             element={<FastTrackRedirect />}
@@ -413,62 +395,13 @@ function App() {
                                         <Route path="/about-us" element={<AboutUs />} />
                                         <Route path="/disclaimer" element={<Disclaimer />} />
 
-                                        {/* 🔒 ADMIN */}
-                                        <Route
-                                            path="/sg-admin"
-                                            element={
-                                                <AdminGuard>
-                                                    <AdminPanel />
-                                                </AdminGuard>
-                                            }
-                                        />
-                                        <Route
-                                            path="/sg-admin/write"
-                                            element={
-                                                <AdminGuard>
-                                                    <AdminBlogWriter />
-                                                </AdminGuard>
-                                            }
-                                        />
-                                        <Route
-                                            path="/sg-admin/sidebar"
-                                            element={
-                                                <AdminGuard>
-                                                    <AdminSidebarControl />
-                                                </AdminGuard>
-                                            }
-                                        />
-                                        <Route
-                                            path="/sg-admin/job-drafts"
-                                            element={
-                                                <AdminGuard>
-                                                    <AdminJobDrafts />
-                                                </AdminGuard>
-                                            }
-                                        />
-                                        <Route
-                                            path="/sg-admin/stories"
-                                            element={
-                                                <AdminGuard>
-                                                    <AdminWebStories />
-                                                </AdminGuard>
-                                            }
-                                        />
-                                        <Route
-                                            path="/sg-admin/browse"
-                                            element={
-                                                <AdminGuard>
-                                                    <AdminBrowseTab />
-                                                </AdminGuard>
-                                            }
-                                        />
-
-                                        {/* Old Admin URLs - Redirect */}
-                                        <Route path="/secret-admin" element={<Navigate to="/sg-admin" replace />} />
-                                        <Route path="/write-blog-secret" element={<Navigate to="/sg-admin/write" replace />} />
-                                        <Route path="/admin/sidebar" element={<Navigate to="/sg-admin/sidebar" replace />} />
-                                        <Route path="/admin/job-drafts" element={<Navigate to="/sg-admin/job-drafts" replace />} />
-                                        <Route path="/admin-stories-secret" element={<Navigate to="/sg-admin/stories" replace />} />
+                                        {/* 🔓 ADMIN ROUTES (OLD - No Guard) */}
+                                        <Route path="/secret-admin" element={<AdminPanel />} />
+                                        <Route path="/write-blog-secret" element={<AdminBlogWriter />} />
+                                        <Route path="/admin/sidebar" element={<AdminSidebarControl />} />
+                                        <Route path="/admin/job-drafts" element={<AdminJobDrafts />} />
+                                        <Route path="/admin-stories-secret" element={<AdminWebStories />} />
+                                        <Route path="/admin/browse" element={<AdminBrowseTab />} />
 
                                         {/* 🚫 404 */}
                                         <Route path="*" element={<NotFound />} />
@@ -477,7 +410,7 @@ function App() {
                                 </Suspense>
                             </main>
 
-                            {/* Layout Footer Components */}
+                            {/* Footer Layout */}
                             <Suspense fallback={<SilentLoader />}>
                                 <FloatingSocials />
                                 <Footer />
@@ -492,16 +425,5 @@ function App() {
         </HelmetProvider>
     );
 }
-
-// =========================================================
-// 🔄 FASTTRACK ID REDIRECT
-// =========================================================
-const FastTrackRedirect = () => {
-    const { id } = useParams();
-    return <Navigate to={`/update/${id}`} replace />;
-};
-
-// ✅ useParams import करो
-import { useParams } from 'react-router-dom';
 
 export default App;
