@@ -1,6 +1,6 @@
 require("dotenv").config();
 const { onRequest } = require("firebase-functions/v2/https");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore"); // ✅ Written → Created
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 const axios = require("axios");
 const { google } = require("googleapis");
@@ -47,7 +47,6 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ✅ Skip keywords - comprehensive list
 const SKIP_KEYWORDS = [
     'admit card', 'result', 'answer key', 'cut off', 'cutoff',
     'merit list', 'interview schedule', 'exam date', 'syllabus',
@@ -79,11 +78,103 @@ async function notifyGoogle(url) {
         await axios.post(
             "https://indexing.googleapis.com/v3/urlNotifications:publish",
             { url, type: "URL_UPDATED" },
-            { headers: { Authorization: `Bearer ${jwtClient.credentials.access_token}` } }
+            { 
+                headers: { 
+                    Authorization: `Bearer ${jwtClient.credentials.access_token}` 
+                } 
+            }
         );
         console.log("🚀 Google Indexing:", url);
     } catch (err) {
         console.error("❌ Indexing Error:", err.message);
+    }
+}
+
+// =========================================================
+// 🚀 GITHUB ACTIONS TRIGGER - Video के लिए
+// =========================================================
+async function triggerGitHubVideoAction(jobData) {
+    const GITHUB_TOKEN = process.env.GH_TOKEN;
+    const REPO_OWNER   = process.env.GITHUB_OWNER;
+    const REPO_NAME    = process.env.GITHUB_REPO;
+
+    // ✅ Validation
+    if (!GITHUB_TOKEN) {
+        console.error("❌ GH_TOKEN Firebase Secret missing!");
+        console.error("Fix: firebase functions:secrets:set GH_TOKEN");
+        return false;
+    }
+    if (!REPO_OWNER || !REPO_NAME) {
+        console.error("❌ GITHUB_OWNER या GITHUB_REPO missing!");
+        console.error("Fix: firebase functions:secrets:set GITHUB_OWNER");
+        return false;
+    }
+
+    // ✅ Clean Job Data (only जो autoVideo.js को चाहिए)
+    const cleanJobData = {
+        id:           String(jobData.id || ''),
+        slug:         String(jobData.slug || jobData.id || ''),
+        title:        String(jobData.title || 'Latest Govt Job'),
+        category:     String(jobData.category || 'Default'),
+        type:         String(jobData.type || 'JOB'),
+        startDate:    String(jobData.startDate || ''),
+        lastDate:     String(jobData.lastDate || ''),
+        updateDate:   String(jobData.updateDate || ''),
+        organization: String(jobData.organization || ''),
+        vacancies:    String(jobData.vacancies || '')
+    };
+
+    const payload = {
+        event_type: "generate_video",
+        client_payload: {
+            jobData: cleanJobData
+        }
+    };
+
+    console.log("📤 GitHub Trigger:", JSON.stringify(cleanJobData));
+
+    try {
+        const response = await axios.post(
+            `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/dispatches`,
+            payload,
+            {
+                headers: {
+                    Authorization:          `Bearer ${GITHUB_TOKEN}`,
+                    Accept:                 "application/vnd.github.v3+json",
+                    "Content-Type":         "application/json",
+                    "X-GitHub-Api-Version": "2022-11-28"
+                },
+                timeout: 15000
+            }
+        );
+
+        // ✅ 204 = Success
+        if (response.status === 204) {
+            console.log("✅ GitHub Actions triggered! Video बन रही है...");
+            return true;
+        }
+
+        console.warn("⚠️ Unexpected status:", response.status);
+        return false;
+
+    } catch (err) {
+        if (err.response) {
+            console.error("❌ GitHub API Error:", {
+                status: err.response.status,
+                data:   JSON.stringify(err.response.data)
+            });
+
+            if (err.response.status === 401) {
+                console.error("🔑 Fix: GH_TOKEN expired/invalid!");
+            } else if (err.response.status === 404) {
+                console.error(`🔍 Fix: Repo '${REPO_OWNER}/${REPO_NAME}' not found!`);
+            } else if (err.response.status === 422) {
+                console.error("⚙️ Fix: video_maker.yml में 'repository_dispatch' नहीं!");
+            }
+        } else {
+            console.error("❌ Network Error:", err.message);
+        }
+        return false;
     }
 }
 
@@ -107,27 +198,27 @@ async function extractJobDataWithAI(scrapedContent, jobLink) {
 Follow these mapping rules to fill EVERY field:
 
 1. title: "Job Title", "Post Name", "Name of Post", "पद का नाम"
-2. startDate: "Start Date", "Application Start Date", "Opening Date", "प्रारंभ तिथि"
-3. lastDate: "Last Date", "Closing Date", "अंतिम तिथि", "आवेदन की अंतिम तिथि"
-4. vacancies: "Vacancies", "Total Posts", "कुल पद" - extract numbers
-5. organization: "Organization", "Department", "Board", "संस्था", "विभाग"
-6. salary: "Salary", "Pay Scale", "Pay Matrix", "वेतन"
-7. minAge/ageLimit: "Age Limit", "आयु सीमा"
-8. advtNo: "Advt. No.", "Advertisement No", "विज्ञापन संख्या"
-9. qualification: "Qualification", "Educational Qualification", "योग्यता"
-10. location: "Job Location", "State", "Place of Posting", "स्थान"
-11. selectionProcess: "Selection Process", "चयन प्रक्रिया"
-12. eligibility: "Physical Standards", "PST", "PET", "शारीरिक योग्यता"
+2. startDate: "Start Date", "Application Start Date", "Opening Date"
+3. lastDate: "Last Date", "Closing Date", "अंतिम तिथि"
+4. vacancies: "Vacancies", "Total Posts", "कुल पद"
+5. organization: "Organization", "Department", "Board"
+6. salary: "Salary", "Pay Scale", "Pay Matrix"
+7. minAge/ageLimit: "Age Limit"
+8. advtNo: "Advt. No.", "Advertisement No"
+9. qualification: "Qualification", "Educational Qualification"
+10. location: "Job Location", "State", "Place of Posting"
+11. selectionProcess: "Selection Process"
+12. eligibility: "Physical Standards", "PST", "PET"
 13. feeGen: General/UR fee amount
 14. feeSCST: SC/ST/PH fee amount
 15. feeFemale: Female fee amount
 16. feeOBC: OBC/EWS fee amount
 17. applicationFee: Payment mode description
 18. notificationLink: URL from brackets like (URL: https://...)
-19. applyLink: Apply URL from brackets, default "${jobLink}"
+19. applyLink: Apply URL, default "${jobLink}"
 20. officialSiteLink: Official website URL
-21. isExpired: Compare lastDate with today (${todayDate}), return true if expired
-22. category: Identify from: ssc, banking, railway, upsc, defense, teaching, state, engineering, other
+21. isExpired: Compare lastDate with today (${todayDate}), true if expired
+22. category: ssc/banking/railway/upsc/defense/teaching/state/engineering/other
 
 SCRAPED DATA:
 ${scrapedContent}
@@ -188,7 +279,6 @@ async function scrapeJobPage(url) {
     const $ = cheerio.load(html);
     $('script, style, nav, footer, header, .sidebar, #sidebar').remove();
 
-    // Links को text में convert करो ताकि AI पढ़ सके
     $("table a, .post-body a, article a").each((i, el) => {
         const text = $(el).text().trim();
         const href = $(el).attr("href");
@@ -197,7 +287,6 @@ async function scrapeJobPage(url) {
         }
     });
 
-    // Tables extract करो
     let tableContent = "";
     $('table').each((i, el) => {
         tableContent += "\n--- TABLE ---\n";
@@ -205,7 +294,6 @@ async function scrapeJobPage(url) {
         tableContent += "\n";
     });
 
-    // Main body
     const mainBody = ($('.post-body, article, .entry-content, main').first().text()
         || $('body').text())
         .replace(/\s\s+/g, ' ')
@@ -222,16 +310,14 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
 
     const rssUrl = 'https://www.indgovtjobs.in/feeds/posts/default?alt=rss';
     const feed = await parser.parseURL(rssUrl);
-    const items = feed.items.slice(0, 50); // ✅ 50 scan करो, 5 save करो
+    const items = feed.items.slice(0, 50);
 
-    // ✅ Date suffix for unique slugs
     const now = new Date();
     const dateSuffix = now.toLocaleString('en-IN', {
         month: 'short',
         year: 'numeric'
     }).toLowerCase().replace(' ', '-');
 
-    // ✅ Internal links for SEO
     let internalLinks = [];
     try {
         const recentBlogs = await db.collection("blogs")
@@ -240,9 +326,9 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
             .get();
         recentBlogs.forEach(b => {
             const data = b.data();
-            internalLinks.push({
-                title: data.title,
-                slug: data.slug || b.id
+            internalLinks.push({ 
+                title: data.title, 
+                slug: data.slug || b.id 
             });
         });
     } catch (e) {
@@ -256,7 +342,6 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
 
         const titleText = (item.title || '').trim();
 
-        // ✅ Skip non-job content
         if (shouldSkipTitle(titleText)) {
             console.log(`⏭️ Skipped: ${titleText}`);
             continue;
@@ -265,7 +350,6 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
         const jobLink = (item.link || item.guid || '').trim();
         if (!jobLink || jobLink.includes('127.0.0.1')) continue;
 
-        // ✅ Duplicate check
         const docId = Buffer.from(jobLink)
             .toString('base64')
             .replace(/\//g, '_')
@@ -287,9 +371,8 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
 
             const finalTitle = jobData.title || titleText;
 
-            // ✅ Skip expired jobs
             if (jobData.isExpired === true) {
-                console.log(`⏭️ Expired job skipped: ${finalTitle}`);
+                console.log(`⏭️ Expired: ${finalTitle}`);
                 await db.collection("processed_links").doc(docId).set({
                     link: jobLink,
                     processedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -298,84 +381,72 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 continue;
             }
 
-            if (!finalTitle || finalTitle.length < 5) {
-                console.log(`⏭️ No valid title found`);
-                continue;
-            }
+            if (!finalTitle || finalTitle.length < 5) continue;
 
-            // ✅ Unique slug with date
-            const baseSlug = jobData.slug || createSlug(finalTitle);
+            const baseSlug  = jobData.slug || createSlug(finalTitle);
             const finalSlug = `${baseSlug}-${dateSuffix}`;
 
-            // ✅ Check slug duplicate
             const slugExists = await db.collection("job_drafts").doc(finalSlug).get();
             if (slugExists.exists) {
-                console.log(`⏭️ Slug already exists: ${finalSlug}`);
+                console.log(`⏭️ Slug exists: ${finalSlug}`);
                 continue;
             }
 
-            // ✅ FIXED: No duplicate description key!
             const draftPayload = {
-                title: finalTitle,
-                slug: finalSlug,
-                type: "JOB",
-                status: "pending",
-                // ✅ metaDescription अलग field में
-                metaDescription: jobData.metaDescription || '',
-                // ✅ description एक ही बार
-                description: jobData.description || '',
-                category: jobData.category || 'other',
-                organization: jobData.organization || '',
-                advtNo: jobData.advtNo || '',
-                startDate: jobData.startDate || '',
-                lastDate: jobData.lastDate || '',
-                vacancies: jobData.vacancies || '',
-                salary: jobData.salary || '',
-                qualification: jobData.qualification || '',
-                minAge: jobData.minAge || '',
-                ageLimit: jobData.ageLimit || '',
-                location: jobData.location || '',
+                title:            finalTitle,
+                slug:             finalSlug,
+                type:             "JOB",
+                status:           "pending",
+                metaDescription:  jobData.metaDescription  || '',
+                description:      jobData.description      || '',
+                category:         jobData.category         || 'other',
+                organization:     jobData.organization     || '',
+                advtNo:           jobData.advtNo           || '',
+                startDate:        jobData.startDate        || '',
+                lastDate:         jobData.lastDate         || '',
+                vacancies:        jobData.vacancies        || '',
+                salary:           jobData.salary           || '',
+                qualification:    jobData.qualification    || '',
+                minAge:           jobData.minAge           || '',
+                ageLimit:         jobData.ageLimit         || '',
+                location:         jobData.location         || '',
                 selectionProcess: jobData.selectionProcess || '',
-                eligibility: jobData.eligibility || '',
-                feeGen: jobData.feeGen || '',
-                feeSCST: jobData.feeSCST || '',
-                feeFemale: jobData.feeFemale || '',
-                feeOBC: jobData.feeOBC || '',
-                applicationFee: jobData.applicationFee || '',
+                eligibility:      jobData.eligibility      || '',
+                feeGen:           jobData.feeGen           || '',
+                feeSCST:          jobData.feeSCST          || '',
+                feeFemale:        jobData.feeFemale        || '',
+                feeOBC:           jobData.feeOBC           || '',
+                applicationFee:   jobData.applicationFee   || '',
                 notificationLink: jobData.notificationLink || '',
-                applyLink: jobData.applyLink || jobLink,
+                applyLink:        jobData.applyLink        || jobLink,
                 officialSiteLink: jobData.officialSiteLink || '',
-                originalLink: jobLink,
-                internalLinks: internalLinks,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
+                originalLink:     jobLink,
+                internalLinks:    internalLinks,
+                createdAt:        admin.firestore.FieldValue.serverTimestamp()
             };
 
-            // undefined values remove करो
             const cleanPayload = Object.fromEntries(
                 Object.entries(draftPayload).filter(([, v]) => v !== undefined)
             );
 
             await db.collection("job_drafts").doc(finalSlug).set(cleanPayload);
             await db.collection("processed_links").doc(docId).set({
-                link: jobLink,
-                slug: finalSlug,
-                title: finalTitle,
+                link:        jobLink,
+                slug:        finalSlug,
+                title:       finalTitle,
                 processedAt: admin.firestore.FieldValue.serverTimestamp()
             });
 
             savedCount++;
             console.log(`✅ Saved (${savedCount}/${maxJobs}): ${finalTitle}`);
-
-            // ✅ Rate limiting - API को overwhelm न करो
             await sleep(2000);
 
         } catch (err) {
             console.error(`❌ Failed: ${jobLink} | ${err.message}`);
-            // Continue with next item
         }
     }
 
-    console.log(`🎯 Scraping Complete: ${savedCount} jobs saved`);
+    console.log(`🎯 Complete: ${savedCount} jobs saved`);
     return savedCount;
 }
 
@@ -383,46 +454,43 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
 // 1️⃣ HTTP TRIGGER - Scraper API
 // =========================================================
 exports.fetchLatestGovtJobs = onRequest({
-    cors: false, // ✅ CORS disabled - Server-only endpoint
+    cors: false,
     timeoutSeconds: 300,
     memory: "1GiB",
     secrets: ["SERVICE_ACCOUNT_JSON", "GEMINI_API_KEY"]
 }, async (req, res) => {
 
-    // ✅ Method check
     if (req.method !== 'POST' && req.method !== 'GET') {
         return res.status(405).send("Method Not Allowed");
     }
 
-    // ✅ Authorization Header से check करो (URL में नहीं!)
     const authHeader = req.headers['x-scraper-key'];
     const SCRAPER_KEY = process.env.SCRAPER_SECRET_KEY || "StudyGyaan_786_Secure";
 
     if (authHeader !== SCRAPER_KEY) {
-        console.warn("❌ Unauthorized scraper access attempt");
         return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // ✅ Rate limiting - Last run check
     try {
-        const lastRunDoc = await db.collection("system_configs").doc("scraper_status").get();
+        const lastRunDoc = await db.collection("system_configs")
+            .doc("scraper_status").get();
+
         if (lastRunDoc.exists) {
             const lastRun = lastRunDoc.data().lastRun?.toDate();
             if (lastRun) {
-                const minutesSinceLastRun = (Date.now() - lastRun.getTime()) / 60000;
-                if (minutesSinceLastRun < 30) {
+                const minsSince = (Date.now() - lastRun.getTime()) / 60000;
+                if (minsSince < 30) {
                     return res.json({
                         success: false,
-                        message: `Rate limited. Last run ${Math.round(minutesSinceLastRun)} mins ago. Wait ${Math.round(30 - minutesSinceLastRun)} more mins.`
+                        message: `Rate limited. Wait ${Math.round(30 - minsSince)} mins.`
                     });
                 }
             }
         }
 
-        // Update last run time
         await db.collection("system_configs").doc("scraper_status").set({
             lastRun: admin.firestore.FieldValue.serverTimestamp(),
-            status: "running"
+            status:  "running"
         });
 
     } catch (e) {
@@ -433,99 +501,100 @@ exports.fetchLatestGovtJobs = onRequest({
         const count = await scrapeGovtJobsLogic(5);
 
         await db.collection("system_configs").doc("scraper_status").set({
-            lastRun: admin.firestore.FieldValue.serverTimestamp(),
-            status: "completed",
+            lastRun:   admin.firestore.FieldValue.serverTimestamp(),
+            status:    "completed",
             lastCount: count
         }, { merge: true });
 
         res.json({
-            success: true,
-            message: `${count} new jobs saved to drafts!`,
+            success:   true,
+            message:   `${count} new jobs saved to drafts!`,
             timestamp: new Date().toISOString()
         });
     } catch (error) {
         console.error("❌ Scraper Error:", error.message);
-
         await db.collection("system_configs").doc("scraper_status").set({
-            status: "error",
+            status:    "error",
             lastError: error.message
         }, { merge: true }).catch(() => {});
-
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
 // =========================================================
-// 2️⃣ FIRESTORE TRIGGER - Job Published होने पर
+// 2️⃣ FIRESTORE TRIGGER - Job Publish होने पर
 // =========================================================
 exports.onJobPublishedNotify = onDocumentCreated({
-    // ✅ Written → Created (सिर्फ नई job पर trigger, edit पर नहीं!)
     document: "jobs/{jobId}",
     secrets: [
-        "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
-        "GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON",
-        "GMAIL_CREDENTIALS", "YOUTUBE_TOKEN", "TTS_KEY_JSON"
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
+        "SERVICE_ACCOUNT_JSON",
+        "GH_TOKEN",       // ✅ GitHub PAT
+        "GITHUB_OWNER",   // ✅ GitHub Username
+        "GITHUB_REPO"     // ✅ Repo Name
     ],
-    timeoutSeconds: 540,
-    memory: "2GiB",
+    timeoutSeconds: 60,   // ✅ GitHub trigger = fast
+    memory: "256MB",
     cpu: 1
 }, async (event) => {
     const snap = event.data;
     if (!snap) return null;
 
-    const job = snap.data();
+    const job   = snap.data();
     const jobId = event.params.jobId;
 
-    // ✅ Only JOB type, not AFFILIATE/COURSE
-    if (job.type !== 'JOB' && job.type !== undefined) {
-        console.log(`⏭️ Skipping non-JOB type: ${job.type}`);
+    // ✅ Only JOB type
+    if (job.type && job.type !== 'JOB') {
+        console.log(`⏭️ Skipping: ${job.type}`);
         return null;
     }
 
     const jobUrl = `https://studygyaan.in/job/${job.slug || jobId}`;
-    console.log(`🚀 New Job Published: ${job.title} | ${jobUrl}`);
+    console.log(`🚀 New Job: ${job.title} → ${jobUrl}`);
 
-    // ✅ JobPosting Schema save करो
+    // ─────────────────────────────────────
+    // STEP 1: Job Schema (SEO)
+    // ─────────────────────────────────────
     try {
         const publishTime = job.createdAt?.toDate?.()?.toISOString()
             || new Date().toISOString();
 
         const jobSchema = {
-            "@context": "https://schema.org/",
-            "@type": "JobPosting",
-            "title": job.title || '',
-            "description": job.description || job.title || '',
-            "datePosted": publishTime,
-            "employmentType": "FULL_TIME",
+            "@context":      "https://schema.org/",
+            "@type":         "JobPosting",
+            "title":         job.title || '',
+            "description":   job.description || job.title || '',
+            "datePosted":    publishTime,
+            "employmentType":"FULL_TIME",
             "hiringOrganization": {
-                "@type": "Organization",
-                "name": job.organization || "Govt Department",
+                "@type":  "Organization",
+                "name":   job.organization || "Govt Department",
                 "sameAs": "https://studygyaan.in",
-                "logo": "https://studygyaan.in/logo.png"
+                "logo":   "https://studygyaan.in/logo.png"
             },
             "jobLocation": {
                 "@type": "Place",
                 "address": {
-                    "@type": "PostalAddress",
-                    "addressRegion": job.location || "India",
+                    "@type":          "PostalAddress",
+                    "addressRegion":  job.location || "India",
                     "addressCountry": "IN"
                 }
             },
             "validThrough": job.lastDate || '',
             "identifier": {
                 "@type": "PropertyValue",
-                "name": job.organization || "StudyGyaan",
+                "name":  job.organization || "StudyGyaan",
                 "value": job.advtNo || jobId
             }
         };
 
-        // Salary अगर है तो add करो
         if (job.salary && job.salary.length > 2) {
             jobSchema.baseSalary = {
-                "@type": "MonetaryAmount",
+                "@type":    "MonetaryAmount",
                 "currency": "INR",
                 "value": {
-                    "@type": "QuantitativeValue",
+                    "@type":       "QuantitativeValue",
                     "description": job.salary
                 }
             };
@@ -534,56 +603,55 @@ exports.onJobPublishedNotify = onDocumentCreated({
         await db.collection("jobs").doc(jobId).update({
             schemaMarkup: JSON.stringify(jobSchema)
         });
-        console.log("✅ Job Schema saved");
-    } catch (schemaErr) {
-        console.error("Schema save error:", schemaErr.message);
+        console.log("✅ Schema saved");
+    } catch (e) {
+        console.error("Schema error:", e.message);
     }
 
-    // ✅ Google Indexing
+    // ─────────────────────────────────────
+    // STEP 2: Google Indexing
+    // ─────────────────────────────────────
     await notifyGoogle(jobUrl).catch(e =>
         console.log("Indexing skip:", e.message)
     );
 
-    // ✅ Video Generation
-    let videoStatus = "Not attempted";
+    // ─────────────────────────────────────
+    // STEP 3: GitHub Actions → Video
+    // ─────────────────────────────────────
+    let videoStatus = "⏳ Video trigger initiated";
+
     try {
-        let generateVideo;
-        try {
-            ({ generateAndUploadVideo: generateVideo } = require('./autoVideo'));
-        } catch (importErr) {
-            console.warn("autoVideo not found:", importErr.message);
-            generateVideo = null;
-        }
+        const triggered = await triggerGitHubVideoAction({
+            ...job,
+            id:   jobId,
+            slug: job.slug || jobId
+        });
 
-        if (generateVideo) {
-            const success = await generateVideo({
-                ...job,
-                id: jobId,
-                slug: job.slug || jobId
-            });
-            videoStatus = success ? "✅ Video uploaded!" : "⚠️ Video failed";
-
-            if (success) {
-                await db.collection("jobs").doc(jobId)
-                    .update({ videoGenerated: true })
-                    .catch(() => {});
-            }
+        if (triggered) {
+            videoStatus = "✅ Video generation started on GitHub!";
+            await db.collection("jobs").doc(jobId).update({
+                videoTriggered:   true,
+                videoTriggeredAt: admin.firestore.FieldValue.serverTimestamp()
+            }).catch(() => {});
         } else {
-            videoStatus = "⏭️ Video module not available";
+            videoStatus = "⚠️ GitHub trigger failed (check Firebase logs)";
         }
-    } catch (videoErr) {
-        console.error("Video error:", videoErr.message);
-        videoStatus = `❌ Video error: ${videoErr.message.substring(0, 50)}`;
+    } catch (err) {
+        console.error("Trigger error:", err.message);
+        videoStatus = `❌ Error: ${err.message.substring(0, 50)}`;
     }
 
-    // ✅ Telegram Notification
+    // ─────────────────────────────────────
+    // STEP 4: Telegram
+    // ─────────────────────────────────────
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-    const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+    const CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
 
     if (BOT_TOKEN && CHAT_ID) {
-        const msg = `🚨 <b>New Govt Job Alert!</b>\n\n` +
+        const msg =
+            `🚨 <b>New Govt Job Alert!</b>\n\n` +
             `📌 <b>Post:</b> ${job.title || 'New Job'}\n` +
-            `🏢 <b>Dept:</b> ${job.organization || 'Govt Department'}\n` +
+            `🏢 <b>Dept:</b> ${job.organization || 'Govt Dept'}\n` +
             `🎓 <b>Qualification:</b> ${job.qualification || 'Check Details'}\n` +
             `⏳ <b>Last Date:</b> ${job.lastDate || 'Apply Soon'}\n` +
             `💼 <b>Vacancies:</b> ${job.vacancies || 'Check Notification'}\n\n` +
@@ -591,58 +659,55 @@ exports.onJobPublishedNotify = onDocumentCreated({
             `🎬 ${videoStatus}\n\n` +
             `🔔 @studygyaan_official`;
 
-        try {
-            await axios.post(
-                `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
-                {
-                    chat_id: CHAT_ID,
-                    text: msg,
-                    parse_mode: 'HTML',
-                    disable_web_page_preview: false
-                }
-            );
-            console.log("✅ Telegram sent!");
-        } catch (tgErr) {
-            console.error("Telegram error:", tgErr.message);
-        }
+        await axios.post(
+            `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+            {
+                chat_id:                  CHAT_ID,
+                text:                     msg,
+                parse_mode:               'HTML',
+                disable_web_page_preview: false
+            }
+        ).catch(e => console.error("Telegram error:", e.message));
+
+        console.log("✅ Telegram sent!");
     }
 
-    // ✅ WhatsApp (Environment variable से IP लो)
+    // ─────────────────────────────────────
+    // STEP 5: WhatsApp (Optional)
+    // ─────────────────────────────────────
     const WA_SERVER = process.env.WHATSAPP_SERVER_URL;
     if (WA_SERVER) {
-        const waMsg = `🚨 *New Govt Job Alert!*\n\n📌 *${job.title}*\n\n🔗 Details:\n${jobUrl}`;
+        const waMsg = `🚨 *New Govt Job!*\n\n📌 *${job.title}*\n\n🔗 ${jobUrl}`;
         axios.post(`${WA_SERVER}/send-job`, {
-            targetId: "120363425475163322@newsletter",
+            targetId:    "120363425475163322@newsletter",
             messageText: waMsg
         }).catch(e => console.log("WhatsApp skip:", e.message));
     }
 
-    console.log(`✅ Job notification complete: ${job.title}`);
+    console.log(`✅ All done: ${job.title}`);
     return null;
 });
 
 // =========================================================
-// 3️⃣ GITHUB ACTIONS CLI RUNNER
+// 3️⃣ CLI RUNNER (GitHub Actions Scraper के लिए)
 // =========================================================
 exports.runJobScraper = async (maxJobs = 5) => {
     try {
         console.log("🤖 CLI Scraper Started...");
         const count = await scrapeGovtJobsLogic(maxJobs);
-        console.log(`🎯 Done: ${count} jobs saved to job_drafts`);
+        console.log(`🎯 Done: ${count} jobs saved`);
         return count;
     } catch (error) {
-        console.error("❌ CLI Scraper Failed:", error.message);
+        console.error("❌ CLI Failed:", error.message);
         throw error;
     }
 };
 
 // =========================================================
-// ✅ Direct Run Support (GitHub Actions)
+// ✅ Direct Run (GitHub Actions)
 // =========================================================
 if (require.main === module) {
     const maxJobs = parseInt(process.argv[2]) || 5;
-    console.log(`🚀 Running scraper for ${maxJobs} jobs...`);
-
     scrapeGovtJobsLogic(maxJobs)
         .then(count => {
             console.log(`✅ Complete: ${count} jobs saved`);
