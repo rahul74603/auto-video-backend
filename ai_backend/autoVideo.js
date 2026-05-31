@@ -19,8 +19,10 @@ if (!admin.apps.length) {
             credential: admin.credential.cert(serviceAccount),
             projectId: "studymaterial-406ad"
         });
+        console.log("✅ Firebase initialized");
     } else {
         admin.initializeApp();
+        console.log("✅ Firebase initialized (default)");
     }
 }
 
@@ -63,9 +65,8 @@ async function uploadToFacebook(videoPath, description) {
 
     console.log('📱 Facebook Reels पर अपलोड शुरू...');
 
-    // ✅ Reels के लिए अलग endpoint (ज्यादा reach मिलती है)
     try {
-        // Step 1: Video initialize करो
+        // Step 1: Video initialize करो (Reels API)
         const initRes = await axios.post(
             `https://graph.facebook.com/v19.0/${FB_PAGE_ID}/video_reels`,
             {
@@ -74,8 +75,8 @@ async function uploadToFacebook(videoPath, description) {
             }
         );
 
-        const videoId    = initRes.data.video_id;
-        const uploadUrl  = initRes.data.upload_url;
+        const fbVideoId = initRes.data.video_id;
+        const uploadUrl = initRes.data.upload_url;
 
         // Step 2: Video upload करो
         const videoBuffer = fs.readFileSync(videoPath);
@@ -92,19 +93,20 @@ async function uploadToFacebook(videoPath, description) {
         await axios.post(
             `https://graph.facebook.com/v19.0/${FB_PAGE_ID}/video_reels`,
             {
-                upload_phase:  'finish',
-                video_id:      videoId,
-                access_token:  FB_PAGE_TOKEN,
-                video_state:   'PUBLISHED',
-                description:   description
+                upload_phase: 'finish',
+                video_id:     fbVideoId,
+                access_token: FB_PAGE_TOKEN,
+                video_state:  'PUBLISHED',
+                description:  description
             }
         );
 
-        console.log('✅ Facebook Reel Live! ID: ' + videoId);
-        return videoId;
+        console.log('✅ Facebook Reel Live! ID: ' + fbVideoId);
+        return fbVideoId;
 
     } catch (reelErr) {
         console.log('⚠️ Reels API failed, normal video try कर रहे हैं...');
+        console.log('Reel Error:', reelErr.response?.data || reelErr.message);
 
         // Fallback: Normal video upload
         try {
@@ -128,14 +130,14 @@ async function uploadToFacebook(videoPath, description) {
 }
 
 // =========================================================
-// 🧠 2. MEGA SEO ENGINE - Maximum Views के लिए
+// 🧠 2. MEGA SEO ENGINE
 // =========================================================
 function generateSEO(jobData, jobCat) {
 
-    const currentYear = new Date().getFullYear();
+    const currentYear  = new Date().getFullYear();
     const currentMonth = new Date().toLocaleString('en-IN', { month: 'long' });
 
-    // ✅ Category-wise power tags (trending search terms)
+    // ✅ Category-wise power tags
     const categoryTags = {
         'Result': [
             `SarkariResult${currentYear}`, 'ResultOut', 'ResultDeclared',
@@ -176,19 +178,19 @@ function generateSEO(jobData, jobCat) {
 
     // ✅ Title से keywords extract करो
     const stopWords = ['and', 'the', 'for', 'out', 'now', 'is', 'are', 'was', 'in', 'on', 'of', 'to', 'a'];
-    let titleWords = jobData.title
+    let titleWords = (jobData.title || '')
         .split(/[\s,\-\/]+/)
         .filter(w => w.length > 2 && !stopWords.includes(w.toLowerCase()))
         .map(w => w.replace(/[^a-zA-Z0-9]/g, ''))
         .filter(w => w.length > 2);
 
-    // ✅ Tags combine और deduplicate करो
+    // ✅ Tags combine और deduplicate
     const catSpecificTags = categoryTags[jobCat] || categoryTags['Default'];
     let allTags = [...new Set([...titleWords, ...catSpecificTags, ...universalTags])];
 
     // ✅ YouTube 500 char limit के अंदर रखो
     let finalTags = [];
-    let charCount = 0;
+    let charCount  = 0;
     for (const tag of allTags) {
         if (charCount + tag.length + 2 <= 490) {
             finalTags.push(tag);
@@ -196,7 +198,7 @@ function generateSEO(jobData, jobCat) {
         }
     }
 
-    // ✅ Post URL
+    // ✅ Post URL - type के हिसाब से
     const identifier = jobData.slug || jobData.id;
     let postLink = "https://studygyaan.in";
     if (identifier) {
@@ -208,7 +210,7 @@ function generateSEO(jobData, jobCat) {
     // ✅ Telegram link
     const telegramLink = process.env.TELEGRAM_CHANNEL_LINK || "https://t.me/studygyaan_official";
 
-    // ✅ Top 5 hashtags for description
+    // ✅ Top hashtags for description
     const hashtags = finalTags.slice(0, 8)
         .map(t => '#' + t.replace(/[^a-zA-Z0-9]/g, ''))
         .join(' ');
@@ -291,7 +293,7 @@ function generateViralTitle(jobData, jobCat) {
 }
 
 // =========================================================
-// 🎨 4. POSTER DESIGNER - Eye-catching थंबनेल
+// 🎨 4. POSTER DESIGNER
 // =========================================================
 async function createPoster(jobData, jobCat, posterPath) {
     const { createCanvas } = require('canvas');
@@ -339,9 +341,9 @@ async function createPoster(jobData, jobCat, posterPath) {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, height);
 
-    // ✅ Decorative circles (background effect)
+    // ✅ Decorative circles
     ctx.globalAlpha = 0.08;
-    ctx.fillStyle = theme.accent;
+    ctx.fillStyle   = theme.accent;
     ctx.beginPath(); ctx.arc(900, 200, 300, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(100, 1700, 250, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1.0;
@@ -370,7 +372,7 @@ async function createPoster(jobData, jobCat, posterPath) {
             if (ctx.measureText(testLine).width > maxWidth && n > 0) {
                 ctx.fillText(line.trim(), x, y);
                 line = words[n] + ' ';
-                y += lineHeight;
+                y   += lineHeight;
             } else {
                 line = testLine;
             }
@@ -380,24 +382,23 @@ async function createPoster(jobData, jobCat, posterPath) {
     }
 
     // ✅ 1. TOP LOGO BAR
-    ctx.shadowColor = theme.accent;
-    ctx.shadowBlur  = 30;
+    ctx.shadowColor  = theme.accent;
+    ctx.shadowBlur   = 30;
     drawRoundedRect(80, 60, 920, 130, 65);
-    ctx.fillStyle = theme.accent;
+    ctx.fillStyle    = theme.accent;
     ctx.fill();
-    ctx.shadowBlur = 0;
-
-    ctx.fillStyle   = '#000000';
-    ctx.font        = 'bold 72px sans-serif';
-    ctx.textAlign   = 'center';
+    ctx.shadowBlur   = 0;
+    ctx.fillStyle    = '#000000';
+    ctx.font         = 'bold 72px sans-serif';
+    ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('📚 STUDYGYAAN.IN 📚', width / 2, 125);
 
     // ✅ 2. CATEGORY BADGE
-    ctx.fillStyle = theme.badgeBg;
+    ctx.fillStyle    = theme.badgeBg;
     ctx.fillRect(0, 220, width, 110);
-    ctx.fillStyle   = '#FFFFFF';
-    ctx.font        = 'bold 62px sans-serif';
+    ctx.fillStyle    = '#FFFFFF';
+    ctx.font         = 'bold 62px sans-serif';
     ctx.textBaseline = 'middle';
     ctx.fillText(theme.textBadge, width / 2, 275);
 
@@ -407,44 +408,43 @@ async function createPoster(jobData, jobCat, posterPath) {
     ctx.fillText('🔥 IMPORTANT UPDATE 🔥', width / 2, 390);
 
     // ✅ 4. MAIN TITLE (Dynamic wrap)
-    ctx.shadowColor = theme.accent;
-    ctx.shadowBlur  = 20;
-    ctx.fillStyle   = '#FFFFFF';
-    ctx.font        = '900 78px sans-serif';
+    ctx.shadowColor  = theme.accent;
+    ctx.shadowBlur   = 20;
+    ctx.fillStyle    = '#FFFFFF';
+    ctx.font         = '900 78px sans-serif';
     ctx.textBaseline = 'alphabetic';
     let titleEndY = wrapText(
-        jobData.title.toUpperCase(),
+        (jobData.title || '').toUpperCase(),
         width / 2, 510, 960, 95
     );
     ctx.shadowBlur = 0;
 
     // ✅ 5. CTA BUTTON
     let ctaY = titleEndY + 40;
+
     const ctaTexts = {
-        'Result':     { text: '✅ CHECK RESULT NOW', color: '#00FF00' },
-        'Admit Card': { text: '📥 DOWNLOAD NOW',     color: '#FFD700' },
-        'Answer Key': { text: '🔑 CHECK ANSWER KEY', color: '#FFA500' },
+        'Result':     { text: '✅ CHECK RESULT NOW',  color: '#00FF00' },
+        'Admit Card': { text: '📥 DOWNLOAD NOW',      color: '#FFD700' },
+        'Answer Key': { text: '🔑 CHECK ANSWER KEY',  color: '#FFA500' },
         'Syllabus':   { text: '📚 FREE PDF DOWNLOAD', color: '#00FFFF' },
-        'Default':    { text: '🚀 APPLY NOW',         color: '#FF4444' }
+        'Default':    { text: '🚀 APPLY NOW',          color: '#FF4444' }
     };
     const cta = ctaTexts[jobCat] || ctaTexts['Default'];
 
-    // CTA Background
     drawRoundedRect(100, ctaY - 55, 880, 90, 45);
-    ctx.fillStyle = cta.color;
+    ctx.fillStyle   = cta.color;
     ctx.globalAlpha = 0.2;
     ctx.fill();
     ctx.globalAlpha = 1.0;
-
-    ctx.fillStyle = cta.color;
-    ctx.font      = 'bold 68px sans-serif';
+    ctx.fillStyle    = cta.color;
+    ctx.font         = 'bold 68px sans-serif';
     ctx.textBaseline = 'middle';
     ctx.fillText(cta.text, width / 2, ctaY);
 
     // ✅ 6. INFO BOX
     let infoBoxY = ctaY + 80;
     drawRoundedRect(50, infoBoxY, 980, 260, 40);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.fillStyle   = 'rgba(0, 0, 0, 0.55)';
     ctx.fill();
     ctx.lineWidth   = 4;
     ctx.strokeStyle = theme.accent;
@@ -454,7 +454,7 @@ async function createPoster(jobData, jobCat, posterPath) {
     const todayDate = new Date().toLocaleDateString('en-GB');
 
     if (['Result', 'Answer Key', 'Admit Card'].includes(jobCat)) {
-        ctx.fillStyle = '#00FFFF';
+        ctx.fillStyle    = '#00FFFF';
         ctx.textBaseline = 'middle';
         ctx.fillText(`${theme.emoji} Update: ${jobCat} Out!`, width / 2, infoBoxY + 80);
         ctx.fillStyle = '#FFFFFF';
@@ -462,30 +462,37 @@ async function createPoster(jobData, jobCat, posterPath) {
             ? jobData.updateDate : todayDate;
         ctx.fillText(`📅 Date: ${showDate}`, width / 2, infoBoxY + 180);
     } else {
-        ctx.fillStyle = '#00FFFF';
+        // ✅ JOB type के लिए startDate और lastDate दिखाओ
+        ctx.fillStyle    = '#00FFFF';
         ctx.textBaseline = 'middle';
         const showStart = (jobData.startDate && jobData.startDate !== 'undefined')
             ? jobData.startDate : 'Apply Now';
         ctx.fillText(`🚀 Apply: ${showStart}`, width / 2, infoBoxY + 80);
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 65px sans-serif';
+        ctx.font      = 'bold 65px sans-serif';
         const showLast = (jobData.lastDate && jobData.lastDate !== 'undefined')
             ? jobData.lastDate : 'जल्दी करें!';
         ctx.fillText(`⏳ Last Date: ${showLast}`, width / 2, infoBoxY + 180);
     }
 
-    // ✅ 7. TELEGRAM BOX (नया addition)
+    // ✅ 7. TELEGRAM BOX
     let tgBoxY = infoBoxY + 280;
+
+    // ✅ Screen overflow check - footer से ऊपर रखो
+    if (tgBoxY + 100 > 1740) {
+        tgBoxY = 1630;
+    }
+
     drawRoundedRect(50, tgBoxY, 980, 100, 30);
-    ctx.fillStyle = '#0088cc'; // Telegram Blue
+    ctx.fillStyle    = '#0088cc';
     ctx.fill();
     ctx.fillStyle    = '#FFFFFF';
-    ctx.font         = 'bold 52px sans-serif';
+    ctx.font         = 'bold 48px sans-serif';
     ctx.textBaseline = 'middle';
     ctx.fillText('📲 JOIN TELEGRAM: @studygyaan_official', width / 2, tgBoxY + 50);
 
     // ✅ 8. FOOTER
-    ctx.fillStyle = '#FFCC00';
+    ctx.fillStyle    = '#FFCC00';
     ctx.fillRect(0, 1750, width, 170);
     ctx.fillStyle    = '#000000';
     ctx.font         = '900 52px sans-serif';
@@ -496,8 +503,9 @@ async function createPoster(jobData, jobCat, posterPath) {
     fs.writeFileSync(posterPath, canvas.toBuffer('image/png'));
     console.log('✅ Poster बन गया!');
 
-    // Return anchor Y position
-    return tgBoxY + 120;
+    // ✅ Anchor Y position return करो (safe cap के साथ)
+    const anchorY = tgBoxY + 120;
+    return Math.min(anchorY, 1200);
 }
 
 // =========================================================
@@ -507,7 +515,14 @@ async function generateAndUploadVideo(jobData) {
     const textToSpeech = require('@google-cloud/text-to-speech');
     const ffmpegPath   = require('ffmpeg-static');
 
-    console.log(`🎬 Video Engine Start: '${jobData.title}'`);
+    // ✅ Type और Category clearly log करो
+    console.log(`\n${'='.repeat(50)}`);
+    console.log(`🎬 Video Engine Start`);
+    console.log(`📌 Title    : ${jobData.title}`);
+    console.log(`📂 Type     : ${jobData.type}`);
+    console.log(`🏷️  Category : ${jobData.category}`);
+    console.log(`🔗 Slug     : ${jobData.slug}`);
+    console.log(`${'='.repeat(50)}\n`);
 
     const tempDir   = os.tmpdir();
     const timestamp = Date.now();
@@ -516,7 +531,19 @@ async function generateAndUploadVideo(jobData) {
     const safeSlug   = (jobData.slug || 'govt-update').replace(/[^a-z0-9]/gi, '-').substring(0, 50);
     const videoPath  = path.join(tempDir, `${safeSlug}-${timestamp}.mp4`);
 
-    const jobCat = jobData.category || 'Default';
+    // ✅ jobCat correctly set करो type के हिसाब से
+    let jobCat = jobData.category || 'Default';
+
+    // JOB type के लिए: अगर category Result/AdmitCard जैसी नहीं है तो Default रखो
+    if (jobData.type === 'JOB') {
+        const validJobCats = ['Result', 'Admit Card', 'Answer Key', 'Syllabus'];
+        if (!validJobCats.includes(jobCat)) {
+            jobCat = 'Default'; // Jobs के लिए APPLY NOW दिखाएगा
+        }
+    }
+
+    // FAST_TRACK type के लिए category as-is रखो
+    console.log(`✅ Final jobCat decided: ${jobCat} (type: ${jobData.type})`);
 
     try {
         const youtube = await getYouTubeClient();
@@ -527,12 +554,17 @@ async function generateAndUploadVideo(jobData) {
             : path.join(process.cwd(), 'ai_backend');
         const bgMusicDir = path.join(targetDir, 'bg_music');
 
+        console.log(`📁 Target Dir: ${targetDir}`);
+
         let bgMusicPath = '';
         if (fs.existsSync(bgMusicDir)) {
             const mp3Files = fs.readdirSync(bgMusicDir).filter(f => f.toLowerCase().endsWith('.mp3'));
             if (mp3Files.length > 0) {
                 bgMusicPath = path.join(bgMusicDir, mp3Files[Math.floor(Math.random() * mp3Files.length)]);
+                console.log(`🎵 Music: ${path.basename(bgMusicPath)}`);
             }
+        } else {
+            console.log(`⚠️ bg_music folder नहीं मिला: ${bgMusicDir}`);
         }
 
         const anchorFiles = fs.readdirSync(targetDir).filter(f => f.toLowerCase().endsWith('.mp4'));
@@ -545,37 +577,50 @@ async function generateAndUploadVideo(jobData) {
         const isMale            = selectedVideoFile.toLowerCase().includes('male');
 
         let selectedVoice;
-        if (isFemale)      selectedVoice = 'hi-IN-Neural2-A';
-        else if (isMale)   selectedVoice = 'hi-IN-Neural2-C';
-        else               selectedVoice = Math.random() > 0.5 ? 'hi-IN-Neural2-A' : 'hi-IN-Neural2-C';
+        if (isFemale)    selectedVoice = 'hi-IN-Neural2-A';
+        else if (isMale) selectedVoice = 'hi-IN-Neural2-C';
+        else             selectedVoice = Math.random() > 0.5 ? 'hi-IN-Neural2-A' : 'hi-IN-Neural2-C';
 
         const finalAnchorPath = path.join(targetDir, selectedVideoFile);
         console.log(`🎥 Anchor: ${selectedVideoFile} | Voice: ${selectedVoice}`);
 
         // ✅ TTS Setup
         const ttsKeyVar = process.env.TTS_KEY_JSON;
-        if (!ttsKeyVar || ttsKeyVar === "test") throw new Error("❌ TTS_KEY_JSON missing!");
+        if (!ttsKeyVar || ttsKeyVar === "test") {
+            throw new Error("❌ TTS_KEY_JSON missing!");
+        }
 
         let ttsCreds;
-        try { ttsCreds = JSON.parse(ttsKeyVar); }
-        catch (e) { throw new Error("❌ TTS_KEY_JSON Invalid JSON."); }
+        try {
+            ttsCreds = JSON.parse(ttsKeyVar);
+        } catch (e) {
+            throw new Error("❌ TTS_KEY_JSON Invalid JSON.");
+        }
 
         const ttsClient = new textToSpeech.TextToSpeechClient({ credentials: ttsCreds });
 
-        // ✅ IMPROVED SCRIPTS - Curiosity + Urgency + CTA
-        let cleanName = jobData.title.length > 55
+        // ✅ Script - type और category दोनों के हिसाब से
+        let cleanName = (jobData.title || '').length > 55
             ? jobData.title.substring(0, 55)
-            : jobData.title;
+            : (jobData.title || 'Latest Update');
 
         const telegramChannel = process.env.TELEGRAM_CHANNEL_NAME || "स्टडी ज्ञान";
 
-        const scripts = {
+        // ✅ JOB type के लिए अलग scripts
+        const jobScripts = [
+            `बेरोजगार हो? तो ये मौका हाथ से जाने मत देना! ${cleanName} की नई वैकेंसी आउट हो गई है। फॉर्म भरने की पूरी डिटेल पहले कमेंट में है। ${telegramChannel} टेलीग्राम से जुड़ें।`,
+            `एक और शानदार सरकारी नौकरी आ गई है! ${cleanName} के लिए अभी अप्लाई करें। लास्ट डेट निकलने से पहले फॉर्म भर दो। लिंक पहले कमेंट में है।`,
+            `तैयारी शुरू कर दो! ${cleanName} की बम्पर भर्ती आई है। योग्यता और अप्लाई लिंक पहले कमेंट में देखें। स्टडी ज्ञान से जुड़े रहें।`
+        ];
+
+        // ✅ FAST_TRACK type के लिए category-wise scripts
+        const fastTrackScripts = {
             'Result': [
                 `क्या आपने भी इसका एग्जाम दिया था? तो दिल थाम के बैठिये! ${cleanName} का रिजल्ट फाइनली डिक्लेयर हो चुका है। अपना रिजल्ट चेक करने के लिए पहला कमेंट देखें, और हमारे टेलीग्राम चैनल ${telegramChannel} से जुड़ें।`,
-                `जिस रिजल्ट का इंतज़ार था, वो आ गया! ${cleanName} रिजल्ट जारी हो गया है। डायरेक्ट लिंक पहले कमेंट में है। अभी चेक करें और स्टडी ज्ञान से जुड़े रहें।`
+                `जिस रिजल्ट का इंतज़ार था, वो आ गया! ${cleanName} रिजल्ट जारी हो गया है। डायरेक्ट लिंक पहले कमेंट में है। अभी चेक करें।`
             ],
             'Admit Card': [
-                `एग्जाम डेट पास आ रही है! ${cleanName} का एडमिट कार्ड जारी हो चुका है। अपना एग्जाम सेंटर और टाइमिंग चेक करने के लिए पहला कमेंट देखें। टेलीग्राम पर ${telegramChannel} से जुड़ें।`,
+                `एग्जाम डेट पास आ रही है! ${cleanName} का एडमिट कार्ड जारी हो चुका है। अपना एग्जाम सेंटर और टाइमिंग चेक करने के लिए पहला कमेंट देखें।`,
                 `बिना इसके एग्जाम सेंटर में एंट्री नहीं मिलेगी! ${cleanName} एडमिट कार्ड डाउनलोड करें। लिंक पहले कमेंट में है।`
             ],
             'Answer Key': [
@@ -583,29 +628,38 @@ async function generateAndUploadVideo(jobData) {
                 `${cleanName} आंसर की चेक करें और ऑब्जेक्शन डालने का मौका मत चूकें! लिंक पहले कमेंट में है।`
             ],
             'Syllabus': [
-                `सिलेक्शन चाहिए तो ये ज़रूर देखें! ${cleanName} का नया सिलेबस जारी हो गया है। फ्री पीडीएफ डाउनलोड करें, लिंक पहले कमेंट में है। ${telegramChannel} टेलीग्राम से जुड़ें।`,
+                `सिलेक्शन चाहिए तो ये ज़रूर देखें! ${cleanName} का नया सिलेबस जारी हो गया है। फ्री पीडीएफ डाउनलोड करें, लिंक पहले कमेंट में है।`,
                 `${cleanName} एग्जाम पैटर्न बदल गया है! नया सिलेबस चेक करें। फ्री पीडीएफ पहले कमेंट में है।`
             ],
             'Default': [
-                `बेरोजगार हो? तो ये मौका हाथ से जाने मत देना! ${cleanName} की नई वैकेंसी आउट हो गई है। फॉर्म भरने की पूरी डिटेल पहले कमेंट में है। ${telegramChannel} टेलीग्राम से जुड़ें।`,
+                `बेरोजगार हो? तो ये मौका हाथ से जाने मत देना! ${cleanName} की नई वैकेंसी आउट हो गई है। फॉर्म भरने की पूरी डिटेल पहले कमेंट में है।`,
                 `एक और शानदार सरकारी नौकरी आ गई है! ${cleanName} के लिए अभी अप्लाई करें। लिंक पहले कमेंट में है।`
             ]
         };
 
-        const categoryScripts = scripts[jobCat] || scripts['Default'];
-        const script = categoryScripts[Math.floor(Math.random() * categoryScripts.length)];
+        // ✅ Type के हिसाब से script choose करो
+        let scriptArray;
+        if (jobData.type === 'JOB') {
+            scriptArray = jobScripts;
+        } else {
+            scriptArray = fastTrackScripts[jobCat] || fastTrackScripts['Default'];
+        }
+
+        const script = scriptArray[Math.floor(Math.random() * scriptArray.length)];
+        console.log(`🎙️ Script: ${script.substring(0, 80)}...`);
 
         // ✅ TTS Generate
         const [ttsResponse] = await ttsClient.synthesizeSpeech({
-            input: { text: script },
-            voice: { languageCode: 'hi-IN', name: selectedVoice },
+            input:       { text: script },
+            voice:       { languageCode: 'hi-IN', name: selectedVoice },
             audioConfig: { audioEncoding: 'MP3', speakingRate: 1.08, pitch: 1.0 }
         });
         fs.writeFileSync(audioPath, ttsResponse.audioContent, 'binary');
         console.log('✅ Audio तैयार हो गया!');
 
-        // ✅ Poster बनाओ (function call)
-        const anchorY = await createPoster(jobData, jobCat, posterPath);
+        // ✅ Poster बनाओ
+        const safeAnchorY = await createPoster(jobData, jobCat, posterPath);
+        console.log(`📍 Anchor Y position: ${safeAnchorY}`);
 
         // ✅ Video Render
         console.log('🎬 FFmpeg Rendering शुरू...');
@@ -617,10 +671,11 @@ async function generateAndUploadVideo(jobData) {
         const finalMusic    = bgMusicPath ? path.resolve(bgMusicPath) : null;
         const hasMusic      = finalMusic && fs.existsSync(finalMusic);
 
-        console.log(`🔍 Files: Poster=${fs.existsSync(finalPoster)}, Anchor=${fs.existsSync(finalAnchor)}, Audio=${fs.existsSync(finalAudio)}, Music=${hasMusic}`);
-
-        // ✅ Anchor Y position (safe cap)
-        const safeAnchorY = Math.min(anchorY, 1200);
+        console.log(`🔍 File Check:`);
+        console.log(`   Poster : ${fs.existsSync(finalPoster)}`);
+        console.log(`   Anchor : ${fs.existsSync(finalAnchor)}`);
+        console.log(`   Audio  : ${fs.existsSync(finalAudio)}`);
+        console.log(`   Music  : ${hasMusic}`);
 
         let filter, args;
 
@@ -670,11 +725,17 @@ async function generateAndUploadVideo(jobData) {
             const ffmpeg = spawn(ffmpegPath, args);
             ffmpeg.stderr.on('data', (data) => {
                 const out = data.toString();
-                if (out.includes('frame=')) process.stdout.write(`\r${out.split('\n')[0]}`);
+                if (out.includes('frame=')) {
+                    process.stdout.write(`\r${out.split('\n')[0]}`);
+                }
             });
             ffmpeg.on('close', (code) => {
-                if (code === 0) { console.log('\n✅ Rendering पूरी!'); resolve(); }
-                else reject(new Error(`FFmpeg failed: code ${code}`));
+                if (code === 0) {
+                    console.log('\n✅ Rendering पूरी!');
+                    resolve();
+                } else {
+                    reject(new Error(`FFmpeg failed: code ${code}`));
+                }
             });
         });
 
@@ -682,7 +743,7 @@ async function generateAndUploadVideo(jobData) {
         const seoData    = generateSEO(jobData, jobCat);
         const finalTitle = generateViralTitle(jobData, jobCat);
 
-        // ✅ Full YouTube Description (Telegram included)
+        // ✅ Full YouTube Description
         const youtubeDescription =
             `${seoData.description}\n\n` +
             `🎬 Watch More Videos: https://www.youtube.com/@StudyGyaan\n` +
@@ -698,7 +759,7 @@ async function generateAndUploadVideo(jobData) {
                     title:       finalTitle,
                     description: youtubeDescription,
                     tags:        seoData.tags,
-                    categoryId:  '27'  // Education category
+                    categoryId:  '27'  // Education
                 },
                 status: {
                     privacyStatus:           'public',
@@ -748,24 +809,28 @@ async function generateAndUploadVideo(jobData) {
 
             if (existing) {
                 playlistId = existing.id;
+                console.log(`📂 Existing Playlist found: ${playlistTitle}`);
             } else {
                 const newPl = await youtube.playlists.insert({
                     part: 'snippet,status',
                     requestBody: {
-                        snippet: { title: playlistTitle, description: `${playlistTitle} - StudyGyaan.in` },
-                        status:  { privacyStatus: 'public' }
+                        snippet: {
+                            title:       playlistTitle,
+                            description: `${playlistTitle} - StudyGyaan.in`
+                        },
+                        status: { privacyStatus: 'public' }
                     }
                 });
                 playlistId = newPl.data.id;
-                console.log(`📂 Playlist '${playlistTitle}' बनाई!`);
+                console.log(`📂 नई Playlist बनाई: ${playlistTitle}`);
             }
 
             await youtube.playlistItems.insert({
                 part: 'snippet',
                 requestBody: {
                     snippet: {
-                        playlistId:  playlistId,
-                        resourceId:  { kind: 'youtube#video', videoId: videoId }
+                        playlistId: playlistId,
+                        resourceId: { kind: 'youtube#video', videoId: videoId }
                     }
                 }
             });
@@ -777,20 +842,27 @@ async function generateAndUploadVideo(jobData) {
         // ✅ Facebook Upload
         await uploadToFacebook(videoPath, seoData.description);
 
-        // ✅ Telegram Notification (YouTube link के साथ)
+        // ✅ Telegram Notification
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
         const TELEGRAM_CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
 
         if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
             const icons = {
-                'Result': '🏆', 'Admit Card': '🎫',
-                'Answer Key': '🔑', 'Syllabus': '📚', 'Default': '⚡'
+                'Result':     '🏆',
+                'Admit Card': '🎫',
+                'Answer Key': '🔑',
+                'Syllabus':   '📚',
+                'Default':    '⚡'
             };
             const icon = icons[jobCat] || '📌';
 
+            // ✅ Type के हिसाब से Telegram message
+            let tgLabel = jobData.type === 'JOB' ? '💼 New Govt Job Alert!' : `${icon} New ${jobCat}!`;
+
             const tgMsg =
                 `🎬 <b>New Video Live on YouTube!</b>\n\n` +
-                `${icon} <b>${jobData.title}</b>\n\n` +
+                `${tgLabel}\n` +
+                `<b>${jobData.title}</b>\n\n` +
                 `▶️ <b>Watch Now:</b>\n${videoUrl}\n\n` +
                 `📌 <b>Full Details & Direct Link:</b>\n${seoData.postLink}\n\n` +
                 `━━━━━━━━━━━━━━━━\n` +
@@ -812,9 +884,11 @@ async function generateAndUploadVideo(jobData) {
             } catch (tgErr) {
                 console.log('⚠️ Telegram error:', tgErr.message);
             }
+        } else {
+            console.log('⚠️ Telegram credentials missing, skipping...');
         }
 
-        // ✅ Auto First Comment - Direct Link + Telegram
+        // ✅ Auto First Comment
         console.log('⏳ 12 seconds wait (comment के लिए)...');
         await new Promise(r => setTimeout(r, 12000));
 
@@ -832,8 +906,8 @@ async function generateAndUploadVideo(jobData) {
                 part: 'snippet',
                 requestBody: {
                     snippet: {
-                        videoId:          videoId,
-                        topLevelComment:  {
+                        videoId:         videoId,
+                        topLevelComment: {
                             snippet: { textOriginal: commentText }
                         }
                     }
@@ -844,11 +918,22 @@ async function generateAndUploadVideo(jobData) {
             console.log('⚠️ Comment error:', commentErr.message);
         }
 
-        // ✅ Firestore में video URL update करो
+        // ✅ Firestore में video URL update करो - type के हिसाब से collection
         try {
             const db = admin.firestore();
-            const collection = jobData.type === 'JOB' ? 'jobs' : 'fast_track';
-            const docId      = jobData.slug || jobData.id;
+
+            let collection;
+            if (jobData.type === 'JOB') {
+                collection = 'jobs';
+            } else if (jobData.type === 'FAST_TRACK') {
+                collection = 'fast_track';
+            } else {
+                collection = 'fast_track'; // safe default
+            }
+
+            const docId = jobData.slug || jobData.id;
+
+            console.log(`💾 Firestore update: ${collection}/${docId}`);
 
             if (docId) {
                 await db.collection(collection).doc(docId).update({
@@ -857,12 +942,20 @@ async function generateAndUploadVideo(jobData) {
                     videoCreatedAt:  admin.firestore.FieldValue.serverTimestamp()
                 });
                 console.log(`✅ Firestore updated: ${collection}/${docId}`);
+            } else {
+                console.log('⚠️ docId नहीं मिला, Firestore skip किया।');
             }
         } catch (dbErr) {
             console.log('⚠️ Firestore update error:', dbErr.message);
         }
 
-        console.log(`\n🎉 सब कुछ हो गया!\n📺 YouTube: ${videoUrl}\n🌐 Website: ${seoData.postLink}`);
+        console.log(`\n${'='.repeat(50)}`);
+        console.log(`🎉 सब कुछ हो गया!`);
+        console.log(`📺 YouTube : ${videoUrl}`);
+        console.log(`🌐 Website : ${seoData.postLink}`);
+        console.log(`📂 Type    : ${jobData.type}`);
+        console.log(`${'='.repeat(50)}\n`);
+
         return true;
 
     } catch (err) {
@@ -872,7 +965,11 @@ async function generateAndUploadVideo(jobData) {
     } finally {
         // ✅ Cleanup temp files
         [audioPath, posterPath, videoPath].forEach(f => {
-            try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch (e) {}
+            try {
+                if (fs.existsSync(f)) fs.unlinkSync(f);
+            } catch (e) {
+                // ignore cleanup errors
+            }
         });
         console.log('🧹 Temp files cleanup done!');
     }
@@ -880,23 +977,39 @@ async function generateAndUploadVideo(jobData) {
 
 module.exports = { generateAndUploadVideo };
 
-// ✅ GitHub Actions Execution
+// =========================================================
+// ✅ GitHub Actions Execution Block
+// =========================================================
 if (require.main === module) {
     const payloadStr = process.env.JOB_DATA;
+
     if (payloadStr) {
         try {
             const jobData = JSON.parse(payloadStr);
+
+            console.log(`\n🚀 GitHub Actions Mode`);
+            console.log(`📌 Title : ${jobData.title}`);
+            console.log(`📂 Type  : ${jobData.type}`);
+            console.log(`🏷️  Cat   : ${jobData.category}\n`);
+
             generateAndUploadVideo(jobData)
                 .then(success => {
-                    console.log(success ? "✅ Video Process Complete!" : "❌ Video Process Failed!");
-                    process.exit(success ? 0 : 1);
+                    if (success) {
+                        console.log("✅ Video Process Complete!");
+                        process.exit(0);
+                    } else {
+                        console.log("❌ Video Process Failed!");
+                        process.exit(1);
+                    }
                 })
                 .catch(err => {
                     console.error("❌ Fatal Error:", err.message);
+                    console.error(err.stack);
                     process.exit(1);
                 });
         } catch (e) {
             console.error("❌ JSON Parse Error:", e.message);
+            console.error("Raw payload:", payloadStr.substring(0, 200));
             process.exit(1);
         }
     } else {
