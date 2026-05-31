@@ -2,56 +2,121 @@ import * as path from "path"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
-// https://vite.dev/config/
 export default defineConfig({
-  // ✅ FIX 1: इसे './' से बदलकर '/' कर दें (ताकि CSS सही लोड हो)
-  base: '/', 
-  
-  plugins: [react()],
-  
+  base: '/',
+
+  plugins: [
+    react()
+  ],
+
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  
-  // ✅ FIX 2: Build को साफ़-सुथरा रखने के लिए ये सेटिंग्स
+
   build: {
     outDir: 'dist',
-    emptyOutDir: true, // हर बार पुरानी फाइलें डिलीट करके नई बनाएगा
-    sourcemap: false,  // प्रोडक्शन में कोड हल्का रखने के लिए
-    
-    // 🚀 MASTER FIX: भारी लाइब्रेरीज़ को अलग-अलग बाँटना
+    emptyOutDir: true,
+    sourcemap: false,
+
+    // ✅ Faster minification
+    minify: 'esbuild',
+
+    // ✅ Modern browsers target
+    target: 'es2015',
+
+    // ✅ CSS alag file mein — route level split hogi
+    cssCodeSplit: true,
+
+    // ✅ Warning sirf tab aaye jab chunk sach mein bada ho
+    chunkSizeWarningLimit: 600,
+
     rollupOptions: {
       output: {
+        // ✅ Asset files ka naam consistent rakho
+        assetFileNames: 'assets/[name]-[hash][extname]',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            // 1. React कोर पैकेजेस
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+
+            // 1. React core — sabse pehle load hoga
+            if (
+              id.includes('/react/') ||
+              id.includes('/react-dom/') ||
+              id.includes('/react-router-dom/')||
+              id.includes('/scheduler/')
+            ) {
               return 'vendor-react-core';
             }
-            // 2. Firebase (यह बहुत भारी है)
-            if (id.includes('firebase')) {
-              return 'vendor-firebase';
+
+            // 2. Firebase — alag alag split
+            // Auth alag — sirf login page par chahiye
+            if (id.includes('firebase/auth')) {
+              return 'vendor-firebase-auth';
             }
-            // 3. Quill Editor (सिर्फ एडमिन/ब्लॉग पेज पर चाहिए, होम पर नहीं)
-            if (id.includes('quill')) {
+            // Storage alag — sirf admin par chahiye
+            if (id.includes('firebase/storage')) {
+              return 'vendor-firebase-storage';
+            }
+            // Firestore + app — har jagah chahiye
+            if (id.includes('firebase')) {
+              return 'vendor-firebase-core';
+            }
+
+            // 3. Quill — sirf admin page par
+            if (id.includes('quill') || id.includes('react-quill')) {
               return 'vendor-quill';
             }
-            // 4. Framer Motion (एनीमेशन के लिए)
+
+            // 4. Framer Motion
             if (id.includes('framer-motion')) {
               return 'vendor-motion';
             }
-            // 5. EmailJS (सिर्फ कांटेक्ट पेज के लिए)
+
+            // 5. EmailJS
             if (id.includes('emailjs')) {
               return 'vendor-emailjs';
             }
-            // 6. बाकी सभी छोटी लाइब्रेरीज़
+
+            // 6. Lucide icons — bade hote hain
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
+
+            // 7. Radix UI components
+            if (id.includes('@radix-ui')) {
+              return 'vendor-radix';
+            }
+
+            // 8. Baaki sab
             return 'vendor-others';
           }
         }
       }
-    },
-    chunkSizeWarningLimit: 1500,
+    }
+  },
+
+  // ✅ Dev server optimization
+  server: {
+    hmr: true,
+    port: 5173
+  },
+
+  // ✅ Dependencies pre-bundle karo — dev fast hoga
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react-router-dom',
+      'firebase/app',
+      'firebase/firestore',
+      'firebase/auth'
+    ],
+    exclude: [
+      'react-quill'  // Quill ko pre-bundle mat karo — lazy load hoga
+    ]
   }
 });
