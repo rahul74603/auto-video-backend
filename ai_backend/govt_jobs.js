@@ -1,4 +1,3 @@
-
 const { onRequest } = require("firebase-functions/v2/https");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
@@ -23,11 +22,16 @@ if (!admin.apps.length) {
         admin.initializeApp();
     }
 }
+
 const db = admin.firestore();
 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// ⚠️ genAI को function के अंदर बनाओ, बाहर नहीं
+// क्योंकि बाहर बनाने पर GEMINI_API_KEY secret
+// function runtime पर available नहीं होती
+const Parser = require('rss-parser');
 const parser = new Parser();
+
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // =========================================================
 // 🛠️ HELPERS
@@ -78,10 +82,10 @@ async function notifyGoogle(url) {
         await axios.post(
             "https://indexing.googleapis.com/v3/urlNotifications:publish",
             { url, type: "URL_UPDATED" },
-            { 
-                headers: { 
-                    Authorization: `Bearer ${jwtClient.credentials.access_token}` 
-                } 
+            {
+                headers: {
+                    Authorization: `Bearer ${jwtClient.credentials.access_token}`
+                }
             }
         );
         console.log("🚀 Google Indexing:", url);
@@ -91,32 +95,28 @@ async function notifyGoogle(url) {
 }
 
 // =========================================================
-// 🚀 GITHUB ACTIONS TRIGGER - Video के लिए
+// 🚀 GITHUB ACTIONS TRIGGER
 // =========================================================
 async function triggerGitHubVideoAction(jobData) {
     const GITHUB_TOKEN = process.env.GH_TOKEN;
     const REPO_OWNER   = process.env.GITHUB_OWNER;
     const REPO_NAME    = process.env.GITHUB_REPO;
 
-    // ✅ Validation
     if (!GITHUB_TOKEN) {
-        console.error("❌ GH_TOKEN Firebase Secret missing!");
-        console.error("Fix: firebase functions:secrets:set GH_TOKEN");
+        console.error("❌ GH_TOKEN missing!");
         return false;
     }
     if (!REPO_OWNER || !REPO_NAME) {
         console.error("❌ GITHUB_OWNER या GITHUB_REPO missing!");
-        console.error("Fix: firebase functions:secrets:set GITHUB_OWNER");
         return false;
     }
 
-    // ✅ Clean Job Data (only जो autoVideo.js को चाहिए)
     const cleanJobData = {
         id:           String(jobData.id || ''),
         slug:         String(jobData.slug || jobData.id || ''),
         title:        String(jobData.title || 'Latest Govt Job'),
         category:     String(jobData.category || 'Default'),
-        type:         String(jobData.type || 'JOB'),
+        type:         'JOB',   // ✅ हमेशा JOB रहेगा इस file में
         startDate:    String(jobData.startDate || ''),
         lastDate:     String(jobData.lastDate || ''),
         updateDate:   String(jobData.updateDate || ''),
@@ -124,8 +124,8 @@ async function triggerGitHubVideoAction(jobData) {
         vacancies:    String(jobData.vacancies || '')
     };
 
-  const payload = {
-        event_type: "generate_job_video", // <--- इसे बदल दें
+    const payload = {
+        event_type: "generate_job_video",
         client_payload: {
             jobData: cleanJobData
         }
@@ -148,9 +148,8 @@ async function triggerGitHubVideoAction(jobData) {
             }
         );
 
-        // ✅ 204 = Success
         if (response.status === 204) {
-            console.log("✅ GitHub Actions triggered! Video बन रही है...");
+            console.log("✅ GitHub Actions triggered!");
             return true;
         }
 
@@ -163,14 +162,9 @@ async function triggerGitHubVideoAction(jobData) {
                 status: err.response.status,
                 data:   JSON.stringify(err.response.data)
             });
-
-            if (err.response.status === 401) {
-                console.error("🔑 Fix: GH_TOKEN expired/invalid!");
-            } else if (err.response.status === 404) {
-                console.error(`🔍 Fix: Repo '${REPO_OWNER}/${REPO_NAME}' not found!`);
-            } else if (err.response.status === 422) {
-                console.error("⚙️ Fix: video_maker.yml में 'repository_dispatch' नहीं!");
-            }
+            if (err.response.status === 401) console.error("🔑 GH_TOKEN expired!");
+            if (err.response.status === 404) console.error(`🔍 Repo not found!`);
+            if (err.response.status === 422) console.error("⚙️ yml में repository_dispatch नहीं!");
         } else {
             console.error("❌ Network Error:", err.message);
         }
@@ -182,6 +176,9 @@ async function triggerGitHubVideoAction(jobData) {
 // 🤖 AI JOB DATA EXTRACTOR
 // =========================================================
 async function extractJobDataWithAI(scrapedContent, jobLink) {
+    // ✅ अब यहाँ genAI बनाओ ताकि secret runtime पर मिले
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
     const model = genAI.getGenerativeModel({
         model: "gemini-2.5-flash-lite",
         generationConfig: { responseMimeType: "application/json" }
@@ -309,13 +306,13 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
     console.log("🚀 Govt Jobs Scraper Started...");
 
     const rssUrl = 'https://www.indgovtjobs.in/feeds/posts/default?alt=rss';
-    const feed = await parser.parseURL(rssUrl);
-    const items = feed.items.slice(0, 50);
+    const feed   = await parser.parseURL(rssUrl);
+    const items  = feed.items.slice(0, 50);
 
     const now = new Date();
     const dateSuffix = now.toLocaleString('en-IN', {
         month: 'short',
-        year: 'numeric'
+        year:  'numeric'
     }).toLowerCase().replace(' ', '-');
 
     let internalLinks = [];
@@ -326,9 +323,9 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
             .get();
         recentBlogs.forEach(b => {
             const data = b.data();
-            internalLinks.push({ 
-                title: data.title, 
-                slug: data.slug || b.id 
+            internalLinks.push({
+                title: data.title,
+                slug:  data.slug || b.id
             });
         });
     } catch (e) {
@@ -374,9 +371,9 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
             if (jobData.isExpired === true) {
                 console.log(`⏭️ Expired: ${finalTitle}`);
                 await db.collection("processed_links").doc(docId).set({
-                    link: jobLink,
+                    link:        jobLink,
                     processedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    note: "Expired"
+                    note:        "Expired"
                 });
                 continue;
             }
@@ -452,14 +449,17 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
 
 // =========================================================
 // 1️⃣ HTTP TRIGGER - Scraper API
-// =========================================================
-// =========================================================
-// 1️⃣ HTTP TRIGGER - Scraper API
+// ✅ secrets add किए
 // =========================================================
 exports.fetchLatestGovtJobs = onRequest({
-    cors: false,
+    cors:           false,
+    invoker:        "public",
     timeoutSeconds: 300,
-    memory: "1GiB"
+    memory:         "1GiB",
+    secrets: [
+        "GEMINI_API_KEY",
+        "SERVICE_ACCOUNT_JSON"
+    ]
 }, async (req, res) => {
 
     if (req.method !== 'POST' && req.method !== 'GET') {
@@ -525,27 +525,39 @@ exports.fetchLatestGovtJobs = onRequest({
 
 // =========================================================
 // 2️⃣ FIRESTORE TRIGGER - Job Publish होने पर
+// ✅ secrets add किए - यही असली fix है!
 // =========================================================
 exports.onJobPublishedNotify = onDocumentCreated({
-    document: "jobs/{jobId}",
-    timeoutSeconds: 60,   // ✅ GitHub trigger = fast
-    memory: "256MB",
-    cpu: 1
+    document:       "jobs/{jobId}",
+    timeoutSeconds: 120,
+    memory:         "512MB",
+    secrets: [
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
+        "GH_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO",
+        "SERVICE_ACCOUNT_JSON"
+    ]
 }, async (event) => {
+
     const snap = event.data;
     if (!snap) return null;
 
     const job   = snap.data();
     const jobId = event.params.jobId;
 
-    // ✅ Only JOB type
+    // ✅ Only JOB type process करो
     if (job.type && job.type !== 'JOB') {
-        console.log(`⏭️ Skipping: ${job.type}`);
+        console.log(`⏭️ Skipping non-JOB type: ${job.type}`);
         return null;
     }
 
     const jobUrl = `https://studygyaan.in/job/${job.slug || jobId}`;
-    console.log(`🚀 New Job: ${job.title} → ${jobUrl}`);
+    console.log(`\n${'='.repeat(50)}`);
+    console.log(`🚀 New Job Published: ${job.title}`);
+    console.log(`🔗 URL: ${jobUrl}`);
+    console.log(`${'='.repeat(50)}\n`);
 
     // ─────────────────────────────────────
     // STEP 1: Job Schema (SEO)
@@ -555,12 +567,12 @@ exports.onJobPublishedNotify = onDocumentCreated({
             || new Date().toISOString();
 
         const jobSchema = {
-            "@context":      "https://schema.org/",
-            "@type":         "JobPosting",
-            "title":         job.title || '',
-            "description":   job.description || job.title || '',
-            "datePosted":    publishTime,
-            "employmentType":"FULL_TIME",
+            "@context":       "https://schema.org/",
+            "@type":          "JobPosting",
+            "title":          job.title || '',
+            "description":    job.description || job.title || '',
+            "datePosted":     publishTime,
+            "employmentType": "FULL_TIME",
             "hiringOrganization": {
                 "@type":  "Organization",
                 "name":   job.organization || "Govt Department",
@@ -618,7 +630,8 @@ exports.onJobPublishedNotify = onDocumentCreated({
         const triggered = await triggerGitHubVideoAction({
             ...job,
             id:   jobId,
-            slug: job.slug || jobId
+            slug: job.slug || jobId,
+            type: 'JOB'  // ✅ explicitly set
         });
 
         if (triggered) {
@@ -627,8 +640,10 @@ exports.onJobPublishedNotify = onDocumentCreated({
                 videoTriggered:   true,
                 videoTriggeredAt: admin.firestore.FieldValue.serverTimestamp()
             }).catch(() => {});
+            console.log("✅ GitHub trigger success");
         } else {
             videoStatus = "⚠️ GitHub trigger failed (check Firebase logs)";
+            console.log("⚠️ GitHub trigger failed");
         }
     } catch (err) {
         console.error("Trigger error:", err.message);
@@ -664,11 +679,14 @@ exports.onJobPublishedNotify = onDocumentCreated({
         ).catch(e => console.error("Telegram error:", e.message));
 
         console.log("✅ Telegram sent!");
+    } else {
+        console.log("⚠️ Telegram credentials missing");
     }
 
     // ─────────────────────────────────────
-    // STEP 5: WhatsApp (Optional)
+    // STEP 5: WhatsApp (अभी बंद है)
     // ─────────────────────────────────────
+    /*
     const WA_SERVER = process.env.WHATSAPP_SERVER_URL;
     if (WA_SERVER) {
         const waMsg = `🚨 *New Govt Job!*\n\n📌 *${job.title}*\n\n🔗 ${jobUrl}`;
@@ -677,13 +695,14 @@ exports.onJobPublishedNotify = onDocumentCreated({
             messageText: waMsg
         }).catch(e => console.log("WhatsApp skip:", e.message));
     }
+    */
 
-    console.log(`✅ All done: ${job.title}`);
+    console.log(`\n✅ All done: ${job.title}`);
     return null;
 });
 
 // =========================================================
-// 3️⃣ CLI RUNNER (GitHub Actions Scraper के लिए)
+// 3️⃣ CLI RUNNER
 // =========================================================
 exports.runJobScraper = async (maxJobs = 5) => {
     try {
@@ -698,7 +717,7 @@ exports.runJobScraper = async (maxJobs = 5) => {
 };
 
 // =========================================================
-// ✅ Direct Run (GitHub Actions)
+// ✅ Direct Run (GitHub Actions / CLI)
 // =========================================================
 if (require.main === module) {
     const maxJobs = parseInt(process.argv[2]) || 5;
