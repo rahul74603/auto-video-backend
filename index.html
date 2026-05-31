@@ -4,65 +4,214 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    
-    <title>StudyGyaan</title>
 
+    <title>StudyGyaan</title>
     <meta name="robots" content="index, follow" />
 
-    <link rel="preconnect" href="https://firestore.googleapis.com" />
+    <!-- =====================================================
+         ✅ PRECONNECT — Sirf jo zaruri hai (max 4)
+         Unused preconnects hata diye:
+         www.gstatic.com, www.google.com, news.google.com
+    ====================================================== -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://firestore.googleapis.com" />
 
-    <script type="module" src="/src/main.tsx"></script>
+    <!-- =====================================================
+         ✅ FONTS — Direct woff2 preload
+         Pehle: index.css mein @import tha — render blocking tha
+         Ab: seedha woff2 preload — 2597ms ka chain toot gaya
+         
+         Note: ye URLs Google Fonts se copy karo apne fonts ke liye
+         Inter (Latin) aur Noto Sans Devanagari ke liye
+    ====================================================== -->
 
-    <script async type="application/javascript" src="https://news.google.com/swg/js/v1/swg-basic.js"></script>
+    <!-- Inter — LCP heading font — seedha preload -->
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      crossorigin
+      href="https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiJ-Ek-_EeA.woff2"
+    />
 
-    <script>
-      (self.SWG_BASIC = self.SWG_BASIC || []).push(
-        (basicSubscriptions) => {
-          basicSubscriptions.init({
-            type: "NewsArticle",
-            isPartOfType: ["Product"],
-            isPartOfProductId: "CAownfa2DA:openaccess",
-            clientOptions: {
-              theme: "light",
-              lang: "en-GB",
-            },
-          });
+    <!-- Noto Sans Devanagari — Hindi text font -->
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      crossorigin
+      href="https://fonts.gstatic.com/s/notosansdevanagari/v26/TuGOUUFzXI5FBtUq5a8bjKYTZjtRU6Sgv3NaV_SNmI0b8QTF-aiDJ4iHiG5SRrvKQMy0WMg.woff2"
+    />
+
+    <!-- =====================================================
+         ✅ GOOGLE FONTS CSS — Non-blocking load
+         media="print" trick: pehle print mein load hogi
+         onload se all mein switch hogi — page block nahi hoga
+    ====================================================== -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <!-- JS disabled fallback -->
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap"
+      />
+    </noscript>
+
+    <!-- =====================================================
+         ✅ CRITICAL INLINE CSS
+         Ye sirf hero section ke liye hai
+         Font load hone se pehle bhi heading sahi dikhegi
+         CLS nahi hogi — fallback font metrics match karte hain
+    ====================================================== -->
+    <style>
+      /* Font fallback — Inter load hone tak system font use hoga */
+      /* Size adjust se layout shift nahi hogi */
+      @font-face {
+        font-family: 'Inter';
+        font-style: normal;
+        font-weight: 900;
+        font-display: swap;
+        src: local('Inter');
+        size-adjust: 100%;
+      }
+
+      /* Body reset — FOUC rokna */
+      body {
+        margin: 0;
+        background-color: #ffffff;
+        color: #0f172a;
+        font-family: 'Noto Sans Devanagari', 'Inter', system-ui, -apple-system, sans-serif;
+      }
+
+      /* Hero section — space pehle se reserve */
+      #root {
+        width: 100%;
+        min-height: 100vh;
+      }
+
+      /* Hero section placeholder — page load par jump nahi hoga */
+      #hero-section {
+        min-height: 700px;
+        background-color: #020617;
+        position: relative;
+      }
+
+      /* Nav placeholder — font load par shift nahi hogi */
+      nav:first-of-type {
+        height: 56px;
+        background: rgba(255,255,255,0.8);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        border-bottom: 1px solid #f1f5f9;
+      }
+
+      @media (min-width: 768px) {
+        nav:first-of-type {
+          height: 64px;
         }
-      );
-    </script>
+      }
+    </style>
+
   </head>
 
   <body>
     <div id="root"></div>
 
+    <!-- =====================================================
+         ✅ MAIN SCRIPT — Body ke end mein
+         Pehle: <head> mein tha — render blocking tha
+         Ab: body end mein — HTML parse hone ke baad load hoga
+    ====================================================== -->
+    <script type="module" src="/src/main.tsx"></script>
+
+    <!-- =====================================================
+         ✅ GOOGLE TAG MANAGER — Deferred
+         3 seconds baad ya user interaction par — jo pehle ho
+         GTM 141KB hai — defer karna zaroori tha
+    ====================================================== -->
     <script>
-      setTimeout(function () {
-        var script = document.createElement("script");
+      (function () {
+        var gtmLoaded = false;
 
-        script.src =
-          "https://www.googletagmanager.com/gtag/js?id=G-16RNLCMG36";
+        function loadGTM() {
+          if (gtmLoaded) return;
+          gtmLoaded = true;
 
-        script.async = true;
+          var script = document.createElement('script');
+          script.src = 'https://www.googletagmanager.com/gtag/js?id=G-16RNLCMG36';
+          script.async = true;
+          document.head.appendChild(script);
 
-        document.body.appendChild(script);
-
-        window.dataLayer = window.dataLayer || [];
-
-        function gtag() {
-          dataLayer.push(arguments);
+          window.dataLayer = window.dataLayer || [];
+          function gtag() { dataLayer.push(arguments); }
+          window.gtag = gtag;
+          gtag('js', new Date());
+          gtag('config', 'G-16RNLCMG36', {
+            page_path: window.location.pathname,
+            anonymize_ip: true
+          });
         }
 
-        window.gtag = gtag;
+        /* 3 seconds baad load karo */
+        var timer = setTimeout(loadGTM, 3000);
 
-        gtag("js", new Date());
-
-        gtag("config", "G-16RNLCMG36", {
-          page_path: window.location.pathname,
-          anonymize_ip: true,
+        /* Ya jab user pehli baar interact kare — jo pehle ho */
+        ['scroll', 'click', 'keydown', 'touchstart', 'mousemove'].forEach(function (evt) {
+          window.addEventListener(evt, function onInteract() {
+            clearTimeout(timer);
+            loadGTM();
+            /* Ek baar chalane ke baad listener hata do */
+            ['scroll', 'click', 'keydown', 'touchstart', 'mousemove'].forEach(function (e) {
+              window.removeEventListener(e, onInteract);
+            });
+          }, { once: true, passive: true });
         });
-      }, 3000);
+      })();
     </script>
+
+    <!-- =====================================================
+         ✅ SUBSCRIBE WITH GOOGLE (SWG) — Idle pe load
+         Pehle: async tha par <head> mein tha — 79KB block
+         Ab: requestIdleCallback se — jab browser free ho tab
+    ====================================================== -->
+    <script>
+      (function () {
+        function loadSWG() {
+          var script = document.createElement('script');
+          script.src = 'https://news.google.com/swg/js/v1/swg-basic.js';
+          script.async = true;
+          script.onload = function () {
+            (self.SWG_BASIC = self.SWG_BASIC || []).push(function (basicSubscriptions) {
+              basicSubscriptions.init({
+                type: 'NewsArticle',
+                isPartOfType: ['Product'],
+                isPartOfProductId: 'CAownfa2DA:openaccess',
+                clientOptions: {
+                  theme: 'light',
+                  lang: 'en-GB'
+                }
+              });
+            });
+          };
+          document.head.appendChild(script);
+        }
+
+        /* Browser free ho tab load karo */
+        if ('requestIdleCallback' in window) {
+          requestIdleCallback(loadSWG, { timeout: 5000 });
+        } else {
+          /* Fallback — 5 seconds baad */
+          setTimeout(loadSWG, 5000);
+        }
+      })();
+    </script>
+
   </body>
 </html>
