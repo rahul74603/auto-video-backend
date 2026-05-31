@@ -1,6 +1,5 @@
-require("dotenv").config();
 const { onRequest } = require("firebase-functions/v2/https");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore"); // ✅ Written→Created
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 const axios = require("axios");
 const { google } = require("googleapis");
@@ -385,10 +384,7 @@ exports.triggerFastTrackUpdates = onRequest({
 // =========================================================
 // 3️⃣ FIRESTORE TRIGGER - Approve होने पर Notify
 // =========================================================
-exports.onFastTrackApprovedSendTelegram = onDocumentCreated({
-    // ✅ Written → Created (edit पर trigger नहीं होगा)
-    // Note: यह नई documents पर ही trigger होगा
-    // Status approval के लिए अलग trigger बनाना होगा
+exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     document: "fast_track/{docId}",
     memory: "2GiB",
     timeoutSeconds: 540,
@@ -399,17 +395,25 @@ exports.onFastTrackApprovedSendTelegram = onDocumentCreated({
         "TTS_KEY_JSON", "FB_PAGE_ID", "FB_PAGE_TOKEN"
     ]
 }, async (event) => {
-    const snap = event.data;
-    if (!snap) return null;
+    if (!event.data.after.exists) return null; // अगर डिलीट हुआ है तो इग्नोर करें
 
-    const item = snap.data();
-    const docId = event.params.docId;
+    const afterData = event.data.after.data();
+    const beforeData = event.data.before ? event.data.before.data() : null;
 
-    // ✅ Draft items notify नहीं करो
-    if (item.status === 'draft') {
-        console.log(`⏭️ Draft, skipping: ${item.title}`);
+    // ✅ अगर ड्राफ्ट है तो इग्नोर करें
+    if (afterData.status === 'draft') {
+        console.log(`⏭️ Draft, skipping: ${afterData.title}`);
         return null;
     }
+
+    // ✅ अगर पहले से पब्लिश्ड था (यानी सिर्फ एडिट किया है), तो दोबारा ट्रिगर मत करें
+    if (beforeData && beforeData.status === 'published') {
+        console.log(`⏭️ Already published, skipping duplicate: ${afterData.title}`);
+        return null;
+    }
+
+    const item = afterData;
+    const docId = event.params.docId;
 
     console.log(`🚀 Processing: ${item.title} [${item.category}]`);
 
