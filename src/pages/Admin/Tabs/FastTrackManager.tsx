@@ -143,37 +143,7 @@ const ApproveModal = ({ item, onConfirm, onCancel, loading }) => (
     </div>
 );
 
-// =========================================================
-// 🚀 GITHUB TRIGGER (Server-side - PAT secure)
-// =========================================================
-async function triggerGitHubAction(eventType, payload, adminToken) {
-    try {
-        // ✅ Firebase Function के through trigger करो
-        // PAT कभी Frontend में नहीं आएगा!
-        const res = await fetch(
-            'https://us-central1-studymaterial-406ad.cloudfunctions.net/triggerGitHub',
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-admin-token': adminToken || localStorage.getItem('sg_admin_token') || ''
-                },
-                body: JSON.stringify({ eventType, payload })
-            }
-        );
 
-        if (res.ok) {
-            console.log(`✅ GitHub Action triggered: ${eventType}`);
-            return true;
-        } else {
-            console.warn(`⚠️ GitHub trigger failed: ${res.status}`);
-            return false;
-        }
-    } catch (err) {
-        console.error('GitHub trigger error:', err.message);
-        return false;
-    }
-}
 
 // =========================================================
 // 📋 FORM FIELD COMPONENT
@@ -529,25 +499,7 @@ const FastTrackManager = () => {
 
             showToast("✅ Published successfully!");
 
-            // ✅ Trigger GitHub Actions (Server-side PAT)
-            const liveData = {
-                ...approveModal,
-                status: 'published'
-            };
-
-            const telegramOk = await triggerGitHubAction('send_telegram_alert', {
-                jobData: liveData,
-                docId: approveModal.id,
-                type: 'FAST_TRACK'
-            });
-
-            const videoOk = await triggerGitHubAction('generate_video', {
-                jobData: liveData
-            });
-
-            if (telegramOk || videoOk) {
-                showToast("📢 Notifications triggered!");
-            }
+           
 
         } catch (err) {
             showToast("Approve failed: " + err.message, 'error');
