@@ -21,15 +21,10 @@ import SEO from '../components/SEO';
 function formatDate(dateField) {
     if (!dateField) return new Date().toLocaleDateString('hi-IN');
     try {
-        // Firestore Timestamp
-        if (dateField?.seconds) {
+        if (dateField?.seconds)
             return new Date(dateField.seconds * 1000).toLocaleDateString('hi-IN');
-        }
-        // Firestore toDate()
-        if (dateField?.toDate) {
+        if (dateField?.toDate)
             return dateField.toDate().toLocaleDateString('hi-IN');
-        }
-        // String/Number
         return new Date(dateField).toLocaleDateString('hi-IN');
     } catch {
         return new Date().toLocaleDateString('hi-IN');
@@ -39,8 +34,10 @@ function formatDate(dateField) {
 function getIsoDate(dateField) {
     if (!dateField) return new Date().toISOString();
     try {
-        if (dateField?.seconds) return new Date(dateField.seconds * 1000).toISOString();
-        if (dateField?.toDate) return dateField.toDate().toISOString();
+        if (dateField?.seconds)
+            return new Date(dateField.seconds * 1000).toISOString();
+        if (dateField?.toDate)
+            return dateField.toDate().toISOString();
         return new Date(dateField).toISOString();
     } catch {
         return new Date().toISOString();
@@ -59,26 +56,95 @@ function estimateReadTime(content) {
 // 🎨 COLORS
 // =========================================================
 const LOOP_COLORS = [
-    { bg: "bg-rose-50", border: "border-rose-200 hover:border-rose-400", text: "text-rose-900", iconText: "text-rose-600" },
-    { bg: "bg-blue-50", border: "border-blue-200 hover:border-blue-400", text: "text-blue-900", iconText: "text-blue-600" },
-    { bg: "bg-emerald-50", border: "border-emerald-200 hover:border-emerald-400", text: "text-emerald-900", iconText: "text-emerald-600" },
-    { bg: "bg-amber-50", border: "border-amber-200 hover:border-amber-400", text: "text-amber-900", iconText: "text-amber-600" },
-    { bg: "bg-purple-50", border: "border-purple-200 hover:border-purple-400", text: "text-purple-900", iconText: "text-purple-600" }
+    { bg: 'bg-rose-50', border: 'border-rose-200 hover:border-rose-400', text: 'text-rose-900', iconText: 'text-rose-600' },
+    { bg: 'bg-blue-50', border: 'border-blue-200 hover:border-blue-400', text: 'text-blue-900', iconText: 'text-blue-600' },
+    { bg: 'bg-emerald-50', border: 'border-emerald-200 hover:border-emerald-400', text: 'text-emerald-900', iconText: 'text-emerald-600' },
+    { bg: 'bg-amber-50', border: 'border-amber-200 hover:border-amber-400', text: 'text-amber-900', iconText: 'text-amber-600' },
+    { bg: 'bg-purple-50', border: 'border-purple-200 hover:border-purple-400', text: 'text-purple-900', iconText: 'text-purple-600' }
 ];
 
 const LINK_GRADIENTS = [
-    "bg-gradient-to-r from-blue-600 to-cyan-500 shadow-blue-500/30",
-    "bg-gradient-to-r from-purple-600 to-fuchsia-500 shadow-purple-500/30",
-    "bg-gradient-to-r from-orange-500 to-red-500 shadow-orange-500/30",
-    "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-emerald-500/30",
-    "bg-gradient-to-r from-rose-500 to-pink-500 shadow-rose-500/30"
+    'bg-gradient-to-r from-blue-600 to-cyan-500 shadow-blue-500/30',
+    'bg-gradient-to-r from-purple-600 to-fuchsia-500 shadow-purple-500/30',
+    'bg-gradient-to-r from-orange-500 to-red-500 shadow-orange-500/30',
+    'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-emerald-500/30',
+    'bg-gradient-to-r from-rose-500 to-pink-500 shadow-rose-500/30'
 ];
+
+// =========================================================
+// 🦴 SKELETON — CLS nahi hogi, same layout reserve karta hai
+// =========================================================
+const BlogPostSkeleton = () => (
+    <div className="min-h-screen bg-[#F8FAFC] font-hindi antialiased pb-20">
+
+        {/* Navbar skeleton */}
+        <div
+            className="sticky top-0 z-50 bg-white/80 border-b border-slate-100 px-3 md:px-6 shadow-sm"
+            style={{ height: '48px' }}
+        />
+
+        {/* Hero image skeleton */}
+        <div
+            className="w-full bg-slate-200 animate-pulse"
+            style={{ height: 'clamp(180px, 25vh, 40vh)' }}
+        />
+
+        <div className="max-w-7xl mx-auto px-2 md:px-4 py-4 md:py-8">
+            <div className="flex flex-col md:flex-row gap-4 md:gap-8">
+
+                {/* Article skeleton */}
+                <div className="w-full md:w-[65%]">
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 md:p-8 space-y-4 animate-pulse">
+                        {/* meta bar */}
+                        <div className="flex gap-2 pb-4 border-b border-slate-100">
+                            <div className="h-8 w-24 bg-slate-100 rounded-lg" />
+                            <div className="h-8 w-28 bg-slate-100 rounded-lg" />
+                            <div className="h-8 w-20 bg-slate-100 rounded-lg" />
+                        </div>
+                        {/* content lines */}
+                        <div className="h-4 bg-slate-100 rounded w-full" />
+                        <div className="h-4 bg-slate-100 rounded w-5/6" />
+                        <div className="h-4 bg-slate-100 rounded w-4/6" />
+                        <div className="h-4 bg-slate-100 rounded w-full" />
+                        <div className="h-4 bg-slate-100 rounded w-3/4" />
+                        <div className="h-4 bg-slate-100 rounded w-full" />
+                        <div className="h-4 bg-slate-100 rounded w-2/3" />
+                        <div className="h-4 bg-slate-100 rounded w-5/6" />
+                        <div className="h-4 bg-slate-100 rounded w-full" />
+                        <div className="h-4 bg-slate-100 rounded w-4/5" />
+                    </div>
+                </div>
+
+                {/* Sidebar skeleton */}
+                <div className="w-full md:w-[35%] space-y-4">
+                    <div className="bg-white rounded-2xl border border-slate-100 p-4 animate-pulse space-y-3">
+                        <div className="h-5 bg-slate-100 rounded w-2/3" />
+                        <div className="h-14 bg-slate-100 rounded-xl" />
+                        <div className="h-14 bg-slate-100 rounded-xl" />
+                        <div className="h-14 bg-slate-100 rounded-xl" />
+                    </div>
+                    <div className="bg-white rounded-2xl border border-slate-100 p-4 animate-pulse space-y-3">
+                        <div className="h-5 bg-slate-100 rounded w-1/2" />
+                        <div className="h-12 bg-slate-100 rounded-xl" />
+                        <div className="h-12 bg-slate-100 rounded-xl" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {/* Bottom bar skeleton */}
+        <div
+            className="fixed bottom-0 left-0 w-full bg-white border-t border-slate-200"
+            style={{ height: '56px' }}
+        />
+    </div>
+);
 
 // =========================================================
 // 🚀 MAIN COMPONENT
 // =========================================================
 const BlogPost = () => {
-    const { id } = useParams(); // slug या id दोनों handle करेगा
+    const { id } = useParams();
     const navigate = useNavigate();
 
     const [blog, setBlog] = useState(null);
@@ -87,10 +153,10 @@ const BlogPost = () => {
     const [notFound, setNotFound] = useState(false);
     const [voted, setVoted] = useState(false);
     const [copied, setCopied] = useState(false);
-    const [docId, setDocId] = useState(null); // Actual Firestore doc ID
+    const [docId, setDocId] = useState(null);
 
     // =========================================================
-    // 📡 DATA FETCH - Slug और ID दोनों handle करता है
+    // 📡 DATA FETCH
     // =========================================================
     useEffect(() => {
         const loadData = async () => {
@@ -106,26 +172,25 @@ const BlogPost = () => {
                 let blogData = null;
                 let foundDocId = null;
 
-                // ✅ Step 1: Slug से ढूंढो (SEO-friendly URLs)
+                // Step 1: Slug se dhundho
                 try {
                     const slugQuery = query(
-                        collection(db, "blogs"),
-                        where("slug", "==", id),
+                        collection(db, 'blogs'),
+                        where('slug', '==', id),
                         limit(1)
                     );
                     const slugSnap = await getDocs(slugQuery);
-
                     if (!slugSnap.empty) {
                         blogData = slugSnap.docs[0].data();
                         foundDocId = slugSnap.docs[0].id;
                     }
                 } catch (slugErr) {
-                    console.warn("Slug query failed:", slugErr.message);
+                    console.warn('Slug query failed:', slugErr.message);
                 }
 
-                // ✅ Step 2: Doc ID से ढूंढो (fallback)
+                // Step 2: Doc ID fallback
                 if (!blogData) {
-                    const directRef = doc(db, "blogs", id);
+                    const directRef = doc(db, 'blogs', id);
                     const directSnap = await getDoc(directRef);
                     if (directSnap.exists()) {
                         blogData = directSnap.data();
@@ -141,27 +206,27 @@ const BlogPost = () => {
                 setBlog(blogData);
                 setDocId(foundDocId);
 
-                // ✅ View Count Increment
+                // View count
                 try {
-                    await updateDoc(doc(db, "blogs", foundDocId), {
+                    await updateDoc(doc(db, 'blogs', foundDocId), {
                         views: increment(1)
                     });
                 } catch {
-                    // View count fail होने पर page नहीं रुकना चाहिए
+                    // silent
                 }
 
-                // ✅ Global Settings
+                // Global settings
                 const settingsSnap = await getDoc(
-                    doc(db, "site_settings", "global")
+                    doc(db, 'site_settings', 'global')
                 );
-                if (settingsSnap.exists()) {
-                    setGlobalSettings(settingsSnap.data());
-                } else {
-                    setGlobalSettings(getDefaultSettings());
-                }
+                setGlobalSettings(
+                    settingsSnap.exists()
+                        ? settingsSnap.data()
+                        : getDefaultSettings()
+                );
 
             } catch (error) {
-                console.error("Error loading blog:", error);
+                console.error('Error loading blog:', error);
                 setNotFound(true);
             } finally {
                 setLoading(false);
@@ -178,19 +243,19 @@ const BlogPost = () => {
     function getDefaultSettings() {
         return {
             sidebarLinks: [
-                { name: "New Govt Job Details", url: "/govt-jobs" },
-                { name: "Best Free Study Materials", url: "/free-study-material" }
+                { name: 'New Govt Job Details', url: '/govt-jobs' },
+                { name: 'Best Free Study Materials', url: '/free-study-material' }
             ],
             relatedBlogs: [
-                { title: "SSC CGL 2025: पूरी जानकारी और सिलेबस", url: "/blog" },
-                { title: "Railway Group D: Preparation Guide", url: "/blog" }
+                { title: 'SSC CGL 2025: पूरी जानकारी और सिलेबस', url: '/blog' },
+                { title: 'Railway Group D: Preparation Guide', url: '/blog' }
             ],
-            premiumBoxTitle: "Premium Material Notes",
-            premiumBoxDesc: "100% सफलता के लिए श्रेणी-वार महत्वपूर्ण सवालों का असली संग्रह।",
-            bottomBarText: "📢 Premium Notes: पिछले 10 साल के रिपीटेड सवालों का पूरा बंडल",
-            premiumPrice: "69",
-            mrpPrice: "499",
-            discountPercent: "85"
+            premiumBoxTitle: 'Premium Material Notes',
+            premiumBoxDesc: '100% सफलता के लिए श्रेणी-वार महत्वपूर्ण सवालों का असली संग्रह।',
+            bottomBarText: '📢 Premium Notes: पिछले 10 साल के रिपीटेड सवालों का पूरा बंडल',
+            premiumPrice: '69',
+            mrpPrice: '499',
+            discountPercent: '85'
         };
     }
 
@@ -198,17 +263,16 @@ const BlogPost = () => {
     // 💬 FEEDBACK
     // =========================================================
     const handleFeedback = useCallback(async (type) => {
-        if (voted) return toast.info("आप पहले ही अपनी राय दे चुके हैं!");
+        if (voted) return toast.info('आप पहले ही अपनी राय दे चुके हैं!');
         if (!docId) return;
-
         try {
-            await updateDoc(doc(db, "blogs", docId), {
+            await updateDoc(doc(db, 'blogs', docId), {
                 [type === 'yes' ? 'real_likes' : 'real_dislikes']: increment(1)
             });
             setVoted(true);
-            toast.success("फीडबैक देने के लिए धन्यवाद! 🙏");
+            toast.success('फीडबैक देने के लिए धन्यवाद! 🙏');
         } catch {
-            toast.error("फीडबैक सेव नहीं हो सका।");
+            toast.error('फीडबैक सेव नहीं हो सका।');
         }
     }, [voted, docId]);
 
@@ -219,7 +283,6 @@ const BlogPost = () => {
         const shareUrl = window.location.href;
         const shareTitle = blog?.title || 'StudyGyaan Blog';
 
-        // ✅ Native Share API (Mobile)
         if (navigator.share) {
             try {
                 await navigator.share({
@@ -229,23 +292,22 @@ const BlogPost = () => {
                 });
                 return;
             } catch {
-                // User cancelled या not supported
+                // cancelled
             }
         }
 
-        // ✅ Clipboard fallback
         try {
             await navigator.clipboard.writeText(shareUrl);
             setCopied(true);
-            toast.success("लिंक कॉपी हो गया! 📋");
+            toast.success('लिंक कॉपी हो गया! 📋');
             setTimeout(() => setCopied(false), 3000);
         } catch {
-            toast.error("Share नहीं हो सका।");
+            toast.error('Share नहीं हो सका।');
         }
     }, [blog]);
 
     // =========================================================
-    // 💰 PRICE CALCULATION
+    // 💰 PRICE
     // =========================================================
     const sellingPrice = Math.round(
         Number(globalSettings?.mrpPrice || 499) *
@@ -253,26 +315,16 @@ const BlogPost = () => {
     );
 
     // =========================================================
-    // 🔄 LOADING STATE
+    // 🔄 LOADING
     // =========================================================
-    if (loading) {
-        return (
-            <div className="flex flex-col justify-center items-center min-h-screen gap-3">
-                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                <p className="font-hindi text-blue-600 font-bold text-sm">
-                    लोड हो रहा है...
-                </p>
-            </div>
-        );
-    }
+    if (loading) return <BlogPostSkeleton />;
 
     // =========================================================
-    // ❌ 404 STATE
+    // ❌ 404
     // =========================================================
     if (notFound || !blog) {
         return (
             <>
-                {/* ✅ 404 के लिए noIndex */}
                 <SEO
                     customTitle="Blog Not Found | StudyGyaan"
                     customDescription="यह ब्लॉग पोस्ट नहीं मिली।"
@@ -299,7 +351,7 @@ const BlogPost = () => {
     }
 
     // =========================================================
-    // 📊 SEO DATA PREP
+    // 📊 SEO DATA
     // =========================================================
     const blogSlug = blog.slug || docId || id;
     const canonicalUrl = `https://studygyaan.in/blog/${blogSlug}`;
@@ -321,24 +373,29 @@ const BlogPost = () => {
     return (
         <div className="min-h-screen bg-[#F8FAFC] font-hindi antialiased pb-20">
 
-            {/* ✅ SEO - Article type with all props */}
             <SEO
                 customTitle={seoTitle}
                 customDescription={seoDesc}
                 customUrl={canonicalUrl}
-                customImage={blog.imageUrl || "https://studygyaan.in/og-image.jpg"}
-                customKeywords={blog.tags
-                    ? blog.tags.join(', ')
-                    : `${blog.category || 'Education'}, StudyGyaan, ${blog.title}`}
+                customImage={blog.imageUrl || 'https://studygyaan.in/og-image.jpg'}
+                customKeywords={
+                    blog.tags
+                        ? blog.tags.join(', ')
+                        : `${blog.category || 'Education'}, StudyGyaan, ${blog.title}`
+                }
                 ogType="article"
                 publishedDate={publishedIso}
                 modifiedDate={publishedIso}
-                author={blog.author || "Rahul Sir"}
-                category={blog.category || "Education"}
+                author={blog.author || 'Rahul Sir'}
+                category={blog.category || 'Education'}
             />
 
-            {/* ✅ Navbar */}
-            <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-100 px-3 md:px-6 h-12 md:h-14 flex items-center justify-between shadow-sm">
+            {/* Navbar — fixed height reserved */}
+            <nav
+                className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-100 px-3 md:px-6 flex items-center justify-between shadow-sm"
+                style={{ height: '48px' }}
+                aria-label="Blog Navigation"
+            >
                 <button
                     onClick={() => navigate(-1)}
                     className="flex items-center text-slate-600 hover:text-blue-600 font-bold transition-colors text-xs md:text-sm bg-slate-100/50 px-2.5 py-1.5 rounded-lg border border-slate-200"
@@ -356,7 +413,6 @@ const BlogPost = () => {
                     StudyGyaan
                 </a>
 
-                {/* ✅ Share Button - Working! */}
                 <button
                     onClick={handleShare}
                     className="flex items-center gap-1 text-slate-600 hover:text-blue-600 font-bold text-xs bg-slate-100/50 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors"
@@ -372,15 +428,19 @@ const BlogPost = () => {
                 </button>
             </nav>
 
-            {/* ✅ Hero Image */}
-            <header className="relative w-full h-[25vh] md:h-[40vh] bg-slate-900 overflow-hidden">
+            {/* Hero Image — explicit dimensions, no shift */}
+            <header
+                className="relative w-full bg-slate-900 overflow-hidden"
+                style={{ height: 'clamp(180px, 25vh, 40vh)' }}
+            >
                 <img
                     src={blog.imageUrl || '/og-image.jpg'}
                     className="w-full h-full object-cover opacity-30"
                     alt={blog.title}
-                    fetchpriority="high"
+                    fetchPriority="high"
                     width="1200"
                     height="630"
+                    decoding="async"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#F8FAFC] via-slate-900/50 to-transparent" />
                 <div className="absolute bottom-0 left-0 w-full p-4 md:p-8">
@@ -390,7 +450,6 @@ const BlogPost = () => {
                                 {blog.category}
                             </span>
                         )}
-                        {/* ✅ H1 - Proper semantic */}
                         <h1 className="text-xl md:text-4xl font-black text-slate-900 leading-[1.2] break-words max-w-4xl drop-shadow-md">
                             {blog.title}
                         </h1>
@@ -398,11 +457,11 @@ const BlogPost = () => {
                 </div>
             </header>
 
-            {/* ✅ Main Content */}
+            {/* Main Content */}
             <main className="max-w-7xl mx-auto px-2 md:px-4 py-4 md:py-8">
                 <div className="flex flex-col md:flex-row gap-4 md:gap-8 items-start">
 
-                    {/* Article Column */}
+                    {/* Article */}
                     <div className="w-full md:w-[65%] min-w-0">
                         <article
                             className="bg-white rounded-2xl md:rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 overflow-hidden"
@@ -413,14 +472,11 @@ const BlogPost = () => {
                             <div className="flex flex-wrap items-center gap-2 md:gap-3 p-3 md:p-5 border-b border-slate-100 text-slate-600 text-[10px] md:text-sm font-bold bg-slate-50/50">
                                 <div className="flex items-center bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-slate-200">
                                     <User className="w-3.5 h-3.5 mr-1 text-blue-500" aria-hidden="true" />
-                                    <span itemProp="author">{blog.author || "Rahul Sir"}</span>
+                                    <span itemProp="author">{blog.author || 'Rahul Sir'}</span>
                                 </div>
                                 <div className="flex items-center bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-slate-200">
                                     <Calendar className="w-3.5 h-3.5 mr-1 text-blue-500" aria-hidden="true" />
-                                    <time
-                                        itemProp="datePublished"
-                                        dateTime={publishedIso}
-                                    >
+                                    <time itemProp="datePublished" dateTime={publishedIso}>
                                         {formatDate(blog.date || blog.createdAt)}
                                     </time>
                                 </div>
@@ -428,7 +484,6 @@ const BlogPost = () => {
                                     <Clock className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
                                     {readTime} पढ़ें
                                 </div>
-                                {/* ✅ View Count */}
                                 {blog.views && (
                                     <div className="flex items-center bg-green-50 text-green-700 px-2.5 py-1.5 rounded-lg shadow-sm border border-green-200">
                                         <Eye className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
@@ -454,14 +509,22 @@ const BlogPost = () => {
                                         <button
                                             onClick={() => handleFeedback('yes')}
                                             disabled={voted}
-                                            className={`px-4 py-2 md:px-8 md:py-2.5 rounded-lg text-[10px] md:text-sm font-black transition-all shadow-md ${voted ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'}`}
+                                            className={`px-4 py-2 md:px-8 md:py-2.5 rounded-lg text-[10px] md:text-sm font-black transition-all shadow-md ${
+                                                voted
+                                                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                                    : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'
+                                            }`}
                                         >
                                             हाँ 👍
                                         </button>
                                         <button
                                             onClick={() => handleFeedback('no')}
                                             disabled={voted}
-                                            className={`px-4 py-2 md:px-8 md:py-2.5 rounded-lg text-[10px] md:text-sm font-black transition-all shadow-md ${voted ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-700 border-2 border-slate-200 hover:bg-slate-50 active:scale-95'}`}
+                                            className={`px-4 py-2 md:px-8 md:py-2.5 rounded-lg text-[10px] md:text-sm font-black transition-all shadow-md ${
+                                                voted
+                                                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                                    : 'bg-white text-slate-700 border-2 border-slate-200 hover:bg-slate-50 active:scale-95'
+                                            }`}
                                         >
                                             नहीं 👎
                                         </button>
@@ -473,7 +536,7 @@ const BlogPost = () => {
                                     )}
                                 </section>
 
-                                {/* ✅ Internal Links */}
+                                {/* Internal Links */}
                                 <div className="bg-blue-50/50 p-6 rounded-[2rem] border border-blue-100 mt-8">
                                     <h2 className="text-sm md:text-xl font-black text-slate-800 mb-5 uppercase flex items-center gap-2">
                                         <FileSearch size={20} className="text-blue-600" aria-hidden="true" />
@@ -481,11 +544,11 @@ const BlogPost = () => {
                                     </h2>
                                     <div className="flex flex-wrap gap-3">
                                         {[
-                                            { href: "/govt-jobs", label: "Latest Govt Jobs" },
-                                            { href: "/free-study-material", label: "Free Study Material" },
-                                            { href: "/test", label: "Free Mock Tests" },
-                                            { href: "/blog", label: "All Blogs" },
-                                            { href: "/web-stories", label: "Web Stories" }
+                                            { href: '/govt-jobs', label: 'Latest Govt Jobs' },
+                                            { href: '/free-study-material', label: 'Free Study Material' },
+                                            { href: '/test', label: 'Free Mock Tests' },
+                                            { href: '/blog', label: 'All Blogs' },
+                                            { href: '/web-stories', label: 'Web Stories' }
                                         ].map(link => (
                                             <a
                                                 key={link.href}
@@ -504,7 +567,6 @@ const BlogPost = () => {
                     {/* Sidebar */}
                     <aside className="w-full md:w-[35%] space-y-4 md:space-y-6 md:sticky md:top-16">
 
-                        {/* Trending */}
                         {sidebarUpdates.length > 0 && (
                             <section className="bg-white/80 backdrop-blur-xl p-4 md:p-6 rounded-2xl border border-white/60 shadow-sm">
                                 <h2 className="text-sm md:text-lg font-black text-slate-900 mb-4 flex items-center border-b border-slate-100 pb-3">
@@ -539,7 +601,6 @@ const BlogPost = () => {
                             </section>
                         )}
 
-                        {/* Quick Links */}
                         {pageQuickLinks.length > 0 && (
                             <section className="bg-white/80 p-4 md:p-6 rounded-[2rem] border border-slate-100 shadow-sm">
                                 <h2 className="text-sm md:text-lg font-black text-slate-900 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
@@ -571,7 +632,6 @@ const BlogPost = () => {
                             </section>
                         )}
 
-                        {/* Premium Box */}
                         {globalSettings && (
                             <section className="p-4 md:p-6 bg-gradient-to-br from-blue-700 via-indigo-800 to-slate-900 rounded-2xl md:rounded-[2rem] text-white shadow-2xl border-b-4 border-black/20">
                                 <p className="font-black text-sm md:text-xl mb-1.5 italic flex items-center gap-2 text-yellow-300">
@@ -604,10 +664,13 @@ const BlogPost = () => {
                 </div>
             </main>
 
-            {/* ✅ Bottom Bar */}
-            <div className="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-xl border-t border-slate-200 py-2 px-3 md:py-3 md:px-4 z-[100] shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
-                <div className="max-w-5xl mx-auto flex justify-between items-center gap-2">
-                    <div className="flex flex-col">
+            {/* Bottom Bar — fixed height reserved */}
+            <div
+                className="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-xl border-t border-slate-200 py-2 px-3 md:py-3 md:px-4 z-[100] shadow-[0_-10px_30px_rgba(0,0,0,0.08)]"
+                style={{ height: '56px' }}
+            >
+                <div className="max-w-5xl mx-auto flex justify-between items-center gap-2 h-full">
+                    <div className="flex flex-col justify-center">
                         <span className="text-[10px] md:text-xs font-black text-red-600 flex items-center gap-1 uppercase">
                             <Flame className="w-3 h-3 text-orange-500 animate-pulse" aria-hidden="true" />
                             OFFER: {globalSettings?.discountPercent}% OFF
@@ -621,7 +684,7 @@ const BlogPost = () => {
                     </div>
                     <a
                         href="/premium-notes"
-                        className="bg-blue-700 text-white font-black py-2 px-6 md:py-2.5 md:px-8 rounded-xl hover:bg-blue-800 transition-all shadow-lg active:scale-95 flex items-center gap-1.5 text-[12px] md:text-sm"
+                        className="bg-blue-700 text-white font-black py-2 px-6 md:py-2.5 md:px-8 rounded-xl hover:bg-blue-800 transition-all shadow-lg active:scale-95 flex items-center gap-1.5 text-[12px] md:text-sm shrink-0"
                     >
                         <span className="hidden md:inline">
                             सिर्फ ₹{sellingPrice} में अनलॉक करें
