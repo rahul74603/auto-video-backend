@@ -452,17 +452,12 @@ exports.onJobApprovedSendTelegram = onDocumentWritten({
 
 exports.fetchLatestGovtJobs = onRequest({ timeoutSeconds: 300, memory: "1GiB" }, 
     (req, res) => require("./govt_jobs").fetchLatestGovtJobs(req, res));
+    exports.onJobPublishedNotify = require("./govt_jobs").onJobPublishedNotify;
 
 // 2. Fast Track Updates
-exports.fetchFastTrackUpdates = onRequest({ timeoutSeconds: 300, memory: "1GiB" }, 
-    (req, res) => require("./fast_track_updates").fetchFastTrackUpdates(req, res));
-
-exports.triggerFastTrackUpdates = onRequest({ timeoutSeconds: 300, memory: "1GiB" }, (req, res) => require("./fast_track_updates").triggerFastTrackUpdates(req, res));
-exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
-    document: "fast_track/{docId}",
-    secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON", "GMAIL_CREDENTIALS", "YOUTUBE_TOKEN", "TTS_KEY_JSON", "FB_PAGE_ID", "FB_PAGE_TOKEN"],
-    timeoutSeconds: 540, memory: "2GiB"
-}, (event) => require("./fast_track_updates").onFastTrackApprovedSendTelegram(event));
+exports.fetchFastTrackUpdates = require("./fast_track_updates").fetchFastTrackUpdates;
+exports.triggerFastTrackUpdates = require("./fast_track_updates").triggerFastTrackUpdates;
+exports.onFastTrackApprovedSendTelegram = require("./fast_track_updates").onFastTrackApprovedSendTelegram;
 
 // 3. News, RSS & SEO
 exports.rssFeed = onRequest({ memory: "1GiB" }, (req, res) => require("./newsFeed").rssFeed(req, res));
