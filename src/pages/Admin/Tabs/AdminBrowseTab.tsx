@@ -75,28 +75,6 @@ function formatDateForInput(dateStr) {
     }
 }
 
-// ✅ Firebase Function के through GitHub trigger करो
-// PAT कभी Frontend में नहीं आएगा!
-async function triggerGitHubAction(eventType, payload) {
-    try {
-        // Firebase Function call करो जो server-side PAT use करेगा
-        const res = await fetch('https://us-central1-studymaterial-406ad.cloudfunctions.net/triggerGitHub', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                // ✅ Admin token for auth
-                'x-admin-token': localStorage.getItem('sg_admin_token') || ''
-            },
-            body: JSON.stringify({ eventType, payload })
-        });
-        if (res.ok) {
-            console.log(`✅ GitHub Action triggered: ${eventType}`);
-        }
-    } catch (err) {
-        console.error('GitHub trigger failed:', err.message);
-        // Silent fail - main job still saved
-    }
-}
 
 // =========================================================
 // 🗑️ DELETE CONFIRMATION MODAL
@@ -408,19 +386,6 @@ const AdminBrowseTab = () => {
                         slug: createSlug(formData.title) || liveJobId
                     });
                 }
-
-                // ✅ GitHub Actions trigger (Server-side PAT use होगा)
-                if (postType === 'JOB') {
-                    await triggerGitHubAction('send_telegram_alert', {
-                        jobData: clean,
-                        docId: liveJobId,
-                        type: postType
-                    });
-                    await triggerGitHubAction('generate_video', {
-                        jobData: { ...clean, id: liveJobId, slug: liveJobId }
-                    });
-                }
-
                 showToast("🚀 Job Successfully Publish हो गई!");
             }
 
