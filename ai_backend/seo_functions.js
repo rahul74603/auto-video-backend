@@ -479,12 +479,187 @@ exports.generateRss = onRequest({
 });
 
 // =========================================================
-// 9. OLD SINGLE SITEMAP (Backward Compatibility)
+// 9. MAIN SITEMAP (Complete - All URLs in one file)
 // =========================================================
 exports.generateSitemap = onRequest({
     timeoutSeconds: 540,
     memory: "1GiB"
 }, async (req, res) => {
-    // Redirect to sitemap index
-    res.redirect(301, `${WEBSITE_URL}/sitemap`);
+    try {
+        const now = new Date().toISOString();
+
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+        xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"\n`;
+        xml += `        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n`;
+
+        // ============ STATIC PAGES ============
+        const staticPages = [
+            { path: "", priority: "1.0", freq: "daily" },
+            { path: "/govt-jobs", priority: "0.9", freq: "daily" },
+            { path: "/blog", priority: "0.9", freq: "daily" },
+            { path: "/test", priority: "0.9", freq: "daily" },
+            { path: "/web-stories", priority: "0.9", freq: "daily" },
+            { path: "/free-study-material", priority: "0.8", freq: "weekly" },
+            { path: "/e-books", priority: "0.8", freq: "weekly" },
+            { path: "/premium-notes", priority: "0.8", freq: "weekly" },
+            { path: "/fasttrack", priority: "0.7", freq: "weekly" },
+            { path: "/about-us", priority: "0.6", freq: "monthly" },
+            { path: "/contact-us", priority: "0.6", freq: "monthly" },
+            { path: "/privacy-policy", priority: "0.5", freq: "monthly" },
+            { path: "/terms-conditions", priority: "0.5", freq: "monthly" }
+        ];
+
+        staticPages.forEach(p => {
+            xml += `  <url>\n`;
+            xml += `    <loc>${WEBSITE_URL}${p.path}</loc>\n`;
+            xml += `    <lastmod>${now}</lastmod>\n`;
+            xml += `    <changefreq>${p.freq}</changefreq>\n`;
+            xml += `    <priority>${p.priority}</priority>\n`;
+            xml += `  </url>\n`;
+        });
+
+        // ============ BLOGS ============
+        try {
+            const blogsSnap = await db.collection("blogs")
+                .orderBy("createdAt", "desc")
+                .limit(1000)
+                .get();
+            
+            blogsSnap.forEach(doc => {
+                const data = doc.data();
+                const slug = safeXml(data.slug || doc.id);
+                const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
+                const imageUrl = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
+                const imageTitle = safeXml(data.title || "StudyGyaan Blog");
+
+                xml += `  <url>\n`;
+                xml += `    <loc>${WEBSITE_URL}/blog/${slug}</loc>\n`;
+                xml += `    <lastmod>${updateTime}</lastmod>\n`;
+                xml += `    <changefreq>weekly</changefreq>\n`;
+                xml += `    <priority>0.9</priority>\n`;
+                xml += `    <image:image>\n`;
+                xml += `      <image:loc>${imageUrl}</image:loc>\n`;
+                xml += `      <image:title>${imageTitle}</image:title>\n`;
+                xml += `    </image:image>\n`;
+                xml += `  </url>\n`;
+            });
+        } catch (e) { 
+            console.error("❌ Blogs error:", e.message); 
+        }
+
+        // ============ JOBS ============
+        try {
+            const jobsSnap = await db.collection("jobs")
+                .orderBy("createdAt", "desc")
+                .limit(1000)
+                .get();
+            
+            jobsSnap.forEach(doc => {
+                const data = doc.data();
+                const route = (data.type || "").toUpperCase() === 'COURSE' ? 'course' : 'job';
+                const slug = safeXml(data.slug || doc.id);
+                const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
+                const imageUrl = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
+                const imageTitle = safeXml(data.title || "StudyGyaan Job");
+
+                xml += `  <url>\n`;
+                xml += `    <loc>${WEBSITE_URL}/${route}/${slug}</loc>\n`;
+                xml += `    <lastmod>${updateTime}</lastmod>\n`;
+                xml += `    <changefreq>daily</changefreq>\n`;
+                xml += `    <priority>1.0</priority>\n`;
+                xml += `    <image:image>\n`;
+                xml += `      <image:loc>${imageUrl}</image:loc>\n`;
+                xml += `      <image:title>${imageTitle}</image:title>\n`;
+                xml += `    </image:image>\n`;
+                xml += `  </url>\n`;
+            });
+        } catch (e) { 
+            console.error("❌ Jobs error:", e.message); 
+        }
+
+        // ============ MOCK TESTS ============
+        try {
+            const testsSnap = await db.collection("mock_tests")
+                .orderBy("createdAt", "desc")
+                .limit(500)
+                .get();
+            
+            testsSnap.forEach(doc => {
+                const data = doc.data();
+                const slug = safeXml(data.slug || doc.id);
+                const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
+
+                xml += `  <url>\n`;
+                xml += `    <loc>${WEBSITE_URL}/test/${slug}</loc>\n`;
+                xml += `    <lastmod>${updateTime}</lastmod>\n`;
+                xml += `    <changefreq>weekly</changefreq>\n`;
+                xml += `    <priority>0.7</priority>\n`;
+                xml += `  </url>\n`;
+            });
+        } catch (e) { 
+            console.error("❌ Tests error:", e.message); 
+        }
+
+        // ============ WEB STORIES ============
+        try {
+            const storiesSnap = await db.collection("web_stories")
+                .orderBy("createdAt", "desc")
+                .limit(500)
+                .get();
+            
+            storiesSnap.forEach(doc => {
+                const data = doc.data();
+                const slug = safeXml(data.slug || doc.id);
+                const updateTime = getIsoDate(data.createdAt, now);
+                const coverImage = safeXml(data.coverImage || `${WEBSITE_URL}/og-image.jpg`);
+                const imageTitle = safeXml(data.title || "Web Story");
+
+                xml += `  <url>\n`;
+                xml += `    <loc>${WEBSITE_URL}/web-stories/${slug}</loc>\n`;
+                xml += `    <lastmod>${updateTime}</lastmod>\n`;
+                xml += `    <changefreq>weekly</changefreq>\n`;
+                xml += `    <priority>0.9</priority>\n`;
+                xml += `    <image:image>\n`;
+                xml += `      <image:loc>${coverImage}</image:loc>\n`;
+                xml += `      <image:title>${imageTitle}</image:title>\n`;
+                xml += `    </image:image>\n`;
+                xml += `  </url>\n`;
+            });
+        } catch (e) { 
+            console.error("❌ Stories error:", e.message); 
+        }
+
+        // ============ FAST TRACK ============
+        try {
+            const fastSnap = await db.collection("fasttrack")
+                .orderBy("createdAt", "desc")
+                .limit(500)
+                .get();
+            
+            fastSnap.forEach(doc => {
+                const data = doc.data();
+                const slug = safeXml(data.slug || doc.id);
+                const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
+
+                xml += `  <url>\n`;
+                xml += `    <loc>${WEBSITE_URL}/fasttrack/${slug}</loc>\n`;
+                xml += `    <lastmod>${updateTime}</lastmod>\n`;
+                xml += `    <changefreq>weekly</changefreq>\n`;
+                xml += `    <priority>0.7</priority>\n`;
+                xml += `  </url>\n`;
+            });
+        } catch (e) { 
+            console.error("❌ Fasttrack error:", e.message); 
+        }
+
+        xml += `</urlset>`;
+
+        res.set('Cache-Control', 'public, max-age=3600, s-maxage=7200');
+        res.set('Content-Type', 'application/xml; charset=utf-8');
+        res.status(200).send(xml);
+
+    } catch (error) {
+        console.error("❌ Sitemap Error:", error.message);
+        res.status(500).send(`<?xml version="1.0"?><error>${error.message}</error>`);
+    }
 });
