@@ -103,7 +103,10 @@ PageWrapper.displayName = 'PageWrapper';
 // ⏳ LOADING STATES
 // =========================================================
 const PageLoader = () => (
-    <div className="flex justify-center items-center min-h-[60vh] bg-gray-50">
+    <div 
+        className="flex justify-center items-center bg-gray-50"
+        style={{ minHeight: '70vh' }}  // ✅ CLS Fix
+    >
         <div className="flex flex-col items-center gap-3">
             <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500" />
             <p className="text-sm text-gray-500 font-hindi">लोड हो रहा है...</p>
@@ -157,17 +160,42 @@ function App() {
 
                         <div className="min-h-screen bg-white">
 
-                            <PromoBanner />
+                            {/* ✅ Promo Banner - Fixed height (CLS Fix) */}
+                            <div 
+                                style={{ 
+                                    minHeight: '32px',
+                                    contain: 'layout',
+                                    background: '#1e40af'  // Banner bg color
+                                }}
+                            >
+                                <PromoBanner />
+                            </div>
 
-                            <div style={{ minHeight: '36px' }}>
-                                <Suspense fallback={<SilentLoader />}>
+                            {/* ✅ Header Ad - Fixed height (CLS Fix) */}
+                            <div 
+                                style={{ 
+                                    minHeight: '36px',
+                                    contain: 'layout',
+                                    background: '#f97316'  // Orange (same as ad)
+                                }}
+                            >
+                                <Suspense fallback={<div style={{ height: '36px' }} />}>
                                     <HeaderAd />
                                 </Suspense>
                             </div>
 
-                            <Navigation />
+                            {/* ✅ Navigation - Fixed height (CLS Fix) */}
+                            <div 
+                                style={{ 
+                                    minHeight: '56px',
+                                    contain: 'layout'
+                                }}
+                            >
+                                <Navigation />
+                            </div>
 
-                            <main>
+                            {/* ✅ Main Content - Min height (CLS Fix) */}
+                            <main style={{ minHeight: '70vh' }}>
                                 <Suspense fallback={<PageLoader />}>
                                     <Routes>
 
@@ -395,7 +423,7 @@ function App() {
                                         <Route path="/about-us" element={<AboutUs />} />
                                         <Route path="/disclaimer" element={<Disclaimer />} />
 
-                                        {/* 🔓 ADMIN ROUTES (OLD - No Guard) */}
+                                        {/* 🔓 ADMIN ROUTES (Direct Access) */}
                                         <Route path="/secret-admin" element={<AdminPanel />} />
                                         <Route path="/write-blog-secret" element={<AdminBlogWriter />} />
                                         <Route path="/admin/sidebar" element={<AdminSidebarControl />} />
@@ -410,12 +438,14 @@ function App() {
                                 </Suspense>
                             </main>
 
-                            {/* Footer Layout */}
-                            <Suspense fallback={<SilentLoader />}>
-                                <FloatingSocials />
-                                <Footer />
-                                <PopupAd />
-                            </Suspense>
+                            {/* ✅ Footer Layout - Min height (CLS Fix) */}
+                            <div style={{ minHeight: '200px' }}>
+                                <Suspense fallback={<SilentLoader />}>
+                                    <FloatingSocials />
+                                    <Footer />
+                                    <PopupAd />
+                                </Suspense>
+                            </div>
 
                         </div>
 
