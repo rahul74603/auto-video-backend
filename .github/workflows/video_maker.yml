@@ -4,6 +4,11 @@ on:
   repository_dispatch:
     types: [generate_video, generate_job_video, generate_fasttrack_video]
 
+# ✅ यही FIX है - दोनों simultaneously चल सकें
+concurrency:
+  group: video-${{ github.event.client_payload.jobData.slug }}
+  cancel-in-progress: false
+
 jobs:
   render-video:
     runs-on: ubuntu-latest
@@ -20,9 +25,12 @@ jobs:
       - name: 🔍 Debug Data
         run: |
           echo "================================"
+          echo "Event : ${{ github.event_name }}"
+          echo "Type  : ${{ github.event.action }}"
           echo "Title : ${{ github.event.client_payload.jobData.title }}"
           echo "Slug  : ${{ github.event.client_payload.jobData.slug }}"
           echo "Cat   : ${{ github.event.client_payload.jobData.category }}"
+          echo "JobType: ${{ github.event.client_payload.jobData.type }}"
           echo "================================"
 
       - name: 📦 Setup Node.js
@@ -48,21 +56,28 @@ jobs:
 
       - name: 🎬 Generate Video
         env:
-          JOB_DATA:             ${{ toJson(github.event.client_payload.jobData) }}
-          GMAIL_CREDENTIALS:    ${{ secrets.GMAIL_CREDENTIALS }}
-          YOUTUBE_TOKEN:        ${{ secrets.YOUTUBE_TOKEN }}
-          TTS_KEY_JSON:         ${{ secrets.TTS_KEY_JSON }}
-          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
-          FB_PAGE_ID:           ${{ secrets.FB_PAGE_ID }}
-          FB_PAGE_TOKEN:        ${{ secrets.FB_PAGE_TOKEN }}
-          TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID }}
+          JOB_DATA:              ${{ toJson(github.event.client_payload.jobData) }}
+          GMAIL_CREDENTIALS:     ${{ secrets.GMAIL_CREDENTIALS }}
+          YOUTUBE_TOKEN:         ${{ secrets.YOUTUBE_TOKEN }}
+          TTS_KEY_JSON:          ${{ secrets.TTS_KEY_JSON }}
+          SERVICE_ACCOUNT_JSON:  ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FB_PAGE_ID:            ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_TOKEN:         ${{ secrets.FB_PAGE_TOKEN }}
+          TELEGRAM_BOT_TOKEN:    ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:      ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHANNEL_LINK: ${{ secrets.TELEGRAM_CHANNEL_LINK }}
+          TELEGRAM_CHANNEL_NAME: ${{ secrets.TELEGRAM_CHANNEL_NAME }}
         run: node autoVideo.js
 
       - name: ✅ Success
         if: success()
-        run: echo "🎉 Video YouTube पर Live!"
+        run: |
+          echo "🎉 Video YouTube पर Live!"
+          echo "Title: ${{ github.event.client_payload.jobData.title }}"
+          echo "Type:  ${{ github.event.client_payload.jobData.type }}"
 
       - name: ❌ Failed
         if: failure()
-        run: echo "💥 Video fail! Logs check करें।"
+        run: |
+          echo "💥 Video fail!"
+          echo "Title: ${{ github.event.client_payload.jobData.title }}"
