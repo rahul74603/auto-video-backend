@@ -108,6 +108,66 @@ async function notifyGoogle(url) {
 }
 
 // =========================================================
+// 🚀 GITHUB ACTIONS TRIGGER - Video के लिए
+// =========================================================
+async function triggerGitHubVideoAction(jobData) {
+    const GITHUB_TOKEN = process.env.GH_TOKEN;
+    const REPO_OWNER   = process.env.GITHUB_OWNER;
+    const REPO_NAME    = process.env.GITHUB_REPO;
+
+    if (!GITHUB_TOKEN || !REPO_OWNER || !REPO_NAME) {
+        console.error("❌ GitHub Secrets missing!");
+        return false;
+    }
+
+    const cleanJobData = {
+        id:           String(jobData.id || ''),
+        slug:         String(jobData.slug || jobData.id || ''),
+        title:        String(jobData.title || 'Fast Track Update'),
+        category:     String(jobData.category || 'Default'),
+        type:         'FAST_TRACK',
+        updateDate:   String(jobData.updateDate || ''),
+        organization: String(jobData.org || ''),
+        directLink:   String(jobData.directLink || ''),
+        shortInfo:    String(jobData.shortInfo || '')
+    };
+
+  const payload = {
+        event_type: "generate_fasttrack_video", // <--- Fast Track के लिए नया सिग्नल
+        client_payload: {
+            jobData: cleanJobData
+        }
+    };
+
+    console.log("📤 FastTrack GitHub Trigger:", JSON.stringify(cleanJobData));
+
+    try {
+        const response = await axios.post(
+            `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/dispatches`,
+            payload,
+            {
+                headers: {
+                    Authorization:          `Bearer ${GITHUB_TOKEN}`,
+                    Accept:                 "application/vnd.github.v3+json",
+                    "Content-Type":         "application/json",
+                    "X-GitHub-Api-Version": "2022-11-28"
+                },
+                timeout: 15000
+            }
+        );
+
+        if (response.status === 204) {
+            console.log("✅ GitHub Actions triggered! Fast Track Video बन रही है...");
+            return true;
+        }
+        return false;
+    } catch (err) {
+        console.error("❌ GitHub API Error:", err.message);
+        return false;
+    }
+}
+
+// =========================================================
 // 🌐 PAGE SCRAPER
 // =========================================================
 async function scrapePage(url) {
@@ -474,6 +534,7 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
         const msg = `🚨 <b>New ${item.category}!</b>\n\n` +
             `${icon} <b>${item.title}</b>\n\n` +
             `📖 <b>Full Details:</b>\n${itemUrl}\n\n` +
+            `🎬 ${videoStatus}\n\n` +
             `🔔 @studygyaan_official`;
 
         try {
@@ -503,26 +564,27 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
         }).catch(e => console.log("WhatsApp skip:", e.message));
     }
 
-    // ✅ Video Generation
+    // ✅ Video Generation (GitHub Actions Trigger)
+    let videoStatus = "⏳ Video trigger initiated";
     try {
-        let generateVideo;
-        try {
-            ({ generateAndUploadVideo: generateVideo } = require('./autoVideo.js'));
-        } catch {
-            generateVideo = null;
-        }
+        const triggered = await triggerGitHubVideoAction({
+            ...item,
+            id: docId,
+            slug: item.slug || docId
+        });
 
-        if (generateVideo) {
-            const success = await generateVideo({ ...item, id: docId });
-            if (success) {
-                await db.collection("fast_track").doc(docId)
-                    .update({ videoSent: true })
-                    .catch(() => {});
-                console.log("✅ Video uploaded!");
-            }
+        if (triggered) {
+            videoStatus = "✅ Video generation started on GitHub!";
+            await db.collection("fast_track").doc(docId).update({
+                videoTriggered: true,
+                videoTriggeredAt: admin.firestore.FieldValue.serverTimestamp()
+            }).catch(() => {});
+        } else {
+            videoStatus = "⚠️ GitHub trigger failed (check Firebase logs)";
         }
-    } catch (videoErr) {
-        console.error("Video error:", videoErr.message);
+    } catch (err) {
+        console.error("Trigger error:", err.message);
+        videoStatus = `❌ Error: ${err.message}`;
     }
 
     // ✅ PDF Generation
