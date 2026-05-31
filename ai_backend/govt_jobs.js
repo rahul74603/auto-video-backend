@@ -1,4 +1,4 @@
-require("dotenv").config();
+
 const { onRequest } = require("firebase-functions/v2/https");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
@@ -124,8 +124,8 @@ async function triggerGitHubVideoAction(jobData) {
         vacancies:    String(jobData.vacancies || '')
     };
 
-    const payload = {
-        event_type: "generate_video",
+  const payload = {
+        event_type: "generate_job_video", // <--- इसे बदल दें
         client_payload: {
             jobData: cleanJobData
         }
@@ -453,11 +453,13 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
 // =========================================================
 // 1️⃣ HTTP TRIGGER - Scraper API
 // =========================================================
+// =========================================================
+// 1️⃣ HTTP TRIGGER - Scraper API
+// =========================================================
 exports.fetchLatestGovtJobs = onRequest({
     cors: false,
     timeoutSeconds: 300,
-    memory: "1GiB",
-    secrets: ["SERVICE_ACCOUNT_JSON", "GEMINI_API_KEY"]
+    memory: "1GiB"
 }, async (req, res) => {
 
     if (req.method !== 'POST' && req.method !== 'GET') {
@@ -526,14 +528,6 @@ exports.fetchLatestGovtJobs = onRequest({
 // =========================================================
 exports.onJobPublishedNotify = onDocumentCreated({
     document: "jobs/{jobId}",
-    secrets: [
-        "TELEGRAM_BOT_TOKEN",
-        "TELEGRAM_CHAT_ID",
-        "SERVICE_ACCOUNT_JSON",
-        "GH_TOKEN",       // ✅ GitHub PAT
-        "GITHUB_OWNER",   // ✅ GitHub Username
-        "GITHUB_REPO"     // ✅ Repo Name
-    ],
     timeoutSeconds: 60,   // ✅ GitHub trigger = fast
     memory: "256MB",
     cpu: 1
