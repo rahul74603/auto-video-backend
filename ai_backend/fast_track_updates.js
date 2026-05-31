@@ -53,7 +53,7 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ✅ Category detection - comprehensive
+// ✅ Category detection
 const CATEGORY_PATTERNS = {
     'Result':     ['result', 'results', 'merit list', 'final list', 'selected candidates'],
     'Admit Card': ['admit card', 'call letter', 'hall ticket', 'e-admit', 'admit-card'],
@@ -157,7 +157,7 @@ async function triggerGitHubVideoAction(jobData) {
         );
 
         if (response.status === 204) {
-            console.log("✅ GitHub Actions triggered! Fast Track Video बन रही है...");
+            console.log("✅ GitHub Actions triggered!");
             return true;
         }
         return false;
@@ -254,7 +254,6 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
         'https://feeds.feedburner.com/SarkariExam'
     ];
 
-    // ✅ Collect RSS items
     let allItems = [];
     for (const url of RSS_SOURCES) {
         try {
@@ -278,7 +277,6 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
         return [];
     }
 
-    // ✅ Date suffix for slugs
     const dateSuffix = new Date().toLocaleString('en-IN', {
         month: 'short', year: 'numeric'
     }).toLowerCase().replace(' ', '-');
@@ -296,11 +294,9 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
 
         if (!title || !link || link.includes('127.0.0.1')) continue;
 
-        // ✅ Category detection
         const category = detectCategory(title);
         if (!category) continue;
 
-        // ✅ Duplicate check
         const docId = Buffer.from(link)
             .toString('base64')
             .replace(/[/+=]/g, '_')
@@ -315,40 +311,35 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
         try {
             logger(`🎯 [${category}] Processing: ${title}`);
 
-            // Scrape page
             const linksText = await scrapePage(link);
             logger(`📋 Found ${linksText.split('\n').length} links`);
 
-            // AI extract
             const extracted = await extractWithAI(linksText, category, title, apiKey);
 
             const finalTitle = extracted.title || title;
             const baseSlug   = extracted.slug || createSlug(finalTitle);
             const finalSlug  = `${baseSlug}-${dateSuffix}`;
 
-            // ✅ Slug duplicate check
             const slugExists = await db.collection("fast_track").doc(finalSlug).get();
             if (slugExists.exists) {
                 logger(`⏭️ Slug exists: ${finalSlug}`);
                 continue;
             }
 
-            // ✅ Save to Firestore
             await db.collection("fast_track").doc(finalSlug).set({
-                title:       finalTitle,
-                slug:        finalSlug,
-                directLink:  extracted.directLink || link,
-                shortInfo:   extracted.shortInfo || '',
-                org:         extracted.org || '',
-                updateDate:  extracted.updateDate || '',
-                description: extracted.shortInfo || '',
+                title:        finalTitle,
+                slug:         finalSlug,
+                directLink:   extracted.directLink || link,
+                shortInfo:    extracted.shortInfo || '',
+                org:          extracted.org || '',
+                updateDate:   extracted.updateDate || '',
+                description:  extracted.shortInfo || '',
                 category,
                 originalLink: link,
-                status:      "draft",
-                createdAt:   admin.firestore.FieldValue.serverTimestamp()
+                status:       "draft",
+                createdAt:    admin.firestore.FieldValue.serverTimestamp()
             });
 
-            // ✅ Mark as processed
             await db.collection("processed_links").doc(docId).set({
                 link,
                 slug:        finalSlug,
@@ -359,7 +350,6 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
             results.push({ title: finalTitle, category, slug: finalSlug });
             logger(`✅ Saved (${results.length}/${MAX_ITEMS}): ${finalTitle}`);
 
-            // ✅ Rate limiting
             logger(`⏳ Waiting 8 seconds...`);
             await sleep(8000);
 
@@ -383,7 +373,7 @@ exports.fetchFastTrackUpdates = onRequest({
     secrets: ["GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON"]
 }, async (req, res) => {
 
-    const authKey    = req.headers['x-auth-key'];
+    const authKey      = req.headers['x-auth-key'];
     const EXPECTED_KEY = process.env.FAST_TRACK_SECRET || "StudyGyaan_FastTrack_786";
 
     if (authKey !== EXPECTED_KEY) {
@@ -407,7 +397,7 @@ exports.triggerFastTrackUpdates = onRequest({
     memory: "1GiB"
 }, async (req, res) => {
 
-    const authToken  = req.headers['x-auth-token'];
+    const authToken   = req.headers['x-auth-token'];
     const incomingKey = req.headers['x-gemini-key'];
 
     if (authToken !== "StudyGyaan_FastTrack_786") {
@@ -443,22 +433,29 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     memory: "2GiB",
     timeoutSeconds: 540,
     secrets: [
-        "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
-        "GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON",
-        "GMAIL_CREDENTIALS", "YOUTUBE_TOKEN",
-        "TTS_KEY_JSON", "FB_PAGE_ID", "FB_PAGE_TOKEN",
-        "GH_TOKEN", "GITHUB_OWNER", "GITHUB_REPO",
-        "WHATSAPP_SERVER_URL"
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
+        "GEMINI_API_KEY",
+        "SERVICE_ACCOUNT_JSON",
+        "GMAIL_CREDENTIALS",
+        "YOUTUBE_TOKEN",
+        "TTS_KEY_JSON",
+        "FB_PAGE_ID",
+        "FB_PAGE_TOKEN",
+        "GH_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+        // ❌ "WHATSAPP_SERVER_URL" - अभी के लिए बंद है, बाद में चालू करेंगे
     ]
 }, async (event) => {
 
-    // ✅ अगर document delete हुआ तो ignore करो
+    // ✅ Document delete हुआ तो ignore
     if (!event.data.after.exists) return null;
 
     const afterData  = event.data.after.data();
     const beforeData = event.data.before ? event.data.before.data() : null;
 
-    // ✅ Draft है तो skip करो
+    // ✅ Draft है तो skip
     if (afterData.status === 'draft') {
         console.log(`⏭️ Draft, skipping: ${afterData.title}`);
         return null;
@@ -466,7 +463,7 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
 
     // ✅ पहले से published था तो duplicate trigger मत करो
     if (beforeData && beforeData.status === 'published') {
-        console.log(`⏭️ Already published, skipping duplicate: ${afterData.title}`);
+        console.log(`⏭️ Already published, skipping: ${afterData.title}`);
         return null;
     }
 
@@ -478,20 +475,20 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     const itemUrl = `https://studygyaan.in/update/${item.slug || docId}`;
 
     // =========================================================
-    // STEP 1 - Schema Markup Save करो
+    // STEP 1 - Schema Markup
     // =========================================================
     try {
         const publishTime = item.createdAt?.toDate?.()?.toISOString()
             || new Date().toISOString();
 
         const schema = {
-            "@context":       "https://schema.org",
-            "@type":          "NewsArticle",
-            "headline":       item.title,
-            "image":          ["https://studygyaan.in/og-image.jpg"],
-            "datePublished":  publishTime,
-            "dateModified":   new Date().toISOString(),
-            "description":    item.description || item.shortInfo || item.title,
+            "@context":      "https://schema.org",
+            "@type":         "NewsArticle",
+            "headline":      item.title,
+            "image":         ["https://studygyaan.in/og-image.jpg"],
+            "datePublished": publishTime,
+            "dateModified":  new Date().toISOString(),
+            "description":   item.description || item.shortInfo || item.title,
             "author": {
                 "@type": "Organization",
                 "name":  "StudyGyaan",
@@ -521,8 +518,8 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     await notifyGoogle(itemUrl).catch(e => console.log("Index skip:", e.message));
 
     // =========================================================
-    // STEP 3 - Video Generation (GitHub Actions Trigger)
-    // ✅ यह TELEGRAM से पहले होना जरूरी है ताकि videoStatus define हो जाए
+    // STEP 3 - Video Generation via GitHub Actions
+    // ✅ Telegram से पहले ताकि videoStatus define हो
     // =========================================================
     let videoStatus = "⏳ Video trigger initiated";
 
@@ -549,7 +546,7 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
 
     // =========================================================
     // STEP 4 - Telegram Notification
-    // ✅ यह GitHub trigger के बाद है ताकि videoStatus ready हो
+    // ✅ videoStatus यहाँ तक आते-आते define हो चुका है
     // =========================================================
     const icons = {
         'Result':     '🏆',
@@ -574,9 +571,9 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
             await axios.post(
                 `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
                 {
-                    chat_id:                CHAT_ID,
-                    text:                   msg,
-                    parse_mode:             'HTML',
+                    chat_id:                  CHAT_ID,
+                    text:                     msg,
+                    parse_mode:               'HTML',
                     disable_web_page_preview: false
                 }
             );
@@ -589,8 +586,9 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     }
 
     // =========================================================
-    // STEP 5 - WhatsApp Notification
+    // STEP 5 - WhatsApp (अभी बंद है - बाद में चालू करेंगे)
     // =========================================================
+    /*
     const WA_SERVER = process.env.WHATSAPP_SERVER_URL;
     if (WA_SERVER) {
         const waMsg =
@@ -604,9 +602,10 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
             linkPreview: true
         }).catch(e => console.log("WhatsApp skip:", e.message));
     }
+    */
 
     // =========================================================
-    // STEP 6 - PDF Generation (Syllabus, Admit Card, Result)
+    // STEP 6 - PDF Generation
     // =========================================================
     const pdfCategories = ["Syllabus", "Admit Card", "Result"];
     if (pdfCategories.includes(item.category)) {
@@ -627,7 +626,7 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
                     console.log("✅ PDF saved:", pdfUrl);
                 }
             } else {
-                console.log("⚠️ autoPdf.js not found, skipping PDF generation");
+                console.log("⚠️ autoPdf.js not found, skipping PDF");
             }
         } catch (pdfErr) {
             console.error("PDF error:", pdfErr.message);
@@ -639,7 +638,7 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
 });
 
 // =========================================================
-// ✅ EXPORT FOR GITHUB ACTIONS / CLI
+// ✅ EXPORTS
 // =========================================================
 exports.runFastTrackLogic = runFastTrackLogic;
 
