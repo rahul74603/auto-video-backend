@@ -1,4 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap');
+/* =========================================================
+   INDEX.CSS — Tailwind + Theme Tokens
+   =========================================================
+   NOTE: Google Fonts @import yahan se hata diya gaya hai.
+   Fonts index.html mein <link rel="preload"> se load honge.
+   Ye render-blocking problem fix karta hai.
+   ========================================================= */
 
 @tailwind base;
 @tailwind components;
@@ -71,17 +77,21 @@
   * {
     @apply border-border;
   }
+
   html {
     scroll-behavior: smooth;
   }
+
   body {
-    @apply bg-background text-foreground antialiased font-hindi;
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Noto Sans Devanagari', 'Inter', sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
 @layer utilities {
-  /* Custom scrollbar */
+
+  /* ✅ Custom Scrollbar */
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -97,11 +107,11 @@
     background: #94a3b8;
   }
 
-  /* Line clamp utilities - FIXED with standard property */
+  /* ✅ Line Clamp */
   .line-clamp-1 {
     display: -webkit-box;
     -webkit-line-clamp: 1;
-    line-clamp: 1; 
+    line-clamp: 1;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
@@ -120,28 +130,34 @@
     overflow: hidden;
   }
 
-  /* Animation utilities */
+  /* ✅ Marquee Animation
+     will-change: transform — GPU pe dega, main thread free rahega
+  */
   .animate-marquee {
-    animation: marquee 25s linear infinite;
+    animation: marquee 30s linear infinite;
+    will-change: transform;
   }
+
   @keyframes marquee {
-    0% { transform: translateX(0%); }
+    0%   { transform: translateX(0%); }
     100% { transform: translateX(-50%); }
   }
 
-  /* Gradient text */
+  /* ✅ Gradient Text */
   .text-gradient {
     @apply bg-clip-text text-transparent;
   }
 
-  /* Glass effect */
+  /* ✅ Glass Effect */
   .glass {
     background: rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
   }
 
-  /* Hover lift effect */
+  /* ✅ Hover Lift
+     Desktop par hi chalega — mobile par band hai app.css mein
+  */
   .hover-lift {
     transition: transform 0.3s ease, box-shadow 0.3s ease;
   }
@@ -150,43 +166,47 @@
     box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.15);
   }
 
-  /* --- BLOG PROSE STYLING (The "Sajawat") --- */
+  /* ✅ Font Class */
+  .font-hindi {
+    font-family: 'Noto Sans Devanagari', 'Inter', sans-serif;
+  }
+
+  /* ✅ Blog Prose Styling */
   .prose {
     @apply text-slate-700 leading-relaxed;
   }
-  .prose h1, .prose h2, .prose h3 {
-    @apply text-blue-900 font-extrabold mt-8 mb-4 tracking-tight !important;
+
+  .prose h1,
+  .prose h2,
+  .prose h3 {
+    @apply text-blue-900 font-extrabold mt-8 mb-4 tracking-tight;
   }
+
   .prose p {
     @apply mb-6;
+    text-align: justify;
+    hyphens: auto;
   }
+
   .prose strong {
-    @apply text-blue-700 font-bold !important;
+    @apply text-blue-700 font-bold;
   }
+
   .prose ul {
-    @apply list-disc pl-6 mb-6 space-y-2 !important;
+    @apply list-disc pl-6 mb-6 space-y-2;
   }
+
   .prose li::marker {
     @apply text-blue-600 font-bold;
   }
-}
 
-/* Custom font family */
-.font-hindi {
-  font-family: 'Noto Sans Devanagari', 'Inter', sans-serif;
-}
-.prose p {
-  text-align: justify;
-  hyphens: auto; /* यह लंबे शब्दों को डैश (-) लगाकर तोड़ देगा */
-}
-/* ✅ Layout Stability - CLS Fix */
-#hero-section { min-height: 500px; }
-#fast-track-section { min-height: 180px; }
-#web-stories-section { min-height: 250px; }
-#govt-jobs { min-height: 400px; }
-#premium-notes { min-height: 300px; }
-#free-study-material { min-height: 400px; }
-#blog { min-height: 400px; }
+  .prose img {
+    @apply rounded-xl shadow-md;
+  }
 
-/* इमेज को झटका मारने से रोकना */
-img { aspect-ratio: auto; content-visibility: auto; }
+  /* ✅ Content Visibility — Below fold sections */
+  .below-fold {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 400px;
+  }
+}
