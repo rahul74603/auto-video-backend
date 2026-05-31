@@ -281,7 +281,7 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
         month: 'short', year: 'numeric'
     }).toLowerCase().replace(' ', '-');
 
-    const results = [];
+    const results  = [];
     const MAX_ITEMS = 5;
 
     logger(`🔍 Scanning ${allItems.length} items (max ${MAX_ITEMS} to save)...`);
@@ -367,17 +367,18 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
 // 1️⃣ MANUAL API TRIGGER
 // =========================================================
 exports.fetchFastTrackUpdates = onRequest({
-    cors: false,
+    cors:           false,
+    invoker:        "public",   // ✅ 401 fix
     timeoutSeconds: 300,
-    memory: "1GiB",
-    secrets: ["GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON"]
+    memory:         "1GiB",
+    secrets:        ["GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON"]
 }, async (req, res) => {
 
     const authKey      = req.headers['x-auth-key'];
     const EXPECTED_KEY = process.env.FAST_TRACK_SECRET || "StudyGyaan_FastTrack_786";
 
     if (authKey !== EXPECTED_KEY) {
-        console.warn("❌ Unauthorized access");
+        console.warn("❌ Unauthorized access attempt");
         return res.status(401).json({ error: "Unauthorized" });
     }
 
@@ -393,8 +394,9 @@ exports.fetchFastTrackUpdates = onRequest({
 // 2️⃣ GITHUB ACTIONS STREAMING API
 // =========================================================
 exports.triggerFastTrackUpdates = onRequest({
+    invoker:        "public",   // ✅ 401 fix
     timeoutSeconds: 300,
-    memory: "1GiB"
+    memory:         "1GiB"
 }, async (req, res) => {
 
     const authToken   = req.headers['x-auth-token'];
@@ -429,8 +431,8 @@ exports.triggerFastTrackUpdates = onRequest({
 // 3️⃣ FIRESTORE TRIGGER - Approve होने पर सब काम करो
 // =========================================================
 exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
-    document: "fast_track/{docId}",
-    memory: "2GiB",
+    document:       "fast_track/{docId}",
+    memory:         "2GiB",
     timeoutSeconds: 540,
     secrets: [
         "TELEGRAM_BOT_TOKEN",
@@ -445,7 +447,7 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
         "GH_TOKEN",
         "GITHUB_OWNER",
         "GITHUB_REPO"
-        // ❌ "WHATSAPP_SERVER_URL" - अभी के लिए बंद है, बाद में चालू करेंगे
+        // "WHATSAPP_SERVER_URL" — बाद में चालू करेंगे
     ]
 }, async (event) => {
 
@@ -475,7 +477,7 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     const itemUrl = `https://studygyaan.in/update/${item.slug || docId}`;
 
     // =========================================================
-    // STEP 1 - Schema Markup
+    // STEP 1 - Schema Markup Save
     // =========================================================
     try {
         const publishTime = item.createdAt?.toDate?.()?.toISOString()
@@ -519,7 +521,7 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
 
     // =========================================================
     // STEP 3 - Video Generation via GitHub Actions
-    // ✅ Telegram से पहले ताकि videoStatus define हो
+    // ✅ Telegram से पहले रखा है ताकि videoStatus define हो जाए
     // =========================================================
     let videoStatus = "⏳ Video trigger initiated";
 
