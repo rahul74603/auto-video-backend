@@ -5,6 +5,7 @@ const axios = require("axios");
 const { google } = require("googleapis");
 const cheerio = require("cheerio");
 const Parser = require('rss-parser');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // =========================================================
 // 🔐 FIREBASE INIT
@@ -23,15 +24,8 @@ if (!admin.apps.length) {
     }
 }
 
-const db = admin.firestore();
-
-// ⚠️ genAI को function के अंदर बनाओ, बाहर नहीं
-// क्योंकि बाहर बनाने पर GEMINI_API_KEY secret
-// function runtime पर available नहीं होती
-const Parser = require('rss-parser');
+const db     = admin.firestore();
 const parser = new Parser();
-
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // =========================================================
 // 🛠️ HELPERS
@@ -116,7 +110,7 @@ async function triggerGitHubVideoAction(jobData) {
         slug:         String(jobData.slug || jobData.id || ''),
         title:        String(jobData.title || 'Latest Govt Job'),
         category:     String(jobData.category || 'Default'),
-        type:         'JOB',   // ✅ हमेशा JOB रहेगा इस file में
+        type:         'JOB',
         startDate:    String(jobData.startDate || ''),
         lastDate:     String(jobData.lastDate || ''),
         updateDate:   String(jobData.updateDate || ''),
@@ -163,7 +157,7 @@ async function triggerGitHubVideoAction(jobData) {
                 data:   JSON.stringify(err.response.data)
             });
             if (err.response.status === 401) console.error("🔑 GH_TOKEN expired!");
-            if (err.response.status === 404) console.error(`🔍 Repo not found!`);
+            if (err.response.status === 404) console.error("🔍 Repo not found!");
             if (err.response.status === 422) console.error("⚙️ yml में repository_dispatch नहीं!");
         } else {
             console.error("❌ Network Error:", err.message);
@@ -176,7 +170,7 @@ async function triggerGitHubVideoAction(jobData) {
 // 🤖 AI JOB DATA EXTRACTOR
 // =========================================================
 async function extractJobDataWithAI(scrapedContent, jobLink) {
-    // ✅ अब यहाँ genAI बनाओ ताकि secret runtime पर मिले
+    // ✅ Runtime पर genAI बनाओ ताकि secret मिले
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
     const model = genAI.getGenerativeModel({
@@ -186,9 +180,9 @@ async function extractJobDataWithAI(scrapedContent, jobLink) {
 
     const todayDate = new Date().toLocaleDateString('en-IN', {
         timeZone: 'Asia/Kolkata',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
+        year:     'numeric',
+        month:    'long',
+        day:      'numeric'
     });
 
     const prompt = `Act as a Precise Job Data Specialist. Extract details ONLY from the scraped data.
@@ -268,7 +262,7 @@ async function scrapeJobPage(url) {
     const { data: html } = await axios.get(url, {
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'text/html,application/xhtml+xml'
+            'Accept':     'text/html,application/xhtml+xml'
         },
         timeout: 25000
     });
@@ -449,7 +443,6 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
 
 // =========================================================
 // 1️⃣ HTTP TRIGGER - Scraper API
-// ✅ secrets add किए
 // =========================================================
 exports.fetchLatestGovtJobs = onRequest({
     cors:           false,
@@ -466,7 +459,7 @@ exports.fetchLatestGovtJobs = onRequest({
         return res.status(405).send("Method Not Allowed");
     }
 
-    const authHeader = req.headers['x-scraper-key'];
+    const authHeader  = req.headers['x-scraper-key'];
     const SCRAPER_KEY = process.env.SCRAPER_SECRET_KEY || "StudyGyaan_786_Secure";
 
     if (authHeader !== SCRAPER_KEY) {
@@ -525,7 +518,6 @@ exports.fetchLatestGovtJobs = onRequest({
 
 // =========================================================
 // 2️⃣ FIRESTORE TRIGGER - Job Publish होने पर
-// ✅ secrets add किए - यही असली fix है!
 // =========================================================
 exports.onJobPublishedNotify = onDocumentCreated({
     document:       "jobs/{jobId}",
@@ -547,7 +539,6 @@ exports.onJobPublishedNotify = onDocumentCreated({
     const job   = snap.data();
     const jobId = event.params.jobId;
 
-    // ✅ Only JOB type process करो
     if (job.type && job.type !== 'JOB') {
         console.log(`⏭️ Skipping non-JOB type: ${job.type}`);
         return null;
@@ -555,12 +546,12 @@ exports.onJobPublishedNotify = onDocumentCreated({
 
     const jobUrl = `https://studygyaan.in/job/${job.slug || jobId}`;
     console.log(`\n${'='.repeat(50)}`);
-    console.log(`🚀 New Job Published: ${job.title}`);
+    console.log(`🚀 New Job: ${job.title}`);
     console.log(`🔗 URL: ${jobUrl}`);
     console.log(`${'='.repeat(50)}\n`);
 
     // ─────────────────────────────────────
-    // STEP 1: Job Schema (SEO)
+    // STEP 1: Schema Save
     // ─────────────────────────────────────
     try {
         const publishTime = job.createdAt?.toDate?.()?.toISOString()
@@ -631,18 +622,18 @@ exports.onJobPublishedNotify = onDocumentCreated({
             ...job,
             id:   jobId,
             slug: job.slug || jobId,
-            type: 'JOB'  // ✅ explicitly set
+            type: 'JOB'
         });
 
         if (triggered) {
-            videoStatus = "✅ Video generation started on GitHub!";
+            videoStatus = "✅ Video generation started!";
             await db.collection("jobs").doc(jobId).update({
                 videoTriggered:   true,
                 videoTriggeredAt: admin.firestore.FieldValue.serverTimestamp()
             }).catch(() => {});
             console.log("✅ GitHub trigger success");
         } else {
-            videoStatus = "⚠️ GitHub trigger failed (check Firebase logs)";
+            videoStatus = "⚠️ GitHub trigger failed";
             console.log("⚠️ GitHub trigger failed");
         }
     } catch (err) {
