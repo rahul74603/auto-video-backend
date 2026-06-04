@@ -107,65 +107,58 @@ async function uploadToFacebook(videoPath, description) {
 }
 
 // =========================================================
-// 🧠 3. DYNAMIC KEYWORD ENGINE (SEO POWERHOUSE)
+// 🛡️ 3. TAG SANITIZER (Fixes Invalid Keywords Error)
 // =========================================================
+function sanitizeYouTubeTags(tags) {
+    if (!Array.isArray(tags)) return [];
+    
+    const cleaned = [];
+    const seen = new Set();
+    let totalLength = 0;
 
-// 🎯 Category-wise Trending Keywords Database
+    for (let tag of tags) {
+        if (!tag) continue;
+        
+        // Remove ALL emojis, commas, quotes, and special symbols
+        let cleanTag = String(tag)
+            .replace(/[^\p{L}\p{N}\s\-]/gu, '') // Only letters, numbers, spaces, hyphens
+            .replace(/,/g, '')                  // Remove commas (Main cause of error)
+            .replace(/["']/g, '')               // Remove quotes
+            .replace(/\s+/g, ' ')               // Single spaces
+            .trim();
+
+        if (!cleanTag || cleanTag.length < 2) continue;
+        if (cleanTag.length > 50) cleanTag = cleanTag.substring(0, 50); // Max tag length
+
+        const lowerTag = cleanTag.toLowerCase();
+        if (seen.has(lowerTag)) continue; // Remove duplicates
+        seen.add(lowerTag);
+
+        // YouTube 500 Character Limit Check
+        if (totalLength + cleanTag.length + 1 > 480) break; 
+        
+        cleaned.push(cleanTag);
+        totalLength += cleanTag.length + 1;
+    }
+    
+    console.log(`🛡️ Sanitized ${cleaned.length} safe tags for YouTube.`);
+    return cleaned;
+}
+
+// =========================================================
+// 🧠 4. DYNAMIC KEYWORD ENGINE (SEO POWERHOUSE)
+// =========================================================
 const CATEGORY_KEYWORDS = {
-    'Railway': [
-        'RRB NTPC 2025', 'Railway Bharti 2025', 'RRB Group D', 'Railway Vacancy 2025',
-        'NTPC CBT 2025', 'Railway Recruitment', 'Junior Engineer Railway', 'RRB ALP 2025',
-        'Indian Railway Jobs', 'Railway Exam Preparation', 'RRB NTPC Syllabus',
-        'Railway GK Questions', 'RRB Previous Year Paper', 'Railway Exam Date 2025'
-    ],
-    'SSC': [
-        'SSC CGL 2025', 'SSC CHSL 2025', 'SSC MTS 2025', 'SSC GD 2025',
-        'Staff Selection Commission', 'SSC Exam Preparation', 'SSC CGL Syllabus 2025',
-        'SSC Tier 1 2025', 'SSC Previous Year Questions', 'SSC GK Hindi',
-        'SSC Math Tricks', 'SSC English Grammar', 'SSC Reasoning Questions',
-        'SSC CPO 2025', 'SSC JE 2025', 'Multi Tasking Staff Recruitment'
-    ],
-    'Banking': [
-        'Bank PO 2025', 'IBPS PO 2025', 'SBI PO 2025', 'Bank Clerk 2025',
-        'IBPS Clerk 2025', 'RBI Grade B 2025', 'Banking Exam Preparation',
-        'Bank Exam GK', 'Current Affairs Banking', 'Banking Awareness 2025',
-        'SBI Clerk 2025', 'Canara Bank PO', 'Bank Exam Syllabus',
-        'Financial Awareness', 'IBPS RRB 2025'
-    ],
-    'Police': [
-        'UP Police 2025', 'Delhi Police Bharti', 'Bihar Police 2025', 'Rajasthan Police',
-        'MP Police Constable', 'Police Exam Preparation', 'Constable Bharti 2025',
-        'Sub Inspector SI Bharti', 'Police GK Questions', 'Physical Test Police',
-        'Police Syllabus Hindi', 'State Police Vacancy 2025'
-    ],
-    'UPSC': [
-        'UPSC 2025', 'IAS Preparation', 'IPS Exam', 'Civil Services 2025',
-        'UPSC Prelims 2025', 'UPSC Mains', 'UPSC Current Affairs', 'UPSC GS Paper',
-        'IAS Topper Strategy', 'UPSC Syllabus Hindi', 'UPSC Study Material',
-        'Optional Subject UPSC', 'CSAT 2025', 'UPSC Mock Test'
-    ],
-    'State': [
-        'Sarkari Naukri 2025', 'State PSC 2025', 'BPSC 2025', 'UPPSC 2025',
-        'RPSC 2025', 'MPSC 2025', 'Government Jobs 2025', 'Sarkari Result 2025',
-        'State Government Vacancy', 'PCS Exam Preparation', 'State Board Exam'
-    ],
-    'Default': [
-        'Sarkari Naukri 2025', 'Government Jobs 2025', 'Exam Preparation 2025',
-        'Free Study Material', 'Online Mock Test', 'Current Affairs 2025',
-        'GK Questions Hindi', 'General Knowledge 2025', 'Competitive Exam Tips',
-        'Study Tips Hindi', 'Exam Date 2025', 'Admit Card 2025', 'Result 2025'
-    ]
+    'Railway': ['RRB NTPC 2025', 'Railway Bharti 2025', 'RRB Group D', 'Railway Vacancy 2025', 'NTPC CBT 2025', 'Railway Recruitment', 'Junior Engineer Railway', 'RRB ALP 2025', 'Indian Railway Jobs', 'Railway Exam Preparation', 'RRB NTPC Syllabus', 'Railway GK Questions', 'RRB Previous Year Paper', 'Railway Exam Date 2025'],
+    'SSC': ['SSC CGL 2025', 'SSC CHSL 2025', 'SSC MTS 2025', 'SSC GD 2025', 'Staff Selection Commission', 'SSC Exam Preparation', 'SSC CGL Syllabus 2025', 'SSC Tier 1 2025', 'SSC Previous Year Questions', 'SSC GK Hindi', 'SSC Math Tricks', 'SSC English Grammar', 'SSC Reasoning Questions', 'SSC CPO 2025', 'SSC JE 2025', 'Multi Tasking Staff Recruitment'],
+    'Banking': ['Bank PO 2025', 'IBPS PO 2025', 'SBI PO 2025', 'Bank Clerk 2025', 'IBPS Clerk 2025', 'RBI Grade B 2025', 'Banking Exam Preparation', 'Bank Exam GK', 'Current Affairs Banking', 'Banking Awareness 2025', 'SBI Clerk 2025', 'Canara Bank PO', 'Bank Exam Syllabus', 'Financial Awareness', 'IBPS RRB 2025'],
+    'Police': ['UP Police 2025', 'Delhi Police Bharti', 'Bihar Police 2025', 'Rajasthan Police', 'MP Police Constable', 'Police Exam Preparation', 'Constable Bharti 2025', 'Sub Inspector SI Bharti', 'Police GK Questions', 'Physical Test Police', 'Police Syllabus Hindi', 'State Police Vacancy 2025'],
+    'UPSC': ['UPSC 2025', 'IAS Preparation', 'IPS Exam', 'Civil Services 2025', 'UPSC Prelims 2025', 'UPSC Mains', 'UPSC Current Affairs', 'UPSC GS Paper', 'IAS Topper Strategy', 'UPSC Syllabus Hindi', 'UPSC Study Material', 'Optional Subject UPSC', 'CSAT 2025', 'UPSC Mock Test'],
+    'State': ['Sarkari Naukri 2025', 'State PSC 2025', 'BPSC 2025', 'UPPSC 2025', 'RPSC 2025', 'MPSC 2025', 'Government Jobs 2025', 'Sarkari Result 2025', 'State Government Vacancy', 'PCS Exam Preparation', 'State Board Exam'],
+    'Default': ['Sarkari Naukri 2025', 'Government Jobs 2025', 'Exam Preparation 2025', 'Free Study Material', 'Online Mock Test', 'Current Affairs 2025', 'GK Questions Hindi', 'General Knowledge 2025', 'Competitive Exam Tips', 'Study Tips Hindi', 'Exam Date 2025', 'Admit Card 2025', 'Result 2025']
 };
 
-// 📊 High-Search-Volume Base Tags
-const VIRAL_BASE_TAGS = [
-    'Sarkari Result', 'Sarkari Naukri', 'Govt Jobs 2025', 'Free PDF Download',
-    'Study Material Hindi', 'Exam Preparation', 'Online Test Series',
-    'Current Affairs Hindi', 'GK in Hindi', 'StudyGyaan', 'Competitive Exam',
-    'Latest Vacancy 2025', 'Admit Card', 'Answer Key 2025', 'Cut Off Marks',
-    'Syllabus 2025', 'Previous Year Paper', 'Mock Test Free', 'Notes PDF',
-    'सरकारी नौकरी', 'सरकारी रिजल्ट', 'परीक्षा तैयारी', 'फ्री नोट्स'
-];
+const VIRAL_BASE_TAGS = ['Sarkari Result', 'Sarkari Naukri', 'Govt Jobs 2025', 'Free PDF Download', 'Study Material Hindi', 'Exam Preparation', 'Online Test Series', 'Current Affairs Hindi', 'GK in Hindi', 'StudyGyaan', 'Competitive Exam', 'Latest Vacancy 2025', 'Admit Card', 'Answer Key 2025', 'Cut Off Marks', 'Syllabus 2025', 'Previous Year Paper', 'Mock Test Free', 'Notes PDF', 'सरकारी नौकरी', 'सरकारी रिजल्ट', 'परीक्षा तैयारी', 'फ्री नोट्स'];
 
 function detectCategory(title, content) {
     const text = (title + ' ' + content).toLowerCase();
@@ -179,14 +172,10 @@ function detectCategory(title, content) {
 }
 
 function extractTitleKeywords(title) {
-    // Important words निकालो title से
-    const stopWords = ['और', 'की', 'के', 'का', 'में', 'से', 'को', 'है', 'हैं', 'यह', 'वह',
-        'for', 'the', 'and', 'are', 'was', 'has', 'have', 'will', 'with', 'from',
-        'that', 'this', 'they', 'not', 'but', 'out', 'now', 'get'];
-    
+    const stopWords = ['और', 'की', 'के', 'का', 'में', 'से', 'को', 'है', 'हैं', 'यह', 'वह', 'for', 'the', 'and', 'are', 'was', 'has', 'have', 'will', 'with', 'from', 'that', 'this', 'they', 'not', 'but', 'out', 'now', 'get'];
     return title.split(/[\s,\-|]+/)
         .filter(w => w.length > 2 && !stopWords.includes(w.toLowerCase()))
-        .map(w => w.replace(/[^a-zA-Z0-9\u0900-\u097F]/g, '')) // Hindi + English chars
+        .map(w => w.replace(/[^a-zA-Z0-9\u0900-\u097F]/g, ''))
         .filter(w => w.length > 2)
         .slice(0, 8);
 }
@@ -194,46 +183,24 @@ function extractTitleKeywords(title) {
 function generateDynamicSEO(blogData, blogCat) {
     const title = blogData.title || '';
     const content = blogData.description || blogData.content || '';
-    
-    // 🎯 Auto-detect actual category
     const detectedCat = detectCategory(title, content);
     const finalCat = blogCat !== 'Default' ? blogCat : detectedCat;
-    
-    // 📊 Category-specific keywords लो
     const catKeywords = CATEGORY_KEYWORDS[finalCat] || CATEGORY_KEYWORDS['Default'];
-    
-    // 🔑 Title से specific keywords निकालो
     const titleKeywords = extractTitleKeywords(title);
     
-    // 📅 Year/Month dynamic keywords
     const now = new Date();
     const year = now.getFullYear();
-    const months = ['January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     const month = months[now.getMonth()];
     
-    const timeKeywords = [
-        `${finalCat} ${year}`, `Exam ${year}`, `${month} ${year} Update`,
-        `Latest ${finalCat} Update`, `New Vacancy ${year}`
-    ];
-    
-    // 🔗 Post link
+    const timeKeywords = [`${finalCat} ${year}`, `Exam ${year}`, `${month} ${year} Update`, `Latest ${finalCat} Update`, `New Vacancy ${year}`];
     const identifier = blogData.slug || blogData.id;
     const postLink = identifier ? `https://studygyaan.in/blog/${identifier}` : 'https://studygyaan.in';
     
-    // 🏷️ Final Tags - Unique और Ranked
     let allTags = [];
-    
-    // Priority order: Title keywords > Category keywords > Time keywords > Base tags
-    const tagSources = [
-        ...titleKeywords,
-        ...catKeywords,
-        ...timeKeywords,
-        ...VIRAL_BASE_TAGS
-    ];
-    
-    // Deduplicate करो
+    const tagSources = [...titleKeywords, ...catKeywords, ...timeKeywords, ...VIRAL_BASE_TAGS];
     const seen = new Set();
+    
     for (let tag of tagSources) {
         const clean = tag.trim();
         if (clean && !seen.has(clean.toLowerCase())) {
@@ -242,7 +209,6 @@ function generateDynamicSEO(blogData, blogCat) {
         }
     }
     
-    // YouTube max 500 chars for tags
     let finalTags = [];
     let tagLength = 0;
     for (let tag of allTags) {
@@ -252,24 +218,16 @@ function generateDynamicSEO(blogData, blogCat) {
         }
     }
     
-    // 📝 Power Description (YouTube Algorithm Friendly)
     const hashtags = finalTags.slice(0, 3).map(t => '#' + t.replace(/[^a-zA-Z0-9\u0900-\u097F]/g, '')).join(' ');
     const keywordString = finalTags.slice(0, 20).join(' | ');
-    
     const description = generatePowerDescription(title, postLink, finalCat, keywordString, hashtags, year);
     
     console.log(`✅ SEO Generated: ${finalTags.length} tags | Category: ${finalCat}`);
     
-    return {
-        tags: finalTags,
-        description: description,
-        postLink: postLink,
-        detectedCategory: finalCat
-    };
+    return { tags: finalTags, description: description, postLink: postLink, detectedCategory: finalCat };
 }
 
 function generatePowerDescription(title, postLink, category, keywords, hashtags, year) {
-    // YouTube Algorithm के लिए Perfect Description Structure
     return `${title} | ${category} ${year} | StudyGyaan
 
 📌 इस topic की पूरी जानकारी यहाँ से पढ़ें:
@@ -288,12 +246,11 @@ function generatePowerDescription(title, postLink, category, keywords, hashtags,
 ━━━━━━━━━━━━━━━━━━━━━━━
 
 🔔 SUBSCRIBE करें और Bell Icon दबाएं ताकि कोई भी Update Miss न हो!
-
 📲 Telegram Join करें - Daily Free Notes पाएं!
 
 ━━━━━━━━━━━━━━━━━━━━━━━
 ⏰ VIDEO CHAPTERS:
-00:00 - Introduction
+00:00 - Introduction & Warning
 00:30 - Important Updates
 02:00 - Key Points
 02:45 - How to Prepare
@@ -315,8 +272,6 @@ ${hashtags} #StudyGyaan #SarkariNaukri #${category}
 function generateViralTitle(blogTitle, category) {
     const now = new Date();
     const year = now.getFullYear();
-    
-    // Category-specific hooks जो actually काम करते हैं
     const categoryHooks = {
         'Railway': ['RRB Official Update', 'Railway Big News', 'Railway Bharti Update'],
         'SSC': ['SSC Official Notice', 'SSC Big Update', 'SSC Exam Alert'],
@@ -329,13 +284,8 @@ function generateViralTitle(blogTitle, category) {
     
     const hooks = categoryHooks[category] || categoryHooks['Default'];
     const hook = hooks[Math.floor(Math.random() * hooks.length)];
+    let cleanTitle = blogTitle.replace(/[|]/g, '-').trim();
     
-    // Clean title - 60 chars max for title part
-    let cleanTitle = blogTitle
-        .replace(/[|]/g, '-')
-        .trim();
-    
-    // Title formats जो YouTube में rank करते हैं
     const formats = [
         `${cleanTitle} ${year} | ${hook} | StudyGyaan`,
         `${hook}: ${cleanTitle} | Free Study Material | StudyGyaan`,
@@ -343,35 +293,26 @@ function generateViralTitle(blogTitle, category) {
     ];
     
     let finalTitle = formats[Math.floor(Math.random() * formats.length)];
-    
-    // YouTube 100 char limit
-    if (finalTitle.length > 100) {
-        finalTitle = `${cleanTitle.substring(0, 55)} | ${hook} ${year} | StudyGyaan`;
-    }
-    if (finalTitle.length > 100) {
-        finalTitle = finalTitle.substring(0, 97) + '...';
-    }
+    if (finalTitle.length > 100) finalTitle = `${cleanTitle.substring(0, 55)} | ${hook} ${year} | StudyGyaan`;
+    if (finalTitle.length > 100) finalTitle = finalTitle.substring(0, 97) + '...';
     
     return finalTitle;
 }
 
 // =========================================================
-// 💬 PINNED COMMENT ENGINE (High Engagement)
+// 💬 PINNED COMMENT ENGINE
 // =========================================================
 function generatePinnedComment(postLink, category) {
     const templates = [
         `📌 इस Video से Related FREE STUDY MATERIAL यहाँ मिलेगा:\n🔗 ${postLink}\n\n✅ Website पर Free में पाएं:\n• PDF Notes Download\n• Mock Test Series\n• Latest Updates\n\n👉 Visit: https://studygyaan.in\n\n🔔 SUBSCRIBE करें & Bell दबाएं!`,
-        
         `🎯 Complete Notes & PDF Download करें:\n🔗 ${postLink}\n\n📚 StudyGyaan.in पर मिलेगा:\n✅ Free Mock Test\n✅ Previous Year Papers\n✅ Latest Vacancy Updates\n\n👉 https://studygyaan.in\n\n❓ कोई सवाल है? Comment करें!`,
-        
         `🔥 इस topic का FREE PDF & Full Detail:\n👇 ${postLink}\n\n━━━━━━━━━━━━\n📱 Daily Updates के लिए:\n🌐 Website: studygyaan.in\n\n💡 Tip: Bookmark करें ताकि याद रहे!\n\n👍 Video पसंद आई? LIKE करें!`
     ];
-    
     return templates[Math.floor(Math.random() * templates.length)];
 }
 
 // =========================================================
-// 🧠 4. GEMINI API SCRIPT WRITER
+// 🧠 5. GEMINI API SCRIPT WRITER (High Retention Hook)
 // =========================================================
 async function generateScriptWithGemini(blogTitle, blogContent) {
     const geminiKey = process.env.GEMINI_API_KEY;
@@ -381,19 +322,18 @@ async function generateScriptWithGemini(blogTitle, blogContent) {
 
     const prompt = `तुम एक बहुत बेहतरीन YouTube Educational Content Creator हो। 
     नीचे दिए गए ब्लॉग पोस्ट के आधार पर एक 3 मिनट की शानदार YouTube वीडियो स्क्रिप्ट लिखो।
-    
     स्क्रिप्ट हिंदी में होनी चाहिए (देवनागरी लिपि में)।
     
     Structure:
-    1. पहले 15 सेकंड में एक जबरदस्त Hook - ऐसा सवाल या statement जो viewer को रोके
-    2. बीच में मुख्य जानकारी - Simple और Clear भाषा में
-    3. अंत में Call to Action - StudyGyaan.in website पर जाने के लिए कहो और Like+Subscribe के लिए
+    1. पहले 10 सेकंड में एक जबरदस्त FOMO (Fear Of Missing Out) Hook बोलो। ऐसा सवाल या Warning दो कि स्टूडेंट को लगे कि अगर उसने ये वीडियो नहीं देखी तो उसका एग्जाम खराब हो जाएगा या वो पीछे रह जाएगा।
+    2. बीच में मुख्य जानकारी - Simple और Clear भाषा में।
+    3. अंत में Call to Action - StudyGyaan.in website पर जाने के लिए कहो और Like+Subscribe के लिए।
     
     Rules:
-    - जब भी website का नाम आए तो "स्टडी ज्ञान डॉट इन" लिखें
-    - केवल बोले जाने वाले शब्द लिखो
-    - कोई brackets, asterisk, या extra formatting मत लिखो
-    - Natural और engaging बोलने जैसी भाषा रखो
+    - जब भी website का नाम आए तो "स्टडी ज्ञान डॉट इन" लिखें।
+    - केवल बोले जाने वाले शब्द लिखो।
+    - कोई brackets, asterisk, या extra formatting मत लिखो।
+    - Natural और engaging बोलने जैसी भाषा रखो।
     
     ब्लॉग टाइटल: ${blogTitle}
     ब्लॉग जानकारी: ${blogContent}`;
@@ -404,7 +344,6 @@ async function generateScriptWithGemini(blogTitle, blogContent) {
             { contents: [{ parts: [{ text: prompt }] }] },
             { headers: { 'Content-Type': 'application/json' } }
         );
-
         const script = response.data.candidates[0].content.parts[0].text;
         console.log("✅ Script ready!");
         return script.replace(/[\*\#\_\[\]]/g, '').trim();
@@ -414,15 +353,29 @@ async function generateScriptWithGemini(blogTitle, blogContent) {
 }
 
 // =========================================================
-// 🖼️ 5. LANDSCAPE POSTER ENGINE (16:9 YouTube)
+// 🖼️ 6. HIGH-CTR POSTER ENGINE (16:9 YouTube)
 // =========================================================
+function roundRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+    ctx.fill();
+}
+
 function createLandscapePoster(title, outputPath, category) {
-    console.log('🖼️ YouTube Poster बन रहा है...');
+    console.log('🖼️ High-CTR YouTube Poster बन रहा है...');
     const width = 1920, height = 1080;
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // Category-based gradient colors
     const gradients = {
         'Railway': ['#0a192f', '#1a3a5c', '#0066cc'],
         'SSC': ['#1a0a00', '#4a1500', '#cc4400'],
@@ -440,15 +393,11 @@ function createLandscapePoster(title, outputPath, category) {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, height);
 
-    // Grid pattern overlay
+    // Grid pattern
     ctx.strokeStyle = 'rgba(255,255,255,0.03)';
     ctx.lineWidth = 1;
-    for (let x = 0; x < width; x += 80) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
-    }
-    for (let y = 0; y < height; y += 80) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
-    }
+    for (let x = 0; x < width; x += 80) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke(); }
+    for (let y = 0; y < height; y += 80) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke(); }
 
     function wrapText(context, text, x, y, maxWidth, lineHeight) {
         let words = text.split(' '), line = '';
@@ -466,47 +415,55 @@ function createLandscapePoster(title, outputPath, category) {
         return y;
     }
 
-    // 🔴 TOP BADGE
+    // 🔴 TOP LEFT BADGE (LIVE UPDATE)
     ctx.fillStyle = '#FF0000';
-    ctx.beginPath();
-    ctx.roundRect(width/2 - 350, 40, 700, 90, 45);
-    ctx.fill();
+    roundRect(ctx, 40, 40, 350, 80, 20);
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 48px "HindiFont", sans-serif';
+    ctx.font = 'bold 40px "HindiFont", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('🔔 STUDYGYAAN.IN EXCLUSIVE', width/2, 85);
+    ctx.fillText('🔴 LIVE UPDATE', 215, 80);
+
+    // 🔴 TOP RIGHT BADGE (STUDYGYAAN)
+    ctx.fillStyle = '#FF6B00';
+    roundRect(ctx, width - 450, 40, 410, 80, 20);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 40px "HindiFont", sans-serif';
+    ctx.fillText('STUDYGYAAN.IN', width - 245, 80);
 
     // ⭐ MAIN TITLE
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 95px "HindiFont", sans-serif';
     ctx.shadowColor = "rgba(0,0,0,0.9)";
     ctx.shadowBlur = 20;
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    const titleY = wrapText(ctx, title, width/2, 200, 1700, 120);
+    const titleY = wrapText(ctx, title, width/2, 250, 1700, 120);
     ctx.shadowBlur = 0;
 
     // 🟡 BOTTOM BAR
-    const barGrad = ctx.createLinearGradient(0, 900, width, 1080);
+    const barGrad = ctx.createLinearGradient(0, 880, width, 1080);
     barGrad.addColorStop(0, '#FF6B00');
     barGrad.addColorStop(1, '#FFD700');
     ctx.fillStyle = barGrad;
-    ctx.fillRect(0, 900, width, 180);
+    ctx.fillRect(0, 880, width, 200);
     
     ctx.fillStyle = '#000000';
-    ctx.font = '900 62px "HindiFont", sans-serif';
+    ctx.font = '900 65px "HindiFont", sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillText('👇 FULL DETAILS + FREE PDF LINK IN DESCRIPTION 👇', width/2, 990);
+    ctx.fillText('👇 FULL DETAILS + FREE PDF LINK IN DESCRIPTION 👇', width/2, 980);
 
     fs.writeFileSync(outputPath, canvas.toBuffer('image/png'));
-    console.log('✅ Poster save हो गया!');
+    console.log('✅ High-CTR Poster save हो गया!');
 }
 
 // =========================================================
-// 🎬 6. MAIN LONG VIDEO GENERATOR ENGINE
+// 🎬 7. MAIN LONG VIDEO GENERATOR ENGINE (With Motion)
 // =========================================================
 async function generateLongVideo() {
     console.log("🎬 Long Video Engine Started...");
+    console.log("⚠️  Tip: Purani 0 views wali videos ko Private kardo channel grow karne ke liye.");
+    
     const tempDir = os.tmpdir();
     const audioPath = path.resolve(tempDir, `long-audio-${Date.now()}.mp3`);
     const posterPath = path.resolve(tempDir, `long-poster-${Date.now()}.png`);
@@ -543,17 +500,10 @@ async function generateLongVideo() {
         console.log(`📝 Blog मिला: ${blogTitle}`);
         console.log(`📂 Category: ${blogCat}`);
 
-        // 🔐 YouTube Client
         const youtube = await getYouTubeClient();
-
-        // 🧠 Script Generate
         const scriptText = await generateScriptWithGemini(blogTitle, blogContent);
-
-        // 🏷️ SEO Generate (Dynamic & Powerful)
         const seoData = generateDynamicSEO(blogData, blogCat);
         const detectedCategory = seoData.detectedCategory;
-
-        // 📢 Viral Title Generate
         const finalTitle = generateViralTitle(blogTitle, detectedCategory);
         console.log(`📢 Title: ${finalTitle}`);
 
@@ -607,21 +557,25 @@ async function generateLongVideo() {
             if (mp3Files.length > 0) finalMusic = path.resolve(path.join(bgMusicDir, mp3Files[0]));
         }
 
-        // 🎬 FFmpeg Render
-        console.log('🎬 FFmpeg rendering...');
+        // 🎬 FFmpeg Render (With Ken Burns Pan Effect for Retention)
+        console.log('🎬 FFmpeg rendering with Motion Effect...');
         const hasMusic = finalMusic && fs.existsSync(finalMusic);
+
+        // Motion filter: Scales image up, then slowly pans across it using sine/cosine waves
+        const videoFilter = "scale=2560:-1,crop=1920:1080:(in_w-out_w)/2 + ((in_w-out_w)/4)*sin(t/10):(in_h-out_h)/2 + ((in_h-out_h)/4)*cos(t/10),format=yuv420p";
 
         let args = [];
         if (hasMusic) {
-            const filter = `[1:a]volume=1.4[voice];[2:a]volume=0.05[bgm];[voice][bgm]amix=inputs=2:duration=first[a]`;
+            const filterComplex = `[1:a]volume=1.4[voice];[2:a]volume=0.05[bgm];[voice][bgm]amix=inputs=2:duration=first[a]`;
             args = ['-y', '-loop', '1', '-i', posterPath, '-i', audioPath, '-stream_loop', '-1', '-i', finalMusic,
-                '-filter_complex', filter, '-map', '0:v', '-map', '[a]',
+                '-vf', videoFilter, '-filter_complex', filterComplex, '-map', '0:v', '-map', '[a]',
                 '-c:v', 'libx264', '-preset', 'superfast', '-tune', 'stillimage',
-                '-c:a', 'aac', '-b:a', '128k', '-shortest', '-pix_fmt', 'yuv420p', videoPath];
+                '-c:a', 'aac', '-b:a', '128k', '-shortest', videoPath];
         } else {
             args = ['-y', '-loop', '1', '-i', posterPath, '-i', audioPath,
+                '-vf', videoFilter,
                 '-c:v', 'libx264', '-preset', 'superfast', '-tune', 'stillimage',
-                '-c:a', 'aac', '-b:a', '128k', '-shortest', '-pix_fmt', 'yuv420p', videoPath];
+                '-c:a', 'aac', '-b:a', '128k', '-shortest', videoPath];
         }
 
         await new Promise((resolve, reject) => {
@@ -639,15 +593,16 @@ async function generateLongVideo() {
         console.log(`\n✅ Video ready: ${videoPath}`);
 
         // =========================================================
-        // 🚀 YOUTUBE UPLOAD
+        // 🚀 YOUTUBE UPLOAD (With Sanitized Tags)
         // =========================================================
         console.log('🚀 YouTube पर upload हो रहा है...');
-
-        // Final description with dynamic SEO
         const finalDescription = seoData.description;
-
-        console.log(`📊 Tags count: ${seoData.tags.length}`);
-        console.log(`📊 Top 5 tags: ${seoData.tags.slice(0, 5).join(', ')}`);
+        
+        // 🔥 CRITICAL FIX: Sanitize tags before sending to YouTube API
+        const safeTags = sanitizeYouTubeTags(seoData.tags);
+        
+        console.log(`📊 Tags count: ${safeTags.length}`);
+        console.log(`📊 Top 5 tags: ${safeTags.slice(0, 5).join(', ')}`);
 
         const res = await youtube.videos.insert({
             part: 'snippet,status',
@@ -655,8 +610,8 @@ async function generateLongVideo() {
                 snippet: {
                     title: finalTitle,
                     description: finalDescription,
-                    tags: seoData.tags,
-                    categoryId: '27', // Education category
+                    tags: safeTags, // Using sanitized tags here
+                    categoryId: '27', 
                     defaultLanguage: 'hi',
                     defaultAudioLanguage: 'hi'
                 },
@@ -728,7 +683,7 @@ async function generateLongVideo() {
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
         const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
         if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
-            const tgMsg = `🚀 <b>New Video Live on YouTube!</b>\n\n📌 <b>Topic:</b> ${blogTitle}\n🏷️ <b>Category:</b> ${detectedCategory}\n🔗 <b>Watch:</b> https://youtu.be/${videoId}\n\n📊 <b>SEO Tags:</b> ${seoData.tags.slice(0, 5).join(', ')}\n\n✅ Auto-uploaded successfully!`;
+            const tgMsg = `🚀 <b>New Video Live on YouTube!</b>\n\n📌 <b>Topic:</b> ${blogTitle}\n🏷️ <b>Category:</b> ${detectedCategory}\n🔗 <b>Watch:</b> https://youtu.be/${videoId}\n\n📊 <b>SEO Tags:</b> ${safeTags.slice(0, 5).join(', ')}\n\n✅ Auto-uploaded successfully!`;
             await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
                 chat_id: TELEGRAM_CHAT_ID,
                 text: tgMsg,
@@ -739,13 +694,12 @@ async function generateLongVideo() {
         // 📱 Facebook Upload
         await uploadToFacebook(videoPath, finalDescription);
 
-        // 💬 Auto Pinned Comment (HIGH ENGAGEMENT)
+        // 💬 Auto Pinned Comment
         console.log('⏳ 15 seconds wait for comment...');
         await new Promise(resolve => setTimeout(resolve, 15000));
 
         try {
             const pinnedComment = generatePinnedComment(seoData.postLink, detectedCategory);
-            
             const commentRes = await youtube.commentThreads.insert({
                 part: 'snippet',
                 requestBody: {
@@ -758,16 +712,13 @@ async function generateLongVideo() {
                 }
             });
             
-            // Comment Pin करो
             try {
                 await youtube.comments.setModerationStatus({
                     id: commentRes.data.id,
                     moderationStatus: 'published',
                     banAuthor: false
                 });
-            } catch(pinErr) {
-                // Pin करना optional है
-            }
+            } catch(pinErr) {}
             
             console.log('💬 ✅ First comment live!');
         } catch (commentErr) {
