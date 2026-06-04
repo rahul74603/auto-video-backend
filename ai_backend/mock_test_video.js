@@ -103,22 +103,21 @@ function cleanText(str) {
 }
 
 // =========================================================
-// 🏷️ 4. DYNAMIC SEO ENGINE (MOCK TEST POWERHOUSE)
+// 🏷️ 4. DYNAMIC SEO ENGINE
 // =========================================================
 
-// 📊 Subject-wise High Search Volume Keywords
 const SUBJECT_KEYWORDS = {
     'GK': [
-        'GK Questions Hindi', 'General Knowledge 2025', 'GK Quiz Hindi English',
+        'GK Questions Hindi', 'General Knowledge 2025', 'GK Quiz',
         'Samanya Gyan', 'GK Mock Test', 'General Knowledge Quiz',
-        'GK Practice Set', 'GK Important Questions', 'Static GK 2025',
-        'GK Questions with Answers', 'Daily GK Quiz', 'GK for SSC',
+        'GK Practice Set', 'GK Important Questions', 'Static GK',
+        'GK Questions Answers', 'Daily GK Quiz', 'GK for SSC',
         'GK for Railway', 'GK for Police Exam', 'GK for UPSC'
     ],
     'General Knowledge': [
         'GK Questions Hindi', 'General Knowledge 2025', 'Samanya Gyan Quiz',
         'GK Mock Test Series', 'Important GK Questions', 'GK Practice Set',
-        'GK for Competitive Exam', 'GK Hindi Medium', 'Top GK Questions 2025'
+        'GK for Competitive Exam', 'GK Hindi Medium', 'Top GK Questions'
     ],
     'Math': [
         'Math Mock Test', 'Mathematics Questions Hindi', 'Maths Tricks Hindi',
@@ -128,7 +127,7 @@ const SUBJECT_KEYWORDS = {
         'Time Speed Distance', 'Simple Interest Questions', 'Algebra Hindi'
     ],
     'Mathematics': [
-        'Mathematics Mock Test', 'Math Questions Hindi', 'Quantitative Aptitude 2025',
+        'Mathematics Mock Test', 'Math Questions Hindi', 'Quantitative Aptitude',
         'Maths Practice Set', 'SSC Maths Tricks', 'Railway Maths Questions',
         'Math Short Tricks Hindi', 'Important Math Questions'
     ],
@@ -154,8 +153,7 @@ const SUBJECT_KEYWORDS = {
         'Hindi Grammar Questions', 'Hindi Mock Test', 'Hindi Vyakaran',
         'Sandhi Viched', 'Samas Questions', 'Hindi Sahitya',
         'Hindi Practice Set', 'Hindi for SSC', 'Hindi for Railway',
-        'Muhavare Lokoktiyan', 'Hindi Vocabulary', 'Hindi Grammar Rules',
-        'Ras Chhand Alankar', 'Hindi Important Questions 2025'
+        'Muhavare Lokoktiyan', 'Hindi Vocabulary', 'Hindi Grammar Rules'
     ],
     'Reasoning': [
         'Reasoning Mock Test', 'Logical Reasoning Questions', 'Reasoning Hindi',
@@ -167,9 +165,7 @@ const SUBJECT_KEYWORDS = {
     'Current Affairs': [
         'Current Affairs 2025', 'Current Affairs Hindi', 'Monthly Current Affairs',
         'Daily Current Affairs Quiz', 'Current Affairs Mock Test',
-        'Current Affairs January 2025', 'Current Affairs February 2025',
-        'Current Affairs March 2025', 'GK Current Affairs 2025',
-        'Latest Current Affairs', 'Current Affairs PDF', 'Important Events 2025'
+        'GK Current Affairs 2025', 'Latest Current Affairs', 'Important Events 2025'
     ],
     'History': [
         'History Questions Hindi', 'Indian History Mock Test', 'History GK Quiz',
@@ -181,7 +177,7 @@ const SUBJECT_KEYWORDS = {
         'Geography Questions Hindi', 'Geography Mock Test', 'Bhugol Questions',
         'Indian Geography Quiz', 'World Geography Questions', 'Geography GK',
         'Geography Practice Set', 'Physical Geography', 'Geography for UPSC',
-        'Geography for SSC', 'Important Geography Questions 2025'
+        'Geography for SSC', 'Important Geography Questions'
     ],
     'Computer': [
         'Computer Questions Hindi', 'Computer Mock Test', 'Computer GK Quiz',
@@ -192,12 +188,11 @@ const SUBJECT_KEYWORDS = {
     'Economy': [
         'Economy Questions Hindi', 'Economics Mock Test', 'Indian Economy GK',
         'Economics Practice Set', 'Budget Questions', 'Finance Questions Hindi',
-        'Economy for UPSC', 'Economy for SSC', 'Economic Survey Questions',
-        'Banking Economy Questions', 'GDP GNP Questions Hindi'
+        'Economy for UPSC', 'Economy for SSC', 'Banking Economy Questions'
     ],
     'Polity': [
         'Indian Polity Questions', 'Constitution Questions Hindi', 'Polity Mock Test',
-        'Rajya Vyavastha Questions', 'Fundamental Rights Questions', 'Parliament Questions',
+        'Fundamental Rights Questions', 'Parliament Questions',
         'Polity Practice Set', 'Polity for UPSC', 'Polity for SSC',
         'Constitution of India Quiz', 'Preamble Questions', 'Directive Principles'
     ],
@@ -208,25 +203,34 @@ const SUBJECT_KEYWORDS = {
     ]
 };
 
-// 🎯 Exam-specific Tags
 const EXAM_TAGS = [
     'SSC CGL 2025', 'SSC CHSL 2025', 'SSC MTS 2025', 'SSC GD 2025',
     'RRB NTPC 2025', 'Railway Group D', 'RRB ALP 2025',
     'Bank PO 2025', 'IBPS PO 2025', 'SBI PO 2025',
-    'UP Police 2025', 'Delhi Police Bharti', 'Police Constable',
-    'UPSC 2025', 'IAS Preparation', 'State PSC 2025',
-    'Sarkari Naukri 2025', 'Government Jobs 2025', 'Sarkari Result',
-    'Competitive Exam 2025', 'Exam Preparation Hindi'
+    'UP Police 2025', 'Delhi Police', 'Police Constable 2025',
+    'UPSC 2025', 'State PSC 2025', 'Sarkari Naukri 2025',
+    'Government Jobs 2025', 'Competitive Exam 2025', 'Exam Preparation Hindi'
 ];
 
-// 🌟 Base Viral Tags
 const BASE_MOCK_TAGS = [
     'Mock Test', 'Practice Set', 'Online Test Series', 'Free Mock Test',
-    'MCQ with Answers', 'Quiz with Timer', 'StudyGyaan', 'StudyGyaan.in',
-    'Free Study Material', 'Exam Tips Hindi', 'Study Material 2025',
-    'Important Questions', 'Previous Year Paper', 'Expected Questions 2025',
-    'सरकारी नौकरी', 'परीक्षा तैयारी', 'मॉक टेस्ट हिंदी'
+    'MCQ with Answers', 'Quiz with Timer', 'StudyGyaan', 'Free Study Material',
+    'Exam Tips Hindi', 'Study Material 2025', 'Important Questions',
+    'Previous Year Paper', 'Expected Questions 2025'
 ];
+
+// ✅ TAG SANITIZER - Only YouTube Safe ASCII Tags
+function sanitizeTag(tag) {
+    if (!tag) return null;
+    let clean = tag
+        .replace(/[^\x20-\x7E]/g, '')   // Remove non-ASCII (Hindi, emojis, etc.)
+        .replace(/[<>'"&]/g, '')          // Remove HTML special chars
+        .replace(/\s+/g, ' ')             // Normalize spaces
+        .trim();
+    if (clean.length < 2) return null;
+    if (clean.length > 100) clean = clean.substring(0, 100).trim();
+    return clean || null;
+}
 
 function getSubjectKey(subject) {
     const s = subject.toLowerCase();
@@ -234,7 +238,7 @@ function getSubjectKey(subject) {
     if (s.includes('math')) return 'Math';
     if (s.includes('science') || s.includes('vigyan')) return 'Science';
     if (s.includes('english')) return 'English';
-    if (s.includes('hindi') || s.includes('हिंदी')) return 'Hindi';
+    if (s.includes('hindi')) return 'Hindi';
     if (s.includes('reason')) return 'Reasoning';
     if (s.includes('current')) return 'Current Affairs';
     if (s.includes('history') || s.includes('itihas')) return 'History';
@@ -248,161 +252,326 @@ function getSubjectKey(subject) {
 function generateMockTestSEO(subject, title, totalQuestions) {
     const subjectKey = getSubjectKey(subject);
     const subjectKeywords = SUBJECT_KEYWORDS[subjectKey] || SUBJECT_KEYWORDS['Default'];
-    
+
     const now = new Date();
     const year = now.getFullYear();
-    const months = ['January','February','March','April','May','June',
-                    'July','August','September','October','November','December'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
     const month = months[now.getMonth()];
 
-    // Time-based trending tags
+    // Clean subject - ASCII only for tags
+    const subjectClean = subject.replace(/[^\x20-\x7E]/g, '').trim() || 'GK';
+
     const timeTags = [
-        `${subject} Mock Test ${year}`,
-        `${subject} Questions ${month} ${year}`,
-        `${subject} Practice Set ${year}`,
-        `Top ${totalQuestions} ${subject} Questions`,
-        `${subject} Quiz ${year}`
+        `${subjectClean} Mock Test ${year}`,
+        `${subjectClean} Questions ${month} ${year}`,
+        `${subjectClean} Practice Set ${year}`,
+        `Top ${totalQuestions} ${subjectClean} Questions`,
+        `${subjectClean} Quiz ${year}`
     ];
 
-    // Combine all tags - Priority order
     const allTagSources = [
-        `${subject} Mock Test`,
-        `${totalQuestions} Questions ${subject}`,
+        `${subjectClean} Mock Test`,
+        `${totalQuestions} Questions ${subjectClean}`,
         ...timeTags,
         ...subjectKeywords,
         ...EXAM_TAGS,
         ...BASE_MOCK_TAGS
     ];
 
-    // Deduplicate
     const seen = new Set();
     let finalTags = [];
-    let tagLength = 0;
+    let totalTagLength = 0;
 
-    for (let tag of allTagSources) {
-        const clean = tag.trim();
+    for (let rawTag of allTagSources) {
+        const clean = sanitizeTag(rawTag);
         if (!clean) continue;
         if (seen.has(clean.toLowerCase())) continue;
-        if (tagLength + clean.length + 2 > 490) break;
+        if (totalTagLength + clean.length + 2 > 495) break;
         seen.add(clean.toLowerCase());
         finalTags.push(clean);
-        tagLength += clean.length + 2;
+        totalTagLength += clean.length + 2;
     }
 
-    console.log(`✅ SEO: ${finalTags.length} tags generated | Subject: ${subjectKey}`);
+    console.log(`✅ SEO: ${finalTags.length} tags | Total chars: ${totalTagLength} | Subject: ${subjectKey}`);
     return finalTags;
 }
 
-// 📢 Viral but Safe Title Generator
 function generateMockTitle(subject, totalQuestions) {
     const now = new Date();
     const year = now.getFullYear();
-    const subjectUpper = subject.toUpperCase();
 
-    // Safe hooks जो YouTube penalize नहीं करता
+    const subjectClean = subject.replace(/[^\x20-\x7E]/g, '').trim() || subject;
+    const subjectUpper = subjectClean.toUpperCase();
+
     const safeHooks = [
         `Top ${totalQuestions} ${subjectUpper} Questions`,
-        `${subjectUpper} Mock Test: ${totalQuestions} Q&A`,
-        `${totalQuestions} Most Important ${subjectUpper} Questions`,
-        `${subjectUpper} Practice Set: ${totalQuestions} Questions`,
-        `${subjectUpper} Quiz ${year}: Top ${totalQuestions} MCQ`
+        `${subjectUpper} Mock Test ${totalQuestions} QandA`,
+        `${totalQuestions} Important ${subjectUpper} Questions`,
+        `${subjectUpper} Practice Set ${totalQuestions} Questions`,
+        `${subjectUpper} Quiz ${year} Top ${totalQuestions} MCQ`
+    ];
+
+    const suffixes = [
+        `With Timer and Answers StudyGyaan`,
+        `Bilingual Hindi English StudyGyaan`,
+        `Free Mock Test ${year} StudyGyaan`,
+        `With Explanation StudyGyaan.in`
     ];
 
     const hook = safeHooks[Math.floor(Math.random() * safeHooks.length)];
-
-    // Safe suffixes
-    const suffixes = [
-        `With Timer & Answers | StudyGyaan`,
-        `Bilingual Hindi English | StudyGyaan`,
-        `Free Mock Test ${year} | StudyGyaan`,
-        `With Explanation | StudyGyaan.in`
-    ];
-
     const suffix = suffixes[Math.floor(Math.random() * suffixes.length)];
-    let finalTitle = `${hook} | ${suffix}`;
 
-    if (finalTitle.length > 100) {
-        finalTitle = `${hook} | StudyGyaan ${year}`;
-    }
-    if (finalTitle.length > 100) {
-        finalTitle = finalTitle.substring(0, 97) + '...';
-    }
+    let finalTitle = `${hook} | ${suffix}`;
+    if (finalTitle.length > 100) finalTitle = `${hook} | StudyGyaan ${year}`;
+    if (finalTitle.length > 100) finalTitle = finalTitle.substring(0, 97) + '...';
 
     return finalTitle;
 }
 
-// 📝 Power Description Generator
 function generateMockDescription(subject, totalQuestions, ytTitle, tags) {
     const now = new Date();
     const year = now.getFullYear();
     const subjectUpper = subject.toUpperCase();
+
     const topTagsStr = tags.slice(0, 15).join(' | ');
-    const hashtagStr = tags.slice(0, 5)
-        .map(t => '#' + t.replace(/[^a-zA-Z0-9\u0900-\u097F]/g, ''))
+    const hashtagStr = tags.slice(0, 8)
+        .map(t => '#' + t.replace(/[^a-zA-Z0-9]/g, ''))
+        .filter(h => h.length > 1)
         .join(' ');
 
     return `${ytTitle}
 
-📌 Free Online Mock Test दें और Free PDF Download करें:
-👉 https://studygyaan.in
+Free Online Mock Test aur Free PDF Download karein:
+Website: https://studygyaan.in
 
-━━━━━━━━━━━━━━━━━━━━━━━
-📚 इस Video में क्या है:
-✅ ${subjectUpper} के Top ${totalQuestions} Important Questions
-✅ हर Question पर 5 Second Timer
-✅ Bilingual (Hindi + English) Format
-✅ सही जवाब और Explanation
-✅ Timer के साथ Practice करें
-━━━━━━━━━━━━━━━━━━━━━━━
+Is Video mein kya hai:
+- ${subjectUpper} ke Top ${totalQuestions} Important Questions
+- Har Question par 5 Second Timer
+- Bilingual Hindi aur English Format
+- Sahi Jawab aur Explanation ke saath
+- Timer ke saath Practice karein
 
-⏰ VIDEO CHAPTERS:
+Yeh Mock Test kiske liye hai:
+SSC CGL, CHSL, MTS, GD ${year}
+RRB NTPC, Group D, ALP ${year}
+Bank PO, Clerk, IBPS ${year}
+UP Police, Delhi Police ${year}
+UPSC, State PSC ${year}
+Sabhi Competitive Exams ${year}
+
+Daily Updates ke liye:
+Website: https://studygyaan.in
+Free PDF aur Mock Test Available
+
+SUBSCRIBE karein aur Bell Icon dabaein ताकि कोई Update Miss न हो!
+
+VIDEO CHAPTERS:
 00:00 - Introduction
-00:30 - Question 1 Start
-${Array.from({length: Math.min(totalQuestions, 5)}, (_, i) => 
-    `0${i+1}:00 - Question ${i+1}`).join('\n')}
-${totalQuestions > 5 ? `...और ${totalQuestions - 5} Questions` : ''}
+00:30 - Questions Start
 
-━━━━━━━━━━━━━━━━━━━━━━━
-🎯 यह Mock Test किसके लिए है:
-• SSC CGL, CHSL, MTS, GD ${year}
-• RRB NTPC, Group D, ALP ${year}
-• Bank PO, Clerk, IBPS ${year}
-• UP Police, Delhi Police ${year}
-• UPSC, State PSC ${year}
-• सभी Competitive Exams ${year}
-━━━━━━━━━━━━━━━━━━━━━━━
+KEYWORDS: ${topTagsStr}
 
-📱 Daily Updates के लिए:
-🌐 Website: https://studygyaan.in
-📲 Free PDF + Mock Test Available
+${hashtagStr} #MockTest #StudyGyaan #${subjectUpper.replace(/\s+/g, '')} #ExamPrep #${year}
 
-🔔 SUBSCRIBE करें & Bell Icon दबाएं!
-━━━━━━━━━━━━━━━━━━━━━━━
-
-🔎 KEYWORDS:
-${topTagsStr}
-
-━━━━━━━━━━━━━━━━━━━━━━━
-${hashtagStr} #MockTest #StudyGyaan #${subjectUpper.replace(/\s+/g,'')} #ExamPrep #${year}
-
-⚠️ DISCLAIMER: यह channel purely educational purposes के लिए है।`;
+DISCLAIMER: Yeh channel purely educational purposes ke liye hai.`;
 }
 
-// 💬 Pinned Comment Generator
 function generateMockPinnedComment(subject, totalQuestions) {
     const templates = [
-        `📌 इस ${subject} Mock Test की FREE PDF यहाँ से Download करें:\n👉 https://studygyaan.in\n\n✅ Website पर Free में पाएं:\n• और Mock Tests\n• Previous Year Papers\n• Daily Updates\n\n🔔 SUBSCRIBE करें & Bell दबाएं!\n👍 Video पसंद आई? LIKE करें!`,
-
-        `🎯 ${subject} के और Practice Sets Free में:\n🔗 https://studygyaan.in\n\n📚 Top ${totalQuestions} Questions की PDF:\n👉 Website पर जाएं\n\n❓ कोई Question Doubt है? Comment करें!\n\n💡 Tip: रोज़ एक Mock Test ज़रूर दें!`,
-
-        `🔥 More ${subject} Mock Tests Free में:\n👇 https://studygyaan.in\n\n━━━━━━━━━━\n📱 Daily Updates के लिए:\n🌐 Visit: studygyaan.in\n\n✅ Score कितना आया? Comment में बताएं!\n👍 Like करें अगर Helpful लगा!`
+        `Free ${subject} Mock Test PDF:\n👉 https://studygyaan.in\n\nMore Mock Tests + Previous Year Papers free mein available hain!\n\nScore kitna aaya? Comment mein bataen!\n\nSUBSCRIBE karein & Bell dabaein!`,
+        `${subject} ke aur Practice Sets free mein:\nhttps://studygyaan.in\n\nTop ${totalQuestions} Questions ki PDF website par available hai!\n\nKoi Question doubt hai? Comment karein!\n\nTip: Roz ek Mock Test zaroor dein!`,
+        `More ${subject} Mock Tests free mein:\nhttps://studygyaan.in\n\nDaily Updates ke liye visit karein: studygyaan.in\n\nScore Comment mein bataen!\nLike karein agar Helpful laga!`
     ];
-
     return templates[Math.floor(Math.random() * templates.length)];
 }
 
 // =========================================================
-// 🖼️ 5. MOCK TEST SLIDE GENERATOR
+// 🖼️ 5. ATTRACTIVE THUMBNAIL GENERATOR
+// =========================================================
+function createAttractiveThumbnail(subject, totalQuestions, outputPath) {
+    const width = 1280, height = 720;
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+
+    // Bold gradient background
+    let grad = ctx.createLinearGradient(0, 0, width, height);
+    grad.addColorStop(0, '#1a0533');
+    grad.addColorStop(0.5, '#2d1b69');
+    grad.addColorStop(1, '#11998e');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
+
+    // Left red accent strip
+    ctx.fillStyle = '#FF0000';
+    ctx.fillRect(0, 0, 12, height);
+
+    // Big number circle
+    ctx.beginPath();
+    ctx.arc(280, 360, 220, 0, 2 * Math.PI);
+    ctx.fillStyle = '#FF4500';
+    ctx.fill();
+    ctx.lineWidth = 12;
+    ctx.strokeStyle = '#FFD700';
+    ctx.stroke();
+
+    // Number
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 220px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 15;
+    ctx.fillText(`${totalQuestions}`, 280, 340);
+    ctx.shadowBlur = 0;
+
+    // Q text below number
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 60px sans-serif';
+    ctx.fillText('Questions', 280, 520);
+
+    // Subject text right side
+    ctx.fillStyle = '#FFD700';
+    ctx.font = `bold 100px "HindiFont", sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const subjectDisplay = subject.length > 12 ? subject.substring(0, 12) : subject;
+    ctx.fillText(subjectDisplay.toUpperCase(), 540, 80);
+
+    // MOCK TEST badge
+    ctx.fillStyle = '#FF0000';
+    ctx.beginPath();
+    ctx.roundRect(530, 210, 680, 110, 20);
+    ctx.fill();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 75px "HindiFont", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('MOCK TEST', 870, 220);
+
+    // Timer badge
+    ctx.fillStyle = '#00C853';
+    ctx.beginPath();
+    ctx.roundRect(530, 350, 330, 85, 42);
+    ctx.fill();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 48px sans-serif';
+    ctx.fillText('With Timer', 695, 355);
+
+    // Free badge
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath();
+    ctx.roundRect(880, 350, 220, 85, 42);
+    ctx.fill();
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 55px sans-serif';
+    ctx.fillText('FREE', 990, 355);
+
+    // Exam list
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 42px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('SSC | Railway | Bank | Police | UPSC', 535, 470);
+
+    // Bottom bar
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 620, width, 100);
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 52px "HindiFont", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('StudyGyaan.in | Free Mock Tests + PDF Notes', width / 2, 630);
+
+    fs.writeFileSync(outputPath, canvas.toBuffer('image/png'));
+}
+
+// =========================================================
+// 🖼️ 5.1 INTRO SLIDE GENERATOR
+// =========================================================
+function createIntroSlide(subject, totalQuestions, outputPath) {
+    const width = 1920, height = 1080;
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+
+    let grad = ctx.createLinearGradient(0, 0, width, height);
+    grad.addColorStop(0, '#0f2027');
+    grad.addColorStop(0.5, '#203a43');
+    grad.addColorStop(1, '#2c5364');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
+
+    // Top badge
+    ctx.fillStyle = '#FF0000';
+    ctx.beginPath();
+    ctx.roundRect(width / 2 - 400, 50, 800, 100, 50);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 55px "HindiFont", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('STUDYGYAAN.IN', width / 2, 100);
+
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 120px "HindiFont", sans-serif';
+    ctx.fillText(`${subject.toUpperCase()}`, width / 2, 350);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 80px "HindiFont", sans-serif';
+    ctx.fillText(`MOCK TEST`, width / 2, 500);
+
+    ctx.fillStyle = '#00FFFF';
+    ctx.font = 'bold 70px "HindiFont", sans-serif';
+    ctx.fillText(`Top ${totalQuestions} Important Questions`, width / 2, 650);
+
+    ctx.fillStyle = '#FF4500';
+    ctx.font = 'bold 60px "HindiFont", sans-serif';
+    ctx.fillText(`Timer ke saath Practice karein`, width / 2, 780);
+
+    ctx.fillStyle = '#ffcc00';
+    ctx.fillRect(0, 920, width, 160);
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 65px "HindiFont", sans-serif';
+    ctx.fillText(`FREE PDF + MORE TESTS: StudyGyaan.in`, width / 2, 1000);
+
+    fs.writeFileSync(outputPath, canvas.toBuffer('image/png'));
+}
+
+// =========================================================
+// 🖼️ 5.2 OUTRO SLIDE GENERATOR
+// =========================================================
+function createOutroSlide(outputPath) {
+    const width = 1920, height = 1080;
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+
+    let grad = ctx.createLinearGradient(0, 0, 0, height);
+    grad.addColorStop(0, '#0f2027');
+    grad.addColorStop(1, '#2c5364');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = 'bold 80px "HindiFont", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`Thanks For Watching!`, width / 2, 300);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 60px "HindiFont", sans-serif';
+    ctx.fillText(`Score Comment mein bataen!`, width / 2, 450);
+    ctx.fillText(`Like, Share aur Subscribe karein`, width / 2, 560);
+
+    ctx.fillStyle = '#00FFFF';
+    ctx.font = 'bold 65px "HindiFont", sans-serif';
+    ctx.fillText(`Free Mock Tests + PDF Notes:`, width / 2, 700);
+
+    ctx.fillStyle = '#FF4500';
+    ctx.font = 'bold 80px "HindiFont", sans-serif';
+    ctx.fillText(`StudyGyaan.in`, width / 2, 830);
+
+    fs.writeFileSync(outputPath, canvas.toBuffer('image/png'));
+}
+
+// =========================================================
+// 🖼️ 5.3 MOCK TEST SLIDE GENERATOR
 // =========================================================
 function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, outputPath, timerNumber = null) {
     const width = 1920, height = 1080;
@@ -473,10 +642,10 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
     // Question
     ctx.font = `bold ${qFont}px "HindiFont", sans-serif`;
     if (questionObj.qEn === questionObj.qHi || !questionObj.qEn) {
-        currentY = drawTextBlock(ctx, `प्र. ${questionObj.qHi || questionObj.qEn}`, 80, currentY, 1750, qFont + lineGap, '#ffffff') + blockGap;
+        currentY = drawTextBlock(ctx, `Q. ${questionObj.qHi || questionObj.qEn}`, 80, currentY, 1750, qFont + lineGap, '#ffffff') + blockGap;
     } else {
         currentY = drawTextBlock(ctx, `Q. ${questionObj.qEn}`, 80, currentY, 1750, qFont + lineGap, '#ffffff') + 10;
-        currentY = drawTextBlock(ctx, `प्र. ${questionObj.qHi}`, 80, currentY, 1750, qFont + lineGap, '#00FFFF') + blockGap;
+        currentY = drawTextBlock(ctx, `${questionObj.qHi}`, 80, currentY, 1750, qFont + lineGap, '#00FFFF') + blockGap;
     }
 
     // Options
@@ -492,7 +661,7 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
     options.forEach(opt => {
         let optText = (opt.textEn === opt.textHi || !opt.textEn)
             ? `${opt.label}) ${opt.textHi || opt.textEn}`
-            : `${opt.label}) ${opt.textEn}     |     ${opt.textHi}`;
+            : `${opt.label}) ${opt.textEn}  |  ${opt.textHi}`;
 
         let startBoxY = currentY - 10;
         let words = optText.split(' ');
@@ -514,11 +683,11 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
         currentY = drawTextBlock(ctx, optText, 100, currentY, 1680, optFont + lineGap, '#ffffff') + 30;
     });
 
-    // Timer
+    // Timer Circle
     if (mode === 'timer' && timerNumber !== null) {
         ctx.beginPath();
         ctx.arc(1600, 200, 90, 0, 2 * Math.PI, false);
-        ctx.fillStyle = timerNumber <= 2 ? '#FF0000' : '#ffcc00'; // 🔴 Last 2 sec red
+        ctx.fillStyle = timerNumber <= 2 ? '#FF0000' : '#ffcc00';
         ctx.fill();
         ctx.lineWidth = 8;
         ctx.strokeStyle = '#ffffff';
@@ -530,102 +699,14 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
         ctx.fillText(`${timerNumber}`, 1600, 200);
     }
 
+    // Answer Label
     if (mode === 'answer') {
         ctx.fillStyle = '#FFD700';
         ctx.font = 'bold 50px "HindiFont", sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(`✅ Correct Answer: Option ${questionObj.correct}`, width / 2, 980);
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`Correct Answer: Option ${questionObj.correct}`, width / 2, 1060);
     }
-
-    fs.writeFileSync(outputPath, canvas.toBuffer('image/png'));
-}
-
-// =========================================================
-// 🖼️ 5.5 OUTRO SLIDE
-// =========================================================
-function createOutroSlide(outputPath) {
-    const width = 1920, height = 1080;
-    const canvas = createCanvas(width, height);
-    const ctx = canvas.getContext('2d');
-
-    let grad = ctx.createLinearGradient(0, 0, 0, height);
-    grad.addColorStop(0, '#0f2027');
-    grad.addColorStop(1, '#2c5364');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, width, height);
-
-    ctx.fillStyle = '#ffcc00';
-    ctx.font = 'bold 80px "HindiFont", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`Thanks For Watching!`, width / 2, 300);
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 60px "HindiFont", sans-serif';
-    ctx.fillText(`✅ Score Comment में बताएं!`, width / 2, 450);
-    ctx.fillText(`👍 Like, Share & Subscribe`, width / 2, 580);
-
-    ctx.fillStyle = '#00FFFF';
-    ctx.font = 'bold 65px "HindiFont", sans-serif';
-    ctx.fillText(`Free Mock Tests + PDF Notes:`, width / 2, 720);
-
-    ctx.fillStyle = '#FF4500';
-    ctx.font = 'bold 80px "HindiFont", sans-serif';
-    ctx.fillText(`👉 StudyGyaan.in`, width / 2, 850);
-
-    fs.writeFileSync(outputPath, canvas.toBuffer('image/png'));
-}
-
-// =========================================================
-// 🖼️ 5.6 INTRO SLIDE GENERATOR (NEW!)
-// =========================================================
-function createIntroSlide(subject, totalQuestions, outputPath) {
-    const width = 1920, height = 1080;
-    const canvas = createCanvas(width, height);
-    const ctx = canvas.getContext('2d');
-
-    // Background
-    let grad = ctx.createLinearGradient(0, 0, width, height);
-    grad.addColorStop(0, '#0f2027');
-    grad.addColorStop(0.5, '#203a43');
-    grad.addColorStop(1, '#2c5364');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, width, height);
-
-    // Top badge
-    ctx.fillStyle = '#FF0000';
-    ctx.beginPath();
-    ctx.roundRect(width/2 - 400, 50, 800, 100, 50);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 55px "HindiFont", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🔔 STUDYGYAAN.IN', width/2, 100);
-
-    // Main text
-    ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 120px "HindiFont", sans-serif';
-    ctx.fillText(`${subject.toUpperCase()}`, width/2, 350);
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 80px "HindiFont", sans-serif';
-    ctx.fillText(`MOCK TEST`, width/2, 500);
-
-    ctx.fillStyle = '#00FFFF';
-    ctx.font = 'bold 70px "HindiFont", sans-serif';
-    ctx.fillText(`Top ${totalQuestions} Important Questions`, width/2, 650);
-
-    ctx.fillStyle = '#FF4500';
-    ctx.font = 'bold 60px "HindiFont", sans-serif';
-    ctx.fillText(`⏱️ Timer के साथ Practice करें`, width/2, 780);
-
-    // Bottom bar
-    ctx.fillStyle = '#ffcc00';
-    ctx.fillRect(0, 920, width, 160);
-    ctx.fillStyle = '#000000';
-    ctx.font = 'bold 65px "HindiFont", sans-serif';
-    ctx.fillText(`👇 FREE PDF + MORE TESTS: StudyGyaan.in 👇`, width/2, 1000);
 
     fs.writeFileSync(outputPath, canvas.toBuffer('image/png'));
 }
@@ -676,7 +757,78 @@ async function renderClip(imagePath, audioPath, outputPath, isSilentTimer = fals
 }
 
 // =========================================================
-// 🚀 8. MAIN MOCK TEST VIDEO ENGINE
+// 🚀 8. YOUTUBE UPLOAD WITH RETRY
+// =========================================================
+async function uploadToYouTube(youtube, finalVideoPath, ytTitle, seoDescription, seoTags) {
+    const maxRetries = 3;
+    let currentTags = [...seoTags];
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`🚀 YouTube upload attempt ${attempt}/${maxRetries}...`);
+
+            // Final tag validation before upload
+            const validatedTags = currentTags.filter(tag => {
+                if (!tag || typeof tag !== 'string') return false;
+                if (tag.length < 2 || tag.length > 100) return false;
+                // Only printable ASCII characters allowed
+                if (!/^[\x20-\x7E]+$/.test(tag)) return false;
+                return true;
+            });
+
+            console.log(`📊 Validated tags count: ${validatedTags.length}`);
+
+            const res = await youtube.videos.insert({
+                part: 'snippet,status',
+                requestBody: {
+                    snippet: {
+                        title: ytTitle,
+                        description: seoDescription,
+                        tags: validatedTags,
+                        categoryId: '27',
+                        defaultLanguage: 'hi',
+                        defaultAudioLanguage: 'hi'
+                    },
+                    status: {
+                        privacyStatus: 'public',
+                        selfDeclaredMadeForKids: false,
+                        madeForKids: false
+                    }
+                },
+                media: { body: fs.createReadStream(finalVideoPath) }
+            });
+
+            console.log('✅ YouTube Live! https://youtu.be/' + res.data.id);
+            return res.data.id;
+
+        } catch (err) {
+            console.error(`❌ Attempt ${attempt} failed:`, err.message);
+
+            // Tags error ho to tags hata kar retry karo
+            if (
+                err.message.includes('invalid video keywords') ||
+                err.message.includes('keywords') ||
+                err.message.includes('tags')
+            ) {
+                console.log('🔄 Tags error - tags remove karke retry ho raha hai...');
+                currentTags = [];
+                continue;
+            }
+
+            if (attempt === maxRetries) {
+                throw new Error(`YouTube upload failed after ${maxRetries} attempts: ${err.message}`);
+            }
+
+            // Wait before retry
+            const waitSec = 5 * attempt;
+            console.log(`⏳ ${waitSec} seconds wait...`);
+            await new Promise(r => setTimeout(r, waitSec * 1000));
+        }
+    }
+}
+
+// =========================================================
+// 🚀 9. MAIN MOCK TEST VIDEO ENGINE
 // =========================================================
 async function generateMockTestVideo() {
     console.log("🎬 Mock Test Video Engine Started...");
@@ -723,7 +875,7 @@ async function generateMockTestVideo() {
         let concatContent = "";
         let filesToClean = [concatListPath];
 
-        // 🆕 INTRO SLIDE ADD
+        // ── INTRO SLIDE ──────────────────────────────────────
         console.log('🎬 Intro slide बन रहा है...');
         const introImg = path.join(tempDir, `intro_img.png`);
         const introAud = path.join(tempDir, `intro_aud.mp3`);
@@ -731,15 +883,12 @@ async function generateMockTestVideo() {
         filesToClean.push(introImg, introAud, introVid);
 
         createIntroSlide(subject, totalQuestions, introImg);
-        const introText = `नमस्ते! स्टडी ज्ञान डॉट इन पर आपका स्वागत है। आज हम ${subject} के ${totalQuestions} सबसे महत्वपूर्ण प्रश्न देखेंगे। हर प्रश्न के लिए आपको 5 सेकंड का समय मिलेगा। तैयार हैं? चलिए शुरू करते हैं!`;
+        const introText = `Namaste! StudyGyaan dot in par aapka swagat hai. Aaj hum ${subject} ke ${totalQuestions} sabse mahatvapurn prashna dekhenge. Har prashna ke liye aapko 5 second ka samay milega. Taiyar hain? Chaliye shuru karte hain!`;
         await generateAudio(introText, introAud, ttsClient);
         await renderClip(introImg, introAud, introVid, false);
         concatContent += `file '${introVid}'\n`;
 
-        // 🔥 FIRST SLIDE PATH SAVE करो (Thumbnail के लिए)
-        let firstQuestionImgPath = null;
-
-        // Questions Loop
+        // ── QUESTIONS LOOP ────────────────────────────────────
         for (let i = 0; i < totalQuestions; i++) {
             console.log(`⏳ Question ${i + 1}/${totalQuestions} बन रहा है...`);
             const rawQ = mockData.questions[i];
@@ -772,8 +921,10 @@ async function generateMockTestVideo() {
                 parsedOpts.push({ en: oEn, hi: oHi });
 
                 if (!["A", "B", "C", "D", "0", "1", "2", "3"].includes(cleanCorrectOpt)) {
-                    if (cleanText(optStr).toUpperCase() === cleanCorrectOpt ||
-                        cleanText(oParts[0]).toUpperCase() === cleanCorrectOpt) {
+                    if (
+                        cleanText(optStr).toUpperCase() === cleanCorrectOpt ||
+                        cleanText(oParts[0]).toUpperCase() === cleanCorrectOpt
+                    ) {
                         correctLabel = String.fromCharCode(65 + j);
                     }
                 }
@@ -806,21 +957,18 @@ async function generateMockTestVideo() {
             const aVid = path.join(tempDir, `a_vid_${i}.mp4`);
             filesToClean.push(qImg, qAud, qVid, aImg, aAud, aVid);
 
-            // 🔥 First question image save for thumbnail
-            if (i === 0) firstQuestionImgPath = qImg;
-
             createMockSlide(q, i + 1, totalQuestions, 'question', subject, qImg);
             createMockSlide(q, i + 1, totalQuestions, 'answer', subject, aImg);
 
-            // Audio
+            // Audio text
             let spokenQuestion = (q.qEn === q.qHi || !q.qEn) ? q.qHi : `${q.qEn}. ${q.qHi}`;
-            let oA = (q.optA_En === q.optA_Hi || !q.optA_En) ? q.optA_Hi : `${q.optA_En}, या ${q.optA_Hi}`;
-            let oB = (q.optB_En === q.optB_Hi || !q.optB_En) ? q.optB_Hi : `${q.optB_En}, या ${q.optB_Hi}`;
-            let oC = (q.optC_En === q.optC_Hi || !q.optC_En) ? q.optC_Hi : `${q.optC_En}, या ${q.optC_Hi}`;
-            let oD = (q.optD_En === q.optD_Hi || !q.optD_En) ? q.optD_Hi : `${q.optD_En}, या ${q.optD_Hi}`;
+            let oA = (q.optA_En === q.optA_Hi || !q.optA_En) ? q.optA_Hi : `${q.optA_En}, ya ${q.optA_Hi}`;
+            let oB = (q.optB_En === q.optB_Hi || !q.optB_En) ? q.optB_Hi : `${q.optB_En}, ya ${q.optB_Hi}`;
+            let oC = (q.optC_En === q.optC_Hi || !q.optC_En) ? q.optC_Hi : `${q.optC_En}, ya ${q.optC_Hi}`;
+            let oD = (q.optD_En === q.optD_Hi || !q.optD_En) ? q.optD_Hi : `${q.optD_En}, ya ${q.optD_Hi}`;
 
-            const qText = `प्रश्न ${i + 1}। ${spokenQuestion}। ऑप्शन ए: ${oA}। ऑप्शन बी: ${oB}। ऑप्शन सी: ${oC}। ऑप्शन डी: ${oD}। आपका समय शुरू।`;
-            const aText = `सही जवाब है, ऑप्शन ${q.correct}।`;
+            const qText = `Prashna ${i + 1}. ${spokenQuestion}. Option A: ${oA}. Option B: ${oB}. Option C: ${oC}. Option D: ${oD}. Aapka samay shuru.`;
+            const aText = `Sahi jawab hai, Option ${q.correct}.`;
 
             await generateAudio(qText, qAud, ttsClient);
             await generateAudio(aText, aAud, ttsClient);
@@ -828,7 +976,7 @@ async function generateMockTestVideo() {
             await renderClip(qImg, qAud, qVid, false);
             concatContent += `file '${qVid}'\n`;
 
-            // Timer frames
+            // Timer frames (5 to 1)
             for (let t = 5; t >= 1; t--) {
                 const tImg = path.join(tempDir, `t_img_${i}_${t}.png`);
                 const tVid = path.join(tempDir, `t_vid_${i}_${t}.mp4`);
@@ -848,7 +996,7 @@ async function generateMockTestVideo() {
             concatContent += `file '${aWaitVid}'\n`;
         }
 
-        // Outro
+        // ── OUTRO ────────────────────────────────────────────
         console.log(`🎬 Outro बन रहा है...`);
         const outroImg = path.join(tempDir, `outro_img.png`);
         const outroAud = path.join(tempDir, `outro_aud.mp3`);
@@ -856,14 +1004,14 @@ async function generateMockTestVideo() {
         filesToClean.push(outroImg, outroAud, outroVid);
 
         createOutroSlide(outroImg);
-        const outroText = `वीडियो देखने के लिए बहुत-बहुत धन्यवाद! आपका Score Comment में ज़रूर बताएं। और अधिक Free Mock Tests और PDF Notes के लिए हमारी वेबसाइट, स्टडी ज्ञान डॉट इन, पर ज़रूर विज़िट करें। Channel Subscribe करें और Bell Icon दबाएं ताकि कोई भी update miss न हो!`;
+        const outroText = `Video dekhne ke liye bahut bahut dhanyawad! Aapka score comment mein zaroor bataen. Aur adhik free mock tests aur PDF notes ke liye hamari website, StudyGyaan dot in, par zaroor visit karein. Channel Subscribe karein aur Bell Icon dabaen taaki koi bhi update miss na ho!`;
         await generateAudio(outroText, outroAud, ttsClient);
         await renderClip(outroImg, outroAud, outroVid, false);
         concatContent += `file '${outroVid}'\n`;
 
         fs.writeFileSync(concatListPath, concatContent);
 
-        // Final Video Concat
+        // ── FINAL VIDEO CONCAT ────────────────────────────────
         console.log(`🎬 Final Video concat हो रहा है (${totalQuestions} questions)...`);
         const finalVideoPath = path.join(tempDir, `final_mock_${Date.now()}.mp4`);
         filesToClean.push(finalVideoPath);
@@ -881,12 +1029,7 @@ async function generateMockTestVideo() {
 
         console.log(`✅ Final Video ready: ${finalVideoPath}`);
 
-        // =========================================================
-        // 🚀 YOUTUBE UPLOAD WITH FULL SEO
-        // =========================================================
-        const youtube = await getYouTubeClient();
-
-        // 🏷️ Generate Dynamic SEO
+        // ── SEO GENERATE ──────────────────────────────────────
         const seoTags = generateMockTestSEO(subject, title, totalQuestions);
         const ytTitle = generateMockTitle(subject, totalQuestions);
         const seoDescription = generateMockDescription(subject, totalQuestions, ytTitle, seoTags);
@@ -895,44 +1038,25 @@ async function generateMockTestVideo() {
         console.log(`📊 Tags: ${seoTags.length} generated`);
         console.log(`📊 Top Tags: ${seoTags.slice(0, 5).join(', ')}`);
 
+        // ── YOUTUBE UPLOAD ────────────────────────────────────
+        const youtube = await getYouTubeClient();
         let ytVideoId = "";
 
-        console.log('🚀 YouTube upload शुरू...');
         try {
-            const res = await youtube.videos.insert({
-                part: 'snippet,status',
-                requestBody: {
-                    snippet: {
-                        title: ytTitle,
-                        description: seoDescription,
-                        tags: seoTags,
-                        categoryId: '27',          // ✅ Education Category
-                        defaultLanguage: 'hi',     // ✅ Hindi Language
-                        defaultAudioLanguage: 'hi' // ✅ Hindi Audio
-                    },
-                    status: {
-                        privacyStatus: 'public',
-                        selfDeclaredMadeForKids: false,
-                        madeForKids: false
-                    }
-                },
-                media: { body: fs.createReadStream(finalVideoPath) }
-            });
+            ytVideoId = await uploadToYouTube(youtube, finalVideoPath, ytTitle, seoDescription, seoTags);
 
-            ytVideoId = res.data.id;
-            console.log('✅ YouTube Live! https://youtu.be/' + ytVideoId);
-
-            // 🖼️ THUMBNAIL - First Question Slide (FIXED!)
-            if (firstQuestionImgPath && fs.existsSync(firstQuestionImgPath)) {
-                try {
-                    await youtube.thumbnails.set({
-                        videoId: ytVideoId,
-                        media: { body: fs.createReadStream(firstQuestionImgPath) }
-                    });
-                    console.log('🖼️ ✅ Thumbnail set!');
-                } catch (thumbErr) {
-                    console.log('⚠️ Thumbnail error:', thumbErr.message);
-                }
+            // 🖼️ ATTRACTIVE THUMBNAIL
+            const thumbPath = path.join(tempDir, `thumbnail_${Date.now()}.png`);
+            filesToClean.push(thumbPath);
+            try {
+                createAttractiveThumbnail(subject, totalQuestions, thumbPath);
+                await youtube.thumbnails.set({
+                    videoId: ytVideoId,
+                    media: { body: fs.createReadStream(thumbPath) }
+                });
+                console.log('🖼️ ✅ Attractive Thumbnail set!');
+            } catch (thumbErr) {
+                console.log('⚠️ Thumbnail error:', thumbErr.message);
             }
 
             // 📂 PLAYLIST (Subject-specific)
@@ -948,14 +1072,14 @@ async function generateMockTestVideo() {
 
                 if (existing) {
                     playlistId = existing.id;
-                    console.log(`📂 Existing playlist: ${playlistTitle}`);
+                    console.log(`📂 Existing playlist found: ${playlistTitle}`);
                 } else {
                     const newPL = await youtube.playlists.insert({
                         part: 'snippet,status',
                         requestBody: {
                             snippet: {
                                 title: playlistTitle,
-                                description: `${subject} के Important Mock Tests | Free Study Material | StudyGyaan.in`
+                                description: `${subject} ke Important Mock Tests | Free Study Material | StudyGyaan.in`
                             },
                             status: { privacyStatus: 'public' }
                         }
@@ -973,7 +1097,7 @@ async function generateMockTestVideo() {
                         }
                     }
                 });
-                console.log('✅ Playlist में add हो गया!');
+                console.log('✅ Playlist mein add ho gaya!');
             } catch (pErr) {
                 console.log('⚠️ Playlist skip:', pErr.message);
             }
@@ -984,7 +1108,7 @@ async function generateMockTestVideo() {
 
             try {
                 const pinnedComment = generateMockPinnedComment(subject, totalQuestions);
-                await youtube.commentThreads.insert({
+                const commentRes = await youtube.commentThreads.insert({
                     part: 'snippet',
                     requestBody: {
                         snippet: {
@@ -995,41 +1119,51 @@ async function generateMockTestVideo() {
                         }
                     }
                 });
-                console.log('💬 ✅ Pinned comment live!');
+                console.log('💬 ✅ Comment posted!');
+
+                // Pin the comment
+                try {
+                    await youtube.comments.setModerationStatus({
+                        id: commentRes.data.snippet.topLevelComment.id,
+                        moderationStatus: 'published'
+                    });
+                } catch (pinErr) {
+                    // Pin fail is okay
+                }
             } catch (cErr) {
                 console.log('⚠️ Comment skip:', cErr.message);
             }
 
         } catch (ytErr) {
-            console.error('❌ YouTube upload fail:', ytErr.message);
+            console.error('❌ YouTube upload failed:', ytErr.message);
         }
 
-        // 📱 Facebook
+        // ── FACEBOOK UPLOAD ───────────────────────────────────
         await uploadToFacebook(finalVideoPath, seoDescription);
 
-        // 📢 Telegram
+        // ── TELEGRAM NOTIFY ───────────────────────────────────
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
         const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
         if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
-            const tgMsg = `🚀 <b>New Mock Test Live!</b>\n\n📚 <b>Subject:</b> ${subject}\n❓ <b>Questions:</b> ${totalQuestions}\n🏷️ <b>Title:</b> ${ytTitle}\n${ytVideoId ? `🔗 <b>Watch:</b> https://youtu.be/${ytVideoId}\n` : ''}\n📊 <b>Tags:</b> ${seoTags.slice(0, 5).join(', ')}\n\n✅ Auto-uploaded!`;
+            const tgMsg = `New Mock Test Live!\n\nSubject: ${subject}\nQuestions: ${totalQuestions}\nTitle: ${ytTitle}\n${ytVideoId ? `Watch: https://youtu.be/${ytVideoId}\n` : ''}\nTop Tags: ${seoTags.slice(0, 5).join(', ')}\n\nAuto-uploaded by StudyGyaan Bot!`;
             await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
                 chat_id: TELEGRAM_CHAT_ID,
-                text: tgMsg,
-                parse_mode: 'HTML'
+                text: tgMsg
             }).catch(() => console.log('⚠️ Telegram fail।'));
         }
 
-        // 🔥 Firebase Update
+        // ── FIREBASE UPDATE ───────────────────────────────────
         await db.collection('mock_tests').doc(mockData.id).update({ mockVideoMade: true });
         console.log(`✅ Firebase updated!`);
 
-        // Cleanup
+        // ── CLEANUP ───────────────────────────────────────────
         filesToClean.forEach(f => {
             if (f && fs.existsSync(f)) {
-                try { fs.unlinkSync(f); } catch (e) {}
+                try { fs.unlinkSync(f); } catch (e) { }
             }
         });
 
+        console.log("✅ All done! Temp files cleaned.");
         return true;
 
     } catch (error) {
