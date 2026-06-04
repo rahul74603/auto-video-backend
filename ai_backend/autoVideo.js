@@ -122,10 +122,9 @@ async function uploadToFacebook(videoPath, description) {
 }
 
 // =========================================================
-// 🧠 2. MEGA SEO ENGINE - COMPLETE REBUILD
+// 🧠 2. MEGA SEO ENGINE
 // =========================================================
 
-// ✅ TAG SANITIZER - Only YouTube Safe ASCII Tags
 function sanitizeTag(tag) {
     if (!tag) return null;
     let clean = tag
@@ -138,7 +137,6 @@ function sanitizeTag(tag) {
     return clean || null;
 }
 
-// ✅ CATEGORY SPECIFIC KEYWORD BANKS
 const CATEGORY_KEYWORDS = {
     'Result': [
         'Sarkari Result', 'Result Out', 'Result Declared', 'Merit List',
@@ -178,7 +176,6 @@ const CATEGORY_KEYWORDS = {
     ]
 };
 
-// ✅ EXAM TYPE TAGS
 const EXAM_TYPE_TAGS = [
     'SSC CGL 2025', 'SSC CHSL 2025', 'SSC MTS 2025', 'SSC GD 2025',
     'SSC CPO 2025', 'SSC Stenographer 2025',
@@ -196,7 +193,6 @@ const EXAM_TYPE_TAGS = [
     'High Court Jobs 2025', 'NHM Recruitment 2025'
 ];
 
-// ✅ UNIVERSAL VIRAL TAGS
 const UNIVERSAL_TAGS = [
     'StudyGyaan', 'Sarkari Result', 'Sarkari Naukri',
     'Government Jobs 2025', 'Govt Job Alert', 'Free Job Alert',
@@ -213,7 +209,6 @@ function generateSEO(jobData, jobCat) {
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().toLocaleString('en-US', { month: 'long' });
 
-    // ✅ Title से keywords extract
     const stopWords = ['and', 'the', 'for', 'out', 'now', 'is', 'are', 'was',
         'in', 'on', 'of', 'to', 'a', 'an', 'at', 'by', 'from', 'with'];
 
@@ -222,16 +217,13 @@ function generateSEO(jobData, jobCat) {
         .map(w => w.replace(/[^a-zA-Z0-9]/g, '').trim())
         .filter(w => w.length > 2 && !stopWords.includes(w.toLowerCase()));
 
-    // Title words के year-combo tags
     let titleComboTags = titleWords
         .filter(w => w.length > 3)
         .slice(0, 5)
         .map(w => `${w} ${currentYear}`);
 
-    // ✅ Category specific keywords
     const catKeywords = CATEGORY_KEYWORDS[jobCat] || CATEGORY_KEYWORDS['Default'];
 
-    // ✅ All tags combine - priority order
     const allTagSources = [
         ...titleWords,
         ...titleComboTags,
@@ -240,7 +232,6 @@ function generateSEO(jobData, jobCat) {
         ...UNIVERSAL_TAGS
     ];
 
-    // ✅ Sanitize + Deduplicate + YouTube 500 char limit
     const seen = new Set();
     let finalTags = [];
     let totalCharCount = 0;
@@ -257,7 +248,6 @@ function generateSEO(jobData, jobCat) {
 
     console.log(`✅ Tags generated: ${finalTags.length} | Chars: ${totalCharCount}`);
 
-    // ✅ Post URL
     const identifier = jobData.slug || jobData.id;
     let postLink = "https://studygyaan.in";
     if (identifier) {
@@ -268,14 +258,12 @@ function generateSEO(jobData, jobCat) {
 
     const telegramLink = process.env.TELEGRAM_CHANNEL_LINK || "https://t.me/studygyaan_official";
 
-    // ✅ Hashtags - ASCII only, top 15
     const hashtags = finalTags
         .slice(0, 15)
         .map(t => '#' + t.replace(/[^a-zA-Z0-9]/g, ''))
         .filter(h => h.length > 2)
         .join(' ');
 
-    // ✅ MEGA DESCRIPTION - Full Power
     const categoryEmojis = {
         'Result': '🏆',
         'Admit Card': '🎫',
@@ -357,7 +345,6 @@ function generateViralTitle(jobData, jobCat) {
         ? jobData.title.substring(0, 50) + "..."
         : jobData.title;
 
-    // Title से Hindi chars हटाओ title में
     cleanTitle = cleanTitle.replace(/[^\x00-\x7F]/g, ' ').replace(/\s+/g, ' ').trim() || jobData.title.substring(0, 50);
 
     const hooks = {
@@ -408,7 +395,7 @@ function generateViralTitle(jobData, jobCat) {
 }
 
 // =========================================================
-// 🎨 4. POSTER DESIGNER
+// 🎨 4. PROFESSIONAL POSTER DESIGNER (CLEAN LAYOUT)
 // =========================================================
 async function createPoster(jobData, jobCat, posterPath) {
     const { createCanvas } = require('canvas');
@@ -421,17 +408,17 @@ async function createPoster(jobData, jobCat, posterPath) {
     const themes = {
         "Result": {
             bg1: '#0f2027', bg2: '#203a43', bg3: '#2c5364',
-            accent: '#00FF00', badgeBg: '#28a745',
+            accent: '#00FF88', badgeBg: '#28a745',
             textBadge: 'RESULT DECLARED', emoji: '🏆'
         },
         "Admit Card": {
-            bg1: '#4b134f', bg2: '#c94b4b', bg3: '#ff0844',
+            bg1: '#1a1a2e', bg2: '#16213e', bg3: '#0f3460',
             accent: '#FFD700', badgeBg: '#dc3545',
             textBadge: 'ADMIT CARD OUT', emoji: '🎫'
         },
         "Syllabus": {
             bg1: '#141e30', bg2: '#243b55', bg3: '#2c3e50',
-            accent: '#00FFFF', badgeBg: '#17a2b8',
+            accent: '#00E5FF', badgeBg: '#17a2b8',
             textBadge: 'NEW SYLLABUS OUT', emoji: '📚'
         },
         "Answer Key": {
@@ -440,14 +427,15 @@ async function createPoster(jobData, jobCat, posterPath) {
             textBadge: 'ANSWER KEY OUT', emoji: '🔑'
         },
         "Default": {
-            bg1: '#0f0c29', bg2: '#302b63', bg3: '#24243e',
-            accent: '#00FFFF', badgeBg: '#d32f2f',
+            bg1: '#1a1a2e', bg2: '#16213e', bg3: '#0f3460',
+            accent: '#00E5FF', badgeBg: '#e94560',
             textBadge: 'NEW VACANCY OUT', emoji: '⚡'
         }
     };
 
     const theme = themes[jobCat] || themes['Default'];
 
+    // ━━━ BACKGROUND ━━━
     const grad = ctx.createLinearGradient(0, 0, 0, height);
     grad.addColorStop(0, theme.bg1);
     grad.addColorStop(0.5, theme.bg2);
@@ -455,12 +443,17 @@ async function createPoster(jobData, jobCat, posterPath) {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, height);
 
-    ctx.globalAlpha = 0.08;
+    // Subtle pattern dots
+    ctx.globalAlpha = 0.04;
     ctx.fillStyle = theme.accent;
-    ctx.beginPath(); ctx.arc(900, 200, 300, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(100, 1700, 250, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 30; i++) {
+        ctx.beginPath();
+        ctx.arc(Math.random() * width, Math.random() * height, Math.random() * 8 + 3, 0, Math.PI * 2);
+        ctx.fill();
+    }
     ctx.globalAlpha = 1.0;
 
+    // Helper Functions
     function drawRoundedRect(x, y, w, h, r) {
         ctx.beginPath();
         ctx.moveTo(x + r, y);
@@ -475,156 +468,158 @@ async function createPoster(jobData, jobCat, posterPath) {
         ctx.closePath();
     }
 
-    function wrapText(text, x, y, maxWidth, lineHeight) {
+    function wrapText(text, x, y, maxWidth, lineHeight, maxLines = 4) {
         const words = text.split(' ');
         let line = '';
+        let lineCount = 0;
+        let currentY = y;
+
         for (let n = 0; n < words.length; n++) {
             const testLine = line + words[n] + ' ';
             if (ctx.measureText(testLine).width > maxWidth && n > 0) {
-                ctx.fillText(line.trim(), x, y);
+                if (lineCount >= maxLines - 1) {
+                    let lastLine = line.trim();
+                    while (ctx.measureText(lastLine + '...').width > maxWidth && lastLine.length > 0) {
+                        lastLine = lastLine.slice(0, -1);
+                    }
+                    ctx.fillText(lastLine + '...', x, currentY);
+                    return currentY + lineHeight;
+                }
+                ctx.fillText(line.trim(), x, currentY);
                 line = words[n] + ' ';
-                y += lineHeight;
+                currentY += lineHeight;
+                lineCount++;
             } else {
                 line = testLine;
             }
         }
-        ctx.fillText(line.trim(), x, y);
-        return y + lineHeight;
+        ctx.fillText(line.trim(), x, currentY);
+        return currentY + lineHeight;
     }
 
-    // TOP LOGO BAR
+    // ━━━ 1. TOP LOGO BAR (60-180px) ━━━
     ctx.shadowColor = theme.accent;
-    ctx.shadowBlur = 30;
-    drawRoundedRect(80, 60, 920, 130, 65);
+    ctx.shadowBlur = 25;
+    drawRoundedRect(80, 60, 920, 120, 60);
     ctx.fillStyle = theme.accent;
     ctx.fill();
     ctx.shadowBlur = 0;
+
     ctx.fillStyle = '#000000';
-    ctx.font = 'bold 72px sans-serif';
+    ctx.font = 'bold 64px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('STUDYGYAAN.IN', width / 2, 125);
+    ctx.fillText('STUDYGYAAN.IN', width / 2, 120);
 
-    // CATEGORY BADGE
+    // ━━━ 2. CATEGORY BADGE (220-320px) ━━━
+    drawRoundedRect(80, 220, 920, 100, 50);
     ctx.fillStyle = theme.badgeBg;
-    ctx.fillRect(0, 220, width, 110);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 62px sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(theme.textBadge, width / 2, 275);
+    ctx.fill();
 
-    // IMPORTANT TEXT
-    ctx.fillStyle = '#FFFF00';
-    ctx.font = 'bold 72px sans-serif';
-    ctx.fillText('!! IMPORTANT UPDATE !!', width / 2, 390);
-
-    // MAIN TITLE
-    ctx.shadowColor = theme.accent;
-    ctx.shadowBlur = 20;
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = '900 74px sans-serif';
-    ctx.textBaseline = 'alphabetic';
-    let titleEndY = wrapText(
+    ctx.font = 'bold 58px sans-serif';
+    ctx.fillText(theme.textBadge, width / 2, 270);
+
+    // ━━━ 3. MAIN TITLE (380-720px) - Max 4 lines ━━━
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 15;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '900 70px sans-serif';
+    ctx.textBaseline = 'top';
+
+    wrapText(
         (jobData.title || '').toUpperCase(),
-        width / 2, 510, 960, 90
+        width / 2, 380, 960, 85, 4
     );
     ctx.shadowBlur = 0;
 
-    // CTA BUTTON
-    let ctaY = titleEndY + 40;
-
-    const ctaTexts = {
-        'Result': { text: 'CHECK RESULT NOW', color: '#00FF00' },
-        'Admit Card': { text: 'DOWNLOAD NOW', color: '#FFD700' },
-        'Answer Key': { text: 'CHECK ANSWER KEY', color: '#FFA500' },
-        'Syllabus': { text: 'FREE PDF DOWNLOAD', color: '#00FFFF' },
-        'Default': { text: 'APPLY NOW - LAST DATE NAZAR', color: '#FF4444' }
-    };
-    const cta = ctaTexts[jobCat] || ctaTexts['Default'];
-
-    drawRoundedRect(100, ctaY - 55, 880, 90, 45);
-    ctx.fillStyle = cta.color;
-    ctx.globalAlpha = 0.2;
+    // ━━━ 4. INFO BOX (780-980px) ━━━
+    const infoBoxY = 780;
+    drawRoundedRect(80, infoBoxY, 920, 200, 30);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
     ctx.fill();
-    ctx.globalAlpha = 1.0;
-    ctx.fillStyle = cta.color;
-    ctx.font = 'bold 62px sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(cta.text, width / 2, ctaY);
-
-    // INFO BOX
-    let infoBoxY = ctaY + 80;
-    drawRoundedRect(50, infoBoxY, 980, 260, 40);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-    ctx.fill();
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 3;
     ctx.strokeStyle = theme.accent;
     ctx.stroke();
 
-    ctx.font = 'bold 55px sans-serif';
-    const todayDate = new Date().toLocaleDateString('en-GB');
+    ctx.textBaseline = 'middle';
 
     if (['Result', 'Answer Key', 'Admit Card'].includes(jobCat)) {
-        ctx.fillStyle = '#00FFFF';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`${theme.emoji} Update: ${jobCat} Out!`, width / 2, infoBoxY + 80);
+        ctx.fillStyle = theme.accent;
+        ctx.font = 'bold 48px sans-serif';
+        ctx.fillText(`${jobCat} OUT NOW`, width / 2, infoBoxY + 70);
+
         ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 54px sans-serif';
+        const todayDate = new Date().toLocaleDateString('en-GB');
         const showDate = (jobData.updateDate && jobData.updateDate !== 'undefined')
             ? jobData.updateDate : todayDate;
-        ctx.fillText(`Date: ${showDate}`, width / 2, infoBoxY + 180);
+        ctx.fillText(`Date: ${showDate}`, width / 2, infoBoxY + 140);
     } else {
-        ctx.fillStyle = '#00FFFF';
-        ctx.textBaseline = 'middle';
+        ctx.fillStyle = theme.accent;
+        ctx.font = 'bold 44px sans-serif';
         const showStart = (jobData.startDate && jobData.startDate !== 'undefined')
             ? jobData.startDate : 'Apply Now';
-        ctx.fillText(`Apply: ${showStart}`, width / 2, infoBoxY + 80);
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 62px sans-serif';
+        ctx.fillText(`Apply Date: ${showStart}`, width / 2, infoBoxY + 70);
+
+        ctx.fillStyle = '#FF6B6B';
+        ctx.font = 'bold 54px sans-serif';
         const showLast = (jobData.lastDate && jobData.lastDate !== 'undefined')
-            ? jobData.lastDate : 'Jaldi Karein!';
-        ctx.fillText(`Last Date: ${showLast}`, width / 2, infoBoxY + 180);
+            ? jobData.lastDate : 'Jaldi Karein';
+        ctx.fillText(`Last Date: ${showLast}`, width / 2, infoBoxY + 140);
     }
 
-    // WEBSITE BOX
-    let webBoxY = infoBoxY + 280;
-    if (webBoxY + 100 > 1580) webBoxY = 1480;
+    // ━━━ 5. ANCHOR SPACE (1010-1500px) - EMPTY ━━━
+    // Anchor video यहाँ overlay होगा - कोई text नहीं
 
-    drawRoundedRect(50, webBoxY, 980, 100, 30);
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    // ━━━ 6. CTA BUTTON (1520-1620px) ━━━
+    const ctaTexts = {
+        'Result': 'CHECK RESULT NOW',
+        'Admit Card': 'DOWNLOAD ADMIT CARD',
+        'Answer Key': 'CHECK ANSWER KEY',
+        'Syllabus': 'FREE PDF DOWNLOAD',
+        'Default': 'APPLY ONLINE NOW'
+    };
+    const ctaText = ctaTexts[jobCat] || ctaTexts['Default'];
+
+    ctx.shadowColor = theme.accent;
+    ctx.shadowBlur = 20;
+    drawRoundedRect(80, 1520, 920, 100, 50);
+    ctx.fillStyle = theme.accent;
     ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#FFD700';
-    ctx.stroke();
-    ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 50px sans-serif';
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 54px sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillText('StudyGyaan.in - Free PDF + Mock Test', width / 2, webBoxY + 50);
+    ctx.fillText(ctaText, width / 2, 1570);
 
-    // TELEGRAM BOX
-    let tgBoxY = webBoxY + 120;
-    if (tgBoxY + 100 > 1720) tgBoxY = 1610;
-
-    drawRoundedRect(50, tgBoxY, 980, 100, 30);
+    // ━━━ 7. TELEGRAM STRIP (1650-1740px) ━━━
+    drawRoundedRect(80, 1650, 920, 90, 45);
     ctx.fillStyle = '#0088cc';
     ctx.fill();
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 46px sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('JOIN TELEGRAM: @studygyaan_official', width / 2, tgBoxY + 50);
 
-    // FOOTER
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 42px sans-serif';
+    ctx.fillText('JOIN TELEGRAM: @studygyaan_official', width / 2, 1695);
+
+    // ━━━ 8. FOOTER (1780-1920px) ━━━
     ctx.fillStyle = '#FFCC00';
-    ctx.fillRect(0, 1760, width, 160);
+    ctx.fillRect(0, 1780, width, 140);
+
     ctx.fillStyle = '#000000';
-    ctx.font = '900 50px sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('DIRECT LINK - FIRST COMMENT MEIN', width / 2, 1840);
+    ctx.font = 'bold 44px sans-serif';
+    ctx.fillText('DIRECT LINK - FIRST COMMENT', width / 2, 1830);
+
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.fillText('StudyGyaan.in - Free PDF + Mock Test', width / 2, 1885);
 
     fs.writeFileSync(posterPath, canvas.toBuffer('image/png'));
-    console.log('✅ Poster बन गया!');
+    console.log('✅ Professional Poster ready!');
 
-    const anchorY = tgBoxY + 120;
-    return Math.min(anchorY, 1200);
+    // Anchor Y position - empty space के center में
+    return 1020;
 }
 
 // =========================================================
@@ -859,7 +854,6 @@ async function generateAndUploadVideo(jobData) {
 
         let ytVideoId = '';
 
-        // Upload with retry logic
         const maxRetries = 3;
         let currentTags = [...seoData.tags];
 
@@ -867,7 +861,6 @@ async function generateAndUploadVideo(jobData) {
             try {
                 console.log(`🚀 Upload attempt ${attempt}/${maxRetries}...`);
 
-                // Final tag validation
                 const validatedTags = currentTags.filter(tag => {
                     if (!tag || typeof tag !== 'string') return false;
                     if (tag.length < 2 || tag.length > 100) return false;
