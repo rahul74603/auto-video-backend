@@ -58,6 +58,31 @@ function shouldSkipTitle(title) {
 }
 
 // =========================================================
+// 🚫 BLOCKED DOMAINS
+// Sirf applyLink, notificationLink, officialSiteLink
+// mein ye domains nahi aane chahiye
+// RSS fetch aur scraping pe koi asar nahi
+// =========================================================
+const BLOCKED_DOMAINS = [
+    'freejobalert.com',
+    'sarkariresult.com',
+    'rojgarresult.com',
+    'naukri.com',
+    'shine.com',
+    'monster.com'
+];
+
+function isBlockedLink(url) {
+    if (!url || url === '#' || url.trim() === '') return false;
+    try {
+        const hostname = new URL(url).hostname.toLowerCase();
+        return BLOCKED_DOMAINS.some(domain => hostname.includes(domain));
+    } catch {
+        return false;
+    }
+}
+
+// =========================================================
 // 🔔 GOOGLE INDEXING API
 // =========================================================
 async function notifyGoogle(url) {
@@ -170,7 +195,6 @@ async function triggerGitHubVideoAction(jobData) {
 // 🤖 AI JOB DATA EXTRACTOR
 // =========================================================
 async function extractJobDataWithAI(scrapedContent, jobLink) {
-    // ✅ Runtime पर genAI बनाओ ताकि secret मिले
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
     const model = genAI.getGenerativeModel({
@@ -205,8 +229,8 @@ Follow these mapping rules to fill EVERY field:
 15. feeFemale: Female fee amount
 16. feeOBC: OBC/EWS fee amount
 17. applicationFee: Payment mode description
-18. notificationLink: URL from brackets like (URL: https://...)
-19. applyLink: Apply URL, default "${jobLink}"
+18. notificationLink: URL from brackets like (URL: https://...) - ONLY official govt/org URLs
+19. applyLink: Official apply URL only, default "${jobLink}"
 20. officialSiteLink: Official website URL
 21. isExpired: Compare lastDate with today (${todayDate}), true if expired
 22. category: ssc/banking/railway/upsc/defense/teaching/state/engineering/other
@@ -338,6 +362,7 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
             continue;
         }
 
+        // ✅ RSS link as-is fetch karo - block nahi karo
         const jobLink = (item.link || item.guid || '').trim();
         if (!jobLink || jobLink.includes('127.0.0.1')) continue;
 
@@ -383,6 +408,26 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 continue;
             }
 
+            // =========================================================
+            // ✅ SIRF LINKS CLEAN KARO - RSS fetch pe koi asar nahi
+            // applyLink blocked → original jobLink use karo
+            // notificationLink blocked → empty string
+            // officialSiteLink blocked → empty string
+            // =========================================================
+            const cleanApplyLink = isBlockedLink(jobData.applyLink)
+                ? jobLink
+                : (jobData.applyLink || jobLink);
+
+            const cleanNotificationLink = isBlockedLink(jobData.notificationLink)
+                ? ''
+                : (jobData.notificationLink || '');
+
+            const cleanOfficialSiteLink = isBlockedLink(jobData.officialSiteLink)
+                ? ''
+                : (jobData.officialSiteLink || '');
+
+            console.log(`🔗 applyLink: ${cleanApplyLink}`);
+
             const draftPayload = {
                 title:            finalTitle,
                 slug:             finalSlug,
@@ -408,9 +453,10 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 feeFemale:        jobData.feeFemale        || '',
                 feeOBC:           jobData.feeOBC           || '',
                 applicationFee:   jobData.applicationFee   || '',
-                notificationLink: jobData.notificationLink || '',
-                applyLink:        jobData.applyLink        || jobLink,
-                officialSiteLink: jobData.officialSiteLink || '',
+                // ✅ Cleaned links - blocked domains nahi aayenge
+                notificationLink: cleanNotificationLink,
+                applyLink:        cleanApplyLink,
+                officialSiteLink: cleanOfficialSiteLink,
                 originalLink:     jobLink,
                 internalLinks:    internalLinks,
                 createdAt:        admin.firestore.FieldValue.serverTimestamp()
