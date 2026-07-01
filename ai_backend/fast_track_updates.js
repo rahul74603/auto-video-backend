@@ -12,7 +12,7 @@ const Parser = require("rss-parser");
 if (!admin.apps.length) {
     const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
     const config = {
-        projectId: "studymaterial-406ad",
+        projectId:     "studymaterial-406ad",
         storageBucket: "studymaterial-406ad.firebasestorage.app"
     };
     if (serviceAccountVar && serviceAccountVar !== "undefined") {
@@ -31,7 +31,7 @@ if (!admin.apps.length) {
     }
 }
 
-const db = admin.firestore();
+const db     = admin.firestore();
 const parser = new Parser();
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
@@ -53,7 +53,9 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ✅ Category detection
+// =========================================================
+// ✅ CATEGORY DETECTION
+// =========================================================
 const CATEGORY_PATTERNS = {
     'Result':     ['result', 'results', 'merit list', 'final list', 'selected candidates'],
     'Admit Card': ['admit card', 'call letter', 'hall ticket', 'e-admit', 'admit-card'],
@@ -69,7 +71,10 @@ function detectCategory(title) {
     return null;
 }
 
-// ✅ Junk domains list
+// =========================================================
+// ✅ JUNK DOMAINS - Scraping mein use hota hai
+// Ye URLs links extract karte waqt ignore honge
+// =========================================================
 const JUNK_DOMAINS = [
     "facebook.com", "twitter.com", "whatsapp.com", "telegram.me", "t.me",
     "instagram.com", "youtube.com", "freejobalert.com", "sarkariexam.com",
@@ -82,33 +87,64 @@ function isJunkUrl(url) {
 }
 
 // =========================================================
+// 🚫 BLOCKED LINK DOMAINS
+// Save hone wale fields mein ye domains nahi aane chahiye
+// directLink, officialSiteLink etc.
+// RSS fetch aur scraping pe koi asar nahi
+// =========================================================
+const BLOCKED_LINK_DOMAINS = [
+    'freejobalert.com',
+    'sarkariresult.com',
+    'rojgarresult.com',
+    'sarkariexam.com',
+    'naukri.com',
+    'shine.com',
+    'monster.com'
+];
+
+function isBlockedLink(url) {
+    if (!url || url === '#' || url.trim() === '') return false;
+    try {
+        const hostname = new URL(url).hostname.toLowerCase();
+        return BLOCKED_LINK_DOMAINS.some(domain => hostname.includes(domain));
+    } catch {
+        return false;
+    }
+}
+
+// =========================================================
 // 🔔 GOOGLE INDEXING
 // =========================================================
 async function notifyGoogle(url) {
     try {
         const key = JSON.parse(process.env.SERVICE_ACCOUNT_JSON || '{}');
-        if (!key.client_email) return;
+        if (!key.client_email) {
+            console.log("⚠️ Google Indexing: No service account found");
+            return;
+        }
 
         const jwt = new google.auth.JWT({
-            email: key.client_email,
-            key: key.private_key.replace(/\\n/g, '\n'),
+            email:  key.client_email,
+            key:    key.private_key.replace(/\\n/g, '\n'),
             scopes: ["https://www.googleapis.com/auth/indexing"]
         });
 
         await jwt.authorize();
+
         await axios.post(
             "https://indexing.googleapis.com/v3/urlNotifications:publish",
             { url, type: "URL_UPDATED" },
             { headers: { Authorization: `Bearer ${jwt.credentials.access_token}` } }
         );
-        console.log("🚀 Indexed:", url);
+
+        console.log("🚀 Google Indexed:", url);
     } catch (err) {
-        console.error("❌ Indexing failed:", err.message);
+        console.error("❌ Indexing failed for", url, ":", err.message);
     }
 }
 
 // =========================================================
-// 🚀 GITHUB ACTIONS TRIGGER - Video के लिए
+// 🚀 GITHUB ACTIONS TRIGGER
 // =========================================================
 async function triggerGitHubVideoAction(jobData) {
     const GITHUB_TOKEN = process.env.GH_TOKEN;
@@ -116,27 +152,30 @@ async function triggerGitHubVideoAction(jobData) {
     const REPO_NAME    = process.env.GITHUB_REPO;
 
     if (!GITHUB_TOKEN || !REPO_OWNER || !REPO_NAME) {
-        console.error("❌ GitHub Secrets missing!");
+        console.error("❌ GitHub Secrets missing! GH_TOKEN / GITHUB_OWNER / GITHUB_REPO");
         return false;
     }
 
     const cleanJobData = {
-        id:           String(jobData.id || ''),
-        slug:         String(jobData.slug || jobData.id || ''),
-        title:        String(jobData.title || 'Fast Track Update'),
-        category:     String(jobData.category || 'Default'),
+        id:           String(jobData.id           || ''),
+        slug:         String(jobData.slug         || jobData.id || ''),
+        title:        String(jobData.title        || 'Fast Track Update'),
+        category:     String(jobData.category     || 'Default'),
         type:         'FAST_TRACK',
-        updateDate:   String(jobData.updateDate || ''),
-        organization: String(jobData.org || ''),
-        directLink:   String(jobData.directLink || ''),
-        shortInfo:    String(jobData.shortInfo || '')
+        updateDate:   String(jobData.updateDate   || ''),
+        organization: String(jobData.org          || ''),
+        directLink:   String(jobData.directLink   || ''),
+        shortInfo:    String(jobData.shortInfo    || '')
     };
 
+    if (!cleanJobData.slug && !cleanJobData.id) {
+        console.error("❌ GitHub Trigger: slug aur id dono missing hain!");
+        return false;
+    }
+
     const payload = {
-        event_type: "generate_fasttrack_video",
-        client_payload: {
-            jobData: cleanJobData
-        }
+        event_type:     "generate_fasttrack_video",
+        client_payload: { jobData: cleanJobData }
     };
 
     console.log("📤 FastTrack GitHub Trigger:", JSON.stringify(cleanJobData));
@@ -157,12 +196,15 @@ async function triggerGitHubVideoAction(jobData) {
         );
 
         if (response.status === 204) {
-            console.log("✅ GitHub Actions triggered!");
+            console.log("✅ GitHub Actions triggered successfully!");
             return true;
         }
+
+        console.warn("⚠️ GitHub API unexpected status:", response.status);
         return false;
+
     } catch (err) {
-        console.error("❌ GitHub API Error:", err.message);
+        console.error("❌ GitHub API Error:", err.response?.data || err.message);
         return false;
     }
 }
@@ -181,7 +223,7 @@ async function scrapePage(url) {
 
     const links = new Set();
 
-    // Table links
+    // ✅ Table links
     $("table tr").each((i, tr) => {
         const rowText = $(tr).text().replace(/\s+/g, ' ').trim();
         $(tr).find('a').each((j, el) => {
@@ -192,7 +234,7 @@ async function scrapePage(url) {
         });
     });
 
-    // Paragraph links
+    // ✅ Paragraph links
     $(".post-body p a, .entry-content p a, article a").each((i, el) => {
         const href = $(el).attr("href");
         const text = $(el).text().trim();
@@ -226,10 +268,13 @@ Return ONLY valid JSON (no markdown):
   "updateDate": "Date if found"
 }
 
-IMPORTANT: directLink must be the exact download/view URL, not a generic page URL.`;
+IMPORTANT: 
+- directLink must be the exact download/view URL from official govt website only
+- freejobalert.com, sarkariexam.com jaise third-party sites ki URLs mat do
+- Agar official URL na mile to empty string do ""`;
 
     const result = await model.generateContent(prompt);
-    const text = result.response.text()
+    const text   = result.response.text()
         .replace(/```json/g, '')
         .replace(/```/g, '')
         .trim();
@@ -255,6 +300,7 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
     ];
 
     let allItems = [];
+
     for (const url of RSS_SOURCES) {
         try {
             logger(`📡 Fetching: ${url}`);
@@ -281,7 +327,7 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
         month: 'short', year: 'numeric'
     }).toLowerCase().replace(' ', '-');
 
-    const results  = [];
+    const results   = [];
     const MAX_ITEMS = 5;
 
     logger(`🔍 Scanning ${allItems.length} items (max ${MAX_ITEMS} to save)...`);
@@ -317,29 +363,43 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
             const extracted = await extractWithAI(linksText, category, title, apiKey);
 
             const finalTitle = extracted.title || title;
-            const baseSlug   = extracted.slug || createSlug(finalTitle);
+            const baseSlug   = extracted.slug  || createSlug(finalTitle);
             const finalSlug  = `${baseSlug}-${dateSuffix}`;
 
+            // ✅ Duplicate slug check
             const slugExists = await db.collection("fast_track").doc(finalSlug).get();
             if (slugExists.exists) {
                 logger(`⏭️ Slug exists: ${finalSlug}`);
                 continue;
             }
 
+            // =========================================================
+            // ✅ LINKS CLEAN KARO - Blocked domains nahi aane chahiye
+            // directLink blocked → original RSS link use karo
+            // =========================================================
+            const cleanDirectLink = isBlockedLink(extracted.directLink)
+                ? link
+                : (extracted.directLink || link);
+
+            logger(`🔗 directLink: ${cleanDirectLink}`);
+
+            // ✅ Firestore mein save karo
             await db.collection("fast_track").doc(finalSlug).set({
                 title:        finalTitle,
                 slug:         finalSlug,
-                directLink:   extracted.directLink || link,
-                shortInfo:    extracted.shortInfo || '',
-                org:          extracted.org || '',
+                // ✅ Cleaned directLink use karo
+                directLink:   cleanDirectLink,
+                shortInfo:    extracted.shortInfo  || '',
+                org:          extracted.org        || '',
                 updateDate:   extracted.updateDate || '',
-                description:  extracted.shortInfo || '',
+                description:  extracted.shortInfo  || '',
                 category,
                 originalLink: link,
                 status:       "draft",
                 createdAt:    admin.firestore.FieldValue.serverTimestamp()
             });
 
+            // ✅ Processed links mein mark karo
             await db.collection("processed_links").doc(docId).set({
                 link,
                 slug:        finalSlug,
@@ -368,10 +428,10 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
 // =========================================================
 exports.fetchFastTrackUpdates = onRequest({
     cors:           false,
-    invoker:        "public",   // ✅ 401 fix
+    invoker:        "public",
     timeoutSeconds: 300,
     memory:         "1GiB",
-    secrets:        ["GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON"]
+    secrets:        ["GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON", "FAST_TRACK_SECRET"]
 }, async (req, res) => {
 
     const authKey      = req.headers['x-auth-key'];
@@ -386,6 +446,7 @@ exports.fetchFastTrackUpdates = onRequest({
         const data = await runFastTrackLogic(console.log, process.env.GEMINI_API_KEY);
         res.json({ success: true, count: data.length, data });
     } catch (err) {
+        console.error("❌ fetchFastTrackUpdates error:", err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -394,7 +455,7 @@ exports.fetchFastTrackUpdates = onRequest({
 // 2️⃣ GITHUB ACTIONS STREAMING API
 // =========================================================
 exports.triggerFastTrackUpdates = onRequest({
-    invoker:        "public",   // ✅ 401 fix
+    invoker:        "public",
     timeoutSeconds: 300,
     memory:         "1GiB"
 }, async (req, res) => {
@@ -409,7 +470,7 @@ exports.triggerFastTrackUpdates = onRequest({
         return res.status(400).send("Missing x-gemini-key header");
     }
 
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Type',      'text/plain; charset=utf-8');
     res.setHeader('Transfer-Encoding', 'chunked');
 
     const logger = (msg) => {
@@ -428,7 +489,7 @@ exports.triggerFastTrackUpdates = onRequest({
 });
 
 // =========================================================
-// 3️⃣ FIRESTORE TRIGGER - Approve होने पर सब काम करो
+// 3️⃣ FIRESTORE TRIGGER - Approve hone par sab kaam karo
 // =========================================================
 exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     document:       "fast_track/{docId}",
@@ -447,23 +508,25 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
         "GH_TOKEN",
         "GITHUB_OWNER",
         "GITHUB_REPO"
-        // "WHATSAPP_SERVER_URL" — बाद में चालू करेंगे
     ]
 }, async (event) => {
 
-    // ✅ Document delete हुआ तो ignore
-    if (!event.data.after.exists) return null;
+    // ✅ Document delete hua to ignore karo
+    if (!event.data.after.exists) {
+        console.log("⏭️ Document deleted, skipping.");
+        return null;
+    }
 
     const afterData  = event.data.after.data();
     const beforeData = event.data.before ? event.data.before.data() : null;
 
-    // ✅ Draft है तो skip
+    // ✅ Draft hai to skip karo
     if (afterData.status === 'draft') {
         console.log(`⏭️ Draft, skipping: ${afterData.title}`);
         return null;
     }
 
-    // ✅ पहले से published था तो duplicate trigger मत करो
+    // ✅ Pehle se published tha to duplicate trigger mat karo
     if (beforeData && beforeData.status === 'published') {
         console.log(`⏭️ Already published, skipping: ${afterData.title}`);
         return null;
@@ -472,7 +535,11 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     const item  = afterData;
     const docId = event.params.docId;
 
-    console.log(`🚀 Processing: ${item.title} [${item.category}]`);
+    console.log(`\n${'='.repeat(50)}`);
+    console.log(`🚀 Processing Approved: ${item.title}`);
+    console.log(`📂 Category: ${item.category}`);
+    console.log(`🔗 DocId   : ${docId}`);
+    console.log(`${'='.repeat(50)}\n`);
 
     const itemUrl = `https://studygyaan.in/update/${item.slug || docId}`;
 
@@ -483,14 +550,33 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
         const publishTime = item.createdAt?.toDate?.()?.toISOString()
             || new Date().toISOString();
 
-        const schema = {
-            "@context":      "https://schema.org",
-            "@type":         "NewsArticle",
-            "headline":      item.title,
-            "image":         ["https://studygyaan.in/og-image.jpg"],
+        const seoDescMap = {
+            'Result':
+                `${item.title} result declared. Check merit list, cutoff marks and scorecard. Direct link on StudyGyaan.in`,
+            'Admit Card':
+                `${item.title} admit card released. Download hall ticket and check exam center. Direct link on StudyGyaan.in`,
+            'Answer Key':
+                `${item.title} official answer key out. Check answers and expected cutoff. Direct PDF link on StudyGyaan.in`,
+            'Syllabus':
+                `${item.title} new syllabus and exam pattern released. Free PDF download on StudyGyaan.in`
+        };
+        const seoDesc = seoDescMap[item.category]
+            || item.description
+            || item.shortInfo
+            || item.title;
+
+        const newsSchema = {
+            "@context":  "https://schema.org",
+            "@type":     "NewsArticle",
+            "headline":  item.title,
+            "image":     ["https://studygyaan.in/og-image.jpg"],
             "datePublished": publishTime,
             "dateModified":  new Date().toISOString(),
-            "description":   item.description || item.shortInfo || item.title,
+            "description":   seoDesc,
+            "mainEntityOfPage": {
+                "@type": "WebPage",
+                "@id":   itemUrl
+            },
             "author": {
                 "@type": "Organization",
                 "name":  "StudyGyaan",
@@ -506,22 +592,65 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
             }
         };
 
+        const faqSchema = {
+            "@context": "https://schema.org",
+            "@type":    "FAQPage",
+            "mainEntity": [
+                {
+                    "@type": "Question",
+                    "name":  `${item.title} kaise check karein?`,
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text":  `${item.title} check karne ke liye StudyGyaan.in par jaayein aur Direct Link par click karein. Official website se ${item.category} download kar sakte hain.`
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name":  `${item.title} ka direct link kya hai?`,
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text":  `${item.title} ka direct official link StudyGyaan.in par available hai. ${item.org || 'Official website'} se download karein.`
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name":  `${item.title} kab aaya?`,
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text":  `${item.title} ${item.updateDate || 'recently'} release hua hai. Latest update ke liye StudyGyaan Telegram join karein.`
+                    }
+                }
+            ]
+        };
+
         await db.collection("fast_track").doc(docId).update({
-            schemaMarkup: JSON.stringify(schema)
+            schemaMarkup: JSON.stringify(newsSchema),
+            faqMarkup:    JSON.stringify(faqSchema),
+            seoDesc:      seoDesc
         });
-        console.log("✅ Schema saved");
+
+        console.log("✅ STEP 1: Schema + FAQ saved");
+
     } catch (schemaErr) {
-        console.error("Schema error:", schemaErr.message);
+        console.error("❌ STEP 1 Schema error:", schemaErr.message);
     }
 
     // =========================================================
     // STEP 2 - Google Indexing
     // =========================================================
-    await notifyGoogle(itemUrl).catch(e => console.log("Index skip:", e.message));
+    try {
+        await notifyGoogle(itemUrl);
+        await notifyGoogle("https://studygyaan.in");
+        await notifyGoogle(
+            `https://studygyaan.in/updates?category=${encodeURIComponent(item.category)}`
+        );
+        console.log("✅ STEP 2: Google Indexing done for 3 URLs");
+    } catch (indexErr) {
+        console.error("❌ STEP 2 Indexing error:", indexErr.message);
+    }
 
     // =========================================================
     // STEP 3 - Video Generation via GitHub Actions
-    // ✅ Telegram से पहले रखा है ताकि videoStatus define हो जाए
     // =========================================================
     let videoStatus = "⏳ Video trigger initiated";
 
@@ -537,18 +666,20 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
             await db.collection("fast_track").doc(docId).update({
                 videoTriggered:   true,
                 videoTriggeredAt: admin.firestore.FieldValue.serverTimestamp()
-            }).catch(() => {});
+            }).catch(e => console.log("videoTriggered update skip:", e.message));
         } else {
             videoStatus = "⚠️ GitHub trigger failed (check Firebase logs)";
         }
-    } catch (err) {
-        console.error("Trigger error:", err.message);
-        videoStatus = `❌ Video Error: ${err.message}`;
+
+        console.log(`✅ STEP 3: Video Trigger - ${videoStatus}`);
+
+    } catch (triggerErr) {
+        console.error("❌ STEP 3 Trigger error:", triggerErr.message);
+        videoStatus = `❌ Video Error: ${triggerErr.message}`;
     }
 
     // =========================================================
     // STEP 4 - Telegram Notification
-    // ✅ videoStatus यहाँ तक आते-आते define हो चुका है
     // =========================================================
     const icons = {
         'Result':     '🏆',
@@ -579,16 +710,16 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
                     disable_web_page_preview: false
                 }
             );
-            console.log("✅ Telegram sent!");
+            console.log("✅ STEP 4: Telegram sent!");
         } catch (tgErr) {
-            console.error("Telegram error:", tgErr.message);
+            console.error("❌ STEP 4 Telegram error:", tgErr.response?.data || tgErr.message);
         }
     } else {
-        console.log("⚠️ Telegram credentials missing, skipping...");
+        console.log("⚠️ STEP 4: Telegram credentials missing, skipping...");
     }
 
     // =========================================================
-    // STEP 5 - WhatsApp (अभी बंद है - बाद में चालू करेंगे)
+    // STEP 5 - WhatsApp (abhi band hai)
     // =========================================================
     /*
     const WA_SERVER = process.env.WHATSAPP_SERVER_URL;
@@ -610,12 +741,15 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     // STEP 6 - PDF Generation
     // =========================================================
     const pdfCategories = ["Syllabus", "Admit Card", "Result"];
+
     if (pdfCategories.includes(item.category)) {
         try {
-            let generatePDF;
+            let generatePDF = null;
+
             try {
                 ({ generateSyllabusPDF: generatePDF } = require('./autoPdf.js'));
-            } catch {
+            } catch (requireErr) {
+                console.log("⚠️ autoPdf.js not found:", requireErr.message);
                 generatePDF = null;
             }
 
@@ -624,19 +758,107 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
                 if (pdfUrl) {
                     await db.collection("fast_track").doc(docId)
                         .update({ syllabusPDF: pdfUrl })
-                        .catch(() => {});
-                    console.log("✅ PDF saved:", pdfUrl);
+                        .catch(e => console.log("PDF update skip:", e.message));
+                    console.log("✅ STEP 6: PDF saved:", pdfUrl);
                 }
             } else {
-                console.log("⚠️ autoPdf.js not found, skipping PDF");
+                console.log("⚠️ STEP 6: autoPdf.js not found, skipping PDF");
             }
         } catch (pdfErr) {
-            console.error("PDF error:", pdfErr.message);
+            console.error("❌ STEP 6 PDF error:", pdfErr.message);
         }
+    } else {
+        console.log(`⏭️ STEP 6: PDF skip - category is ${item.category}`);
     }
 
-    console.log(`✅ All tasks complete for: ${item.title}`);
+    // =========================================================
+    // STEP 7 - publishedAt timestamp
+    // =========================================================
+    try {
+        await db.collection("fast_track").doc(docId).update({
+            publishedAt: admin.firestore.FieldValue.serverTimestamp()
+        }).catch(() => {});
+        console.log("✅ STEP 7: publishedAt timestamp saved");
+    } catch (tsErr) {
+        console.error("❌ STEP 7 timestamp error:", tsErr.message);
+    }
+
+    console.log(`\n${'='.repeat(50)}`);
+    console.log(`🎉 All steps complete for: ${item.title}`);
+    console.log(`🌐 URL: ${itemUrl}`);
+    console.log(`${'='.repeat(50)}\n`);
+
     return null;
+});
+
+// =========================================================
+// 4️⃣ DYNAMIC SITEMAP
+// =========================================================
+exports.fastTrackSitemap = onRequest({
+    invoker:        "public",
+    timeoutSeconds: 60,
+    memory:         "512MiB",
+    secrets:        ["SERVICE_ACCOUNT_JSON"]
+}, async (req, res) => {
+    try {
+        const snapshot = await db.collection("fast_track")
+            .where("status", "==", "published")
+            .orderBy("createdAt", "desc")
+            .limit(500)
+            .get();
+
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+`;
+
+        snapshot.docs.forEach(docSnap => {
+            const data    = docSnap.data();
+            const slug    = data.slug || docSnap.id;
+            const lastmod = data.createdAt?.toDate?.()?.toISOString()
+                || new Date().toISOString();
+
+            const safeTitle = (data.title || '')
+                .replace(/&/g,  '&amp;')
+                .replace(/</g,  '&lt;')
+                .replace(/>/g,  '&gt;')
+                .replace(/"/g,  '&quot;')
+                .replace(/'/g,  '&apos;');
+
+            xml += `  <url>
+    <loc>https://studygyaan.in/update/${slug}</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+    <news:news>
+      <news:publication>
+        <news:name>StudyGyaan</news:name>
+        <news:language>hi</news:language>
+      </news:publication>
+      <news:publication_date>${lastmod}</news:publication_date>
+      <news:title>${safeTitle}</news:title>
+    </news:news>
+    <image:image>
+      <image:loc>https://studygyaan.in/og-image.jpg</image:loc>
+      <image:title>${safeTitle}</image:title>
+    </image:image>
+  </url>
+`;
+        });
+
+        xml += `</urlset>`;
+
+        res.setHeader('Content-Type',  'application/xml');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.status(200).send(xml);
+
+        console.log(`✅ Sitemap generated: ${snapshot.docs.length} URLs`);
+
+    } catch (err) {
+        console.error("❌ Sitemap error:", err.message);
+        res.status(500).send("Error generating sitemap");
+    }
 });
 
 // =========================================================
@@ -644,6 +866,9 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
 // =========================================================
 exports.runFastTrackLogic = runFastTrackLogic;
 
+// =========================================================
+// ✅ CLI MODE
+// =========================================================
 if (require.main === module) {
     const apiKey = process.argv[2] || process.env.GEMINI_API_KEY;
     console.log("🤖 CLI Mode Started...");
