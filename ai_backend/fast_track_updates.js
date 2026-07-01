@@ -73,7 +73,6 @@ function detectCategory(title) {
 
 // =========================================================
 // ✅ JUNK DOMAINS - Scraping mein use hota hai
-// Ye URLs links extract karte waqt ignore honge
 // =========================================================
 const JUNK_DOMAINS = [
     "facebook.com", "twitter.com", "whatsapp.com", "telegram.me", "t.me",
@@ -89,8 +88,6 @@ function isJunkUrl(url) {
 // =========================================================
 // 🚫 BLOCKED LINK DOMAINS
 // Save hone wale fields mein ye domains nahi aane chahiye
-// directLink, officialSiteLink etc.
-// RSS fetch aur scraping pe koi asar nahi
 // =========================================================
 const BLOCKED_LINK_DOMAINS = [
     'freejobalert.com',
@@ -130,7 +127,6 @@ async function notifyGoogle(url) {
         });
 
         await jwt.authorize();
-
         await axios.post(
             "https://indexing.googleapis.com/v3/urlNotifications:publish",
             { url, type: "URL_UPDATED" },
@@ -152,7 +148,7 @@ async function triggerGitHubVideoAction(jobData) {
     const REPO_NAME    = process.env.GITHUB_REPO;
 
     if (!GITHUB_TOKEN || !REPO_OWNER || !REPO_NAME) {
-        console.error("❌ GitHub Secrets missing! GH_TOKEN / GITHUB_OWNER / GITHUB_REPO");
+        console.error("❌ GitHub Secrets missing!");
         return false;
     }
 
@@ -169,21 +165,17 @@ async function triggerGitHubVideoAction(jobData) {
     };
 
     if (!cleanJobData.slug && !cleanJobData.id) {
-        console.error("❌ GitHub Trigger: slug aur id dono missing hain!");
+        console.error("❌ GitHub Trigger: slug aur id dono missing!");
         return false;
     }
-
-    const payload = {
-        event_type:     "generate_fasttrack_video",
-        client_payload: { jobData: cleanJobData }
-    };
-
-    console.log("📤 FastTrack GitHub Trigger:", JSON.stringify(cleanJobData));
 
     try {
         const response = await axios.post(
             `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/dispatches`,
-            payload,
+            {
+                event_type:     "generate_fasttrack_video",
+                client_payload: { jobData: cleanJobData }
+            },
             {
                 headers: {
                     Authorization:          `Bearer ${GITHUB_TOKEN}`,
@@ -196,11 +188,9 @@ async function triggerGitHubVideoAction(jobData) {
         );
 
         if (response.status === 204) {
-            console.log("✅ GitHub Actions triggered successfully!");
+            console.log("✅ GitHub Actions triggered!");
             return true;
         }
-
-        console.warn("⚠️ GitHub API unexpected status:", response.status);
         return false;
 
     } catch (err) {
@@ -223,7 +213,6 @@ async function scrapePage(url) {
 
     const links = new Set();
 
-    // ✅ Table links
     $("table tr").each((i, tr) => {
         const rowText = $(tr).text().replace(/\s+/g, ' ').trim();
         $(tr).find('a').each((j, el) => {
@@ -234,7 +223,6 @@ async function scrapePage(url) {
         });
     });
 
-    // ✅ Paragraph links
     $(".post-body p a, .entry-content p a, article a").each((i, el) => {
         const href = $(el).attr("href");
         const text = $(el).text().trim();
@@ -248,10 +236,10 @@ async function scrapePage(url) {
 
 // =========================================================
 // 🤖 AI EXTRACTOR
+// ✅ Smart Retry - 429 aane par retryDelay se wait karo
 // =========================================================
-async function extractWithAI(linksText, category, title, apiKey) {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+async function extractWithAI(linksText, category, title, apiKey, logger = console.log) {
+    const MAX_RETRIES = 3;
 
     const prompt = `Extract information for a ${category} update.
 
@@ -268,22 +256,55 @@ Return ONLY valid JSON (no markdown):
   "updateDate": "Date if found"
 }
 
-IMPORTANT: 
-- directLink must be the exact download/view URL from official govt website only
-- freejobalert.com, sarkariexam.com jaise third-party sites ki URLs mat do
+IMPORTANT:
+- directLink must be exact official govt website URL only
+- freejobalert.com, sarkariexam.com jaise third-party URLs mat do
 - Agar official URL na mile to empty string do ""`;
 
-    const result = await model.generateContent(prompt);
-    const text   = result.response.text()
-        .replace(/```json/g, '')
-        .replace(/```/g, '')
-        .trim();
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
-    return JSON.parse(text);
+            const result = await model.generateContent(prompt);
+            const text   = result.response.text()
+                .replace(/```json/g, '')
+                .replace(/```/g, '')
+                .trim();
+
+            return JSON.parse(text);
+
+        } catch (err) {
+            const is429 = err.message?.includes('429') ||
+                          err.message?.includes('Too Many Requests') ||
+                          err.message?.includes('quota');
+
+            if (is429) {
+                // ✅ Error message se exact retry delay nikal lo
+                const retryMatch = err.message.match(/retry in (\d+(?:\.\d+)?)s/i);
+                const waitSecs   = retryMatch
+                    ? Math.ceil(parseFloat(retryMatch[1])) + 3  // buffer ke saath
+                    : 60; // default 60s
+
+                if (attempt < MAX_RETRIES) {
+                    logger(`⏳ Rate limit (attempt ${attempt}/${MAX_RETRIES}). Waiting ${waitSecs}s then retry...`);
+                    await sleep(waitSecs * 1000);
+                    continue; // retry karo
+                } else {
+                    logger(`❌ Rate limit exceeded after ${MAX_RETRIES} attempts. Skipping.`);
+                    throw new Error(`QUOTA_EXCEEDED: ${err.message.substring(0, 100)}`);
+                }
+            }
+
+            // Aur koi error hai to seedha throw karo
+            throw err;
+        }
+    }
 }
 
 // =========================================================
 // 🔥 CORE SCRAPING LOGIC
+// ✅ Items ke beech bhi intelligent delay
 // =========================================================
 async function runFastTrackLogic(logger = console.log, apiKey) {
     logger("🚀 Fast-Track Scraper Started...");
@@ -330,10 +351,19 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
     const results   = [];
     const MAX_ITEMS = 5;
 
+    // ✅ Quota tracker - kitni requests bachi hain
+    let quotaExhausted = false;
+
     logger(`🔍 Scanning ${allItems.length} items (max ${MAX_ITEMS} to save)...`);
 
     for (const item of allItems) {
         if (results.length >= MAX_ITEMS) break;
+
+        // ✅ Quota khatam hai to ruk jao
+        if (quotaExhausted) {
+            logger(`🛑 API quota exhausted. Stopping early. Saved: ${results.length}`);
+            break;
+        }
 
         const title = (item.title || '').trim();
         const link  = (item.link || item.guid || '').trim();
@@ -360,7 +390,8 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
             const linksText = await scrapePage(link);
             logger(`📋 Found ${linksText.split('\n').length} links`);
 
-            const extracted = await extractWithAI(linksText, category, title, apiKey);
+            // ✅ logger pass karo retry messages ke liye
+            const extracted = await extractWithAI(linksText, category, title, apiKey, logger);
 
             const finalTitle = extracted.title || title;
             const baseSlug   = extracted.slug  || createSlug(finalTitle);
@@ -373,21 +404,16 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
                 continue;
             }
 
-            // =========================================================
-            // ✅ LINKS CLEAN KARO - Blocked domains nahi aane chahiye
-            // directLink blocked → original RSS link use karo
-            // =========================================================
+            // ✅ Blocked links clean karo
             const cleanDirectLink = isBlockedLink(extracted.directLink)
                 ? link
                 : (extracted.directLink || link);
 
             logger(`🔗 directLink: ${cleanDirectLink}`);
 
-            // ✅ Firestore mein save karo
             await db.collection("fast_track").doc(finalSlug).set({
                 title:        finalTitle,
                 slug:         finalSlug,
-                // ✅ Cleaned directLink use karo
                 directLink:   cleanDirectLink,
                 shortInfo:    extracted.shortInfo  || '',
                 org:          extracted.org        || '',
@@ -399,7 +425,6 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
                 createdAt:    admin.firestore.FieldValue.serverTimestamp()
             });
 
-            // ✅ Processed links mein mark karo
             await db.collection("processed_links").doc(docId).set({
                 link,
                 slug:        finalSlug,
@@ -410,12 +435,21 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
             results.push({ title: finalTitle, category, slug: finalSlug });
             logger(`✅ Saved (${results.length}/${MAX_ITEMS}): ${finalTitle}`);
 
-            logger(`⏳ Waiting 8 seconds...`);
-            await sleep(8000);
+            // ✅ Items ke beech 3s delay - rate limit se bachne ke liye
+            if (results.length < MAX_ITEMS) {
+                logger(`⏳ Waiting 3s before next item...`);
+                await sleep(3000);
+            }
 
         } catch (err) {
-            logger(`⚠️ Failed [${title}]: ${err.message}`);
-            await sleep(2000);
+            // ✅ Quota khatam hua to flag set karo
+            if (err.message?.startsWith('QUOTA_EXCEEDED')) {
+                logger(`🛑 Daily quota exhausted! Items saved today: ${results.length}`);
+                quotaExhausted = true;
+            } else {
+                logger(`⚠️ Failed [${title}]: ${err.message}`);
+                await sleep(2000);
+            }
         }
     }
 
@@ -489,7 +523,7 @@ exports.triggerFastTrackUpdates = onRequest({
 });
 
 // =========================================================
-// 3️⃣ FIRESTORE TRIGGER - Approve hone par sab kaam karo
+// 3️⃣ FIRESTORE TRIGGER
 // =========================================================
 exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     document:       "fast_track/{docId}",
@@ -511,7 +545,6 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     ]
 }, async (event) => {
 
-    // ✅ Document delete hua to ignore karo
     if (!event.data.after.exists) {
         console.log("⏭️ Document deleted, skipping.");
         return null;
@@ -520,13 +553,11 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     const afterData  = event.data.after.data();
     const beforeData = event.data.before ? event.data.before.data() : null;
 
-    // ✅ Draft hai to skip karo
     if (afterData.status === 'draft') {
         console.log(`⏭️ Draft, skipping: ${afterData.title}`);
         return null;
     }
 
-    // ✅ Pehle se published tha to duplicate trigger mat karo
     if (beforeData && beforeData.status === 'published') {
         console.log(`⏭️ Already published, skipping: ${afterData.title}`);
         return null;
@@ -538,14 +569,11 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     console.log(`\n${'='.repeat(50)}`);
     console.log(`🚀 Processing Approved: ${item.title}`);
     console.log(`📂 Category: ${item.category}`);
-    console.log(`🔗 DocId   : ${docId}`);
     console.log(`${'='.repeat(50)}\n`);
 
     const itemUrl = `https://studygyaan.in/update/${item.slug || docId}`;
 
-    // =========================================================
-    // STEP 1 - Schema Markup Save
-    // =========================================================
+    // STEP 1 - Schema Save
     try {
         const publishTime = item.createdAt?.toDate?.()?.toISOString()
             || new Date().toISOString();
@@ -626,32 +654,27 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
         await db.collection("fast_track").doc(docId).update({
             schemaMarkup: JSON.stringify(newsSchema),
             faqMarkup:    JSON.stringify(faqSchema),
-            seoDesc:      seoDesc
+            seoDesc
         });
 
         console.log("✅ STEP 1: Schema + FAQ saved");
-
     } catch (schemaErr) {
         console.error("❌ STEP 1 Schema error:", schemaErr.message);
     }
 
-    // =========================================================
     // STEP 2 - Google Indexing
-    // =========================================================
     try {
         await notifyGoogle(itemUrl);
         await notifyGoogle("https://studygyaan.in");
         await notifyGoogle(
             `https://studygyaan.in/updates?category=${encodeURIComponent(item.category)}`
         );
-        console.log("✅ STEP 2: Google Indexing done for 3 URLs");
+        console.log("✅ STEP 2: Google Indexing done");
     } catch (indexErr) {
         console.error("❌ STEP 2 Indexing error:", indexErr.message);
     }
 
-    // =========================================================
-    // STEP 3 - Video Generation via GitHub Actions
-    // =========================================================
+    // STEP 3 - Video Generation
     let videoStatus = "⏳ Video trigger initiated";
 
     try {
@@ -666,29 +689,25 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
             await db.collection("fast_track").doc(docId).update({
                 videoTriggered:   true,
                 videoTriggeredAt: admin.firestore.FieldValue.serverTimestamp()
-            }).catch(e => console.log("videoTriggered update skip:", e.message));
+            }).catch(() => {});
         } else {
-            videoStatus = "⚠️ GitHub trigger failed (check Firebase logs)";
+            videoStatus = "⚠️ GitHub trigger failed";
         }
 
-        console.log(`✅ STEP 3: Video Trigger - ${videoStatus}`);
-
+        console.log(`✅ STEP 3: ${videoStatus}`);
     } catch (triggerErr) {
         console.error("❌ STEP 3 Trigger error:", triggerErr.message);
         videoStatus = `❌ Video Error: ${triggerErr.message}`;
     }
 
-    // =========================================================
-    // STEP 4 - Telegram Notification
-    // =========================================================
+    // STEP 4 - Telegram
     const icons = {
         'Result':     '🏆',
         'Admit Card': '🎫',
         'Answer Key': '🔑',
         'Syllabus':   '📚'
     };
-    const icon = icons[item.category] || '📌';
-
+    const icon      = icons[item.category] || '📌';
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     const CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
 
@@ -715,41 +734,24 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
             console.error("❌ STEP 4 Telegram error:", tgErr.response?.data || tgErr.message);
         }
     } else {
-        console.log("⚠️ STEP 4: Telegram credentials missing, skipping...");
+        console.log("⚠️ STEP 4: Telegram credentials missing");
     }
 
-    // =========================================================
-    // STEP 5 - WhatsApp (abhi band hai)
-    // =========================================================
+    // STEP 5 - WhatsApp (band hai)
     /*
     const WA_SERVER = process.env.WHATSAPP_SERVER_URL;
-    if (WA_SERVER) {
-        const waMsg =
-            `🚨 *New ${item.category}!*\n\n` +
-            `${icon} *${item.title}*\n\n` +
-            `🔗 ${itemUrl}`;
-
-        axios.post(`${WA_SERVER}/send-job`, {
-            targetId:    "120363425475163322@newsletter",
-            messageText: waMsg,
-            linkPreview: true
-        }).catch(e => console.log("WhatsApp skip:", e.message));
-    }
+    if (WA_SERVER) { ... }
     */
 
-    // =========================================================
     // STEP 6 - PDF Generation
-    // =========================================================
     const pdfCategories = ["Syllabus", "Admit Card", "Result"];
 
     if (pdfCategories.includes(item.category)) {
         try {
             let generatePDF = null;
-
             try {
                 ({ generateSyllabusPDF: generatePDF } = require('./autoPdf.js'));
-            } catch (requireErr) {
-                console.log("⚠️ autoPdf.js not found:", requireErr.message);
+            } catch {
                 generatePDF = null;
             }
 
@@ -758,34 +760,29 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
                 if (pdfUrl) {
                     await db.collection("fast_track").doc(docId)
                         .update({ syllabusPDF: pdfUrl })
-                        .catch(e => console.log("PDF update skip:", e.message));
+                        .catch(() => {});
                     console.log("✅ STEP 6: PDF saved:", pdfUrl);
                 }
             } else {
-                console.log("⚠️ STEP 6: autoPdf.js not found, skipping PDF");
+                console.log("⚠️ STEP 6: autoPdf.js not found");
             }
         } catch (pdfErr) {
             console.error("❌ STEP 6 PDF error:", pdfErr.message);
         }
-    } else {
-        console.log(`⏭️ STEP 6: PDF skip - category is ${item.category}`);
     }
 
-    // =========================================================
-    // STEP 7 - publishedAt timestamp
-    // =========================================================
+    // STEP 7 - publishedAt
     try {
         await db.collection("fast_track").doc(docId).update({
             publishedAt: admin.firestore.FieldValue.serverTimestamp()
         }).catch(() => {});
-        console.log("✅ STEP 7: publishedAt timestamp saved");
+        console.log("✅ STEP 7: publishedAt saved");
     } catch (tsErr) {
-        console.error("❌ STEP 7 timestamp error:", tsErr.message);
+        console.error("❌ STEP 7 error:", tsErr.message);
     }
 
     console.log(`\n${'='.repeat(50)}`);
-    console.log(`🎉 All steps complete for: ${item.title}`);
-    console.log(`🌐 URL: ${itemUrl}`);
+    console.log(`🎉 All steps complete: ${item.title}`);
     console.log(`${'='.repeat(50)}\n`);
 
     return null;
@@ -853,8 +850,7 @@ exports.fastTrackSitemap = onRequest({
         res.setHeader('Cache-Control', 'public, max-age=3600');
         res.status(200).send(xml);
 
-        console.log(`✅ Sitemap generated: ${snapshot.docs.length} URLs`);
-
+        console.log(`✅ Sitemap: ${snapshot.docs.length} URLs`);
     } catch (err) {
         console.error("❌ Sitemap error:", err.message);
         res.status(500).send("Error generating sitemap");
