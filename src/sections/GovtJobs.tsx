@@ -56,39 +56,79 @@ const LINK_GRADIENTS = [
 // =========================================================
 // 🛠️ HELPERS
 // =========================================================
+
+// ✅ FIXED: Sahi date parsing - sabhi formats handle karta hai
 function checkIsExpired(lastDateStr) {
     if (!lastDateStr) return false;
-    const lower = lastDateStr.toLowerCase();
-    if (['soon', 'not specified', 'active', 'ongoing', 'n/a'].includes(lower)) return false;
+
+    const lower = String(lastDateStr).trim().toLowerCase();
+
+    // Ye words hain to expired nahi
+    if (
+        lower === 'soon' ||
+        lower === 'not specified' ||
+        lower === 'active' ||
+        lower === 'ongoing' ||
+        lower === 'n/a' ||
+        lower === ''
+    ) return false;
 
     try {
-        // ✅ Multiple date formats handle करो
-        // "30-06-2025", "30/06/2025", "June 30, 2025", "2025-06-30"
-        const cleaned = lastDateStr
-            .replace(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/, '$3-$2-$1') // DD/MM/YYYY → YYYY-MM-DD
-            .replace(/(\d{2})[\/\-](\d{2})[\/\-](\d{2})$/, '20$3-$2-$1'); // DD/MM/YY
+        let parsedDate = null;
 
-        const date = new Date(cleaned);
-        if (isNaN(date.getTime())) return false;
+        // Format 1: DD/MM/YYYY ya DD-MM-YYYY (Indian format)
+        const indianFormat = lastDateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (indianFormat) {
+            const day = parseInt(indianFormat[1], 10);
+            const month = parseInt(indianFormat[2], 10) - 1; // 0-indexed
+            const year = parseInt(indianFormat[3], 10);
+            parsedDate = new Date(year, month, day);
+        }
+
+        // Format 2: YYYY-MM-DD (ISO format - admin se aata hai)
+        if (!parsedDate) {
+            const isoFormat = lastDateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (isoFormat) {
+                const year = parseInt(isoFormat[1], 10);
+                const month = parseInt(isoFormat[2], 10) - 1;
+                const day = parseInt(isoFormat[3], 10);
+                parsedDate = new Date(year, month, day);
+            }
+        }
+
+        // Format 3: "June 30, 2026" ya "30 June 2026" (English text)
+        if (!parsedDate) {
+            const textDate = new Date(lastDateStr);
+            if (!isNaN(textDate.getTime())) {
+                parsedDate = textDate;
+            }
+        }
+
+        // Koi bhi format match nahi hua
+        if (!parsedDate || isNaN(parsedDate.getTime())) return false;
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        return date < today;
+        parsedDate.setHours(0, 0, 0, 0);
+
+        return parsedDate < today;
+
     } catch {
         return false;
     }
 }
 
+// ✅ External URLs ko redirect ke through bhejo
 function safeExternalUrl(url) {
     if (!url || url === '#') return '#';
     if (url.startsWith('http') && !url.includes('studygyaan.in')) {
         return `/redirect?url=${encodeURIComponent(url)}`;
     }
-    return url; // Internal = direct
+    return url;
 }
 
 // =========================================================
-// 🃏 JOB CARD COMPONENT (Memoized - Re-render रोकता है)
+// 🃏 JOB CARD COMPONENT (Memoized)
 // =========================================================
 const JobCard = React.memo(({ job, onWhatsAppShare }) => {
     const isExpired = job.isExpired;
@@ -96,17 +136,25 @@ const JobCard = React.memo(({ job, onWhatsAppShare }) => {
 
     return (
         <article
-            className={`bg-white rounded-md md:rounded-xl p-2 md:p-5 border transition-shadow hover:shadow-md relative overflow-hidden ${isExpired ? 'border-red-100 opacity-75' : 'border-gray-100'}`}
+            className={`bg-white rounded-md md:rounded-xl p-2 md:p-5 border transition-shadow hover:shadow-md relative overflow-hidden ${isExpired
+                ? 'border-red-100 opacity-75'
+                : 'border-gray-100'
+                }`}
             itemScope
             itemType="https://schema.org/JobPosting"
         >
             {/* Left border accent */}
-            <div className={`absolute left-0 top-0 bottom-0 w-1 ${isExpired ? 'bg-red-400' : 'bg-blue-600'}`} aria-hidden="true" />
+            <div
+                className={`absolute left-0 top-0 bottom-0 w-1 ${isExpired ? 'bg-red-400' : 'bg-blue-600'}`}
+                aria-hidden="true"
+            />
 
             <div className="pl-2 md:pl-4 flex flex-col gap-1.5">
 
-                {/* Header */}
+                {/* Header Row */}
                 <div className="flex items-center gap-1.5 flex-wrap">
+
+                    {/* Organization ya Closed badge */}
                     {isExpired ? (
                         <span className="bg-red-50 text-red-700 text-[8px] md:text-[10px] px-2 py-0.5 rounded-full border border-red-200 font-black">
                             CLOSED
@@ -119,6 +167,8 @@ const JobCard = React.memo(({ job, onWhatsAppShare }) => {
                             {job.organization}
                         </span>
                     )}
+
+                    {/* Advt No */}
                     {job.advtNo && (
                         <span className="text-[8px] md:text-xs text-gray-400 hidden sm:flex items-center gap-0.5">
                             <FileText size={8} aria-hidden="true" />
@@ -130,7 +180,8 @@ const JobCard = React.memo(({ job, onWhatsAppShare }) => {
                 {/* Title */}
                 <a href={jobUrl} className="block group">
                     <h3
-                        className={`text-[11px] md:text-lg font-black line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors ${isExpired ? 'text-gray-400' : 'text-gray-900'}`}
+                        className={`text-[11px] md:text-lg font-black line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors ${isExpired ? 'text-gray-400' : 'text-gray-900'
+                            }`}
                         itemProp="title"
                     >
                         {job.title}
@@ -150,7 +201,8 @@ const JobCard = React.memo(({ job, onWhatsAppShare }) => {
                             👥 {job.vacancies} Posts
                         </span>
                     )}
-                    <span className={`flex items-center gap-0.5 font-bold ${isExpired ? 'text-red-500' : 'text-orange-600'}`}>
+                    <span className={`flex items-center gap-0.5 font-bold ${isExpired ? 'text-red-500' : 'text-orange-600'
+                        }`}>
                         <Clock size={8} className="md:w-3.5 md:h-3.5 shrink-0" aria-hidden="true" />
                         {isExpired ? 'Expired: ' : 'Last Date: '}
                         <time itemProp="validThrough">{job.lastDate}</time>
@@ -159,9 +211,13 @@ const JobCard = React.memo(({ job, onWhatsAppShare }) => {
 
                 {/* Action Buttons */}
                 <div className="flex items-center gap-1.5 mt-1">
+
                     {/* WhatsApp Share */}
                     <button
-                        onClick={() => onWhatsAppShare(job.title, `${window.location.origin}${jobUrl}`)}
+                        onClick={() => onWhatsAppShare(
+                            job.title,
+                            `${window.location.origin}${jobUrl}`
+                        )}
                         aria-label={`Share ${job.title} on WhatsApp`}
                         className="bg-green-500 hover:bg-green-600 text-white px-2 py-1 md:px-3 md:py-1.5 rounded-lg flex items-center gap-1 transition-colors active:scale-95 text-[8px] md:text-xs font-bold"
                     >
@@ -178,7 +234,7 @@ const JobCard = React.memo(({ job, onWhatsAppShare }) => {
                         <ArrowRight size={10} className="md:w-3.5 md:h-3.5" aria-hidden="true" />
                     </a>
 
-                    {/* Apply / Expired */}
+                    {/* Apply / Expired button */}
                     {isExpired ? (
                         <span className="ml-auto bg-red-50 text-red-400 border border-red-100 px-2 py-1 md:px-3 md:py-1.5 rounded-lg text-[8px] md:text-xs font-bold cursor-not-allowed">
                             Expired
@@ -234,38 +290,43 @@ const GovtJobs = () => {
     const [loading, setLoading] = useState(true);
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
-    const [searchInput, setSearchInput] = useState(''); // Debounce के लिए
+    const [searchInput, setSearchInput] = useState('');
     const [globalSettings, setGlobalSettings] = useState(null);
     const [currentPage, setCurrentPage] = useState(1);
 
     // =========================================================
-    // 📡 OPTIMIZED DATA FETCH
+    // 📡 DATA FETCH
     // =========================================================
     useEffect(() => {
         const loadData = async () => {
             try {
                 setLoading(true);
 
-                // ✅ Parallel fetch - Jobs + Settings एक साथ
+                // ✅ Parallel fetch - dono ek saath
                 const [jobsResult, settingsResult] = await Promise.allSettled([
-                    // ✅ Limit 100 - सभी नहीं!
-                    // ✅ orderBy createdAt - Server-side sort
                     getDocs(query(
                         collection(db, "jobs"),
                         orderBy("createdAt", "desc"),
-                        limit(150)  // Reasonable limit
+                        limit(150)
                     )),
                     getDoc(doc(db, "site_settings", "global"))
                 ]);
 
-                // Jobs process करो
+                // Jobs process karo
                 if (jobsResult.status === 'fulfilled') {
                     const fetchedJobs = [];
+
                     jobsResult.value.forEach(docSnap => {
                         const data = docSnap.data();
-                        // JOB type filter
-                        if (data.type && data.type !== 'JOB' && data.type !== 'job') return;
-                        // ✅ isLive check
+
+                        // Sirf JOB type lo, AFFILIATE nahi
+                        if (
+                            data.type &&
+                            data.type !== 'JOB' &&
+                            data.type !== 'job'
+                        ) return;
+
+                        // Draft jobs skip karo
                         if (data.isLive === false) return;
 
                         fetchedJobs.push({
@@ -280,25 +341,29 @@ const GovtJobs = () => {
                             applyLink: data.applyLink || '',
                             category: (data.category || 'other').toLowerCase(),
                             advtNo: data.advtNo || '',
+                            // ✅ FIXED checkIsExpired use karo
                             isExpired: checkIsExpired(data.lastDate),
                             createdAt: data.createdAt || null
                         });
                     });
 
-                    // ✅ Client-side: Active पहले, Expired बाद
-                    // (Server already sorted by date)
+                    // ✅ Active pehle, Expired baad mein
+                    // Same group mein server order (createdAt desc) maintain karo
                     fetchedJobs.sort((a, b) => {
                         if (a.isExpired !== b.isExpired) {
                             return a.isExpired ? 1 : -1;
                         }
-                        return 0; // Server order maintain करो
+                        return 0;
                     });
 
                     setJobs(fetchedJobs);
                 }
 
-                // Settings
-                if (settingsResult.status === 'fulfilled' && settingsResult.value.exists()) {
+                // Site Settings
+                if (
+                    settingsResult.status === 'fulfilled' &&
+                    settingsResult.value.exists()
+                ) {
                     setGlobalSettings(settingsResult.value.data());
                 }
 
@@ -313,7 +378,7 @@ const GovtJobs = () => {
     }, []);
 
     // =========================================================
-    // 🔍 SEARCH DEBOUNCE
+    // 🔍 SEARCH DEBOUNCE - 300ms
     // =========================================================
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -321,7 +386,7 @@ const GovtJobs = () => {
                 setSearchQuery(searchInput);
                 setCurrentPage(1);
             });
-        }, 300); // 300ms debounce
+        }, 300);
 
         return () => clearTimeout(timer);
     }, [searchInput]);
@@ -331,17 +396,20 @@ const GovtJobs = () => {
     // =========================================================
     const filteredJobs = useMemo(() => {
         return jobs.filter(job => {
-            // Category filter
-            const catMatch = selectedCategory === 'all'
-                || job.category === selectedCategory
-                || (selectedCategory === 'state' && job.category === 'state-exams');
 
-            // Search filter
+            // Category match check
+            const catMatch =
+                selectedCategory === 'all' ||
+                job.category === selectedCategory ||
+                (selectedCategory === 'state' && job.category === 'state-exams');
+
+            // Search match check
             const searchLower = searchQuery.toLowerCase();
-            const searchMatch = !searchQuery
-                || job.title.toLowerCase().includes(searchLower)
-                || job.organization.toLowerCase().includes(searchLower)
-                || job.location.toLowerCase().includes(searchLower);
+            const searchMatch =
+                !searchQuery ||
+                job.title.toLowerCase().includes(searchLower) ||
+                job.organization.toLowerCase().includes(searchLower) ||
+                job.location.toLowerCase().includes(searchLower);
 
             return catMatch && searchMatch;
         });
@@ -381,7 +449,7 @@ const GovtJobs = () => {
     }, []);
 
     // =========================================================
-    // 💰 PRICE
+    // 💰 SIDEBAR COMPUTED VALUES
     // =========================================================
     const sellingPrice = useMemo(() => Math.round(
         Number(globalSettings?.mrpPrice || 499) *
@@ -417,17 +485,17 @@ const GovtJobs = () => {
         <section id="govt-jobs" className="py-4 md:py-16 bg-gray-50 font-hindi">
 
             <SEO
-                customTitle="Latest Govt Jobs 2025 - सरकारी नौकरी Alert | StudyGyaan"
+                customTitle="Latest Govt Jobs 2026 - सरकारी नौकरी Alert | StudyGyaan"
                 customDescription="SSC, Railway, Banking, Police और State Exams की Latest Government Jobs। Daily updates, direct apply links और free preparation material।"
-                customKeywords="govt jobs 2025, sarkari naukri, SSC jobs, railway jobs, bank jobs, police bharti, latest vacancy"
+                customKeywords="govt jobs 2026, sarkari naukri, SSC jobs, railway jobs, bank jobs, police bharti, latest vacancy"
             />
 
             <div className="max-w-7xl mx-auto px-2 md:px-8">
 
-                {/* Header */}
+                {/* Page Header */}
                 <header className="text-center mb-4 md:mb-10">
                     <h2 className="text-lg md:text-4xl font-black text-gray-900 mb-1">
-                        {t('jobs.title') || 'Latest Govt Jobs 2025'}
+                        {t('jobs.title') || 'Latest Govt Jobs 2026'}
                     </h2>
                     <p className="text-[9px] md:text-base text-gray-500 font-bold">
                         लेटेस्ट सरकारी भर्तियों की जानकारी सबसे पहले •{' '}
@@ -452,7 +520,7 @@ const GovtJobs = () => {
                                     className={`px-2 py-1 rounded-lg text-[8px] md:text-sm font-bold transition-all whitespace-nowrap ${selectedCategory === cat.id
                                         ? 'bg-blue-600 text-white shadow-sm'
                                         : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                                    }`}
+                                        }`}
                                 >
                                     {cat.label}
                                 </button>
@@ -477,7 +545,7 @@ const GovtJobs = () => {
                     </div>
                 </div>
 
-                {/* Results count */}
+                {/* Search Results Count */}
                 {!loading && searchQuery && (
                     <p className="text-[9px] md:text-sm text-gray-500 font-bold mb-3">
                         "{searchQuery}" के लिए {filteredJobs.length} results
@@ -486,14 +554,17 @@ const GovtJobs = () => {
 
                 <div className="flex flex-col md:flex-row gap-4 md:gap-6 items-start">
 
-                    {/* Main Content */}
+                    {/* ===================== MAIN CONTENT ===================== */}
                     <main className="w-full md:w-[65%]">
 
                         {loading ? (
                             <JobSkeleton />
                         ) : currentJobs.length === 0 ? (
                             <div className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-200">
-                                <Briefcase className="w-10 h-10 text-gray-200 mx-auto mb-3" aria-hidden="true" />
+                                <Briefcase
+                                    className="w-10 h-10 text-gray-200 mx-auto mb-3"
+                                    aria-hidden="true"
+                                />
                                 <h3 className="text-sm md:text-lg font-black text-gray-700 mb-1">
                                     कोई Job नहीं मिली
                                 </h3>
@@ -503,7 +574,8 @@ const GovtJobs = () => {
                             </div>
                         ) : (
                             <div className="space-y-2">
-                                {/* ✅ No Framer Motion - Simple CSS transitions */}
+
+                                {/* Job Cards */}
                                 {currentJobs.map(job => (
                                     <JobCard
                                         key={job.id}
@@ -518,6 +590,7 @@ const GovtJobs = () => {
                                         aria-label="Job Listings Pages"
                                         className="mt-6 flex justify-center items-center gap-2"
                                     >
+                                        {/* Prev Button */}
                                         <button
                                             onClick={() => handlePageChange(currentPage - 1)}
                                             disabled={currentPage === 1 || isPending}
@@ -527,7 +600,7 @@ const GovtJobs = () => {
                                             <ChevronLeft size={14} />
                                         </button>
 
-                                        {/* Page Numbers */}
+                                        {/* Page Number Buttons */}
                                         {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
                                             let page;
                                             if (totalPages <= 5) {
@@ -548,13 +621,14 @@ const GovtJobs = () => {
                                                     className={`h-8 w-8 flex items-center justify-center rounded-lg text-xs font-bold transition-all ${currentPage === page
                                                         ? 'bg-blue-600 text-white shadow-sm'
                                                         : 'border border-gray-200 bg-white hover:bg-gray-50 text-gray-600'
-                                                    }`}
+                                                        }`}
                                                 >
                                                     {page}
                                                 </button>
                                             );
                                         })}
 
+                                        {/* Next Button */}
                                         <button
                                             onClick={() => handlePageChange(currentPage + 1)}
                                             disabled={currentPage === totalPages || isPending}
@@ -568,7 +642,7 @@ const GovtJobs = () => {
                             </div>
                         )}
 
-                        {/* ✅ Internal Links - Fixed URLs */}
+                        {/* Internal Links Section */}
                         <div className="bg-blue-50/50 p-5 md:p-8 rounded-2xl border border-blue-100 mt-6">
                             <h2 className="text-sm md:text-xl font-black text-slate-800 mb-4 flex items-center gap-2">
                                 <Search size={18} className="text-blue-600" aria-hidden="true" />
@@ -578,7 +652,7 @@ const GovtJobs = () => {
                                 {[
                                     { href: "/govt-jobs", label: "Latest Govt Jobs" },
                                     { href: "/free-study-material", label: "Free Study Material" },
-                                    { href: "/test", label: "Free Mock Tests" }, // ✅ Fixed!
+                                    { href: "/test", label: "Free Mock Tests" },
                                     { href: "/blog", label: "Blogs & Updates" },
                                     { href: "/web-stories", label: "Web Stories" }
                                 ].map(link => (
@@ -594,7 +668,7 @@ const GovtJobs = () => {
                         </div>
                     </main>
 
-                    {/* Sidebar */}
+                    {/* ===================== SIDEBAR ===================== */}
                     <aside className="w-full md:w-[35%] space-y-4 sticky top-16">
 
                         {/* Trending Blogs */}
@@ -607,9 +681,9 @@ const GovtJobs = () => {
                                 <ul className="space-y-2" role="list">
                                     {trendingBlogs.map((item, index) => {
                                         const style = LOOP_COLORS[index % LOOP_COLORS.length];
-                                        // ✅ Internal link check
-                                        const isInternal = item.url?.includes('studygyaan.in')
-                                            || item.url?.startsWith('/');
+                                        const isInternal =
+                                            item.url?.includes('studygyaan.in') ||
+                                            item.url?.startsWith('/');
                                         const href = isInternal
                                             ? (item.url?.replace('https://studygyaan.in', '') || '/blog')
                                             : safeExternalUrl(item.url);
@@ -649,7 +723,10 @@ const GovtJobs = () => {
                                             <a
                                                 href={safeExternalUrl(item.url)}
                                                 target={item.url?.startsWith('http') ? '_blank' : '_self'}
-                                                rel={item.url?.startsWith('http') ? 'nofollow noopener noreferrer' : undefined}
+                                                rel={item.url?.startsWith('http')
+                                                    ? 'nofollow noopener noreferrer'
+                                                    : undefined
+                                                }
                                                 className={`group flex items-center justify-between p-3 rounded-xl transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 ${LINK_GRADIENTS[index % LINK_GRADIENTS.length]} text-white`}
                                             >
                                                 <div className="flex items-center gap-2 flex-1">
@@ -660,7 +737,11 @@ const GovtJobs = () => {
                                                         {item.title || item.name}
                                                     </span>
                                                 </div>
-                                                <ArrowRight size={14} className="shrink-0 group-hover:translate-x-1 transition-all" aria-hidden="true" />
+                                                <ArrowRight
+                                                    size={14}
+                                                    className="shrink-0 group-hover:translate-x-1 transition-all"
+                                                    aria-hidden="true"
+                                                />
                                             </a>
                                         </li>
                                     ))}
@@ -668,7 +749,7 @@ const GovtJobs = () => {
                             </section>
                         )}
 
-                        {/* Premium Promo */}
+                        {/* Premium Promo Card */}
                         <section className="p-4 md:p-6 bg-gradient-to-br from-blue-700 via-indigo-800 to-slate-900 rounded-2xl text-white shadow-xl border-b-4 border-black/20">
                             <p className="font-black text-sm md:text-lg mb-1 italic flex items-center gap-2 text-yellow-300">
                                 <ShoppingCart size={18} aria-hidden="true" />
