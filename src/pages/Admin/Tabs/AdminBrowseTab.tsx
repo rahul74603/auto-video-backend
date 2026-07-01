@@ -60,7 +60,6 @@ function createSlug(title) {
 function formatDateForInput(dateStr) {
     if (!dateStr) return '';
     try {
-        // DD/MM/YYYY or DD-MM-YYYY → YYYY-MM-DD
         const ddmmyyyy = dateStr.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
         if (ddmmyyyy) {
             return `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
@@ -74,7 +73,6 @@ function formatDateForInput(dateStr) {
         return '';
     }
 }
-
 
 // =========================================================
 // 🗑️ DELETE CONFIRMATION MODAL
@@ -174,7 +172,7 @@ const AdminBrowseTab = () => {
     }, []);
 
     // =========================================================
-    // 📝 FORM FIELD UPDATER (No stale state bug)
+    // 📝 FORM FIELD UPDATER
     // =========================================================
     const updateField = useCallback((field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -190,7 +188,7 @@ const AdminBrowseTab = () => {
                 collection(db, "jobs"),
                 where("type", "in", ["JOB", "AFFILIATE"]),
                 orderBy("updatedAt", "desc"),
-                limit(100) // ✅ Limit add किया!
+                limit(100)
             );
             const snap = await getDocs(q);
             const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -289,7 +287,6 @@ const AdminBrowseTab = () => {
                 updatedAt: new Date().toISOString()
             };
 
-            // undefined values हटाओ
             const clean = Object.fromEntries(
                 Object.entries(payload).filter(([, v]) => v !== undefined)
             );
@@ -316,7 +313,6 @@ const AdminBrowseTab = () => {
         e.preventDefault();
         if (isSubmitting.current) return;
 
-        // Validation
         if (!formData.title.trim()) {
             showToast("Title जरूरी है!", 'error');
             return;
@@ -326,7 +322,6 @@ const AdminBrowseTab = () => {
         setLoading(true);
 
         try {
-            // File uploads
             let notificationLink = formData.notificationLink;
             if (pdfFile) {
                 notificationLink = await uploadFile(pdfFile, 'job_notifications');
@@ -337,7 +332,6 @@ const AdminBrowseTab = () => {
                 imageUrl = await uploadFile(imageFile, 'job_images');
             }
 
-            // ✅ Slug generate करो
             const slug = createSlug(formData.title);
 
             const payload = {
@@ -346,7 +340,7 @@ const AdminBrowseTab = () => {
                 imageUrl,
                 type: postType,
                 slug,
-                isLive: true, // ✅ Always live when published
+                isLive: true,
                 updatedAt: new Date().toISOString()
             };
 
@@ -355,33 +349,26 @@ const AdminBrowseTab = () => {
             );
 
             if (editingId) {
-                // ✅ UPDATE existing
                 await setDoc(doc(db, "jobs", String(editingId)), clean, { merge: true });
                 showToast("✅ Live Post Update हो गया!");
-
             } else {
-                // ✅ CREATE new
                 let liveJobId;
 
                 if (currentDraftId) {
-                    // Draft से publish - Draft ID use करो
                     liveJobId = String(currentDraftId);
                     await setDoc(doc(db, "jobs", liveJobId), {
                         ...clean,
                         slug: liveJobId,
                         createdAt: new Date().toISOString()
                     });
-                    // Draft delete करो
                     await deleteDoc(doc(db, "job_drafts", liveJobId))
-                        .catch(() => {}); // Silent fail ok
+                        .catch(() => {});
                 } else {
-                    // Manual add
                     const docRef = await addDoc(collection(db, "jobs"), {
                         ...clean,
                         createdAt: new Date().toISOString()
                     });
                     liveJobId = docRef.id;
-                    // ✅ Slug update करो doc ID से
                     await updateDoc(doc(db, "jobs", liveJobId), {
                         slug: createSlug(formData.title) || liveJobId
                     });
@@ -389,7 +376,6 @@ const AdminBrowseTab = () => {
                 showToast("🚀 Job Successfully Publish हो गई!");
             }
 
-            // Reset
             setShowForm(false);
             setPdfFile(null);
             setImageFile(null);
@@ -445,16 +431,54 @@ const AdminBrowseTab = () => {
     };
 
     // =========================================================
-    // 🔍 FILTERED POSTS
+    // 🏷️ CHECK IF JOB IS EXPIRED
+    // =========================================================
+    const isJobExpired = useCallback((lastDate) => {
+        if (!lastDate) return false;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const last = new Date(lastDate);
+        if (isNaN(last.getTime())) return false;
+        return last < today;
+    }, []);
+
+    // =========================================================
+    // 🔍 FILTERED + SORTED POSTS
+    // Expired jobs automatically end में जाएंगी
     // =========================================================
     const filteredPosts = useMemo(() => {
-        if (!searchQuery) return posts;
-        const q = searchQuery.toLowerCase();
-        return posts.filter(p =>
-            p.title?.toLowerCase().includes(q) ||
-            p.organization?.toLowerCase().includes(q)
-        );
-    }, [posts, searchQuery]);
+        let result = posts;
+
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            result = posts.filter(p =>
+                p.title?.toLowerCase().includes(q) ||
+                p.organization?.toLowerCase().includes(q)
+            );
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        return [...result].sort((a, b) => {
+            const aLastDate = a.lastDate ? new Date(a.lastDate) : null;
+            const bLastDate = b.lastDate ? new Date(b.lastDate) : null;
+
+            const aExpired = aLastDate && !isNaN(aLastDate.getTime())
+                ? aLastDate < today
+                : false;
+            const bExpired = bLastDate && !isNaN(bLastDate.getTime())
+                ? bLastDate < today
+                : false;
+
+            // Expired को end में
+            if (aExpired && !bExpired) return 1;
+            if (!aExpired && bExpired) return -1;
+
+            // Same group में original order (updatedAt desc already from firestore)
+            return 0;
+        });
+    }, [posts, searchQuery, isJobExpired]);
 
     // =========================================================
     // 🔄 FORM RESET & CLOSE
@@ -480,7 +504,7 @@ const AdminBrowseTab = () => {
                 <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-2xl shadow-2xl font-black text-sm flex items-center gap-2 animate-in slide-in-from-right ${toast.type === 'error'
                     ? 'bg-red-600 text-white'
                     : 'bg-green-600 text-white'
-                }`}>
+                    }`}>
                     {toast.type === 'error'
                         ? <AlertTriangle size={16} />
                         : <CheckCircle size={16} />
@@ -554,77 +578,117 @@ const AdminBrowseTab = () => {
                         <div className="space-y-2">
                             {filteredPosts.length === 0 ? (
                                 <div className="text-center py-10 text-gray-400 font-bold text-sm">
-                                    {searchQuery ? 'कोई result नहीं मिला' : 'कोई Job नहीं है अभी'}
+                                    {searchQuery
+                                        ? 'कोई result नहीं मिला'
+                                        : 'कोई Job नहीं है अभी'
+                                    }
                                 </div>
-                            ) : filteredPosts.map(post => (
-                                <div
-                                    key={post.id}
-                                    className="flex flex-col sm:flex-row justify-between sm:items-center p-3 md:p-4 border rounded-xl bg-white shadow-sm hover:border-blue-200 hover:shadow-md transition-all gap-2"
-                                >
-                                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                                        {/* Type Badge */}
-                                        <span className={`shrink-0 text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${post.type === 'JOB'
-                                            ? 'bg-blue-100 text-blue-700'
-                                            : 'bg-green-100 text-green-700'
-                                        }`}>
-                                            {post.type}
-                                        </span>
-                                        {/* Live Status */}
-                                        <span className={`shrink-0 text-[8px] font-black px-2 py-0.5 rounded-full ${post.isLive === false
-                                            ? 'bg-red-100 text-red-600'
-                                            : 'bg-emerald-100 text-emerald-700'
-                                        }`}>
-                                            {post.isLive === false ? 'Draft' : 'Live'}
-                                        </span>
-                                        <span className="font-bold text-gray-800 text-sm truncate">
-                                            {post.title}
-                                        </span>
-                                    </div>
+                            ) : filteredPosts.map(post => {
+                                const expired = isJobExpired(post.lastDate);
 
-                                    <div className="flex gap-1.5 shrink-0">
-                                        {/* View */}
-                                        <a
-                                            href={`/job/${post.slug || post.id}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
-                                            title="Live Preview"
-                                        >
-                                            <Eye size={14} />
-                                        </a>
-                                        {/* Edit */}
-                                        <button
-                                            onClick={() => handleEdit(post)}
-                                            className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-colors"
-                                            title="Edit"
-                                        >
-                                            <Edit size={14} />
-                                        </button>
-                                        {/* Delete */}
-                                        <button
-                                            onClick={() => setDeleteModal({ id: post.id, title: post.title })}
-                                            className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
-                                            title="Delete"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
+                                return (
+                                    <div
+                                        key={post.id}
+                                        className={`flex flex-col sm:flex-row justify-between sm:items-center p-3 md:p-4 border rounded-xl bg-white shadow-sm transition-all gap-2 ${expired
+                                            ? 'opacity-60 border-gray-200 hover:border-gray-300 hover:shadow-sm'
+                                            : 'hover:border-blue-200 hover:shadow-md'
+                                            }`}
+                                    >
+                                        <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
+
+                                            {/* Type Badge */}
+                                            <span className={`shrink-0 text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${post.type === 'JOB'
+                                                ? 'bg-blue-100 text-blue-700'
+                                                : 'bg-green-100 text-green-700'
+                                                }`}>
+                                                {post.type}
+                                            </span>
+
+                                            {/* Live / Draft Status */}
+                                            <span className={`shrink-0 text-[8px] font-black px-2 py-0.5 rounded-full ${post.isLive === false
+                                                ? 'bg-red-100 text-red-600'
+                                                : 'bg-emerald-100 text-emerald-700'
+                                                }`}>
+                                                {post.isLive === false ? 'Draft' : 'Live'}
+                                            </span>
+
+                                            {/* ✅ Expired Badge */}
+                                            {expired && (
+                                                <span className="shrink-0 text-[8px] font-black px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 border border-orange-200 flex items-center gap-0.5">
+                                                    ⏰ Expired
+                                                </span>
+                                            )}
+
+                                            {/* Title */}
+                                            <span className={`font-bold text-sm truncate ${expired
+                                                ? 'text-gray-400'
+                                                : 'text-gray-800'
+                                                }`}>
+                                                {post.title}
+                                            </span>
+
+                                            {/* ✅ Last Date - Expired jobs के लिए */}
+                                            {expired && post.lastDate && (
+                                                <span className="text-[9px] text-orange-400 font-bold shrink-0">
+                                                    Last: {new Date(post.lastDate).toLocaleDateString('en-IN', {
+                                                        day: '2-digit',
+                                                        month: 'short',
+                                                        year: 'numeric'
+                                                    })}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="flex gap-1.5 shrink-0">
+                                            {/* View */}
+                                            <a
+                                                href={`/job/${post.slug || post.id}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                                                title="Live Preview"
+                                            >
+                                                <Eye size={14} />
+                                            </a>
+                                            {/* Edit */}
+                                            <button
+                                                onClick={() => handleEdit(post)}
+                                                className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-colors"
+                                                title="Edit"
+                                            >
+                                                <Edit size={14} />
+                                            </button>
+                                            {/* Delete */}
+                                            <button
+                                                onClick={() => setDeleteModal({ id: post.id, title: post.title })}
+                                                className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                                                title="Delete"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </>
             ) : (
 
-            /* =========================================================
-                FORM VIEW
-            ========================================================= */
+                /* =========================================================
+                    FORM VIEW
+                ========================================================= */
                 <div className="max-w-5xl mx-auto">
                     {/* Form Header */}
                     <div className="flex justify-between items-center mb-6">
                         <div>
                             <h3 className="text-lg font-black text-blue-700 uppercase">
-                                {editingId ? '✏️ Edit' : currentDraftId ? '📋 Review Draft' : '➕ Add New'} {postType}
+                                {editingId
+                                    ? '✏️ Edit'
+                                    : currentDraftId
+                                        ? '📋 Review Draft'
+                                        : '➕ Add New'
+                                } {postType}
                             </h3>
                             {currentDraftId && !editingId && (
                                 <p className="text-xs text-gray-500 font-bold mt-0.5">
@@ -650,10 +714,10 @@ const AdminBrowseTab = () => {
                                     label="Post Title"
                                     value={formData.title}
                                     onChange={v => updateField('title', v)}
-                                    placeholder="e.g. SSC CGL 2025 Recruitment"
+                                    placeholder="e.g. SSC CGL 2026 Recruitment"
                                     required
                                 />
-                                {/* ✅ Slug Preview */}
+                                {/* Slug Preview */}
                                 {formData.title && (
                                     <p className="text-[9px] text-gray-400 font-bold mt-1">
                                         🔗 URL: /job/{createSlug(formData.title)}
@@ -692,7 +756,7 @@ const AdminBrowseTab = () => {
                                         label="Advt No"
                                         value={formData.advtNo}
                                         onChange={v => updateField('advtNo', v)}
-                                        placeholder="01/2025"
+                                        placeholder="01/2026"
                                     />
                                     <FormField
                                         label="Start Date"
@@ -833,7 +897,9 @@ const AdminBrowseTab = () => {
                                                 onChange={e => setPdfFile(e.target.files[0])}
                                                 className="w-full p-2 text-xs border-2 border-red-200 rounded-xl bg-white font-bold cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-black file:bg-red-100 file:text-red-700"
                                             />
-                                            <p className="text-[9px] text-gray-400 mt-1">या नीचे link paste करो</p>
+                                            <p className="text-[9px] text-gray-400 mt-1">
+                                                या नीचे link paste करो
+                                            </p>
                                             <input
                                                 value={formData.notificationLink}
                                                 onChange={e => updateField('notificationLink', e.target.value)}
@@ -855,7 +921,9 @@ const AdminBrowseTab = () => {
                                                 onChange={e => setImageFile(e.target.files[0])}
                                                 className="w-full p-2 text-xs border-2 border-blue-200 rounded-xl bg-white font-bold cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-black file:bg-blue-100 file:text-blue-700"
                                             />
-                                            <p className="text-[9px] text-gray-400 mt-1">या URL paste करो</p>
+                                            <p className="text-[9px] text-gray-400 mt-1">
+                                                या URL paste करो
+                                            </p>
                                             <input
                                                 value={formData.imageUrl}
                                                 onChange={e => updateField('imageUrl', e.target.value)}
