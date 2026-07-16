@@ -52,20 +52,41 @@ async function setupHindiFont() {
 }
 
 // =========================================================
-// 🔐 1. YOUTUBE AUTH
+// 🔐 1. YOUTUBE AUTH - ✅ UPDATED (SELF_TEST CHANNEL)
 // =========================================================
 async function getYouTubeClient() {
     const credentialsVar = process.env.GMAIL_CREDENTIALS;
-    const tokenVar = process.env.YOUTUBE_TOKEN;
+    const tokenVar = process.env.YOUTUBE_TOKEN_SELF_TEST; // ✅ CHANGED
+
     if (!credentialsVar || !tokenVar) {
-        throw new Error("❌ GMAIL_CREDENTIALS या YOUTUBE_TOKEN नहीं मिला!");
+        throw new Error("❌ GMAIL_CREDENTIALS या YOUTUBE_TOKEN_SELF_TEST नहीं मिला!");
     }
+
     const creds = JSON.parse(credentialsVar);
     const token = JSON.parse(tokenVar);
     const { client_secret, client_id, redirect_uris } = creds.installed || creds.web;
     const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
     oAuth2Client.setCredentials(token);
-    return google.youtube({ version: 'v3', auth: oAuth2Client });
+
+    const youtube = google.youtube({ version: 'v3', auth: oAuth2Client });
+
+    // ✅ Verify - confirm karega sahi channel hai
+    try {
+        const me = await youtube.channels.list({
+            part: 'snippet',
+            mine: true
+        });
+        const channel = me.data.items?.[0];
+        if (channel) {
+            console.log(`📺 Upload Channel: ${channel.snippet.title} | ID: ${channel.id}`);
+        } else {
+            throw new Error("❌ Koi YouTube channel nahi mila is token se!");
+        }
+    } catch (verifyErr) {
+        throw new Error(`❌ YouTube Auth fail: ${verifyErr.message}`);
+    }
+
+    return youtube;
 }
 
 // =========================================================
@@ -105,7 +126,6 @@ function cleanText(str) {
 // =========================================================
 // 🏷️ 4. DYNAMIC SEO ENGINE
 // =========================================================
-
 const SUBJECT_KEYWORDS = {
     'GK': [
         'GK Questions Hindi', 'General Knowledge 2025', 'GK Quiz',
@@ -219,13 +239,12 @@ const BASE_MOCK_TAGS = [
     'Previous Year Paper', 'Expected Questions 2025'
 ];
 
-// ✅ TAG SANITIZER - Only YouTube Safe ASCII Tags
 function sanitizeTag(tag) {
     if (!tag) return null;
     let clean = tag
-        .replace(/[^\x20-\x7E]/g, '')   // Remove non-ASCII (Hindi, emojis, etc.)
-        .replace(/[<>'"&]/g, '')          // Remove HTML special chars
-        .replace(/\s+/g, ' ')             // Normalize spaces
+        .replace(/[^\x20-\x7E]/g, '')
+        .replace(/[<>'"&]/g, '')
+        .replace(/\s+/g, ' ')
         .trim();
     if (clean.length < 2) return null;
     if (clean.length > 100) clean = clean.substring(0, 100).trim();
@@ -259,7 +278,6 @@ function generateMockTestSEO(subject, title, totalQuestions) {
         'July', 'August', 'September', 'October', 'November', 'December'];
     const month = months[now.getMonth()];
 
-    // Clean subject - ASCII only for tags
     const subjectClean = subject.replace(/[^\x20-\x7E]/g, '').trim() || 'GK';
 
     const timeTags = [
@@ -364,7 +382,7 @@ Daily Updates ke liye:
 Website: https://studygyaan.in
 Free PDF aur Mock Test Available
 
-SUBSCRIBE karein aur Bell Icon dabaein ताकि कोई Update Miss न हो!
+SUBSCRIBE karein aur Bell Icon dabaein!
 
 VIDEO CHAPTERS:
 00:00 - Introduction
@@ -394,7 +412,6 @@ function createAttractiveThumbnail(subject, totalQuestions, outputPath) {
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // Bold gradient background
     let grad = ctx.createLinearGradient(0, 0, width, height);
     grad.addColorStop(0, '#1a0533');
     grad.addColorStop(0.5, '#2d1b69');
@@ -402,11 +419,9 @@ function createAttractiveThumbnail(subject, totalQuestions, outputPath) {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, height);
 
-    // Left red accent strip
     ctx.fillStyle = '#FF0000';
     ctx.fillRect(0, 0, 12, height);
 
-    // Big number circle
     ctx.beginPath();
     ctx.arc(280, 360, 220, 0, 2 * Math.PI);
     ctx.fillStyle = '#FF4500';
@@ -415,7 +430,6 @@ function createAttractiveThumbnail(subject, totalQuestions, outputPath) {
     ctx.strokeStyle = '#FFD700';
     ctx.stroke();
 
-    // Number
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 220px sans-serif';
     ctx.textAlign = 'center';
@@ -425,12 +439,10 @@ function createAttractiveThumbnail(subject, totalQuestions, outputPath) {
     ctx.fillText(`${totalQuestions}`, 280, 340);
     ctx.shadowBlur = 0;
 
-    // Q text below number
     ctx.fillStyle = '#FFD700';
     ctx.font = 'bold 60px sans-serif';
     ctx.fillText('Questions', 280, 520);
 
-    // Subject text right side
     ctx.fillStyle = '#FFD700';
     ctx.font = `bold 100px "HindiFont", sans-serif`;
     ctx.textAlign = 'left';
@@ -438,7 +450,6 @@ function createAttractiveThumbnail(subject, totalQuestions, outputPath) {
     const subjectDisplay = subject.length > 12 ? subject.substring(0, 12) : subject;
     ctx.fillText(subjectDisplay.toUpperCase(), 540, 80);
 
-    // MOCK TEST badge
     ctx.fillStyle = '#FF0000';
     ctx.beginPath();
     ctx.roundRect(530, 210, 680, 110, 20);
@@ -448,7 +459,6 @@ function createAttractiveThumbnail(subject, totalQuestions, outputPath) {
     ctx.textAlign = 'center';
     ctx.fillText('MOCK TEST', 870, 220);
 
-    // Timer badge
     ctx.fillStyle = '#00C853';
     ctx.beginPath();
     ctx.roundRect(530, 350, 330, 85, 42);
@@ -457,7 +467,6 @@ function createAttractiveThumbnail(subject, totalQuestions, outputPath) {
     ctx.font = 'bold 48px sans-serif';
     ctx.fillText('With Timer', 695, 355);
 
-    // Free badge
     ctx.fillStyle = '#FFD700';
     ctx.beginPath();
     ctx.roundRect(880, 350, 220, 85, 42);
@@ -466,13 +475,11 @@ function createAttractiveThumbnail(subject, totalQuestions, outputPath) {
     ctx.font = 'bold 55px sans-serif';
     ctx.fillText('FREE', 990, 355);
 
-    // Exam list
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 42px sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText('SSC | Railway | Bank | Police | UPSC', 535, 470);
 
-    // Bottom bar
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 620, width, 100);
     ctx.fillStyle = '#FFD700';
@@ -498,7 +505,6 @@ function createIntroSlide(subject, totalQuestions, outputPath) {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, height);
 
-    // Top badge
     ctx.fillStyle = '#FF0000';
     ctx.beginPath();
     ctx.roundRect(width / 2 - 400, 50, 800, 100, 50);
@@ -578,7 +584,6 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // Background
     let grad = ctx.createLinearGradient(0, 0, 0, height);
     grad.addColorStop(0, '#0f2027');
     grad.addColorStop(0.5, '#203a43');
@@ -586,7 +591,6 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, height);
 
-    // Top Bar
     ctx.fillStyle = '#ffcc00';
     ctx.fillRect(0, 0, width, 100);
     ctx.fillStyle = '#000000';
@@ -595,14 +599,12 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
     ctx.textBaseline = 'middle';
     ctx.fillText(`${subject.toUpperCase()} MOCK TEST | StudyGyaan.in`, width / 2, 50);
 
-    // Question Number Box
     ctx.fillStyle = '#FF4500';
     ctx.fillRect(50, 150, 350, 80);
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 45px "HindiFont", sans-serif';
     ctx.fillText(`Question ${qNumber} / ${totalQuestions}`, 225, 190);
 
-    // Auto-Scale
     let totalChars = (
         questionObj.qEn + questionObj.qHi +
         questionObj.optA_En + questionObj.optA_Hi +
@@ -639,7 +641,6 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
 
     let currentY = 270;
 
-    // Question
     ctx.font = `bold ${qFont}px "HindiFont", sans-serif`;
     if (questionObj.qEn === questionObj.qHi || !questionObj.qEn) {
         currentY = drawTextBlock(ctx, `Q. ${questionObj.qHi || questionObj.qEn}`, 80, currentY, 1750, qFont + lineGap, '#ffffff') + blockGap;
@@ -648,7 +649,6 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
         currentY = drawTextBlock(ctx, `${questionObj.qHi}`, 80, currentY, 1750, qFont + lineGap, '#00FFFF') + blockGap;
     }
 
-    // Options
     const options = [
         { label: 'A', textEn: questionObj.optA_En, textHi: questionObj.optA_Hi },
         { label: 'B', textEn: questionObj.optB_En, textHi: questionObj.optB_Hi },
@@ -683,7 +683,6 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
         currentY = drawTextBlock(ctx, optText, 100, currentY, 1680, optFont + lineGap, '#ffffff') + 30;
     });
 
-    // Timer Circle
     if (mode === 'timer' && timerNumber !== null) {
         ctx.beginPath();
         ctx.arc(1600, 200, 90, 0, 2 * Math.PI, false);
@@ -699,7 +698,6 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
         ctx.fillText(`${timerNumber}`, 1600, 200);
     }
 
-    // Answer Label
     if (mode === 'answer') {
         ctx.fillStyle = '#FFD700';
         ctx.font = 'bold 50px "HindiFont", sans-serif';
@@ -767,11 +765,9 @@ async function uploadToYouTube(youtube, finalVideoPath, ytTitle, seoDescription,
         try {
             console.log(`🚀 YouTube upload attempt ${attempt}/${maxRetries}...`);
 
-            // Final tag validation before upload
             const validatedTags = currentTags.filter(tag => {
                 if (!tag || typeof tag !== 'string') return false;
                 if (tag.length < 2 || tag.length > 100) return false;
-                // Only printable ASCII characters allowed
                 if (!/^[\x20-\x7E]+$/.test(tag)) return false;
                 return true;
             });
@@ -804,13 +800,12 @@ async function uploadToYouTube(youtube, finalVideoPath, ytTitle, seoDescription,
         } catch (err) {
             console.error(`❌ Attempt ${attempt} failed:`, err.message);
 
-            // Tags error ho to tags hata kar retry karo
             if (
                 err.message.includes('invalid video keywords') ||
                 err.message.includes('keywords') ||
                 err.message.includes('tags')
             ) {
-                console.log('🔄 Tags error - tags remove karke retry ho raha hai...');
+                console.log('🔄 Tags error - tags remove karke retry...');
                 currentTags = [];
                 continue;
             }
@@ -819,7 +814,6 @@ async function uploadToYouTube(youtube, finalVideoPath, ytTitle, seoDescription,
                 throw new Error(`YouTube upload failed after ${maxRetries} attempts: ${err.message}`);
             }
 
-            // Wait before retry
             const waitSec = 5 * attempt;
             console.log(`⏳ ${waitSec} seconds wait...`);
             await new Promise(r => setTimeout(r, waitSec * 1000));
@@ -866,7 +860,6 @@ async function generateMockTestVideo() {
 
         console.log(`📚 Subject: ${subject} | Questions: ${totalQuestions}`);
 
-        // TTS Setup
         const ttsKeyVar = process.env.TTS_KEY_JSON;
         if (!ttsKeyVar) throw new Error("❌ TTS_KEY_JSON नहीं मिला!");
         const ttsClient = new textToSpeech.TextToSpeechClient({ credentials: JSON.parse(ttsKeyVar) });
@@ -875,7 +868,7 @@ async function generateMockTestVideo() {
         let concatContent = "";
         let filesToClean = [concatListPath];
 
-        // ── INTRO SLIDE ──────────────────────────────────────
+        // INTRO
         console.log('🎬 Intro slide बन रहा है...');
         const introImg = path.join(tempDir, `intro_img.png`);
         const introAud = path.join(tempDir, `intro_aud.mp3`);
@@ -888,7 +881,7 @@ async function generateMockTestVideo() {
         await renderClip(introImg, introAud, introVid, false);
         concatContent += `file '${introVid}'\n`;
 
-        // ── QUESTIONS LOOP ────────────────────────────────────
+        // QUESTIONS LOOP
         for (let i = 0; i < totalQuestions; i++) {
             console.log(`⏳ Question ${i + 1}/${totalQuestions} बन रहा है...`);
             const rawQ = mockData.questions[i];
@@ -930,7 +923,6 @@ async function generateMockTestVideo() {
                 }
             }
 
-            // Options Shuffle
             let correctIdx = correctLabel.charCodeAt(0) - 65;
             let correctTarget = parsedOpts[correctIdx];
             parsedOpts = parsedOpts
@@ -960,7 +952,6 @@ async function generateMockTestVideo() {
             createMockSlide(q, i + 1, totalQuestions, 'question', subject, qImg);
             createMockSlide(q, i + 1, totalQuestions, 'answer', subject, aImg);
 
-            // Audio text
             let spokenQuestion = (q.qEn === q.qHi || !q.qEn) ? q.qHi : `${q.qEn}. ${q.qHi}`;
             let oA = (q.optA_En === q.optA_Hi || !q.optA_En) ? q.optA_Hi : `${q.optA_En}, ya ${q.optA_Hi}`;
             let oB = (q.optB_En === q.optB_Hi || !q.optB_En) ? q.optB_Hi : `${q.optB_En}, ya ${q.optB_Hi}`;
@@ -976,7 +967,6 @@ async function generateMockTestVideo() {
             await renderClip(qImg, qAud, qVid, false);
             concatContent += `file '${qVid}'\n`;
 
-            // Timer frames (5 to 1)
             for (let t = 5; t >= 1; t--) {
                 const tImg = path.join(tempDir, `t_img_${i}_${t}.png`);
                 const tVid = path.join(tempDir, `t_vid_${i}_${t}.mp4`);
@@ -989,14 +979,13 @@ async function generateMockTestVideo() {
             await renderClip(aImg, aAud, aVid, false);
             concatContent += `file '${aVid}'\n`;
 
-            // 2 sec pause after answer
             const aWaitVid = path.join(tempDir, `a_wait_vid_${i}.mp4`);
             filesToClean.push(aWaitVid);
             await renderClip(aImg, null, aWaitVid, true, 2);
             concatContent += `file '${aWaitVid}'\n`;
         }
 
-        // ── OUTRO ────────────────────────────────────────────
+        // OUTRO
         console.log(`🎬 Outro बन रहा है...`);
         const outroImg = path.join(tempDir, `outro_img.png`);
         const outroAud = path.join(tempDir, `outro_aud.mp3`);
@@ -1011,8 +1000,7 @@ async function generateMockTestVideo() {
 
         fs.writeFileSync(concatListPath, concatContent);
 
-        // ── FINAL VIDEO CONCAT ────────────────────────────────
-        console.log(`🎬 Final Video concat हो रहा है (${totalQuestions} questions)...`);
+        console.log(`🎬 Final Video concat हो रहा है...`);
         const finalVideoPath = path.join(tempDir, `final_mock_${Date.now()}.mp4`);
         filesToClean.push(finalVideoPath);
 
@@ -1027,25 +1015,23 @@ async function generateMockTestVideo() {
             });
         });
 
-        console.log(`✅ Final Video ready: ${finalVideoPath}`);
+        console.log(`✅ Final Video ready!`);
 
-        // ── SEO GENERATE ──────────────────────────────────────
         const seoTags = generateMockTestSEO(subject, title, totalQuestions);
         const ytTitle = generateMockTitle(subject, totalQuestions);
         const seoDescription = generateMockDescription(subject, totalQuestions, ytTitle, seoTags);
 
         console.log(`📢 Title: ${ytTitle}`);
         console.log(`📊 Tags: ${seoTags.length} generated`);
-        console.log(`📊 Top Tags: ${seoTags.slice(0, 5).join(', ')}`);
 
-        // ── YOUTUBE UPLOAD ────────────────────────────────────
+        // YOUTUBE UPLOAD
         const youtube = await getYouTubeClient();
         let ytVideoId = "";
 
         try {
             ytVideoId = await uploadToYouTube(youtube, finalVideoPath, ytTitle, seoDescription, seoTags);
 
-            // 🖼️ ATTRACTIVE THUMBNAIL
+            // THUMBNAIL
             const thumbPath = path.join(tempDir, `thumbnail_${Date.now()}.png`);
             filesToClean.push(thumbPath);
             try {
@@ -1054,12 +1040,12 @@ async function generateMockTestVideo() {
                     videoId: ytVideoId,
                     media: { body: fs.createReadStream(thumbPath) }
                 });
-                console.log('🖼️ ✅ Attractive Thumbnail set!');
+                console.log('🖼️ ✅ Thumbnail set!');
             } catch (thumbErr) {
                 console.log('⚠️ Thumbnail error:', thumbErr.message);
             }
 
-            // 📂 PLAYLIST (Subject-specific)
+            // PLAYLIST
             try {
                 const playlistTitle = `${subject} Mock Test Series ${new Date().getFullYear()}`;
                 const playlistsRes = await youtube.playlists.list({
@@ -1072,7 +1058,7 @@ async function generateMockTestVideo() {
 
                 if (existing) {
                     playlistId = existing.id;
-                    console.log(`📂 Existing playlist found: ${playlistTitle}`);
+                    console.log(`📂 Existing playlist: ${playlistTitle}`);
                 } else {
                     const newPL = await youtube.playlists.insert({
                         part: 'snippet,status',
@@ -1097,12 +1083,12 @@ async function generateMockTestVideo() {
                         }
                     }
                 });
-                console.log('✅ Playlist mein add ho gaya!');
+                console.log('✅ Playlist mein add!');
             } catch (pErr) {
                 console.log('⚠️ Playlist skip:', pErr.message);
             }
 
-            // 💬 PINNED COMMENT (15 sec wait)
+            // PINNED COMMENT
             console.log('⏳ 15 seconds wait for comment...');
             await new Promise(resolve => setTimeout(resolve, 15000));
 
@@ -1121,7 +1107,6 @@ async function generateMockTestVideo() {
                 });
                 console.log('💬 ✅ Comment posted!');
 
-                // Pin the comment
                 try {
                     await youtube.comments.setModerationStatus({
                         id: commentRes.data.snippet.topLevelComment.id,
@@ -1138,10 +1123,10 @@ async function generateMockTestVideo() {
             console.error('❌ YouTube upload failed:', ytErr.message);
         }
 
-        // ── FACEBOOK UPLOAD ───────────────────────────────────
+        // FACEBOOK
         await uploadToFacebook(finalVideoPath, seoDescription);
 
-        // ── TELEGRAM NOTIFY ───────────────────────────────────
+        // TELEGRAM
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
         const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
         if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
@@ -1152,18 +1137,18 @@ async function generateMockTestVideo() {
             }).catch(() => console.log('⚠️ Telegram fail।'));
         }
 
-        // ── FIREBASE UPDATE ───────────────────────────────────
+        // FIREBASE UPDATE
         await db.collection('mock_tests').doc(mockData.id).update({ mockVideoMade: true });
         console.log(`✅ Firebase updated!`);
 
-        // ── CLEANUP ───────────────────────────────────────────
+        // CLEANUP
         filesToClean.forEach(f => {
             if (f && fs.existsSync(f)) {
                 try { fs.unlinkSync(f); } catch (e) { }
             }
         });
 
-        console.log("✅ All done! Temp files cleaned.");
+        console.log("✅ All done!");
         return true;
 
     } catch (error) {
