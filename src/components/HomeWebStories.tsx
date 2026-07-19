@@ -1,29 +1,14 @@
 // @ts-nocheck
-import React, { useEffect, useState } from 'react';
-import { db } from '../firebase/config';
-import { collection, getDocs, limit, query, orderBy } from 'firebase/firestore';
+import React from 'react';
+import { useStories } from '@/features/stories/hooks/useStories';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 
 const HomeWebStories = () => {
-    const [stories, setStories] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const { stories, loading } = useStories({ limitCount: 5 });
     const navigate = useNavigate();
 
-    useEffect(() => {
-        const fetchStories = async () => {
-            try {
-                const q = query(collection(db, "web_stories"), orderBy("createdAt", "desc"), limit(5));
-                const snapshot = await getDocs(q);
-                setStories(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-            } catch (error) {
-                console.error("Error fetching stories:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchStories();
-    }, []);
+
 
     if (loading || stories.length === 0) return null;
 

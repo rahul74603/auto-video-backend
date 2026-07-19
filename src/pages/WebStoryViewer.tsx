@@ -1,11 +1,7 @@
 // @ts-nocheck
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { db } from '../firebase/config';
-import {
-    collection, doc, getDoc, getDocs,
-    query, where, limit
-} from 'firebase/firestore';
+import { useStory } from '@/features/stories/hooks/useStory';
 import {
     X, Loader2, ChevronLeft, ChevronRight,
     ExternalLink, Share2, Check
@@ -482,64 +478,21 @@ const WebStoryViewer = () => {
     const [copied, setCopied] = useState(false);
     const [docId, setDocId] = useState(null);
 
-    // =========================================================
-    // 📡 FETCH - Slug + ID दोनों
-    // =========================================================
+    const { story: loadedStory, loading: storyLoading, error: storyError } = useStory(id);
+
     useEffect(() => {
-        const fetchStory = async () => {
-            if (!id) { setNotFound(true); setLoading(false); return; }
+        setLoading(storyLoading);
+        if (!id || storyError) {
+            setNotFound(true);
+            return;
+        }
+        if (!loadedStory?.id) return;
 
-            try {
-                let data = null;
-                let foundId = id;
-
-                // ✅ Step 1: Slug से ढूंढो
-                try {
-                    const slugQ = query(
-                        collection(db, 'web_stories'),
-                        where('slug', '==', id),
-                        limit(1)
-                    );
-                    const slugSnap = await getDocs(slugQ);
-                    if (!slugSnap.empty) {
-                        data = slugSnap.docs[0].data();
-                        foundId = slugSnap.docs[0].id;
-                    }
-                } catch (e) {
-                    console.warn("Slug query:", e.message);
-                }
-
-                // ✅ Step 2: Doc ID fallback
-                if (!data) {
-                    const snap = await getDoc(doc(db, 'web_stories', id));
-                    if (snap.exists()) {
-                        data = snap.data();
-                        foundId = snap.id;
-                    }
-                }
-
-                if (!data) {
-                    setNotFound(true);
-                    return;
-                }
-
-                setStoryData(data);
-                setDocId(foundId);
-
-                // ✅ Multi-page AMP HTML build करो
-                const html = buildMultiPageStory(data, foundId);
-                setHtmlContent(html);
-
-            } catch (err) {
-                console.error("Story fetch error:", err);
-                setNotFound(true);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchStory();
-    }, [id]);
+        setNotFound(false);
+        setStoryData(loadedStory);
+        setDocId(loadedStory.id);
+        setHtmlContent(buildMultiPageStory(loadedStory, loadedStory.id));
+    }, [id, loadedStory, storyLoading, storyError]);
 
     // =========================================================
     // 📤 SHARE

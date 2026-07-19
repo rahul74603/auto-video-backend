@@ -1,30 +1,15 @@
 // @ts-nocheck
-import React, { useEffect, useState } from 'react';
-import { db } from '../firebase/config';
-import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import React from 'react';
+import { useStories } from '@/features/stories/hooks/useStories';
 import { useNavigate } from 'react-router-dom';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 import { ChevronLeft, Zap } from 'lucide-react';
 
 const AllStories = () => {
-    const [stories, setStories] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const { stories, loading } = useStories();
     const navigate = useNavigate();
 
-    useEffect(() => {
-        const fetchStories = async () => {
-            try {
-                const q = query(collection(db, "web_stories"), orderBy("createdAt", "desc"));
-                const snapshot = await getDocs(q);
-                setStories(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchStories();
-    }, []);
+
 
     return (
         <div className="min-h-screen bg-gray-50 py-10 px-4 md:px-8 mt-12 md:mt-16">
