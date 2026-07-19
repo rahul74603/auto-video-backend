@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 // 👇 FIXED: Sirf 3 dots hone chahiye
 // 👇 ONLY 3 sets of dots
-import { db } from '../../../firebase/config';
-import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { categoryStatusRepository } from '@/features/category-status/data/categoryStatusRepository';
 import { Bell, Trash2, Save } from 'lucide-react';
 
@@ -27,12 +25,12 @@ const NotificationsTab = () => {
 
   const handleUpdate = async () => {
       if(!statusText) return alert("Text required");
-      await setDoc(doc(db, "category_status", statusCategory), { text: statusText, updatedAt: new Date() });
+      await categoryStatusRepository.updateStatus(statusCategory, { text: statusText, updatedAt: new Date() });
       alert("Updated!"); setStatusText(''); fetchStatuses();
   };
 
   const handleDelete = async (id: string) => {
-      if(confirm("Delete?")) { await deleteDoc(doc(db, "category_status", id)); fetchStatuses(); }
+      if(confirm("Delete?")) { await categoryStatusRepository.deleteStatus(id); fetchStatuses(); }
   };
 
   return (
