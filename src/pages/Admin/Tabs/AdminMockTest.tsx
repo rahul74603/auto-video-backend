@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react';
 import { db, storage } from '../../../firebase/config'; 
-import { collection, addDoc, getDocs, deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore'; 
+import { collection, addDoc, deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { mockTestRepository } from '@/features/mock-tests/data/mockTestRepository';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; 
 import { 
     BookOpen, PlusCircle, Save, Trash2, Clock, CheckCircle, 
@@ -56,8 +57,7 @@ const AdminMockTest = () => {
     // ================= FETCH TESTS =================
 
     const fetchTests = async () => {
-        const snap = await getDocs(collection(db, "mock_tests"));
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const data = await mockTestRepository.listLatest();
         setTests(data.sort((a, b) => {
             const dateA = a.createdAt?.seconds || 0;
             const dateB = b.createdAt?.seconds || 0;

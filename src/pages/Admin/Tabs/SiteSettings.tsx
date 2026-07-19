@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react';
 import { db } from '../../../firebase/config';
-import { doc, getDoc, setDoc } from 'firebase/firestore'; // setDoc को रहने दिया है
+import { doc, setDoc } from 'firebase/firestore'; // setDoc को रहने दिया है
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { toast } from 'sonner';
 import { 
     Settings, Save, Link as LinkIcon, ShoppingBag, 
@@ -27,9 +28,8 @@ const SiteSettings = () => {
 
     useEffect(() => {
         const fetchSettings = async () => {
-            const docSnap = await getDoc(doc(db, "site_settings", "global"));
-            if (docSnap.exists()) {
-                const data = docSnap.data();
+            const data = await siteSettingsRepository.getGlobal();
+            if (data) {
                 setSettings(prev => ({ ...prev, ...data }));
             }
         };
