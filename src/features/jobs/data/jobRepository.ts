@@ -34,10 +34,12 @@ export const jobRepository = {
     orderFields?: { field: string; direction?: 'asc' | 'desc' }[];
     category?: string;
     type?: string;
+    typeIn?: string[];
     typeNot?: string;
   } = {}): Promise<JobRecord[]> {
     const constraints: QueryConstraint[] = [];
     if (options.type) constraints.push(where('type', '==', options.type));
+    if (options.typeIn) constraints.push(where('type', 'in', options.typeIn));
     if (options.category) constraints.push(where('category', '==', options.category));
     if (options.typeNot) constraints.push(where('type', '!=', options.typeNot));
     const fields = options.orderFields || (options.orderField ? [{ field: options.orderField }] : []);
@@ -90,6 +92,11 @@ export const jobRepository = {
 
   async update(id: string, job: Record<string, unknown>): Promise<void> {
     await updateDoc(doc(db, 'jobs', id), job);
+  },
+
+  async set(id: string, job: Record<string, unknown>, merge = false): Promise<void> {
+    const { setDoc } = await import('firebase/firestore');
+    await setDoc(doc(db, 'jobs', id), job, { merge });
   },
 
   async remove(id: string): Promise<void> {
