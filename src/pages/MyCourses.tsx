@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { db, auth } from '../firebase/config';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
+import { courseRepository } from '@/features/courses/data/courseRepository';
 import { useNavigate } from 'react-router-dom';
 import { 
   BookOpen, ArrowRight, Loader2, ShoppingBag, Sparkles, 
@@ -37,10 +38,8 @@ const MyCourses = () => {
               // 3. Fetch details for each purchased course from 'courses' collection
               if (purchasedCourseIds.length > 0) {
                 const coursePromises = purchasedCourseIds.map(async (courseId) => {
-                  const courseSnap = await getDoc(doc(db, "courses", courseId));
-                  if (courseSnap.exists()) {
-                    return { id: courseSnap.id, ...courseSnap.data() };
-                  }
+                  const course = await courseRepository.getCourseById(courseId);
+                  if (course) return course;
                   return null;
                 });
 

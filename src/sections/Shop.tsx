@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { Crown, ArrowRight, Loader2, Sparkles, Tag, Zap, ExternalLink, FileText, Lock, BookOpen, ShoppingCart } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { orderRepository } from '@/features/orders/data/orderRepository';
+import { courseRepository } from '@/features/courses/data/courseRepository';
 
 // 🔥 Included Files List (PC पर डिटेल दिखाने के लिए)
 const CourseFilesList = ({ courseId }: { courseId: string }) => {
@@ -61,8 +62,7 @@ const Shop: React.FC = () => {
     const fetchData = async () => {
       try {
         // Courses लाना
-        const snapshot = await getDocs(collection(db, "courses"));
-        let fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        let fetched = await courseRepository.listCourses();
         fetched.sort((a, b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999));
         setCourses(fetched);
 

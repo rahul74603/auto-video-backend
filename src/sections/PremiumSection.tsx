@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { collection, getDocs, query, orderBy, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase/config';
+import { courseRepository } from '@/features/courses/data/courseRepository';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Crown, ArrowRight, Star, BookOpen, Sparkles, MessageCircle, FileText, Lock, Tag, ExternalLink, ShoppingCart, Flame } from 'lucide-react';
@@ -69,9 +70,8 @@ const PremiumSection = () => {
   useEffect(() => {
     const loadAllData = async () => {
       try {
-        const q = query(collection(db, "courses"));
-        const snapshot = await getDocs(q);
-        setCourses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course)));
+        const courses = await courseRepository.listCourses();
+        setCourses(courses as Course[]);
 
         const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
         if (settingsSnap.exists()) setGlobalSettings(settingsSnap.data());
