@@ -29,6 +29,10 @@ export const userRepository = {
     await updateDoc(userRef(uid), user);
   },
 
+  async mergeUser(uid: string, user: Record<string, unknown>): Promise<void> {
+    await setDoc(userRef(uid), user, { merge: true });
+  },
+
   async updateProfile(uid: string, profile: Record<string, unknown>): Promise<void> {
     await updateDoc(userRef(uid), profile);
   },

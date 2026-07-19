@@ -5,8 +5,10 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   query,
   updateDoc,
+  type Unsubscribe,
   serverTimestamp,
   where,
 } from 'firebase/firestore';
@@ -49,8 +51,25 @@ export const paymentRepository = {
     return mapRequests(await getDocs(query(purchasesCollection, ...constraints)));
   },
 
-  async updatePaymentStatus(id: string, status: string): Promise<void> {
-    await updateDoc(doc(db, 'purchases', id), { status });
+  async updatePaymentStatus(
+    id: string,
+    status: string,
+    processedAt?: unknown
+  ): Promise<void> {
+    await updateDoc(doc(db, 'purchases', id), {
+      status,
+      ...(processedAt === undefined ? {} : { processedAt }),
+    });
+  },
+
+  subscribePendingPayments(
+    callback: (payments: PaymentRequest[]) => void,
+    onError?: (error: Error) => void
+  ): Unsubscribe {
+    const pendingQuery = query(purchasesCollection, where('status', '==', 'pending'));
+    return onSnapshot(pendingQuery, (snapshot) => {
+      callback(mapRequests(snapshot));
+    }, onError);
   },
 };
 
