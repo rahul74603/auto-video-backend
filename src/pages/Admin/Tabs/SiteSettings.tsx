@@ -1,7 +1,5 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react';
-import { db } from '../../../firebase/config';
-import { doc, setDoc } from 'firebase/firestore'; // setDoc को रहने दिया है
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { toast } from 'sonner';
 import { 
@@ -82,7 +80,7 @@ const SiteSettings = () => {
             };
 
             // 🔥 यहाँ 'merge: true' लगाया है ताकि 'mockBlogs' और 'mockLinks' डिलीट न हों
-            await setDoc(doc(db, "site_settings", "global"), finalData, { merge: true });
+            await siteSettingsRepository.setGlobal(finalData, true);
             
             setSettings(finalData); 
             toast.success(`Settings Saved! Price set to: ₹${calculatedPrice} 🚀`);

@@ -1,8 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
-import { db } from '../../firebase/config'; 
 import { Save, Plus, Trash2, Sparkles, Link2, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -59,7 +57,7 @@ const AdminSidebarControl = () => {
   // --- 📤 DATABASE ME SAVE KARNA ---
   const handleSave = async () => {
     try {
-      await updateDoc(doc(db, "site_settings", "global"), settings);
+      await siteSettingsRepository.updateGlobal(settings);
       toast.success("All Sidebar Settings Updated! 🚀");
     } catch (err) {
       toast.error("Error updating settings!");
