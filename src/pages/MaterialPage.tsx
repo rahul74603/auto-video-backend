@@ -1,13 +1,15 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase/config'; 
+import { materialRepository } from '@/features/materials/data/materialRepository';
+import { categoryRepository } from '@/features/categories/data/categoryRepository';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Folder, FileText, Download, ArrowLeft, ChevronRight, Home, Search, Loader2, Sparkles, Tag, ExternalLink, ShoppingCart, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ShareButtons from '../components/ShareButtons';
 import { useNavigate } from 'react-router-dom';
 import SEO from '../components/SEO'; 
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+import { jobRepository } from '@/features/jobs/data/jobRepository';
 
 interface Category { id: string; name: string; parentId: string; }
 interface Material { id: string; title: string; applyLink: string; category: string; fileSize?: string; updatedAt?: string; }
@@ -44,28 +46,24 @@ const StudyMaterials: React.FC = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const catSnap = await getDocs(collection(db, "categories"));
-        const fetchedCats: Category[] = [];
-        catSnap.forEach(doc => fetchedCats.push({ id: doc.id, ...doc.data() } as Category));
-        setCategories(fetchedCats);
+        const fetchedCats = await categoryRepository.listCategories();
+        setCategories(fetchedCats as Category[]);
 
-        const q1 = query(collection(db, "jobs"), where("category", "==", currentFolderId));
-        const q2 = query(collection(db, "study_materials"), where("category", "==", currentFolderId));
-        const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+        const [jobResults, materialResults] = await Promise.all([jobRepository.list({ category: currentFolderId }), materialRepository.listByCategory(currentFolderId)]);
 
         const fetchedMats: Material[] = [];
-        snap1.forEach(doc => {
-            const data = doc.data();
-            if (data.type !== 'MATERIAL') return; 
-            fetchedMats.push({ id: doc.id, ...data } as Material);
+        jobResults.forEach(job => {
+            const data = job;
+            if (data.type !== 'MATERIAL') return;
+            fetchedMats.push({ id: job.id, ...data } as Material);
         });
-        snap2.forEach(doc => { fetchedMats.push({ id: doc.id, ...doc.data() } as Material); });
+        materialResults.forEach(material => { fetchedMats.push(material as Material); });
 
         fetchedMats.sort((a, b) => (b.updatedAt ? new Date(b.updatedAt).getTime() : 0) - (a.updatedAt ? new Date(a.updatedAt).getTime() : 0));
         setMaterials(fetchedMats);
 
-        const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
-        if (settingsSnap.exists()) setGlobalSettings(settingsSnap.data());
+        const settingsSnap = await siteSettingsRepository.getGlobal();
+        if (settingsSnap) setGlobalSettings(settingsSnap);
       } catch (error) { console.error(error); } finally { setLoading(false); }
     };
     fetchData();

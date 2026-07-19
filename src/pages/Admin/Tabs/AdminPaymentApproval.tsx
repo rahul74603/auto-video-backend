@@ -1,17 +1,8 @@
 // @ts-nocheck
 import { useEffect, useState } from 'react';
 // 🔥 Path check: 'src' folder tak pahunchne ke liye 3 levels piche
-import { db } from '../../../firebase/config';
-import { 
-    collection, 
-    query, 
-    where, 
-    onSnapshot, 
-    doc, 
-    updateDoc, 
-    setDoc, 
-    serverTimestamp 
-} from 'firebase/firestore';
+import { paymentRepository } from '@/features/payments/data/paymentRepository';
+import { approvePayment } from '@/features/payments/workflows/paymentApprovalWorkflow';
 import { 
     Check, 
     X, 
@@ -30,12 +21,11 @@ const AdminPaymentApproval = () => {
     const [processingId, setProcessingId] = useState<string | null>(null);
 
     useEffect(() => {
-        // Sirf 'pending' requests ko real-time fetch karein
-        const q = query(collection(db, "purchases"), where("status", "==", "pending"));
-        
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const reqData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setRequests(reqData);
+        const unsubscribe = paymentRepository.subscribePendingPayments((payments) => {
+            setRequests(payments);
+            setLoading(false);
+        }, (error) => {
+            console.error("Payment requests error:", error);
             setLoading(false);
         });
 
@@ -48,28 +38,14 @@ const AdminPaymentApproval = () => {
 
         setProcessingId(requestId);
         try {
-            // 1. Update the Payment Request Status in 'purchases' collection
-            const requestRef = doc(db, "purchases", requestId);
-            
-            // Note: Backend completed status match karne ke liye isko completed kar rahe hain
-            const finalAction = action === 'approved' ? 'completed' : 'rejected';
-            
-            await updateDoc(requestRef, { 
-                status: finalAction,
-                processedAt: new Date().toISOString()
+            const result = await approvePayment({
+                requestId,
+                userId,
+                itemId,
+                action
             });
 
-            if (finalAction === 'completed') {
-                // 2. Unlock only the specific item for the user
-                const userRef = doc(db, "users", userId);
-                
-                // setDoc with merge:true is the safest way (works for new & old users)
-                await setDoc(userRef, {
-                    // 🔥 Dynamic key: purchased_COURSE_ID ko true set karega
-                    [`purchased_${itemId}`]: true, 
-                    lastPurchaseDate: new Date().toISOString()
-                }, { merge: true });
-
+            if (result.status === 'completed') {
                 alert("✅ Payment Approved! Course unlocked successfully.");
             } else {
                 alert("❌ Payment Rejected.");

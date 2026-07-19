@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react';
-import { db, storage } from '../../../firebase/config'; 
-import { collection, addDoc, getDocs, deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore'; 
+import { storage } from '../../../firebase/config'; 
+import { serverTimestamp } from 'firebase/firestore';
+import { mockTestRepository } from '@/features/mock-tests/data/mockTestRepository';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; 
 import { 
     BookOpen, PlusCircle, Save, Trash2, Clock, CheckCircle, 
@@ -56,8 +57,7 @@ const AdminMockTest = () => {
     // ================= FETCH TESTS =================
 
     const fetchTests = async () => {
-        const snap = await getDocs(collection(db, "mock_tests"));
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const data = await mockTestRepository.listLatest();
         setTests(data.sort((a, b) => {
             const dateA = a.createdAt?.seconds || 0;
             const dateB = b.createdAt?.seconds || 0;
@@ -207,10 +207,10 @@ const addQuestion = () => {
             };
 
             if (editingTestId) {
-                await setDoc(doc(db, "mock_tests", editingTestId), testData, { merge: true });
+                await mockTestRepository.updateMockTest(editingTestId, testData);
                 toast.success("🔥 Test Updated Successfully!");
             } else {
-                await addDoc(collection(db, "mock_tests"), { ...testData, createdAt: serverTimestamp() });
+                await mockTestRepository.createMockTest({ ...testData, createdAt: serverTimestamp() });
                 toast.success("🔥 New Mock Test Published!");
             }
 
@@ -453,7 +453,7 @@ const addQuestion = () => {
                                     </button>
                                     <button onClick={async () => {
                                         if (window.confirm("क्या आप इस टेस्ट को डिलीट करना चाहते हैं?")) {
-                                            await deleteDoc(doc(db, "mock_tests", test.id));
+                                            await mockTestRepository.deleteMockTest(test.id);
                                             fetchTests();
                                             toast.success("Deleted!");
                                         }

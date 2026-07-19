@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react';
-import { db } from '../firebase/config';
-import { collection, getDocs, query, orderBy, doc, getDoc, limit } from 'firebase/firestore'; 
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+import { useMockTests } from '@/features/mock-tests/hooks/useMockTests';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
     Clock, BookOpen, ArrowRight, Zap, Target, 
@@ -10,7 +10,7 @@ import {
 import SEO from '../components/SEO'; 
 
 const MockTestLibrary = () => {
-    const [tests, setTests] = useState([]);
+    const { tests, loading: testsLoading } = useMockTests();
     const [mockBlogs, setMockBlogs] = useState([]); 
     const [mockLinks, setMockLinks] = useState([]); 
     const [loading, setLoading] = useState(true);
@@ -22,40 +22,16 @@ const MockTestLibrary = () => {
             try {
                 setLoading(true);
                 
-                // 1. Fetch Mock Tests 
-                const testsRef = collection(db, "mock_tests");
-                const qTests = query(testsRef, orderBy("createdAt", "desc"));
-                
-                let snapTests = await getDocs(qTests);
-                
-                if (snapTests.empty) {
-                    console.log("Ordering failed or empty, fetching simple collection...");
-                    snapTests = await getDocs(testsRef);
-                }
-
-                const fetchedTests = snapTests.docs.map(doc => ({ 
-                    id: doc.id, 
-                    ...doc.data() 
-                }));
-
-                setTests(fetchedTests);
-
                 // 2. Fetch Global Sidebar Settings
-                const globalSnap = await getDoc(doc(db, "site_settings", "global"));
-                if (globalSnap.exists()) {
-                    const data = globalSnap.data();
+                const globalSnap = await siteSettingsRepository.getGlobal();
+                if (globalSnap) {
+                    const data = globalSnap;
                     setMockBlogs(data.mockBlogs || []); 
                     setMockLinks(data.mockLinks || []);  
                 }
 
             } catch (err) { 
                 console.error("Data fetching error:", err);
-                try {
-                    const simpleSnap = await getDocs(collection(db, "mock_tests"));
-                    setTests(simpleSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-                } catch (innerErr) {
-                    console.error("Final Fallback Error:", innerErr);
-                }
             } finally { 
                 setLoading(false); 
             }
@@ -76,7 +52,7 @@ const MockTestLibrary = () => {
         }))
     };
 
-    if (loading) return (
+    if (loading || testsLoading) return (
         <div className="h-screen flex items-center justify-center bg-[#020617]">
             <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]"></div>
         </div>

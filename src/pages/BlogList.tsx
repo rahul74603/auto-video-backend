@@ -1,40 +1,32 @@
 // @ts-nocheck
 import SEO from '../components/SEO';
 import { useEffect, useState } from 'react';
-import { db } from '../firebase/config';
-import { collection, query, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
+import { useBlogs } from '@/features/blogs/hooks/useBlogs';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, Sparkles, Clock, Flame, TrendingUp, BookOpen, Tag, ExternalLink, ShoppingCart } from 'lucide-react';
+import { ArrowRight, Sparkles, Clock, Flame, Tag, ExternalLink, ShoppingCart } from 'lucide-react';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 const BlogList = () => {
-  const [blogs, setBlogs] = useState<any[]>([]);
+  const { blogs, loading: blogsLoading } = useBlogs();
   const [globalSettings, setGlobalSettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // 🚀 पेज लोड होते ही डिफ़ॉल्ट टाइटल सेट करें
-
-    const loadAllData = async () => {
+    const loadSettings = async () => {
       try {
-        const q = query(collection(db, "blogs"), orderBy("date", "desc"));
-        const querySnapshot = await getDocs(q);
-        const blogData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setBlogs(blogData);
-
-        const settingsRef = doc(db, "site_settings", "global");
-        const settingsSnap = await getDoc(settingsRef);
-        if (settingsSnap.exists()) {
-          setGlobalSettings(settingsSnap.data());
-        }
+        const settingsSnap = await siteSettingsRepository.getGlobal();
+        if (settingsSnap) setGlobalSettings(settingsSnap);
       } catch (error) {
         console.error("Error loading data:", error);
       } finally {
         setLoading(false);
       }
     };
-    loadAllData();
+    loadSettings();
     window.scrollTo(0, 0);
   }, []);
+
+  const isLoading = blogsLoading || loading;
 
   const sellingPrice = Math.round(
     Number(globalSettings?.mrpPrice || 499) * (1 - Number(globalSettings?.discountPercent || 85) / 100)
@@ -52,7 +44,7 @@ const BlogList = () => {
   const trendingUpdates = (globalSettings?.relatedBlogs || []).slice(0, 5); 
   const pageQuickLinks = globalSettings?.sidebarLinks || [];
 
-  if (loading || !globalSettings) {
+  if (isLoading || !globalSettings) {
     return (
       <div className="flex flex-col justify-center items-center min-h-[40vh] font-hindi text-blue-600 font-bold text-xs animate-pulse">
         लोडिंग... 🚀

@@ -1,7 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { db } from '../firebase/config'; // ✅ रास्ता चेक कर लें
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 
 export interface SiteContent {
   seo: {
@@ -51,11 +50,9 @@ export const useSiteContent = () => {
   useEffect(() => {
     // ✅ संग्रह का नाम 'site_settings' और डॉक्यूमेंट 'global' कर दिया है 
     // ताकि AdminSidebarControl के साथ मैच हो सके
-    const docRef = doc(db, 'site_settings', 'global'); 
-    
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const freshData = docSnap.data() as SiteContent;
+    const unsubscribe = siteSettingsRepository.subscribeGlobal((settings) => {
+      if (settings) {
+        const freshData = settings as SiteContent;
         setContent(freshData);
         localStorage.setItem(CACHE_KEY, JSON.stringify(freshData));
       } else {
@@ -68,9 +65,8 @@ export const useSiteContent = () => {
   }, []);
 
   const updateContent = async (newContent: Partial<SiteContent>) => {
-    const docRef = doc(db, 'site_settings', 'global');
     try {
-      await setDoc(docRef, newContent, { merge: true });
+      await siteSettingsRepository.setGlobal(newContent as Record<string, unknown>, true);
       // alert('Website Updated! 🎉'); // इसे यहाँ रहने दें या हटा दें आपकी मर्ज़ी
     } catch (error: any) {
       console.error("Error updating: ", error);

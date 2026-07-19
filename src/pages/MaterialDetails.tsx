@@ -1,57 +1,39 @@
 // @ts-nocheck
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { useMaterial } from '@/features/materials/hooks/useMaterial';
 import { 
   FileText, Download, ArrowLeft, Info, Sparkles, 
   Tag, ExternalLink, ShoppingCart, Flame, ArrowRight, User, Calendar, BookOpen, CheckCircle
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 
 const MaterialDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [item, setItem] = useState<any>(null);
+  const { material: loadedMaterial, loading: materialLoading } = useMaterial(id);
+  const item = loadedMaterial;
   const [globalSettings, setGlobalSettings] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const loading = materialLoading;
 
   useEffect(() => {
-    const loadAllData = async () => {
-      if (!id) return;
+    const loadSettings = async () => {
       try {
-        setLoading(true);
-        // 1. Fetch Material Detail
-        const docRef = doc(db, "study_materials", id);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const materialData = docSnap.data();
-          setItem(materialData);
-          // पुराना document.title यहाँ से हटा दिया गया है
-        }
-
-        // 2. Fetch Global Settings for Sidebar
-        const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
-        if (settingsSnap.exists()) {
-          setGlobalSettings(settingsSnap.data());
+        const settingsSnap = await siteSettingsRepository.getGlobal();
+        if (settingsSnap) {
+          setGlobalSettings(settingsSnap);
         } else {
-          setGlobalSettings({
-            relatedBlogs: [],
-            sidebarLinks: [],
-            mrpPrice: "499",
-            discountPercent: "85"
-          });
+          setGlobalSettings({ relatedBlogs: [], sidebarLinks: [], mrpPrice: "499", discountPercent: "85" });
         }
       } catch (err) {
         console.error("Error loading PDF details:", err);
-      } finally {
-        setLoading(false);
       }
     };
-    loadAllData();
+    loadSettings();
     window.scrollTo(0, 0);
-  }, [id]);
+  }, []);
 
   const sellingPrice = Math.round(
     Number(globalSettings?.mrpPrice || 499) * (1 - Number(globalSettings?.discountPercent || 85) / 100)

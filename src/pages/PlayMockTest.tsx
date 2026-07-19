@@ -1,8 +1,7 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { db } from '../firebase/config';
-import { doc, getDoc } from 'firebase/firestore';
+import { useMockTest } from '@/features/mock-tests/hooks/useMockTest';
 import { 
     Clock, CheckCircle, XCircle, ArrowRight, ArrowLeft, 
     Trophy, AlertCircle, BookOpen, LayoutGrid, Settings2, 
@@ -61,64 +60,14 @@ const PlayMockTest = () => {
     ];
 
     useEffect(() => {
-        const fetchTest = async () => {
-            if (!id) return;
-            try {
-                const docSnap = await getDoc(doc(db, "mock_tests", id));
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    setTestData(data);
-                    
-                    document.title = `Play: ${data.title} | StudyGyaan`;
-                    
-                    setTimeLeft(data.durationMinutes * 60);
-                    if(data.negativeMarking !== undefined) setNegativeMarks(data.negativeMarking);
-                }
-            } catch (error) { console.error(error); }
-            finally { setLoading(false); }
-        };
-        fetchTest();
-    }, [id]);
-
-    useEffect(() => {
-        let timer: any;
-        if (testStarted && !isSubmitted && timeLeft > 0) {
-            timer = setInterval(() => {
-                setTimeLeft((prev) => {
-                    if (prev <= 1) { submitTest(); return 0; }
-                    return prev - 1;
-                });
-            }, 1000);
+        setTestData(loadedTest);
+        setLoading(testLoading);
+        if (loadedTest) {
+            document.title = `Play: ${loadedTest.title} | StudyGyaan`;
+            setTimeLeft(loadedTest.durationMinutes * 60);
+            if (loadedTest.negativeMarking !== undefined) setNegativeMarks(loadedTest.negativeMarking);
         }
-        return () => clearInterval(timer);
-    }, [testStarted, isSubmitted, timeLeft]);
-
-    const handleOptionSelect = (optIndex: number) => {
-        if (isSubmitted) return;
-        setSelectedAnswers({ ...selectedAnswers, [currentQIndex]: optIndex });
-    };
-
-    const submitTest = () => {
-        if(!testData) return;
-        let correct = 0, wrong = 0, skipped = 0;
-        testData.questions.forEach((q: any, idx: number) => {
-            if (selectedAnswers[idx] === undefined) skipped++;
-            else if (selectedAnswers[idx] === q.correctOption) correct++;
-            else wrong++;
-        });
-        const penalty = isNegEnabled ? negativeMarks : 0;
-        const totalScore = (correct * correctMarks) - (wrong * penalty);
-        setResult({ score: parseFloat(totalScore.toFixed(2)), correct, wrong, skipped });
-        setIsSubmitted(true);
-        
-        document.title = `Result: ${testData.title} | StudyGyaan`;
-    };
-
-    const formatTime = (seconds: number) => {
-        const m = Math.floor(seconds / 60);
-        const s = seconds % 60;
-        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-    };
+    }, [loadedTest, testLoading]);
 
     // 🔥 GOOGLE QUIZ SCHEMA (Allows Google to index the questions directly!) 🔥
     const quizSchema = testData ? {

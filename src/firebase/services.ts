@@ -1,19 +1,19 @@
-import { db, storage } from './config';
+import { db } from './config';
+import { jobRepository } from '@/features/jobs/data/jobRepository';
+import { materialRepository } from '@/features/materials/data/materialRepository';
+import { productRepository } from '@/features/products/data/productRepository';
+import { orderRepository } from '@/features/orders/data/orderRepository';
 import { 
   collection, 
-  addDoc, 
   getDocs, 
   doc, 
   updateDoc, 
-  deleteDoc, 
   query, 
   where, 
-  orderBy,
   Timestamp,
   getDoc,
   setDoc
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // Types
 export interface Job {
@@ -98,149 +98,87 @@ export interface Address {
 // Jobs Services
 export const jobServices = {
   async addJob(job: Omit<Job, 'id'>): Promise<string> {
-    const docRef = await addDoc(collection(db, 'jobs'), {
+    return jobRepository.add({
       ...job,
       postedDate: new Date().toISOString()
     });
-    return docRef.id;
   },
 
   async getJobs(category?: string): Promise<Job[]> {
-    let q = query(collection(db, 'jobs'), orderBy('postedDate', 'desc'));
-    if (category) {
-      q = query(q, where('category', '==', category));
-    }
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
+    return jobRepository.listLatest({ category }) as unknown as Promise<Job[]>;
   },
 
   async getJobById(id: string): Promise<Job | null> {
-    const docRef = doc(db, 'jobs', id);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as Job : null;
+    return jobRepository.getById(id) as Promise<Job | null>;
   },
 
   async updateJob(id: string, job: Partial<Job>): Promise<void> {
-    await updateDoc(doc(db, 'jobs', id), job);
+    await jobRepository.update(id, job);
   },
 
   async deleteJob(id: string): Promise<void> {
-    await deleteDoc(doc(db, 'jobs', id));
+    await jobRepository.remove(id);
   }
 };
 
 // Study Materials Services
 export const studyMaterialServices = {
   async addMaterial(material: Omit<StudyMaterial, 'id' | 'createdAt'>): Promise<string> {
-    const docRef = await addDoc(collection(db, 'studyMaterials'), {
-      ...material,
-      createdAt: Timestamp.now()
-    });
-    return docRef.id;
+    return materialRepository.add(material as unknown as Record<string, unknown>);
   },
 
   async getMaterials(filters?: { category?: string; language?: string; examType?: string }): Promise<StudyMaterial[]> {
-    let q = query(collection(db, 'studyMaterials'), orderBy('createdAt', 'desc'));
-    
-    if (filters?.category) {
-      q = query(q, where('category', '==', filters.category));
-    }
-    if (filters?.language) {
-      q = query(q, where('language', 'in', [filters.language, 'both']));
-    }
-    if (filters?.examType) {
-      q = query(q, where('examType', '==', filters.examType));
-    }
-
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StudyMaterial));
+    return materialRepository.list(filters) as unknown as Promise<StudyMaterial[]>;
   },
 
   async getMaterialsByFolder(folderPath: string): Promise<StudyMaterial[]> {
-    const q = query(
-      collection(db, 'studyMaterials'),
-      where('folderPath', '==', folderPath),
-      orderBy('createdAt', 'desc')
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StudyMaterial));
+    return materialRepository.listByFolder(folderPath) as unknown as Promise<StudyMaterial[]>;
   },
 
   async incrementDownload(id: string): Promise<void> {
-    const docRef = doc(db, 'studyMaterials', id);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      await updateDoc(docRef, {
-        downloadCount: (docSnap.data().downloadCount || 0) + 1
-      });
-    }
+    await materialRepository.incrementDownload(id);
   },
 
   async uploadFile(file: File, path: string): Promise<string> {
-    const storageRef = ref(storage, `studyMaterials/${path}/${file.name}`);
-    await uploadBytes(storageRef, file);
-    return await getDownloadURL(storageRef);
+    return materialRepository.uploadFile(file, path);
   }
 };
 
 // Product/E-commerce Services
 export const productServices = {
   async addProduct(product: Omit<Product, 'id' | 'createdAt'>): Promise<string> {
-    const docRef = await addDoc(collection(db, 'products'), {
-      ...product,
-      createdAt: Timestamp.now()
-    });
-    return docRef.id;
+    return productRepository.add(product as unknown as Record<string, unknown>);
   },
 
   async getProducts(category?: string): Promise<Product[]> {
-    let q = query(collection(db, 'products'), where('isActive', '==', true));
-    if (category) {
-      q = query(q, where('category', '==', category));
-    }
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+    return productRepository.list({ category }) as unknown as Promise<Product[]>;
   },
 
   async getProductById(id: string): Promise<Product | null> {
-    const docRef = doc(db, 'products', id);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as Product : null;
+    return productRepository.getById(id) as unknown as Promise<Product | null>;
   },
 
   async updateProduct(id: string, product: Partial<Product>): Promise<void> {
-    await updateDoc(doc(db, 'products', id), product);
+    await productRepository.update(id, product as unknown as Record<string, unknown>);
   },
 
   async uploadProductImage(file: File, productId: string): Promise<string> {
-    const storageRef = ref(storage, `products/${productId}/${file.name}`);
-    await uploadBytes(storageRef, file);
-    return await getDownloadURL(storageRef);
+    return productRepository.uploadImage(file, productId);
   }
 };
 
 // Order Services
 export const orderServices = {
   async createOrder(order: Omit<Order, 'id' | 'createdAt'>): Promise<string> {
-    const docRef = await addDoc(collection(db, 'orders'), {
-      ...order,
-      createdAt: Timestamp.now()
-    });
-    return docRef.id;
+    return orderRepository.createOrder(order as unknown as Record<string, unknown>);
   },
 
   async getUserOrders(userId: string): Promise<Order[]> {
-    const q = query(
-      collection(db, 'orders'),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+    return orderRepository.listByUser(userId) as unknown as Promise<Order[]>;
   },
 
   async updateOrderStatus(orderId: string, status: Order['status']): Promise<void> {
-    await updateDoc(doc(db, 'orders', orderId), { status });
+    await orderRepository.updateStatus(orderId, status);
   }
 };
 

@@ -1,8 +1,10 @@
 // @ts-nocheck
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { db, auth, storage } from '../firebase/config'; 
+import { auth, storage } from '../firebase/config';
 import { onAuthStateChanged } from 'firebase/auth'; 
-import { collection, addDoc, serverTimestamp, getDocs, doc, deleteDoc, updateDoc, query, orderBy, getDoc } from 'firebase/firestore';
+import { serverTimestamp } from 'firebase/firestore';
+import { blogRepository } from '@/features/blogs/data/blogRepository';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; 
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css'; 
@@ -45,9 +47,7 @@ const [aiGenerating, setAiGenerating] = useState(false);
 
   const fetchBlogs = async () => {
     try {
-      const q = query(collection(db, "blogs"), orderBy("date", "desc"));
-      const querySnapshot = await getDocs(q);
-      const blogs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const blogs = await blogRepository.listLatest();
       setBlogsList(blogs);
     } catch (error) {
       console.error("Error fetching blogs:", error);
@@ -230,44 +230,40 @@ if (data.success && data.data) {
       };
 
       if (editingId) {
-        const blogRef = doc(db, 'blogs', editingId);
-        await updateDoc(blogRef, payload);
+        await blogRepository.update(editingId, payload);
         
         // Update Sidebar if Title changed
         try {
-            const settingsRef = doc(db, 'site_settings', 'global');
-            const settingsSnap = await getDoc(settingsRef);
-            if(settingsSnap.exists() && action === 'publish') {
-                const currentData = settingsSnap.data();
+            const settings = await siteSettingsRepository.getGlobal();
+            if(settings && action === 'publish') {
+                const currentData = settings;
                 const currentRelated = currentData.relatedBlogs || [];
                 const updatedRelated = currentRelated.map((item: any) => 
                     item.url === `/blog/${editingId}` ? { ...item, title: title } : item
                 );
-                await updateDoc(settingsRef, { relatedBlogs: updatedRelated });
+                await siteSettingsRepository.updateGlobal({ relatedBlogs: updatedRelated });
             }
         } catch(e) {}
 
         alert(action === 'draft' ? '✅ ड्राफ्ट सेव हो गया!' : '✅ कमाल है! आपका ब्लॉग सफलतापूर्वक अपडेट हो गया है!');
       } else {
-        const docRef = await addDoc(collection(db, 'blogs'), {
+        const newBlogId = await blogRepository.create({
           ...payload,
           date: serverTimestamp(),
         });
         
         if (action === 'publish') {
           try {
-            const newBlogId = docRef.id;
-            const settingsRef = doc(db, 'site_settings', 'global');
-            const settingsSnap = await getDoc(settingsRef);
+            const settings = await siteSettingsRepository.getGlobal();
             
-            if(settingsSnap.exists()) {
-               const currentData = settingsSnap.data();
+            if(settings) {
+               const currentData = settings;
                const currentRelated = currentData.relatedBlogs || [];
                
                const newSidebarLink = { title: title, url: `/blog/${newBlogId}` };
                const updatedRelated = [newSidebarLink, ...currentRelated].slice(0, 5);
                
-               await updateDoc(settingsRef, { relatedBlogs: updatedRelated });
+               await siteSettingsRepository.updateGlobal({ relatedBlogs: updatedRelated });
             }
           } catch (sidebarErr) {
             console.log("Sidebar auto-update skipped:", sidebarErr);
@@ -319,18 +315,17 @@ if (data.success && data.data) {
 
     try {
       // 1. Delete from Main Blogs Collection
-      await deleteDoc(doc(db, "blogs", id));
+      await blogRepository.remove(id);
 
       // 2. Delete strictly from Sidebar (Trending Articles)
       try {
-          const settingsRef = doc(db, 'site_settings', 'global');
-          const settingsSnap = await getDoc(settingsRef);
-          if (settingsSnap.exists()) {
-              const currentData = settingsSnap.data();
+          const settings = await siteSettingsRepository.getGlobal();
+          if (settings) {
+              const currentData = settings;
               const currentRelated = currentData.relatedBlogs || [];
               // Filter out the deleted blog by matching the URL
               const updatedRelated = currentRelated.filter((item: any) => item.url !== `/blog/${id}`);
-              await updateDoc(settingsRef, { relatedBlogs: updatedRelated });
+              await siteSettingsRepository.updateGlobal({ relatedBlogs: updatedRelated });
           }
       } catch (sidebarErr) {
           console.log("Error removing from sidebar:", sidebarErr);

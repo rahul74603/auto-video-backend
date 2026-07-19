@@ -1,11 +1,8 @@
 // @ts-nocheck
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { db } from '../firebase/config';
-import {
-    doc, getDoc, updateDoc, increment,
-    collection, query, where, limit, getDocs
-} from 'firebase/firestore';
+import { useBlog } from '@/features/blogs/hooks/useBlog';
+import { blogRepository } from '@/features/blogs/data/blogRepository';
 import {
     Calendar, User, Tag, Clock, ChevronLeft,
     Share2, ExternalLink, Flame, ShoppingCart,
@@ -14,6 +11,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SEO from '../components/SEO';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 
 // =========================================================
 // 🛠️ HELPERS
@@ -143,121 +141,62 @@ const BlogPostSkeleton = () => (
 // =========================================================
 // 🚀 MAIN COMPONENT
 // =========================================================
+// =========================================================
+// 🔧 DEFAULT SETTINGS
+// =========================================================
+function getDefaultSettings() {
+    return {
+        sidebarLinks: [
+            { name: 'New Govt Job Details', url: '/govt-jobs' },
+            { name: 'Best Free Study Materials', url: '/free-study-material' }
+        ],
+        relatedBlogs: [
+            { title: 'SSC CGL 2025: पूरी जानकारी और सिलेबस', url: '/blog' },
+            { title: 'Railway Group D: Preparation Guide', url: '/blog' }
+        ],
+        premiumBoxTitle: 'Premium Material Notes',
+        premiumBoxDesc: '100% सफलता के लिए श्रेणी-वार महत्वपूर्ण सवालों का असली संग्रह।',
+        bottomBarText: '📢 Premium Notes: पिछले 10 साल के रिपीटेड सवालों का पूरा बंडल',
+        premiumPrice: '69',
+        mrpPrice: '499',
+        discountPercent: '85'
+    };
+}
+
+
 const BlogPost = () => {
     const { id } = useParams();
     const navigate = useNavigate();
 
     const [blog, setBlog] = useState(null);
     const [globalSettings, setGlobalSettings] = useState(null);
-    const [loading, setLoading] = useState(true);
     const [notFound, setNotFound] = useState(false);
     const [voted, setVoted] = useState(false);
     const [copied, setCopied] = useState(false);
     const [docId, setDocId] = useState(null);
 
-    // =========================================================
-    // 📡 DATA FETCH
-    // =========================================================
+    const { blog: loadedBlog, loading: blogLoading, error: blogError } = useBlog(id);
+
     useEffect(() => {
-        const loadData = async () => {
-            try {
-                setLoading(true);
-                setNotFound(false);
+        if (!id || blogError) {
+            setNotFound(true);
+            return;
+        }
+        if (!loadedBlog?.id) return;
 
-                if (!id) {
-                    setNotFound(true);
-                    return;
-                }
+        setNotFound(false);
+        setBlog(loadedBlog);
+        setDocId(loadedBlog.id);
+        blogRepository.incrementViews(loadedBlog.id).catch(() => { /* silent */ });
 
-                let blogData = null;
-                let foundDocId = null;
+        siteSettingsRepository.getGlobal().then((settingsSnap) => {
+            setGlobalSettings(
+                settingsSnap || getDefaultSettings()
+            );
+        }).catch(() => setGlobalSettings(getDefaultSettings()));
 
-                // Step 1: Slug se dhundho
-                try {
-                    const slugQuery = query(
-                        collection(db, 'blogs'),
-                        where('slug', '==', id),
-                        limit(1)
-                    );
-                    const slugSnap = await getDocs(slugQuery);
-                    if (!slugSnap.empty) {
-                        blogData = slugSnap.docs[0].data();
-                        foundDocId = slugSnap.docs[0].id;
-                    }
-                } catch (slugErr) {
-                    console.warn('Slug query failed:', slugErr.message);
-                }
-
-                // Step 2: Doc ID fallback
-                if (!blogData) {
-                    const directRef = doc(db, 'blogs', id);
-                    const directSnap = await getDoc(directRef);
-                    if (directSnap.exists()) {
-                        blogData = directSnap.data();
-                        foundDocId = directSnap.id;
-                    }
-                }
-
-                if (!blogData) {
-                    setNotFound(true);
-                    return;
-                }
-
-                setBlog(blogData);
-                setDocId(foundDocId);
-
-                // View count
-                try {
-                    await updateDoc(doc(db, 'blogs', foundDocId), {
-                        views: increment(1)
-                    });
-                } catch {
-                    // silent
-                }
-
-                // Global settings
-                const settingsSnap = await getDoc(
-                    doc(db, 'site_settings', 'global')
-                );
-                setGlobalSettings(
-                    settingsSnap.exists()
-                        ? settingsSnap.data()
-                        : getDefaultSettings()
-                );
-
-            } catch (error) {
-                console.error('Error loading blog:', error);
-                setNotFound(true);
-            } finally {
-                setLoading(false);
-                window.scrollTo(0, 0);
-            }
-        };
-
-        loadData();
-    }, [id]);
-
-    // =========================================================
-    // 🔧 DEFAULT SETTINGS
-    // =========================================================
-    function getDefaultSettings() {
-        return {
-            sidebarLinks: [
-                { name: 'New Govt Job Details', url: '/govt-jobs' },
-                { name: 'Best Free Study Materials', url: '/free-study-material' }
-            ],
-            relatedBlogs: [
-                { title: 'SSC CGL 2025: पूरी जानकारी और सिलेबस', url: '/blog' },
-                { title: 'Railway Group D: Preparation Guide', url: '/blog' }
-            ],
-            premiumBoxTitle: 'Premium Material Notes',
-            premiumBoxDesc: '100% सफलता के लिए श्रेणी-वार महत्वपूर्ण सवालों का असली संग्रह।',
-            bottomBarText: '📢 Premium Notes: पिछले 10 साल के रिपीटेड सवालों का पूरा बंडल',
-            premiumPrice: '69',
-            mrpPrice: '499',
-            discountPercent: '85'
-        };
-    }
+        window.scrollTo(0, 0);
+    }, [id, loadedBlog, blogLoading, blogError]);
 
     // =========================================================
     // 💬 FEEDBACK
@@ -266,9 +205,7 @@ const BlogPost = () => {
         if (voted) return toast.info('आप पहले ही अपनी राय दे चुके हैं!');
         if (!docId) return;
         try {
-            await updateDoc(doc(db, 'blogs', docId), {
-                [type === 'yes' ? 'real_likes' : 'real_dislikes']: increment(1)
-            });
+            await blogRepository.recordFeedback(docId, type);
             setVoted(true);
             toast.success('फीडबैक देने के लिए धन्यवाद! 🙏');
         } catch {
@@ -317,7 +254,7 @@ const BlogPost = () => {
     // =========================================================
     // 🔄 LOADING
     // =========================================================
-    if (loading) return <BlogPostSkeleton />;
+    if (blogLoading) return <BlogPostSkeleton />;
 
     // =========================================================
     // ❌ 404

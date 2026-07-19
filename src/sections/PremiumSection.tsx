@@ -1,7 +1,10 @@
 // @ts-nocheck
 import { useEffect, useState } from 'react';
-import { collection, getDocs, query, orderBy, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, } from 'firebase/firestore';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { db } from '@/firebase/config';
+import { courseRepository } from '@/features/courses/data/courseRepository';
+import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Crown, ArrowRight, Star, BookOpen, Sparkles, MessageCircle, FileText, Lock, Tag, ExternalLink, ShoppingCart, Flame } from 'lucide-react';
@@ -25,9 +28,8 @@ const CourseFilesList = ({ courseId }: { courseId: string }) => {
   useEffect(() => {
     const fetchFiles = async () => {
       try {
-        const q = query(collection(db, `courses/${courseId}/content`), orderBy("createdAt", "desc"));
-        const snapshot = await getDocs(q);
-        setFiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const content = await courseContentRepository.listContent(courseId, { orderByCreatedAt: true });
+        setFiles(content);
       } catch (err) {
         console.error("Error fetching files:", err);
       } finally {
@@ -69,12 +71,11 @@ const PremiumSection = () => {
   useEffect(() => {
     const loadAllData = async () => {
       try {
-        const q = query(collection(db, "courses"));
-        const snapshot = await getDocs(q);
-        setCourses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course)));
+        const courses = await courseRepository.listCourses();
+        setCourses(courses as Course[]);
 
-        const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
-        if (settingsSnap.exists()) setGlobalSettings(settingsSnap.data());
+        const settingsSnap = await siteSettingsRepository.getGlobal();
+        if (settingsSnap) setGlobalSettings(settingsSnap);
       } catch (error) {
         console.error("Error fetching data:", error);
       }

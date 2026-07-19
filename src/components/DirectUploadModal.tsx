@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { db } from '@/firebase/config';
-import { collection, addDoc } from 'firebase/firestore';
+import { materialRepository } from '@/features/materials/data/materialRepository';
 import { UploadCloud, X, FileText, CheckCircle, Loader2 } from 'lucide-react';
 
 interface Props {
@@ -48,7 +47,7 @@ const DirectUploadModal = ({ folderId, folderName, onClose, onSuccess }: Props) 
       setUploadProgress('Saving to Database...');
 
       // 2. Save Metadata to Firestore
-      await addDoc(collection(db, 'study_materials'), {
+      await materialRepository.addPublic({
         title: title,
         subject: folderName,     // Folder Name
         category: folderId,      // Folder ID

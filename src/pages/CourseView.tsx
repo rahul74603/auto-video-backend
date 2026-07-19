@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../firebase/config';
 import { collection, query, orderBy, getDocs, doc, getDoc, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
-import { useCourseAccess } from '../hooks/useCourseAccess'; 
+import { courseRepository } from '@/features/courses/data/courseRepository';
+import { useCourseAccess } from '../hooks/useCourseAccess';
+import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
 import { Lock, Unlock, FileText, Folder, Loader2, ArrowLeft, ChevronRight, Home, ExternalLink, ShoppingBag, CheckCircle, ShieldCheck, BadgePercent, Tag, ArrowRight } from 'lucide-react';
 import SEO from '../components/SEO';
 
@@ -34,15 +36,13 @@ const CourseView = () => {
       try {
         setLoading(true);
         // 1. Fetch Course Data
-        const docSnap = await getDoc(doc(db, "courses", id));
-        if (docSnap.exists()) {
-          const courseData = docSnap.data();
+        const courseData = await courseRepository.getCourseById(id);
+        if (courseData) {
           setCourse(courseData);
           
           // 2. Fetch Content
-          const q = query(collection(db, `courses/${id}/content`), orderBy("createdAt", "desc"));
-          const contentSnap = await getDocs(q);
-          setAllContent(contentSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+          const content = await courseContentRepository.listContent(id, { orderByCreatedAt: true });
+          setAllContent(content);
         }
 
         // 3. Fetch Global Settings

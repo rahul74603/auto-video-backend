@@ -4,8 +4,7 @@ import React, {
     useRef, createContext, useContext
 } from 'react';
 import { X, ExternalLink, Bell, Zap } from 'lucide-react';
-import { db } from '../firebase/config';
-import { doc, getDoc } from 'firebase/firestore';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 
 // =========================================================
 // 🔄 GLOBAL SETTINGS CONTEXT
@@ -24,9 +23,9 @@ export const SiteSettingsProvider = ({ children }) => {
 
         const fetchSettings = async () => {
             try {
-                const snap = await getDoc(doc(db, "site_settings", "global"));
-                if (snap.exists()) {
-                    setSettings(snap.data());
+                const snap = await siteSettingsRepository.getGlobal();
+                if (snap) {
+                    setSettings(snap);
                 }
             } catch (err) {
                 console.error("Settings fetch error:", err);
@@ -72,8 +71,8 @@ export const HeaderAd = () => {
 
         const fetchSettings = async () => {
             try {
-                const snap = await getDoc(doc(db, "site_settings", "global"));
-                if (snap.exists()) setSettings(snap.data());
+                const snap = await siteSettingsRepository.getGlobal();
+                if (snap) setSettings(snap);
             } catch (err) {
                 console.error("HeaderAd fetch:", err);
             }
@@ -224,10 +223,10 @@ export const PopupAd = () => {
 
         const fetchAndShow = async () => {
             try {
-                const snap = await getDoc(doc(db, "site_settings", "global"));
-                if (!snap.exists()) return;
+                const snap = await siteSettingsRepository.getGlobal();
+                if (!snap) return;
 
-                const data = snap.data();
+                const data = snap;
                 setSettings(data);
 
                 if (data.popupActive) {

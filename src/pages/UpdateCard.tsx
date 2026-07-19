@@ -1,7 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { fastTrackRepository } from '@/features/fast-track/data/fastTrackRepository';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, FileText, AlertCircle, ArrowRight } from 'lucide-react';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
@@ -21,22 +20,17 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ category, pageTitle, descri
     const fetchCategoryData = async () => {
       setLoading(true);
       try {
-        // 🎯 सही कलेक्शन 'fast_track' और सही फील्ड 'createdAt'
-        const q = query(
-          collection(db, "fast_track"),
-          where("category", "==", category),
-          where("status", "==", "published"), // सिर्फ लाइव वाले दिखाओ
-          orderBy("createdAt", "desc"),
-          limit(50) // एक बार में 50 आइटम लाओ ताकि पेज फास्ट रहे
-        );
-        const snap = await getDocs(q);
-        setData(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const fetchedData = await fastTrackRepository.listByCategory(category);
+        setData(fetchedData
+          .filter(item => item.status === "published" || !item.status)
+          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
       } catch (err) {
         console.error(`Error fetching ${category}:`, err);
       } finally {
         setLoading(false);
       }
     };
+
     
     fetchCategoryData();
   }, [category]);

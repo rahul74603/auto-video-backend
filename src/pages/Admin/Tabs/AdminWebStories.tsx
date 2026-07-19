@@ -1,7 +1,8 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { db } from '../../../firebase/config';
-import { collection, getDocs, query, addDoc, orderBy } from 'firebase/firestore';
+import { mockTestRepository } from '@/features/mock-tests/data/mockTestRepository';
+import { blogRepository } from '@/features/blogs/data/blogRepository';
+import { storyRepository } from '@/features/stories/data/storyRepository';
 import { Layers, Plus, Save, X, Zap, ChevronRight } from 'lucide-react';
 
 const AdminWebStories = () => {
@@ -33,9 +34,7 @@ const AdminWebStories = () => {
 
     const fetchMockTests = async () => {
         try {
-            const q = query(collection(db, "mock_tests"));
-            const snapshot = await getDocs(q);
-            const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            const data = await mockTestRepository.listLatest();
             data.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
             setMockTests(data);
         } catch (err) { console.error(err); }
@@ -43,9 +42,7 @@ const AdminWebStories = () => {
 
     const fetchBlogs = async () => {
         try {
-            const q = query(collection(db, "blogs"));
-            const snapshot = await getDocs(q);
-            const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            const data = await blogRepository.listLatest();
             data.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
             setBlogs(data);
         } catch (err) { console.error(err); }
@@ -53,8 +50,7 @@ const AdminWebStories = () => {
 
     const fetchStories = async () => {
         try {
-            const snapshot = await getDocs(collection(db, "web_stories"));
-            const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            const data = await storyRepository.listLatest();
             data.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
             setStories(data);
         } catch (err) { console.error(err); }
@@ -105,7 +101,7 @@ const AdminWebStories = () => {
                 publisher: 'StudyGyaan',
                 publisherLogo: 'https://studygyaan.in/logo.png',
             };
-            await addDoc(collection(db, "web_stories"), payload);
+            await storyRepository.createStory(payload);
             alert("✅ Web Story Live! Google Discover ready.");
             setShowForm(false);
             fetchStories();

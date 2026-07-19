@@ -1,9 +1,12 @@
 // @ts-nocheck
 import SEO from '../components/SEO';
 import { useEffect, useState } from 'react';
-import { db, auth } from '../firebase/config';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+import { auth } from '../firebase/config';
+
 import { onAuthStateChanged } from 'firebase/auth';
+import { courseRepository } from '@/features/courses/data/courseRepository';
+import { userRepository } from '@/features/users/data/userRepository';
 import { useNavigate } from 'react-router-dom';
 import { 
   BookOpen, ArrowRight, Loader2, ShoppingBag, Sparkles, 
@@ -23,11 +26,9 @@ const MyCourses = () => {
             setLoading(true);
 
             // 1. Fetch User Document (Direct access check)
-            const userDocRef = doc(db, "users", currentUser.uid);
-            const userSnap = await getDoc(userDocRef);
+            const userData = await userRepository.getUser(currentUser.uid);
             
-            if (userSnap.exists()) {
-              const userData = userSnap.data();
+            if (userData) {
               
               // 2. Filter keys that start with 'purchased_' and are true
               const purchasedCourseIds = Object.keys(userData)
@@ -37,10 +38,8 @@ const MyCourses = () => {
               // 3. Fetch details for each purchased course from 'courses' collection
               if (purchasedCourseIds.length > 0) {
                 const coursePromises = purchasedCourseIds.map(async (courseId) => {
-                  const courseSnap = await getDoc(doc(db, "courses", courseId));
-                  if (courseSnap.exists()) {
-                    return { id: courseSnap.id, ...courseSnap.data() };
-                  }
+                  const course = await courseRepository.getCourseById(courseId);
+                  if (course) return course;
                   return null;
                 });
 
@@ -50,9 +49,9 @@ const MyCourses = () => {
             }
 
             // 4. Fetch Global Settings for Sidebar
-            const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
-            if (settingsSnap.exists()) {
-              setGlobalSettings(settingsSnap.data());
+            const settingsSnap = await siteSettingsRepository.getGlobal();
+            if (settingsSnap) {
+              setGlobalSettings(settingsSnap);
             }
           } catch (error) {
             console.error("Dashboard Error:", error);

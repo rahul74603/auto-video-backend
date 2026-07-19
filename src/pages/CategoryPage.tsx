@@ -1,7 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { fastTrackRepository } from '@/features/fast-track/data/fastTrackRepository';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, ArrowRight, FileText, AlertCircle } from 'lucide-react';
 import SEO from '../components/SEO'; // ✅ SEO कम्पोनेंट इम्पोर्ट किया
@@ -21,31 +20,17 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ category, pageTitle, descri
     const fetchCategoryData = async () => {
       setLoading(true);
       try {
-        // 🎯 1. Firebase से डेटा लाओ
-        const q = query(
-          collection(db, "fast_track"),
-          where("category", "==", category)
-        );
-        
-        const snap = await getDocs(q);
-        let fetchedData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-        // 🎯 2. Sorting (Latest First)
-        fetchedData = fetchedData
+        const fetchedData = await fastTrackRepository.listByCategory(category);
+        setData(fetchedData
           .filter(item => item.status === "published" || !item.status)
-          .sort((a, b) => {
-            const timeA = a.createdAt?.seconds || 0;
-            const timeB = b.createdAt?.seconds || 0;
-            return timeB - timeA;
-          });
-
-        setData(fetchedData);
+          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
       } catch (err) {
         console.error(`Error fetching ${category}:`, err);
       } finally {
         setLoading(false);
       }
     };
+
     
     fetchCategoryData();
     window.scrollTo(0, 0);

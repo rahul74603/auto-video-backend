@@ -1,30 +1,13 @@
 // @ts-nocheck
-import { useState, useEffect } from 'react';
-import { db } from '../firebase/config';
-import { collection, getDocs, query, limit } from 'firebase/firestore'; 
+import { useMockTests } from '@/features/mock-tests/hooks/useMockTests';
 import { useNavigate } from 'react-router-dom';
 import { Play, Zap, ArrowRight, Clock, BookOpen } from 'lucide-react';
 
 const MockTestHomeSection = () => {
-    const [latestTests, setLatestTests] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const { tests: latestTests, loading } = useMockTests({ limitCount: 12 });
     const navigate = useNavigate();
 
-    useEffect(() => {
-        const fetchLatest = async () => {
-            try {
-                setLoading(true);
-                // PC पर 6 और मोबाइल पर 10 टेस्ट के हिसाब से डेटा मंगाया है
-                const q = query(collection(db, "mock_tests"), limit(12));
-                const snap = await getDocs(q);
-                if (!snap.empty) {
-                    const items = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setLatestTests(items);
-                }
-            } catch (err) { console.error(err); } finally { setLoading(false); }
-        };
-        fetchLatest();
-    }, []);
+
 
     if (loading && latestTests.length === 0) return null;
 

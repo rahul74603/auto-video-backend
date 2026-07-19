@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase/config';
-import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { paymentRepository } from '@/features/payments/data/paymentRepository';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { CheckCircle, IndianRupee, ArrowLeft, Loader2, MessageCircle } from 'lucide-react';
 
@@ -31,17 +31,11 @@ const ManualPayment = () => {
                 timeLimit.setMinutes(timeLimit.getMinutes() - 60);
 
                 // फायरबेस से इस कोर्स के पेंडिंग पेमेंट्स निकालें
-                const q = query(
-                    collection(db, "purchases"),
-                    where("courseId", "==", itemId),
-                    where("status", "==", "pending")
-                );
-                const snapshot = await getDocs(q);
+                const pendingPayments = await paymentRepository.listPendingPayments(itemId);
 
                 // पिछले 16 मिनट में इस्तेमाल हुए सभी अमाउंट्स की लिस्ट बनाएँ
                 const usedAmounts: number[] = [];
-                snapshot.forEach(doc => {
-                    const data = doc.data();
+                pendingPayments.forEach(data => {
                     const purchaseDate = data.timestamp?.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
                     if (purchaseDate > timeLimit) {
                         usedAmounts.push(data.amount);
@@ -76,13 +70,12 @@ const ManualPayment = () => {
         setLoading(true);
         try {
             // ✅ सिर्फ अमाउंट और टाइम सेव होगा, कोई UTR/Photo नहीं
-            await addDoc(collection(db, "purchases"), {
+            await paymentRepository.createPaymentRequest({
                 userId: user.uid,
                 userEmail: user.email,
                 courseId: itemId,
                 amount: finalPayableAmount,
-                status: "pending",
-                timestamp: serverTimestamp()
+                status: "pending"
             });
 
             setSuccess(true);

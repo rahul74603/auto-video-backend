@@ -1,11 +1,15 @@
 // @ts-nocheck
 import React, { useEffect, useState } from 'react';
 // ✅ यहाँ doc और getDoc को ऐड कर दिया है (यही असली एरर था)
-import { collection, getDocs, query, where, orderBy, limit, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, limit, } from 'firebase/firestore';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { db, auth } from '../firebase/config';
 import { useNavigate } from 'react-router-dom';
 import { Crown, ArrowRight, Loader2, Sparkles, Tag, Zap, ExternalLink, FileText, Lock, BookOpen, ShoppingCart } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
+import { orderRepository } from '@/features/orders/data/orderRepository';
+import { courseRepository } from '@/features/courses/data/courseRepository';
+import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
 
 // 🔥 Included Files List (PC पर डिटेल दिखाने के लिए)
 const CourseFilesList = ({ courseId }: { courseId: string }) => {
@@ -15,9 +19,8 @@ const CourseFilesList = ({ courseId }: { courseId: string }) => {
   useEffect(() => {
     const fetchFiles = async () => {
       try {
-        const q = query(collection(db, `courses/${courseId}/content`), orderBy("createdAt", "desc"), limit(5));
-        const snapshot = await getDocs(q);
-        setFiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const content = await courseContentRepository.listContent(courseId, { orderByCreatedAt: true, limitCount: 5 });
+        setFiles(content);
       } catch (err) { 
         console.error("Files Fetch Error:", err); 
       } finally { 
@@ -60,13 +63,12 @@ const Shop: React.FC = () => {
     const fetchData = async () => {
       try {
         // Courses लाना
-        const snapshot = await getDocs(collection(db, "courses"));
-        let fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        let fetched = await courseRepository.listCourses();
         fetched.sort((a, b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999));
         setCourses(fetched);
 
         // ✅ Global Settings लाना (अब यह एरर नहीं देगा क्योंकि getDoc इम्पोर्टेड है)
-        const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
+        const settingsSnap = await siteSettingsRepository.getGlobal();
         if (settingsSnap.exists()) {
           setGlobalSettings(settingsSnap.data());
         }
@@ -81,9 +83,8 @@ const Shop: React.FC = () => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          const q = query(collection(db, "orders"), where("userId", "==", user.uid));
-          const snap = await getDocs(q);
-          setPurchasedCourseIds(snap.docs.map(doc => doc.data().courseId));
+          const orders = await orderRepository.listByUser(user.uid);
+          setPurchasedCourseIds(orders.map(order => order.courseId));
         } catch (err) {
           console.error("Orders Fetch Error:", err);
         }

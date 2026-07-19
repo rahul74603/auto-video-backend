@@ -10,12 +10,9 @@ import {
     UploadCloud, ShieldCheck, AlertTriangle,
     CheckCircle, Loader2, Eye, EyeOff
 } from 'lucide-react';
-import { db, storage } from '../../../firebase/config';
-import {
-    collection, addDoc, getDocs, query,
-    where, deleteDoc, doc, updateDoc,
-    setDoc, orderBy, limit
-} from 'firebase/firestore';
+import { storage } from '../../../firebase/config';
+import { jobRepository } from '@/features/jobs/data/jobRepository';
+import { jobDraftRepository } from '@/features/job-drafts/data/jobDraftRepository';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // =========================================================
@@ -184,14 +181,11 @@ const AdminBrowseTab = () => {
     const fetchContent = useCallback(async () => {
         setFetchLoading(true);
         try {
-            const q = query(
-                collection(db, "jobs"),
-                where("type", "in", ["JOB", "AFFILIATE"]),
-                orderBy("updatedAt", "desc"),
-                limit(100)
-            );
-            const snap = await getDocs(q);
-            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const data = await jobRepository.list({
+                typeIn: ["JOB", "AFFILIATE"],
+                orderField: "updatedAt",
+                limitCount: 100
+            });
             setPosts(data);
         } catch (err) {
             console.error("Fetch error:", err);
@@ -291,7 +285,7 @@ const AdminBrowseTab = () => {
                 Object.entries(payload).filter(([, v]) => v !== undefined)
             );
 
-            await setDoc(doc(db, "job_drafts", String(draftId)), clean, { merge: true });
+            await jobDraftRepository.updateDraft(String(draftId), clean);
 
             showToast("✅ Draft Successfully Save हो गया!");
             setShowForm(false);
@@ -349,27 +343,25 @@ const AdminBrowseTab = () => {
             );
 
             if (editingId) {
-                await setDoc(doc(db, "jobs", String(editingId)), clean, { merge: true });
+                await jobRepository.update(String(editingId), clean);
                 showToast("✅ Live Post Update हो गया!");
             } else {
                 let liveJobId;
 
                 if (currentDraftId) {
                     liveJobId = String(currentDraftId);
-                    await setDoc(doc(db, "jobs", liveJobId), {
+                    await jobRepository.set(liveJobId, {
                         ...clean,
                         slug: liveJobId,
                         createdAt: new Date().toISOString()
                     });
-                    await deleteDoc(doc(db, "job_drafts", liveJobId))
-                        .catch(() => {});
+                    await jobDraftRepository.deleteDraft(liveJobId).catch(() => {});
                 } else {
-                    const docRef = await addDoc(collection(db, "jobs"), {
+                    liveJobId = await jobRepository.add({
                         ...clean,
                         createdAt: new Date().toISOString()
                     });
-                    liveJobId = docRef.id;
-                    await updateDoc(doc(db, "jobs", liveJobId), {
+                    await jobRepository.update(liveJobId, {
                         slug: createSlug(formData.title) || liveJobId
                     });
                 }
@@ -419,7 +411,7 @@ const AdminBrowseTab = () => {
         if (!deleteModal) return;
         setDeleteLoading(true);
         try {
-            await deleteDoc(doc(db, "jobs", deleteModal.id));
+            await jobRepository.remove(deleteModal.id);
             setPosts(prev => prev.filter(p => p.id !== deleteModal.id));
             showToast("✅ Job Delete हो गई!");
         } catch (err) {

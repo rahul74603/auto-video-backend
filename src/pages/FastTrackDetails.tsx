@@ -1,11 +1,8 @@
 // @ts-nocheck
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { db } from '../firebase/config';
-import {
-    collection, doc, getDoc, getDocs,
-    query, orderBy, limit, where
-} from 'firebase/firestore';
+import { useFastTrack } from '@/features/fast-track/hooks/useFastTrack';
+import { fastTrackRepository } from '@/features/fast-track/data/fastTrackRepository';
 import {
     Calendar, Building2, ArrowLeft,
     Download, FileText, ChevronRight, Loader2
@@ -143,85 +140,26 @@ const FastTrackDetails = () => {
     const [docId, setDocId] = useState(null);
 
     // =========================================================
-    // 📡 FETCH CURRENT ITEM (Slug + ID support)
-    // =========================================================
+    const { update: loadedUpdate, loading: updateLoading, error: updateError } = useFastTrack(id);
+
     useEffect(() => {
-        const fetchDetails = async () => {
-            if (!id) { setNotFound(true); setLoading(false); return; }
+        setLoading(updateLoading);
+        if (!id || updateError) {
+            setNotFound(true);
+            return;
+        }
+        if (!loadedUpdate?.id) return;
 
-            try {
-                setLoading(true);
-                let itemData = null;
-                let foundId = id;
+        setNotFound(false);
+        setData(loadedUpdate);
+        setDocId(loadedUpdate.id);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, [id, loadedUpdate, updateLoading, updateError]);
 
-                // ✅ Step 1: Slug से ढूंढो
-                try {
-                    const slugQ = query(
-                        collection(db, "fast_track"),
-                        where("slug", "==", id),
-                        limit(1)
-                    );
-                    const slugSnap = await getDocs(slugQ);
-                    if (!slugSnap.empty) {
-                        itemData = slugSnap.docs[0].data();
-                        foundId = slugSnap.docs[0].id;
-                    }
-                } catch (e) {
-                    console.warn("Slug query:", e.message);
-                }
-
-                // ✅ Step 2: Doc ID fallback
-                if (!itemData) {
-                    const snap = await getDoc(doc(db, "fast_track", id));
-                    if (snap.exists()) {
-                        itemData = snap.data();
-                        foundId = snap.id;
-                    }
-                }
-
-                if (!itemData) {
-                    setNotFound(true);
-                    return;
-                }
-
-                setData(itemData);
-                setDocId(foundId);
-
-            } catch (err) {
-                console.error("Fetch error:", err);
-                setNotFound(true);
-            } finally {
-                setLoading(false);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }
-        };
-
-        fetchDetails();
-    }, [id]);
-
-    // =========================================================
-    // 📡 FETCH SIDEBAR LIST (One-time, not real-time)
-    // =========================================================
     useEffect(() => {
-        const fetchList = async () => {
-            try {
-                // ✅ onSnapshot की जगह getDocs - Real-time नहीं चाहिए
-                const q = query(
-                    collection(db, "fast_track"),
-                    orderBy("createdAt", "desc"),
-                    limit(50) // ✅ Limit add किया
-                );
-                const snap = await getDocs(q);
-                const items = snap.docs
-                    .map(d => ({ id: d.id, ...d.data() }))
-                    .filter(item => item.status !== 'draft'); // Live only
-                setUpdatesList(items);
-            } catch (err) {
-                console.error("List fetch error:", err);
-            }
-        };
-
-        fetchList();
+        fastTrackRepository.listLatest(50)
+            .then((items) => setUpdatesList(items.filter(item => item.status !== 'draft')))
+            .catch((err) => console.error("List fetch error:", err));
     }, []);
 
     // =========================================================
