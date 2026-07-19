@@ -1,6 +1,7 @@
-import { db, storage } from './config';
+import { db } from './config';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { materialRepository } from '@/features/materials/data/materialRepository';
+import { productRepository } from '@/features/products/data/productRepository';
 import { 
   collection, 
   addDoc, 
@@ -14,7 +15,6 @@ import {
   getDoc,
   setDoc
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // Types
 export interface Job {
@@ -148,36 +148,23 @@ export const studyMaterialServices = {
 // Product/E-commerce Services
 export const productServices = {
   async addProduct(product: Omit<Product, 'id' | 'createdAt'>): Promise<string> {
-    const docRef = await addDoc(collection(db, 'products'), {
-      ...product,
-      createdAt: Timestamp.now()
-    });
-    return docRef.id;
+    return productRepository.add(product as unknown as Record<string, unknown>);
   },
 
   async getProducts(category?: string): Promise<Product[]> {
-    let q = query(collection(db, 'products'), where('isActive', '==', true));
-    if (category) {
-      q = query(q, where('category', '==', category));
-    }
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+    return productRepository.list({ category }) as unknown as Promise<Product[]>;
   },
 
   async getProductById(id: string): Promise<Product | null> {
-    const docRef = doc(db, 'products', id);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as Product : null;
+    return productRepository.getById(id) as unknown as Promise<Product | null>;
   },
 
   async updateProduct(id: string, product: Partial<Product>): Promise<void> {
-    await updateDoc(doc(db, 'products', id), product);
+    await productRepository.update(id, product as unknown as Record<string, unknown>);
   },
 
   async uploadProductImage(file: File, productId: string): Promise<string> {
-    const storageRef = ref(storage, `products/${productId}/${file.name}`);
-    await uploadBytes(storageRef, file);
-    return await getDownloadURL(storageRef);
+    return productRepository.uploadImage(file, productId);
   }
 };
 
