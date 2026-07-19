@@ -1,5 +1,6 @@
 import { db, storage } from './config';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
+import { materialRepository } from '@/features/materials/data/materialRepository';
 import { 
   collection, 
   addDoc, 
@@ -124,54 +125,23 @@ export const jobServices = {
 // Study Materials Services
 export const studyMaterialServices = {
   async addMaterial(material: Omit<StudyMaterial, 'id' | 'createdAt'>): Promise<string> {
-    const docRef = await addDoc(collection(db, 'studyMaterials'), {
-      ...material,
-      createdAt: Timestamp.now()
-    });
-    return docRef.id;
+    return materialRepository.add(material as unknown as Record<string, unknown>);
   },
 
   async getMaterials(filters?: { category?: string; language?: string; examType?: string }): Promise<StudyMaterial[]> {
-    let q = query(collection(db, 'studyMaterials'), orderBy('createdAt', 'desc'));
-    
-    if (filters?.category) {
-      q = query(q, where('category', '==', filters.category));
-    }
-    if (filters?.language) {
-      q = query(q, where('language', 'in', [filters.language, 'both']));
-    }
-    if (filters?.examType) {
-      q = query(q, where('examType', '==', filters.examType));
-    }
-
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StudyMaterial));
+    return materialRepository.list(filters) as unknown as Promise<StudyMaterial[]>;
   },
 
   async getMaterialsByFolder(folderPath: string): Promise<StudyMaterial[]> {
-    const q = query(
-      collection(db, 'studyMaterials'),
-      where('folderPath', '==', folderPath),
-      orderBy('createdAt', 'desc')
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StudyMaterial));
+    return materialRepository.listByFolder(folderPath) as unknown as Promise<StudyMaterial[]>;
   },
 
   async incrementDownload(id: string): Promise<void> {
-    const docRef = doc(db, 'studyMaterials', id);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      await updateDoc(docRef, {
-        downloadCount: (docSnap.data().downloadCount || 0) + 1
-      });
-    }
+    await materialRepository.incrementDownload(id);
   },
 
   async uploadFile(file: File, path: string): Promise<string> {
-    const storageRef = ref(storage, `studyMaterials/${path}/${file.name}`);
-    await uploadBytes(storageRef, file);
-    return await getDownloadURL(storageRef);
+    return materialRepository.uploadFile(file, path);
   }
 };
 

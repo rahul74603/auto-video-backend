@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
+import { materialRepository } from '@/features/materials/data/materialRepository';
 import { db } from '../firebase/config'; 
 import { motion, AnimatePresence } from 'framer-motion';
 import { Folder, FileText, Download, ArrowLeft, ChevronRight, Home, Search, Loader2, Sparkles, Tag, ExternalLink, ShoppingCart, ArrowRight } from 'lucide-react';
@@ -50,8 +51,7 @@ const StudyMaterials: React.FC = () => {
         setCategories(fetchedCats);
 
         const q1 = query(collection(db, "jobs"), where("category", "==", currentFolderId));
-        const q2 = query(collection(db, "study_materials"), where("category", "==", currentFolderId));
-        const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+        const [snap1, materialResults] = await Promise.all([getDocs(q1), materialRepository.listByCategory(currentFolderId)]);
 
         const fetchedMats: Material[] = [];
         snap1.forEach(doc => {
@@ -59,7 +59,7 @@ const StudyMaterials: React.FC = () => {
             if (data.type !== 'MATERIAL') return; 
             fetchedMats.push({ id: doc.id, ...data } as Material);
         });
-        snap2.forEach(doc => { fetchedMats.push({ id: doc.id, ...doc.data() } as Material); });
+        materialResults.forEach(material => { fetchedMats.push(material as Material); });
 
         fetchedMats.sort((a, b) => (b.updatedAt ? new Date(b.updatedAt).getTime() : 0) - (a.updatedAt ? new Date(a.updatedAt).getTime() : 0));
         setMaterials(fetchedMats);
