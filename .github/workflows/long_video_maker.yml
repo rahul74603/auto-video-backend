@@ -32,6 +32,6 @@
           #YOUTUBE_TOKEN: ${{ secrets.YOUTUBE_TOKEN }}
           #FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           #FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: node ai_backend/long_video.js)
+          #TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          #TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        #run: node ai_backend/long_video.js)
