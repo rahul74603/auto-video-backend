@@ -1,8 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { materialRepository } from '@/features/materials/data/materialRepository';
-import { db } from '../firebase/config'; 
+import { categoryRepository } from '@/features/categories/data/categoryRepository';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Folder, FileText, Download, ArrowLeft, ChevronRight, Home, Search, Loader2, Sparkles, Tag, ExternalLink, ShoppingCart, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -47,10 +46,8 @@ const StudyMaterials: React.FC = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const catSnap = await getDocs(collection(db, "categories"));
-        const fetchedCats: Category[] = [];
-        catSnap.forEach(doc => fetchedCats.push({ id: doc.id, ...doc.data() } as Category));
-        setCategories(fetchedCats);
+        const fetchedCats = await categoryRepository.listCategories();
+        setCategories(fetchedCats as Category[]);
 
         const [jobResults, materialResults] = await Promise.all([jobRepository.list({ category: currentFolderId }), materialRepository.listByCategory(currentFolderId)]);
 
