@@ -1,7 +1,8 @@
 // @ts-nocheck
 import React, { useEffect, useState } from 'react';
 // ✅ यहाँ doc और getDoc को ऐड कर दिया है (यही असली एरर था)
-import { collection, getDocs, query, where, orderBy, limit, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, limit, } from 'firebase/firestore';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { db, auth } from '../firebase/config';
 import { useNavigate } from 'react-router-dom';
 import { Crown, ArrowRight, Loader2, Sparkles, Tag, Zap, ExternalLink, FileText, Lock, BookOpen, ShoppingCart } from 'lucide-react';
@@ -67,7 +68,7 @@ const Shop: React.FC = () => {
         setCourses(fetched);
 
         // ✅ Global Settings लाना (अब यह एरर नहीं देगा क्योंकि getDoc इम्पोर्टेड है)
-        const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
+        const settingsSnap = await siteSettingsRepository.getGlobal();
         if (settingsSnap.exists()) {
           setGlobalSettings(settingsSnap.data());
         }

@@ -1,7 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react';
-import { db } from '../firebase/config';
-import { doc, getDoc } from 'firebase/firestore';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { useMockTests } from '@/features/mock-tests/hooks/useMockTests';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
@@ -24,9 +23,9 @@ const MockTestLibrary = () => {
                 setLoading(true);
                 
                 // 2. Fetch Global Sidebar Settings
-                const globalSnap = await getDoc(doc(db, "site_settings", "global"));
-                if (globalSnap.exists()) {
-                    const data = globalSnap.data();
+                const globalSnap = await siteSettingsRepository.getGlobal();
+                if (globalSnap) {
+                    const data = globalSnap;
                     setMockBlogs(data.mockBlogs || []); 
                     setMockLinks(data.mockLinks || []);  
                 }

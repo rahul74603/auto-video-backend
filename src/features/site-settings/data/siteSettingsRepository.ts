@@ -1,5 +1,5 @@
 import { db } from '@/firebase/config';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, setDoc, updateDoc, type Unsubscribe } from 'firebase/firestore';
 
 export type SiteSettings = Record<string, unknown>;
 
@@ -13,6 +13,15 @@ export const siteSettingsRepository = {
 
   async updateGlobal(settings: SiteSettings): Promise<void> {
     await updateDoc(settingsRef, settings);
+  },
+
+  subscribeGlobal(
+    onData: (settings: SiteSettings | null) => void,
+    onError?: (error: Error) => void
+  ): Unsubscribe {
+    return onSnapshot(settingsRef, (snapshot) => {
+      onData(snapshot.exists() ? (snapshot.data() as SiteSettings) : null);
+    }, onError);
   },
 
   async setGlobal(settings: SiteSettings, merge = true): Promise<void> {

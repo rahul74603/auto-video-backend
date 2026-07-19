@@ -1,8 +1,9 @@
 // @ts-nocheck
 import SEO from '../components/SEO';
 import { useEffect, useState } from 'react';
-import { db, auth } from '../firebase/config';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+import { auth } from '../firebase/config';
+
 import { onAuthStateChanged } from 'firebase/auth';
 import { courseRepository } from '@/features/courses/data/courseRepository';
 import { userRepository } from '@/features/users/data/userRepository';
@@ -48,9 +49,9 @@ const MyCourses = () => {
             }
 
             // 4. Fetch Global Settings for Sidebar
-            const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
-            if (settingsSnap.exists()) {
-              setGlobalSettings(settingsSnap.data());
+            const settingsSnap = await siteSettingsRepository.getGlobal();
+            if (settingsSnap) {
+              setGlobalSettings(settingsSnap);
             }
           } catch (error) {
             console.error("Dashboard Error:", error);

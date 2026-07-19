@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { useEffect, useState } from 'react';
-import { collection, getDocs, query, orderBy, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, } from 'firebase/firestore';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { db } from '@/firebase/config';
 import { courseRepository } from '@/features/courses/data/courseRepository';
 import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
@@ -73,8 +74,8 @@ const PremiumSection = () => {
         const courses = await courseRepository.listCourses();
         setCourses(courses as Course[]);
 
-        const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
-        if (settingsSnap.exists()) setGlobalSettings(settingsSnap.data());
+        const settingsSnap = await siteSettingsRepository.getGlobal();
+        if (settingsSnap) setGlobalSettings(settingsSnap);
       } catch (error) {
         console.error("Error fetching data:", error);
       }
