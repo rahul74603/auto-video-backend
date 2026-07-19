@@ -1,8 +1,7 @@
 // @ts-nocheck
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, getDocs, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
-import { db } from '../../../firebase/config'; 
+import jobDraftRepository from '@/features/job-drafts/data/jobDraftRepository';
 import { Trash2, Edit3, Sparkles, Clock, RotateCw } from 'lucide-react'; 
 import toast from 'react-hot-toast'; 
 
@@ -15,9 +14,7 @@ const AdminJobDrafts = () => {
   // 1. AI Drafts को Firestore से लोड करना
   const fetchDrafts = async () => {
     try {
-      const q = query(collection(db, "job_drafts"), orderBy("createdAt", "desc"));
-      const querySnapshot = await getDocs(q);
-      const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const data = await jobDraftRepository.listDrafts('createdAt', 'desc');
       setDrafts(data);
     } catch (error) {
       console.error("Error fetching drafts:", error);
@@ -58,7 +55,7 @@ const AdminJobDrafts = () => {
   const handleDelete = async (id) => {
     if(window.confirm("क्या आप इस ड्राफ्ट को हटाना चाहते हैं?")) {
       try {
-        await deleteDoc(doc(db, "job_drafts", id));
+        await jobDraftRepository.deleteDraft(id);
         toast.success("Draft Deleted!");
         fetchDrafts();
       } catch (err) {
