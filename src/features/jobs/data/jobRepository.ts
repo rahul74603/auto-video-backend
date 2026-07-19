@@ -12,6 +12,7 @@ import {
   query,
   updateDoc,
   where,
+  type QueryConstraint,
 } from 'firebase/firestore';
 
 export type JobRecord = {
@@ -27,6 +28,21 @@ export type JobListOptions = {
 const jobsCollection = collection(db, 'jobs');
 
 export const jobRepository = {
+  async list(options: {
+    limitCount?: number;
+    orderField?: string;
+    orderFields?: { field: string; direction?: 'asc' | 'desc' }[];
+    typeNot?: string;
+  } = {}): Promise<JobRecord[]> {
+    const constraints: QueryConstraint[] = [];
+    if (options.typeNot) constraints.push(where('type', '!=', options.typeNot));
+    const fields = options.orderFields || (options.orderField ? [{ field: options.orderField }] : []);
+    fields.forEach(({ field, direction = 'desc' }) => constraints.push(orderBy(field, direction)));
+    if (options.limitCount) constraints.push(limit(options.limitCount));
+    const snapshot = await getDocs(query(jobsCollection, ...constraints));
+    return snapshot.docs.map((job) => ({ id: job.id, ...job.data() }));
+  },
+
   async getBySlug(slug: string): Promise<JobRecord | null> {
     const snapshot = await getDocs(
       query(jobsCollection, where('slug', '==', slug), limit(1))

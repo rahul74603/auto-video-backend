@@ -3,6 +3,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { examCategories } from '@/data/jobs';
 import { db } from '@/firebase/config';
 import { collection, getDocs } from 'firebase/firestore';
+import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { motion } from 'framer-motion';
 import {
   ArrowRight, Briefcase,
@@ -29,14 +30,14 @@ const ExamCategories: React.FC = () => {
   useEffect(() => {
     const fetchJobCounts = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, "jobs"));
+        const jobs = await jobRepository.list();
         const newCounts: Record<string, number> = {};
         let total = 0;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
+        jobs.forEach((job) => {
+          const data = job;
           const jobDate = new Date(data.lastDate);
           
           if (jobDate >= today) {

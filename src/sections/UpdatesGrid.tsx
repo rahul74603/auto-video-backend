@@ -1,7 +1,6 @@
 // @ts-nocheck
 import { useEffect, useState } from 'react';
-import { db } from '../firebase/config';
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { ArrowRight, Loader2, Zap, FileText, CheckCircle, BookOpen, Briefcase, Award } from 'lucide-react';
 
 interface UpdateItem {
@@ -27,8 +26,7 @@ const UpdatesGrid = () => {
     const fetchUpdates = async () => {
       try {
         // Firebase se latest 50 items layenge taaki sab categories bhar sakein
-        const q = query(collection(db, "jobs"), orderBy("updatedAt", "desc"), limit(60));
-        const querySnapshot = await getDocs(q);
+        const jobs = await jobRepository.list({ orderField: "updatedAt", limitCount: 60 });
         
         const rawResults: UpdateItem[] = [];
         const rawAdmitCards: UpdateItem[] = [];
@@ -37,9 +35,9 @@ const UpdatesGrid = () => {
         const rawSyllabus: UpdateItem[] = [];
         const rawLiveUpdates: UpdateItem[] = [];
 
-        querySnapshot.forEach((doc) => {
-          const data = doc.data() as UpdateItem;
-          const item = { ...data, id: doc.id };
+        jobs.forEach((job) => {
+          const data = job as UpdateItem;
+          const item = { ...data, id: job.id };
           
           // 🧠 SMART SORTING BASED ON 'TYPE' (Jo Admin Panel se aa raha hai)
           switch (data.type) {

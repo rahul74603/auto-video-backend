@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db } from '../firebase/config';
-import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
+import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { 
   Briefcase, Search, MapPin, Calendar, ExternalLink 
 } from 'lucide-react';
@@ -30,15 +29,14 @@ const StudentCourseContent = () => {
   useEffect(() => {
     const fetchContent = async () => {
       try {
-        const q = query(
-            collection(db, "jobs"), 
-            where("type", "!=", "AFFILIATE"),
-            orderBy("type"),
-            orderBy("createdAt", "desc")
-        );
-        const s = await getDocs(q);
-        const data = s.docs.map(d => ({ id: d.id, ...d.data() } as ContentItem));
-        setContent(data);
+        const data = await jobRepository.list({
+            typeNot: "AFFILIATE",
+            orderFields: [
+                { field: "type", direction: "asc" },
+                { field: "createdAt", direction: "desc" }
+            ]
+        });
+        setContent(data as unknown as ContentItem[]);
       } catch (err) {
         console.log("Error fetching content", err);
       } finally {
