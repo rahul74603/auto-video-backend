@@ -1,8 +1,6 @@
 // @ts-nocheck
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { db } from '../firebase/config';
-import { doc, getDoc } from 'firebase/firestore';
 import { useBlog } from '@/features/blogs/hooks/useBlog';
 import { blogRepository } from '@/features/blogs/data/blogRepository';
 import {
@@ -13,6 +11,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SEO from '../components/SEO';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 
 // =========================================================
 // 🛠️ HELPERS
@@ -190,11 +189,9 @@ const BlogPost = () => {
         setDocId(loadedBlog.id);
         blogRepository.incrementViews(loadedBlog.id).catch(() => { /* silent */ });
 
-        getDoc(doc(db, 'site_settings', 'global')).then((settingsSnap) => {
+        siteSettingsRepository.getGlobal().then((settingsSnap) => {
             setGlobalSettings(
-                settingsSnap.exists()
-                    ? settingsSnap.data()
-                    : getDefaultSettings()
+                settingsSnap || getDefaultSettings()
             );
         }).catch(() => setGlobalSettings(getDefaultSettings()));
 

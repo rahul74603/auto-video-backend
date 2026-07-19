@@ -1,8 +1,6 @@
 // @ts-nocheck
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
 import { useMaterial } from '@/features/materials/hooks/useMaterial';
 import { 
   FileText, Download, ArrowLeft, Info, Sparkles, 
@@ -10,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 
 const MaterialDetails = () => {
   const { id } = useParams();
@@ -22,9 +21,9 @@ const MaterialDetails = () => {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
-        if (settingsSnap.exists()) {
-          setGlobalSettings(settingsSnap.data());
+        const settingsSnap = await siteSettingsRepository.getGlobal();
+        if (settingsSnap) {
+          setGlobalSettings(settingsSnap);
         } else {
           setGlobalSettings({ relatedBlogs: [], sidebarLinks: [], mrpPrice: "499", discountPercent: "85" });
         }

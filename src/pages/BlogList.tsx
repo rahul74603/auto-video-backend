@@ -1,11 +1,10 @@
 // @ts-nocheck
 import SEO from '../components/SEO';
 import { useEffect, useState } from 'react';
-import { db } from '../firebase/config';
-import { doc, getDoc } from 'firebase/firestore';
 import { useBlogs } from '@/features/blogs/hooks/useBlogs';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Sparkles, Clock, Flame, Tag, ExternalLink, ShoppingCart } from 'lucide-react';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 const BlogList = () => {
   const { blogs, loading: blogsLoading } = useBlogs();
   const [globalSettings, setGlobalSettings] = useState<any>(null);
@@ -15,8 +14,8 @@ const BlogList = () => {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
-        if (settingsSnap.exists()) setGlobalSettings(settingsSnap.data());
+        const settingsSnap = await siteSettingsRepository.getGlobal();
+        if (settingsSnap) setGlobalSettings(settingsSnap);
       } catch (error) {
         console.error("Error loading data:", error);
       } finally {

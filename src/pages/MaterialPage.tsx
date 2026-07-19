@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import ShareButtons from '../components/ShareButtons';
 import { useNavigate } from 'react-router-dom';
 import SEO from '../components/SEO'; 
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 
 interface Category { id: string; name: string; parentId: string; }
 interface Material { id: string; title: string; applyLink: string; category: string; fileSize?: string; updatedAt?: string; }
@@ -64,8 +65,8 @@ const StudyMaterials: React.FC = () => {
         fetchedMats.sort((a, b) => (b.updatedAt ? new Date(b.updatedAt).getTime() : 0) - (a.updatedAt ? new Date(a.updatedAt).getTime() : 0));
         setMaterials(fetchedMats);
 
-        const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
-        if (settingsSnap.exists()) setGlobalSettings(settingsSnap.data());
+        const settingsSnap = await siteSettingsRepository.getGlobal();
+        if (settingsSnap) setGlobalSettings(settingsSnap);
       } catch (error) { console.error(error); } finally { setLoading(false); }
     };
     fetchData();
