@@ -1,11 +1,10 @@
 // @ts-nocheck
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-    collection, doc, getDoc, getDocs,
-    query, where, limit, updateDoc, increment
-} from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { useJob } from '@/features/jobs/hooks/useJob';
+import { jobRepository } from '@/features/jobs/data/jobRepository';
 import {
     Briefcase, Calendar, MapPin, Banknote, Clock,
     Download, ExternalLink, ArrowLeft, Share2,
@@ -69,6 +68,19 @@ const FileSearch = ({ className, size = 24 }) => (
     </svg>
 );
 
+function getDefaultSettings() {
+    return {
+        jobUpdates: [],
+        relatedBlogs: [],
+        premiumBoxTitle: "Premium Study Notes",
+        premiumBoxDesc: "100% सफलता के लिए Expert Notes।",
+        bottomBarText: "📢 Premium Notes: पिछले 10 साल के रिपीटेड सवाल",
+        premiumPrice: "69",
+        mrpPrice: "499",
+        discountPercent: "85"
+    };
+}
+
 // =========================================================
 // 🚀 MAIN COMPONENT
 // =========================================================
@@ -83,92 +95,34 @@ const JobDetails = () => {
     const [docId, setDocId] = useState(null);
     const [copied, setCopied] = useState(false);
 
-    // =========================================================
-    // 📡 FETCH - Slug + ID दोनों handle
-    // =========================================================
+    const { job: loadedJob, loading: jobLoading, error: jobError } = useJob(id);
+
     useEffect(() => {
-        const loadData = async () => {
-            if (!id) { setNotFound(true); setLoading(false); return; }
+        if (!loadedJob?.id) return;
 
-            try {
-                setLoading(true);
-                let jobData = null;
-                let foundDocId = null;
+        setJob(loadedJob);
+        setDocId(loadedJob.id);
 
-                // ✅ Step 1: Slug से ढूंढो
-                try {
-                    const slugQuery = query(
-                        collection(db, "jobs"),
-                        where("slug", "==", id),
-                        limit(1)
-                    );
-                    const slugSnap = await getDocs(slugQuery);
-                    if (!slugSnap.empty) {
-                        jobData = { id: slugSnap.docs[0].id, ...slugSnap.docs[0].data() };
-                        foundDocId = slugSnap.docs[0].id;
-                    }
-                } catch (e) {
-                    console.warn("Slug query:", e.message);
-                }
+        jobRepository.incrementViews(loadedJob.id).catch(() => { /* Silent fail */ });
 
-                // ✅ Step 2: Doc ID fallback
-                if (!jobData) {
-                    const snap = await getDoc(doc(db, "jobs", id));
-                    if (snap.exists()) {
-                        jobData = { id: snap.id, ...snap.data() };
-                        foundDocId = snap.id;
-                    }
-                }
+        getDoc(doc(db, "site_settings", "global")).then((settingsSnap) => {
+            setGlobalSettings(
+                settingsSnap.exists()
+                    ? settingsSnap.data()
+                    : getDefaultSettings()
+            );
+        }).catch(() => setGlobalSettings(getDefaultSettings()));
+    }, [loadedJob]);
 
-                if (!jobData) {
-                    setNotFound(true);
-                    return;
-                }
+    useEffect(() => {
+        if (jobError) setNotFound(true);
+    }, [jobError]);
 
-                setJob(jobData);
-                setDocId(foundDocId);
-
-                // ✅ View Count
-                try {
-                    await updateDoc(doc(db, "jobs", foundDocId), {
-                        views: increment(1)
-                    });
-                } catch { /* Silent fail */ }
-
-                // ✅ Global Settings
-                const settingsSnap = await getDoc(
-                    doc(db, "site_settings", "global")
-                );
-                setGlobalSettings(
-                    settingsSnap.exists()
-                        ? settingsSnap.data()
-                        : getDefaultSettings()
-                );
-
-            } catch (err) {
-                console.error("Error:", err);
-                setNotFound(true);
-            } finally {
-                setLoading(false);
-                window.scrollTo(0, 0);
-            }
-        };
-
-        loadData();
-    }, [id]);
-
-    function getDefaultSettings() {
-        return {
-            jobUpdates: [],
-            relatedBlogs: [],
-            premiumBoxTitle: "Premium Study Notes",
-            premiumBoxDesc: "100% सफलता के लिए Expert Notes।",
-            bottomBarText: "📢 Premium Notes: पिछले 10 साल के रिपीटेड सवाल",
-            premiumPrice: "69",
-            mrpPrice: "499",
-            discountPercent: "85"
-        };
-    }
+    useEffect(() => {
+        setLoading(jobLoading);
+        if (!id) setNotFound(true);
+        window.scrollTo(0, 0);
+    }, [id, jobLoading]);
 
     // =========================================================
     // 📤 SHARE

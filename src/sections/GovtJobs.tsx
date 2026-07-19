@@ -10,12 +10,9 @@ import {
     ExternalLink, ShoppingCart, Filter
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
-import {
-    collection, getDocs, query, doc,
-    getDoc, orderBy, limit, where,
-    startAfter, getCountFromServer
-} from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase/config';
+import { jobRepository } from '@/features/jobs/data/jobRepository';
 import SEO from '../components/SEO';
 
 // =========================================================
@@ -304,11 +301,7 @@ const GovtJobs = () => {
 
                 // ✅ Parallel fetch - dono ek saath
                 const [jobsResult, settingsResult] = await Promise.allSettled([
-                    getDocs(query(
-                        collection(db, "jobs"),
-                        orderBy("createdAt", "desc"),
-                        limit(150)
-                    )),
+                    jobRepository.listLatest({ limitCount: 150 }),
                     getDoc(doc(db, "site_settings", "global"))
                 ]);
 

@@ -1,11 +1,11 @@
 import { db, storage } from './config';
+import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { 
   collection, 
   addDoc, 
   getDocs, 
   doc, 
   updateDoc, 
-  deleteDoc, 
   query, 
   where, 
   orderBy,
@@ -98,34 +98,26 @@ export interface Address {
 // Jobs Services
 export const jobServices = {
   async addJob(job: Omit<Job, 'id'>): Promise<string> {
-    const docRef = await addDoc(collection(db, 'jobs'), {
+    return jobRepository.add({
       ...job,
       postedDate: new Date().toISOString()
     });
-    return docRef.id;
   },
 
   async getJobs(category?: string): Promise<Job[]> {
-    let q = query(collection(db, 'jobs'), orderBy('postedDate', 'desc'));
-    if (category) {
-      q = query(q, where('category', '==', category));
-    }
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
+    return jobRepository.listLatest({ category }) as unknown as Promise<Job[]>;
   },
 
   async getJobById(id: string): Promise<Job | null> {
-    const docRef = doc(db, 'jobs', id);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as Job : null;
+    return jobRepository.getById(id) as Promise<Job | null>;
   },
 
   async updateJob(id: string, job: Partial<Job>): Promise<void> {
-    await updateDoc(doc(db, 'jobs', id), job);
+    await jobRepository.update(id, job);
   },
 
   async deleteJob(id: string): Promise<void> {
-    await deleteDoc(doc(db, 'jobs', id));
+    await jobRepository.remove(id);
   }
 };
 
