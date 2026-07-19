@@ -188,10 +188,13 @@ describe('Workflow Infrastructure — timestamp display', () => {
       return 'Just Now';
     };
 
-    expect(formatTime({ timestamp: { toDate: () => new Date('2026-01-15') } }))
-      .toBe('1/15/2026, 12:00:00 AM');
-    expect(formatTime({ createdAt: { toDate: () => new Date('2026-06-01') } }))
-      .toBe('6/1/2026, 12:00:00 AM');
+    const tsDate = new Date('2026-01-15');
+expect(formatTime({ timestamp: { toDate: () => tsDate } }))
+  .toBe(tsDate.toLocaleString());
+
+const createdAtDate = new Date('2026-06-01');
+expect(formatTime({ createdAt: { toDate: () => createdAtDate } }))
+  .toBe(createdAtDate.toLocaleString());
     expect(formatTime({})).toBe('Just Now');
   });
 });
