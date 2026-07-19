@@ -32,9 +32,13 @@ export const jobRepository = {
     limitCount?: number;
     orderField?: string;
     orderFields?: { field: string; direction?: 'asc' | 'desc' }[];
+    category?: string;
+    type?: string;
     typeNot?: string;
   } = {}): Promise<JobRecord[]> {
     const constraints: QueryConstraint[] = [];
+    if (options.type) constraints.push(where('type', '==', options.type));
+    if (options.category) constraints.push(where('category', '==', options.category));
     if (options.typeNot) constraints.push(where('type', '!=', options.typeNot));
     const fields = options.orderFields || (options.orderField ? [{ field: options.orderField }] : []);
     fields.forEach(({ field, direction = 'desc' }) => constraints.push(orderBy(field, direction)));

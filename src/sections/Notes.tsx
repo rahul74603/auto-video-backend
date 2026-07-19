@@ -4,7 +4,9 @@ import { motion } from 'framer-motion';
 import { BookOpen, Download, ShoppingCart, Info, Sparkles, Tag, ExternalLink, Flame, ArrowRight } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { db } from '../firebase/config'; 
-import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
+import { jobRepository } from '@/features/jobs/data/jobRepository';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import ShareButtons from '../components/ShareButtons'; 
 import { useNavigate } from 'react-router-dom';
 import SEO from '../components/SEO'; 
@@ -32,8 +34,8 @@ const Notes: React.FC = () => {
         
         // 1. Settings Check (Sidebar & Controls)
         try {
-            const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
-            if (settingsSnap.exists()) setGlobalSettings(settingsSnap.data());
+            const settingsSnap = await siteSettingsRepository.getGlobal();
+            if (settingsSnap) setGlobalSettings(settingsSnap);
 
             const configRef = doc(db, "siteSettings", "controls"); 
             const configSnap = await getDoc(configRef);
@@ -45,16 +47,11 @@ const Notes: React.FC = () => {
         }
 
         // 2. DATA FETCHING
-        const q = query(
-            collection(db, "jobs"), 
-            where("type", "==", "AFFILIATE")
-        );
-
-        const querySnapshot = await getDocs(q);
-        const fetchedNotes: AffiliateItem[] = [];
-        querySnapshot.forEach((doc) => {
-          fetchedNotes.push({ id: doc.id, ...doc.data() } as AffiliateItem);
-        });
+        const affiliateJobs = await jobRepository.list({ type: "AFFILIATE" });
+        const fetchedNotes: AffiliateItem[] = affiliateJobs.map((job) => ({
+          id: job.id,
+          ...job
+        } as AffiliateItem));
         
         setNotes(fetchedNotes);
       } catch (error) {

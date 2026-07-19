@@ -1,8 +1,8 @@
 // @ts-nocheck
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { jobRepository } from '@/features/jobs/data/jobRepository';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { 
   BookOpen, Download, ShoppingCart, ArrowLeft, FileText, 
   Sparkles, Tag, ExternalLink, Flame, ArrowRight, Star, ShieldCheck, Zap, CheckCircle
@@ -23,19 +23,17 @@ const EbookDetails = () => {
       try {
         setLoading(true);
         // 1. Fetch Ebook/Affiliate Data (From jobs collection)
-        const docRef = doc(db, "jobs", id);
-        const docSnap = await getDoc(docRef);
+        const ebookData = await jobRepository.getById(id);
         
-        if (docSnap.exists()) {
-          const ebookData = docSnap.data();
+        if (ebookData) {
           setEbook(ebookData);
           // document.title यहाँ से हटा दिया गया है क्योंकि अब SEO कम्पोनेंट यह काम करेगा
         }
 
         // 2. Fetch Global Settings for Sidebar
-        const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
-        if (settingsSnap.exists()) {
-          setGlobalSettings(settingsSnap.data());
+        const settingsSnap = await siteSettingsRepository.getGlobal();
+        if (settingsSnap) {
+          setGlobalSettings(settingsSnap);
         } else {
           setGlobalSettings({
             relatedBlogs: [],

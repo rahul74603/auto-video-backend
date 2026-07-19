@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { materialRepository } from '@/features/materials/data/materialRepository';
 import { db } from '../firebase/config'; 
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,6 +10,7 @@ import ShareButtons from '../components/ShareButtons';
 import { useNavigate } from 'react-router-dom';
 import SEO from '../components/SEO'; 
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+import { jobRepository } from '@/features/jobs/data/jobRepository';
 
 interface Category { id: string; name: string; parentId: string; }
 interface Material { id: string; title: string; applyLink: string; category: string; fileSize?: string; updatedAt?: string; }
@@ -51,14 +52,13 @@ const StudyMaterials: React.FC = () => {
         catSnap.forEach(doc => fetchedCats.push({ id: doc.id, ...doc.data() } as Category));
         setCategories(fetchedCats);
 
-        const q1 = query(collection(db, "jobs"), where("category", "==", currentFolderId));
-        const [snap1, materialResults] = await Promise.all([getDocs(q1), materialRepository.listByCategory(currentFolderId)]);
+        const [jobResults, materialResults] = await Promise.all([jobRepository.list({ category: currentFolderId }), materialRepository.listByCategory(currentFolderId)]);
 
         const fetchedMats: Material[] = [];
-        snap1.forEach(doc => {
-            const data = doc.data();
-            if (data.type !== 'MATERIAL') return; 
-            fetchedMats.push({ id: doc.id, ...data } as Material);
+        jobResults.forEach(job => {
+            const data = job;
+            if (data.type !== 'MATERIAL') return;
+            fetchedMats.push({ id: job.id, ...data } as Material);
         });
         materialResults.forEach(material => { fetchedMats.push(material as Material); });
 
