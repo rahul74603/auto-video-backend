@@ -2,15 +2,14 @@ import { db } from './config';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { materialRepository } from '@/features/materials/data/materialRepository';
 import { productRepository } from '@/features/products/data/productRepository';
+import { orderRepository } from '@/features/orders/data/orderRepository';
 import { 
   collection, 
-  addDoc, 
   getDocs, 
   doc, 
   updateDoc, 
   query, 
   where, 
-  orderBy,
   Timestamp,
   getDoc,
   setDoc
@@ -171,25 +170,15 @@ export const productServices = {
 // Order Services
 export const orderServices = {
   async createOrder(order: Omit<Order, 'id' | 'createdAt'>): Promise<string> {
-    const docRef = await addDoc(collection(db, 'orders'), {
-      ...order,
-      createdAt: Timestamp.now()
-    });
-    return docRef.id;
+    return orderRepository.createOrder(order as unknown as Record<string, unknown>);
   },
 
   async getUserOrders(userId: string): Promise<Order[]> {
-    const q = query(
-      collection(db, 'orders'),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+    return orderRepository.listByUser(userId) as unknown as Promise<Order[]>;
   },
 
   async updateOrderStatus(orderId: string, status: Order['status']): Promise<void> {
-    await updateDoc(doc(db, 'orders', orderId), { status });
+    await orderRepository.updateStatus(orderId, status);
   }
 };
 

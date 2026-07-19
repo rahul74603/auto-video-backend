@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react';
 import { auth, db } from '../firebase/config';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, query, where, getDocs } from 'firebase/firestore'; 
+import { collection, query, getDocs } from 'firebase/firestore';
+import { orderRepository } from '@/features/orders/data/orderRepository';
 import { BookOpen, LogOut, Download, PlayCircle, Lock, ChevronRight, Crown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
@@ -29,17 +30,10 @@ const StudentDashboard = () => {
   const fetchMyCourses = async (email: string | null) => {
     if (!email) return;
     try {
-      const q = query(
-        collection(db, "orders"), 
-        where("customerEmail", "==", email), 
-        where("status", "==", "completed")   
-      );
-      
-      const snapshot = await getDocs(q);
+      const orders = await orderRepository.listByCustomerEmail(email, 'completed');
       
       let courses: any[] = [];
-      snapshot.forEach(doc => {
-        const orderData = doc.data();
+      orders.forEach(orderData => {
         if(orderData.items) {
             orderData.items.forEach((item: any) => {
                 if(item.product) courses.push(item.product);

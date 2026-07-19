@@ -6,6 +6,7 @@ import { db, auth } from '../firebase/config';
 import { useNavigate } from 'react-router-dom';
 import { Crown, ArrowRight, Loader2, Sparkles, Tag, Zap, ExternalLink, FileText, Lock, BookOpen, ShoppingCart } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
+import { orderRepository } from '@/features/orders/data/orderRepository';
 
 // 🔥 Included Files List (PC पर डिटेल दिखाने के लिए)
 const CourseFilesList = ({ courseId }: { courseId: string }) => {
@@ -81,9 +82,8 @@ const Shop: React.FC = () => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          const q = query(collection(db, "orders"), where("userId", "==", user.uid));
-          const snap = await getDocs(q);
-          setPurchasedCourseIds(snap.docs.map(doc => doc.data().courseId));
+          const orders = await orderRepository.listByUser(user.uid);
+          setPurchasedCourseIds(orders.map(order => order.courseId));
         } catch (err) {
           console.error("Orders Fetch Error:", err);
         }
