@@ -4,8 +4,10 @@ import {
     ArrowLeft, FolderPlus, UploadCloud, Folder, Eye, Trash2, 
     FileText, FilePenLine, Edit, X, ShieldCheck, AlignLeft, Save 
 } from 'lucide-react';
-import { db, storage } from '../../../firebase/config';
-import { collection, addDoc, getDocs, query, where, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { storage } from '../../../firebase/config';
+import { jobRepository } from '@/features/jobs/data/jobRepository';
+import { materialRepository } from '@/features/materials/data/materialRepository';
+import { categoryRepository } from '@/features/categories/data/categoryRepository';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 const AdminFoldersTab = () => {
@@ -37,8 +39,8 @@ const AdminFoldersTab = () => {
     useEffect(() => { if (currentFolderId !== 'root') fetchFolderFiles(); }, [currentFolderId]);
 
     const fetchCategories = async () => {
-        const s = await getDocs(collection(db, "categories"));
-        setCategories(s.docs.map(d => ({ id: d.id, ...d.data() })));
+        const categories = await categoryRepository.listCategories();
+        setCategories(categories);
     };
 
     const fetchFolderFiles = async () => {
@@ -150,13 +152,13 @@ const AdminFoldersTab = () => {
                         fileSize: formatFileSize(file.size), storagePath: customPath,
                         type: 'MATERIAL', updatedAt: new Date().toISOString(), createdAt: new Date().toISOString()
                     };
-                    const docRef = await addDoc(collection(db, "jobs"), payload);
+                    const docId = await jobRepository.add(payload);
                     if (!firstId) firstId = docRef.id;
                 }
                 if (firstId) sendTelegramAlert(formData, firstId);
                 alert("All files uploaded!");
             } else if (editingId) {
-                await updateDoc(doc(db, "jobs", editingId), { ...formData, updatedAt: new Date().toISOString() });
+                await jobRepository.update(editingId, { ...formData, updatedAt: new Date().toISOString() });
                 alert("Updated!");
             }
             setShowUploadForm(false);
@@ -193,7 +195,7 @@ const AdminFoldersTab = () => {
                         {categories.filter(c => c.parentId === currentFolderId).map(f => (
                             <div key={f.id} className="flex justify-between items-center bg-gray-50 border p-4 rounded-2xl hover:shadow-md cursor-pointer group" onClick={() => enterFolder(f)}>
                                 <span className="font-bold flex items-center gap-2 text-gray-700 group-hover:text-blue-600 truncate"><Folder size={20} className="text-yellow-500" /> {f.name}</span>
-                                <button onClick={(e) => { e.stopPropagation(); if(confirm("Delete folder?")) deleteDoc(doc(db, "categories", f.id)).then(fetchCategories); }} className="text-red-300 hover:text-red-500"><Trash2 size={18} /></button>
+                                <button onClick={(e) => { e.stopPropagation(); if(confirm("Delete folder?")) categoryRepository.deleteCategory(f.id).then(fetchCategories); }} className="text-red-300 hover:text-red-500"><Trash2 size={18} /></button>
                             </div>
                         ))}
                     </div>
