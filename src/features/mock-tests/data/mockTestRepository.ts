@@ -1,5 +1,6 @@
 import { db } from '@/firebase/config';
 import {
+  addDoc,
   collection,
   doc,
   getDoc,
@@ -7,6 +8,8 @@ import {
   limit,
   orderBy,
   query,
+  updateDoc,
+  deleteDoc,
 } from 'firebase/firestore';
 
 export type MockTestRecord = {
@@ -41,6 +44,19 @@ export const mockTestRepository = {
     }
 
     return snapshot.docs.map((test) => ({ id: test.id, ...test.data() }));
+  },
+
+  async createMockTest(test: Record<string, unknown>): Promise<string> {
+    const snapshot = await addDoc(testsCollection, test);
+    return snapshot.id;
+  },
+
+  async updateMockTest(id: string, test: Record<string, unknown>): Promise<void> {
+    await updateDoc(doc(db, 'mock_tests', id), test);
+  },
+
+  async deleteMockTest(id: string): Promise<void> {
+    await deleteDoc(doc(db, 'mock_tests', id));
   },
 
   async getById(id: string): Promise<MockTestRecord | null> {
