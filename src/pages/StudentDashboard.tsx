@@ -1,8 +1,7 @@
 // @ts-nocheck
 import { useEffect, useState } from 'react';
-import { auth, db } from '../firebase/config';
+import { auth } from '../firebase/config';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, query, getDocs } from 'firebase/firestore';
 import { orderRepository } from '@/features/orders/data/orderRepository';
 import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
 import { BookOpen, LogOut, Download, PlayCircle, Lock, ChevronRight, Crown } from 'lucide-react';
