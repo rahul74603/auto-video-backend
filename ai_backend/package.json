@@ -27,5 +27,19 @@
     "sharp": "^0.34.5",
     "xml2js": "^0.6.2"
   },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "js-yaml": "^4.3.0"
+  },
+  "scripts": {
+    "test": "jest --verbose",
+    "test:watch": "jest --watch"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ]
+  },
   "private": true
 }
