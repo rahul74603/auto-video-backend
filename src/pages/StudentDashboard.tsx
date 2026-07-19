@@ -4,6 +4,7 @@ import { auth, db } from '../firebase/config';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, query, getDocs } from 'firebase/firestore';
 import { orderRepository } from '@/features/orders/data/orderRepository';
+import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
 import { BookOpen, LogOut, Download, PlayCircle, Lock, ChevronRight, Crown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
@@ -55,9 +56,8 @@ const StudentDashboard = () => {
     setSelectedCourse(course);
     // document.title यहाँ से हटा दिया गया है क्योंकि SEO कम्पोनेंट इसे संभालेगा
     
-    const q = query(collection(db, `courses/${course.id}/content`));
-    const snapshot = await getDocs(q);
-    setCourseContent(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const content = await courseContentRepository.listContent(course.id);
+    setCourseContent(content);
   };
 
   const closeCourse = () => {

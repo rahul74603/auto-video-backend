@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { collection, getDocs, query, orderBy, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase/config';
 import { courseRepository } from '@/features/courses/data/courseRepository';
+import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Crown, ArrowRight, Star, BookOpen, Sparkles, MessageCircle, FileText, Lock, Tag, ExternalLink, ShoppingCart, Flame } from 'lucide-react';
@@ -26,9 +27,8 @@ const CourseFilesList = ({ courseId }: { courseId: string }) => {
   useEffect(() => {
     const fetchFiles = async () => {
       try {
-        const q = query(collection(db, `courses/${courseId}/content`), orderBy("createdAt", "desc"));
-        const snapshot = await getDocs(q);
-        setFiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const content = await courseContentRepository.listContent(courseId, { orderByCreatedAt: true });
+        setFiles(content);
       } catch (err) {
         console.error("Error fetching files:", err);
       } finally {

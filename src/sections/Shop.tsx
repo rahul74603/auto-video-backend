@@ -8,6 +8,7 @@ import { Crown, ArrowRight, Loader2, Sparkles, Tag, Zap, ExternalLink, FileText,
 import { onAuthStateChanged } from 'firebase/auth';
 import { orderRepository } from '@/features/orders/data/orderRepository';
 import { courseRepository } from '@/features/courses/data/courseRepository';
+import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
 
 // 🔥 Included Files List (PC पर डिटेल दिखाने के लिए)
 const CourseFilesList = ({ courseId }: { courseId: string }) => {
@@ -17,9 +18,8 @@ const CourseFilesList = ({ courseId }: { courseId: string }) => {
   useEffect(() => {
     const fetchFiles = async () => {
       try {
-        const q = query(collection(db, `courses/${courseId}/content`), orderBy("createdAt", "desc"), limit(5));
-        const snapshot = await getDocs(q);
-        setFiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const content = await courseContentRepository.listContent(courseId, { orderByCreatedAt: true, limitCount: 5 });
+        setFiles(content);
       } catch (err) { 
         console.error("Files Fetch Error:", err); 
       } finally { 
