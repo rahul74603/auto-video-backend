@@ -1,25 +1,14 @@
 // @ts-nocheck
-import { useState, useEffect } from 'react';
-import { db } from '../firebase/config';
-import { collection, getDocs, query, limit } from 'firebase/firestore'; 
+
+import { useBlogs } from '@/features/blogs/hooks/useBlogs';
 import { useNavigate, Link } from 'react-router-dom';
-import { Calendar, ChevronRight, Flame, Newspaper } from 'lucide-react';
+import { Calendar, ChevronRight } from 'lucide-react';
 
 const BlogHomeSection = () => {
-  const [blogs, setBlogs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { blogs, loading } = useBlogs({ limitCount: 8 });
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const fetchBlogs = async () => {
-      try {
-        const q = query(collection(db, "blogs"), limit(8)); 
-        const snap = await getDocs(q);
-        setBlogs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      } catch (err) { console.error(err); } finally { setLoading(false); }
-    };
-    fetchBlogs();
-  }, []);
+
 
   const formatDate = (d) => d?.seconds ? new Date(d.seconds * 1000).toLocaleDateString('hi-IN') : "Update";
 
