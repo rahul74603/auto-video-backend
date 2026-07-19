@@ -1,38 +1,18 @@
 // @ts-nocheck
 import { useEffect, useState } from 'react';
-import { db } from '@/firebase/config'; 
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { useFastTracks } from '@/features/fast-track/hooks/useFastTracks';
 import { Trophy, Ticket, Key, BookOpen, ChevronRight, Sparkles, Zap, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 // ✅ यहाँ हमने Admin Panel वाला डेटा लाने के लिए Hook इम्पोर्ट कर लिया
 import { useSiteContent } from "@/hooks/useSiteContent"; 
 
 const FastTrackGrid = () => {
-  const [updates, setUpdates] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { updates, loading } = useFastTracks(40);
   
   // ✅ Admin Panel का डेटा
   const { content } = useSiteContent(); 
 
-  useEffect(() => {
-    if (!db) return;
-    const q = query(
-      collection(db, "fast_track"),
-      orderBy("createdAt", "desc"),
-      limit(40)
-    );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setUpdates(data);
-      setLoading(false);
-    }, (error) => {
-      console.error("Firestore Listen Error:", error);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
 
   const getAutoData = (cat: string) => updates.filter(u => u.category === cat);
 
