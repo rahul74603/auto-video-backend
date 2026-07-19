@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { auth } from '../firebase/config';
 import { userRepository } from '@/features/users/data/userRepository';
+import { entitlementRepository } from '@/features/entitlements/data/entitlementRepository';
 import { onAuthStateChanged } from 'firebase/auth';
 
 export const useCourseAccess = (courseId: string) => {
@@ -36,13 +37,18 @@ export const useCourseAccess = (courseId: string) => {
             const unsubscribe = userRepository.subscribeUser(user.uid, (userData) => {
 
             // रियल-टाइम लिसनर: जैसे ही एडमिन Approve करेगा, यहाँ अपने आप ताला खुल जाएगा
-                if (userData) {
-                    const purchasedKey = `purchased_${courseId}`;
-                    setHasAccess(userData.isPro === true || userData[purchasedKey] === true);
-                } else {
+                if (!userData) {
                     setHasAccess(false);
+                    setLoading(false);
+                    return;
                 }
-                setLoading(false);
+                entitlementRepository.hasPurchasedCourse(user.uid, courseId).then((hasPurchased) => {
+                    setHasAccess(userData.isPro === true || hasPurchased);
+                    setLoading(false);
+                }).catch((error) => {
+                    console.error("Entitlement Check Error:", error);
+                    setLoading(false);
+                });
             }, (error) => {
                 console.error("Access Check Error:", error);
                 setLoading(false);
