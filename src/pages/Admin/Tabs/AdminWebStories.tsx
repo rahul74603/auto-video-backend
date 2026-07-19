@@ -1,7 +1,5 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { db } from '../../../firebase/config';
-import { collection, addDoc, query, orderBy } from 'firebase/firestore';
 import { mockTestRepository } from '@/features/mock-tests/data/mockTestRepository';
 import { blogRepository } from '@/features/blogs/data/blogRepository';
 import { storyRepository } from '@/features/stories/data/storyRepository';
@@ -103,7 +101,7 @@ const AdminWebStories = () => {
                 publisher: 'StudyGyaan',
                 publisherLogo: 'https://studygyaan.in/logo.png',
             };
-            await addDoc(collection(db, "web_stories"), payload);
+            await storyRepository.createStory(payload);
             alert("✅ Web Story Live! Google Discover ready.");
             setShowForm(false);
             fetchStories();

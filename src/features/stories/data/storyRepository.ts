@@ -1,5 +1,6 @@
 import { db } from '@/firebase/config';
 import {
+  addDoc,
   collection,
   doc,
   getDoc,
@@ -29,6 +30,11 @@ export const storyRepository = {
     ];
     const snapshot = await getDocs(query(storiesCollection, ...constraints));
     return snapshot.docs.map((story) => ({ id: story.id, ...story.data() }));
+  },
+
+  async createStory(story: Record<string, unknown>): Promise<string> {
+    const snapshot = await addDoc(storiesCollection, story);
+    return snapshot.id;
   },
 
   async getBySlug(slug: string): Promise<StoryRecord | null> {
