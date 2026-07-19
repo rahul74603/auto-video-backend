@@ -120,7 +120,7 @@ const ExamCategories: React.FC = () => {
           {finalList.map((category: any) => {
             const Icon = iconMap[category.icon] || FileText;
             const isFeatured = category.id === 'all';
-            let realCount = category.id === 'all' ? totalJobs : (counts[category.id] || 0);
+            const realCount = category.id === 'all' ? totalJobs : (counts[category.id] || 0);
             let bgGradient = category.color;
             if (['civil-services', 'upsc'].includes(category.id)) bgGradient = 'from-orange-500 to-red-600';
 

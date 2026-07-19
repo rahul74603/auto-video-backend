@@ -48,7 +48,7 @@ const AdminStorageTab = () => {
     const runUltimateScan = async () => {
         setLoading(true);
         setStatus("System Scanning... डेटा का विश्लेषण हो रहा है।");
-        let masterList = [];
+        const masterList = [];
 
         try {
             const dbTargets = [

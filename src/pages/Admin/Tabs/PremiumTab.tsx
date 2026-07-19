@@ -51,7 +51,7 @@ const PremiumTab = () => {
     try {
         const q = query(collection(db, "courses")); 
         const snapshot = await getDocs(q);
-        let fetchedCourses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
+        const fetchedCourses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
         
         fetchedCourses.sort((a, b) => {
             const indexA = a.orderIndex ?? 999;
@@ -101,7 +101,7 @@ const PremiumTab = () => {
     const q = query(collection(db, `courses/${courseId}/content`));
     const snapshot = await getDocs(q);
     
-    let content = snapshot.docs.map(doc => {
+    const content = snapshot.docs.map(doc => {
         const data = doc.data();
         const titleMatch = (data.seoTitle || data.title || "").match(/set\s*(\d+)/i);
         const titleNum = titleMatch ? parseInt(titleMatch[1], 10) : null;

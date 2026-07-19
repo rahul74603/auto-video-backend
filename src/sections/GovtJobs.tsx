@@ -52,14 +52,11 @@ const LINK_GRADIENTS = [
 // =========================================================
 // 🛠️ HELPERS
 // =========================================================
-
-// ✅ FIXED: Sahi date parsing - sabhi formats handle karta hai
 function checkIsExpired(lastDateStr) {
     if (!lastDateStr) return false;
 
     const lower = String(lastDateStr).trim().toLowerCase();
 
-    // Ye words hain to expired nahi
     if (
         lower === 'soon' ||
         lower === 'not specified' ||
@@ -72,16 +69,16 @@ function checkIsExpired(lastDateStr) {
     try {
         let parsedDate = null;
 
-        // Format 1: DD/MM/YYYY ya DD-MM-YYYY (Indian format)
+        // Format 1: DD/MM/YYYY ya DD-MM-YYYY
         const indianFormat = lastDateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
         if (indianFormat) {
             const day = parseInt(indianFormat[1], 10);
-            const month = parseInt(indianFormat[2], 10) - 1; // 0-indexed
+            const month = parseInt(indianFormat[2], 10) - 1;
             const year = parseInt(indianFormat[3], 10);
             parsedDate = new Date(year, month, day);
         }
 
-        // Format 2: YYYY-MM-DD (ISO format - admin se aata hai)
+        // Format 2: YYYY-MM-DD
         if (!parsedDate) {
             const isoFormat = lastDateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
             if (isoFormat) {
@@ -92,7 +89,7 @@ function checkIsExpired(lastDateStr) {
             }
         }
 
-        // Format 3: "June 30, 2026" ya "30 June 2026" (English text)
+        // Format 3: "June 30, 2026"
         if (!parsedDate) {
             const textDate = new Date(lastDateStr);
             if (!isNaN(textDate.getTime())) {
@@ -100,7 +97,6 @@ function checkIsExpired(lastDateStr) {
             }
         }
 
-        // Koi bhi format match nahi hua
         if (!parsedDate || isNaN(parsedDate.getTime())) return false;
 
         const today = new Date();
@@ -114,7 +110,6 @@ function checkIsExpired(lastDateStr) {
     }
 }
 
-// ✅ External URLs ko redirect ke through bhejo
 function safeExternalUrl(url) {
     if (!url || url === '#') return '#';
     if (url.startsWith('http') && !url.includes('studygyaan.in')) {
@@ -124,7 +119,7 @@ function safeExternalUrl(url) {
 }
 
 // =========================================================
-// 🃏 JOB CARD COMPONENT (Memoized)
+// 🃏 JOB CARD COMPONENT
 // =========================================================
 const JobCard = React.memo(({ job, onWhatsAppShare }) => {
     const isExpired = job.isExpired;
@@ -132,14 +127,11 @@ const JobCard = React.memo(({ job, onWhatsAppShare }) => {
 
     return (
         <article
-            className={`bg-white rounded-md md:rounded-xl p-2 md:p-5 border transition-shadow hover:shadow-md relative overflow-hidden ${isExpired
-                ? 'border-red-100 opacity-75'
-                : 'border-gray-100'
-                }`}
+            className={`bg-white rounded-md md:rounded-xl p-2 md:p-5 border transition-shadow hover:shadow-md relative overflow-hidden 
+                ${isExpired ? 'border-red-100 opacity-75' : 'border-gray-100'}`}
             itemScope
             itemType="https://schema.org/JobPosting"
         >
-            {/* Left border accent */}
             <div
                 className={`absolute left-0 top-0 bottom-0 w-1 ${isExpired ? 'bg-red-400' : 'bg-blue-600'}`}
                 aria-hidden="true"
@@ -149,8 +141,6 @@ const JobCard = React.memo(({ job, onWhatsAppShare }) => {
 
                 {/* Header Row */}
                 <div className="flex items-center gap-1.5 flex-wrap">
-
-                    {/* Organization ya Closed badge */}
                     {isExpired ? (
                         <span className="bg-red-50 text-red-700 text-[8px] md:text-[10px] px-2 py-0.5 rounded-full border border-red-200 font-black">
                             CLOSED
@@ -163,8 +153,6 @@ const JobCard = React.memo(({ job, onWhatsAppShare }) => {
                             {job.organization}
                         </span>
                     )}
-
-                    {/* Advt No */}
                     {job.advtNo && (
                         <span className="text-[8px] md:text-xs text-gray-400 hidden sm:flex items-center gap-0.5">
                             <FileText size={8} aria-hidden="true" />
@@ -176,15 +164,15 @@ const JobCard = React.memo(({ job, onWhatsAppShare }) => {
                 {/* Title */}
                 <a href={jobUrl} className="block group">
                     <h3
-                        className={`text-[11px] md:text-lg font-black line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors ${isExpired ? 'text-gray-400' : 'text-gray-900'
-                            }`}
+                        className={`text-[11px] md:text-lg font-black line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors 
+                            ${isExpired ? 'text-gray-400' : 'text-gray-900'}`}
                         itemProp="title"
                     >
                         {job.title}
                     </h3>
                 </a>
 
-                {/* Meta Info */}
+                {/* Meta */}
                 <div className="flex flex-wrap gap-2 text-[8px] md:text-sm text-gray-500">
                     {job.location && (
                         <span className="flex items-center gap-0.5" itemProp="jobLocation">
@@ -197,18 +185,15 @@ const JobCard = React.memo(({ job, onWhatsAppShare }) => {
                             👥 {job.vacancies} Posts
                         </span>
                     )}
-                    <span className={`flex items-center gap-0.5 font-bold ${isExpired ? 'text-red-500' : 'text-orange-600'
-                        }`}>
+                    <span className={`flex items-center gap-0.5 font-bold ${isExpired ? 'text-red-500' : 'text-orange-600'}`}>
                         <Clock size={8} className="md:w-3.5 md:h-3.5 shrink-0" aria-hidden="true" />
                         {isExpired ? 'Expired: ' : 'Last Date: '}
                         <time itemProp="validThrough">{job.lastDate}</time>
                     </span>
                 </div>
 
-                {/* Action Buttons */}
+                {/* Actions */}
                 <div className="flex items-center gap-1.5 mt-1">
-
-                    {/* WhatsApp Share */}
                     <button
                         onClick={() => onWhatsAppShare(
                             job.title,
@@ -221,7 +206,6 @@ const JobCard = React.memo(({ job, onWhatsAppShare }) => {
                         Share
                     </button>
 
-                    {/* View Details */}
                     <a
                         href={jobUrl}
                         className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 md:px-3 md:py-1.5 rounded-lg flex items-center gap-1 transition-colors text-[8px] md:text-xs font-bold"
@@ -230,7 +214,6 @@ const JobCard = React.memo(({ job, onWhatsAppShare }) => {
                         <ArrowRight size={10} className="md:w-3.5 md:h-3.5" aria-hidden="true" />
                     </a>
 
-                    {/* Apply / Expired button */}
                     {isExpired ? (
                         <span className="ml-auto bg-red-50 text-red-400 border border-red-100 px-2 py-1 md:px-3 md:py-1.5 rounded-lg text-[8px] md:text-xs font-bold cursor-not-allowed">
                             Expired
@@ -255,7 +238,7 @@ const JobCard = React.memo(({ job, onWhatsAppShare }) => {
 JobCard.displayName = 'JobCard';
 
 // =========================================================
-// 📄 SKELETON LOADER
+// 📄 SKELETON
 // =========================================================
 const JobSkeleton = () => (
     <div className="space-y-2">
@@ -281,7 +264,6 @@ const GovtJobs = () => {
     const { t } = useLanguage();
     const [isPending, startTransition] = useTransition();
 
-    // State
     const [jobs, setJobs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedCategory, setSelectedCategory] = useState('all');
@@ -291,86 +273,92 @@ const GovtJobs = () => {
     const [currentPage, setCurrentPage] = useState(1);
 
     // =========================================================
-    // 📡 DATA FETCH
-    // =========================================================
-    useEffect(() => {
-        const loadData = async () => {
-            try {
-                setLoading(true);
+// 📡 DATA FETCH - FINAL FIXED VERSION
+// =========================================================
+useEffect(() => {
+    const loadData = async () => {
+        try {
+            setLoading(true);
 
-                // ✅ Parallel fetch - dono ek saath
-                const [jobsResult, settingsResult] = await Promise.allSettled([
-                    jobRepository.listLatest({ limitCount: 150 }),
-                    siteSettingsRepository.getGlobal()
-                ]);
+            const [jobsResult, settingsResult] = await Promise.allSettled([
+                jobRepository.listLatest({ limitCount: 150 }),
+                siteSettingsRepository.getGlobal()
+            ]);
 
-                // Jobs process karo
-                if (jobsResult.status === 'fulfilled') {
-                    const fetchedJobs = [];
+            // ✅ CONFIRMED FIX: 
+            // listLatest() returns: [{id, title, org, ...}, ...]
+            // .data() NAHI karna hai
+            if (jobsResult.status === 'fulfilled') {
+                
+                const fetchedJobs = jobsResult.value
+                    .filter(job => {
+                        // ✅ null/undefined skip
+                        if (!job) return false;
+                        
+                        // ✅ type nahi hai to include karo (default JOB)
+                        if (!job.type) return true;
+                        
+                        // ✅ JOB/job type include karo
+                        const jobType = String(job.type).toUpperCase();
+                        return jobType === 'JOB';
+                    })
+                    .filter(job => job.isLive !== false) // draft skip
+                    .map(job => ({
+                        id: job.id,
+                        slug: job.slug || job.id,
+                        title: String(job.title || ''),
+                        organization: String(job.organization || ''),
+                        vacancies: String(job.vacancies || ''),
+                        location: String(job.location || 'All India'),
+                        lastDate: String(job.lastDate || ''),
+                        salary: String(job.salary || ''),
+                        applyLink: String(job.applyLink || ''),
+                        category: String(job.category || 'other').toLowerCase(),
+                        advtNo: String(job.advtNo || ''),
+                        isExpired: checkIsExpired(String(job.lastDate || '')),
+                        createdAt: job.createdAt || null
+                    }));
 
-                    jobsResult.value.forEach(docSnap => {
-                        const data = docSnap.data();
+                // Active pehle, expired baad mein
+                fetchedJobs.sort((a, b) => {
+                    if (a.isExpired !== b.isExpired) {
+                        return a.isExpired ? 1 : -1;
+                    }
+                    return 0;
+                });
 
-                        // Sirf JOB type lo, AFFILIATE nahi
-                        if (
-                            data.type &&
-                            data.type !== 'JOB' &&
-                            data.type !== 'job'
-                        ) return;
-
-                        // Draft jobs skip karo
-                        if (data.isLive === false) return;
-
-                        fetchedJobs.push({
-                            id: docSnap.id,
-                            slug: data.slug || docSnap.id,
-                            title: data.title || '',
-                            organization: data.organization || '',
-                            vacancies: data.vacancies || '',
-                            location: data.location || 'All India',
-                            lastDate: data.lastDate || '',
-                            salary: data.salary || '',
-                            applyLink: data.applyLink || '',
-                            category: (data.category || 'other').toLowerCase(),
-                            advtNo: data.advtNo || '',
-                            // ✅ FIXED checkIsExpired use karo
-                            isExpired: checkIsExpired(data.lastDate),
-                            createdAt: data.createdAt || null
-                        });
-                    });
-
-                    // ✅ Active pehle, Expired baad mein
-                    // Same group mein server order (createdAt desc) maintain karo
-                    fetchedJobs.sort((a, b) => {
-                        if (a.isExpired !== b.isExpired) {
-                            return a.isExpired ? 1 : -1;
-                        }
-                        return 0;
-                    });
-
-                    setJobs(fetchedJobs);
-                }
-
-                // Site Settings
-                if (
-                    settingsResult.status === 'fulfilled' &&
-                    settingsResult.value.exists()
-                ) {
-                    setGlobalSettings(settingsResult.value.data());
-                }
-
-            } catch (error) {
-                console.error("Jobs fetch error:", error);
-            } finally {
-                setLoading(false);
+                setJobs(fetchedJobs);
+                console.log(`✅ ${fetchedJobs.length} jobs loaded`);
             }
-        };
 
-        loadData();
-    }, []);
+            // ✅ Settings - dono cases handle karo
+            if (settingsResult.status === 'fulfilled' && settingsResult.value) {
+                const val = settingsResult.value;
+                
+                // Case 1: Raw Firebase doc (has .exists() method)
+                if (typeof val.exists === 'function') {
+                    if (val.exists()) {
+                        setGlobalSettings(val.data());
+                    }
+                }
+                // Case 2: Already processed plain object
+                else if (typeof val === 'object' && val !== null) {
+                    setGlobalSettings(val);
+                }
+            }
+
+        } catch (error) {
+            console.error("Jobs fetch error:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    loadData();
+}, []);
 
     // =========================================================
-    // 🔍 SEARCH DEBOUNCE - 300ms
+    // 🔍 SEARCH DEBOUNCE
     // =========================================================
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -379,36 +367,32 @@ const GovtJobs = () => {
                 setCurrentPage(1);
             });
         }, 300);
-
         return () => clearTimeout(timer);
     }, [searchInput]);
 
     // =========================================================
-    // 🔢 FILTERED JOBS (Memoized)
+    // 🔢 FILTERED JOBS
     // =========================================================
     const filteredJobs = useMemo(() => {
         return jobs.filter(job => {
-
-            // Category match check
             const catMatch =
                 selectedCategory === 'all' ||
                 job.category === selectedCategory ||
                 (selectedCategory === 'state' && job.category === 'state-exams');
 
-            // Search match check
             const searchLower = searchQuery.toLowerCase();
             const searchMatch =
                 !searchQuery ||
-                job.title.toLowerCase().includes(searchLower) ||
-                job.organization.toLowerCase().includes(searchLower) ||
-                job.location.toLowerCase().includes(searchLower);
+                (job.title || '').toLowerCase().includes(searchLower) ||
+                (job.organization || '').toLowerCase().includes(searchLower) ||
+                (job.location || '').toLowerCase().includes(searchLower);
 
             return catMatch && searchMatch;
         });
     }, [jobs, selectedCategory, searchQuery]);
 
     // =========================================================
-    // 📄 PAGINATION (Memoized)
+    // 📄 PAGINATION
     // =========================================================
     const { currentJobs, totalPages } = useMemo(() => {
         const start = (currentPage - 1) * JOBS_PER_PAGE;
@@ -433,15 +417,13 @@ const GovtJobs = () => {
     // 📄 PAGE CHANGE
     // =========================================================
     const handlePageChange = useCallback((page) => {
-        startTransition(() => {
-            setCurrentPage(page);
-        });
+        startTransition(() => setCurrentPage(page));
         const section = document.getElementById('govt-jobs');
         if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, []);
 
     // =========================================================
-    // 💰 SIDEBAR COMPUTED VALUES
+    // 💰 SIDEBAR VALUES
     // =========================================================
     const sellingPrice = useMemo(() => Math.round(
         Number(globalSettings?.mrpPrice || 499) *
@@ -460,9 +442,6 @@ const GovtJobs = () => {
         [globalSettings]
     );
 
-    // =========================================================
-    // 📊 CATEGORY CHANGE
-    // =========================================================
     const handleCategoryChange = useCallback((catId) => {
         startTransition(() => {
             setSelectedCategory(catId);
@@ -484,7 +463,7 @@ const GovtJobs = () => {
 
             <div className="max-w-7xl mx-auto px-2 md:px-8">
 
-                {/* Page Header */}
+                {/* Header */}
                 <header className="text-center mb-4 md:mb-10">
                     <h2 className="text-lg md:text-4xl font-black text-gray-900 mb-1">
                         {t('jobs.title') || 'Latest Govt Jobs 2026'}
@@ -509,17 +488,17 @@ const GovtJobs = () => {
                                     key={cat.id}
                                     onClick={() => handleCategoryChange(cat.id)}
                                     aria-pressed={selectedCategory === cat.id}
-                                    className={`px-2 py-1 rounded-lg text-[8px] md:text-sm font-bold transition-all whitespace-nowrap ${selectedCategory === cat.id
-                                        ? 'bg-blue-600 text-white shadow-sm'
-                                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                                        }`}
+                                    className={`px-2 py-1 rounded-lg text-[8px] md:text-sm font-bold transition-all whitespace-nowrap 
+                                        ${selectedCategory === cat.id
+                                            ? 'bg-blue-600 text-white shadow-sm'
+                                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                                 >
                                     {cat.label}
                                 </button>
                             ))}
                         </nav>
 
-                        {/* Search Input */}
+                        {/* Search */}
                         <div className="relative w-full md:w-72 shrink-0">
                             <Search
                                 className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 md:w-4 md:h-4 text-gray-400"
@@ -537,7 +516,7 @@ const GovtJobs = () => {
                     </div>
                 </div>
 
-                {/* Search Results Count */}
+                {/* Search Count */}
                 {!loading && searchQuery && (
                     <p className="text-[9px] md:text-sm text-gray-500 font-bold mb-3">
                         "{searchQuery}" के लिए {filteredJobs.length} results
@@ -546,17 +525,14 @@ const GovtJobs = () => {
 
                 <div className="flex flex-col md:flex-row gap-4 md:gap-6 items-start">
 
-                    {/* ===================== MAIN CONTENT ===================== */}
+                    {/* ===== MAIN CONTENT ===== */}
                     <main className="w-full md:w-[65%]">
 
                         {loading ? (
                             <JobSkeleton />
                         ) : currentJobs.length === 0 ? (
                             <div className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-200">
-                                <Briefcase
-                                    className="w-10 h-10 text-gray-200 mx-auto mb-3"
-                                    aria-hidden="true"
-                                />
+                                <Briefcase className="w-10 h-10 text-gray-200 mx-auto mb-3" aria-hidden="true" />
                                 <h3 className="text-sm md:text-lg font-black text-gray-700 mb-1">
                                     कोई Job नहीं मिली
                                 </h3>
@@ -582,7 +558,6 @@ const GovtJobs = () => {
                                         aria-label="Job Listings Pages"
                                         className="mt-6 flex justify-center items-center gap-2"
                                     >
-                                        {/* Prev Button */}
                                         <button
                                             onClick={() => handlePageChange(currentPage - 1)}
                                             disabled={currentPage === 1 || isPending}
@@ -592,7 +567,6 @@ const GovtJobs = () => {
                                             <ChevronLeft size={14} />
                                         </button>
 
-                                        {/* Page Number Buttons */}
                                         {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
                                             let page;
                                             if (totalPages <= 5) {
@@ -610,17 +584,16 @@ const GovtJobs = () => {
                                                     onClick={() => handlePageChange(page)}
                                                     aria-label={`Page ${page}`}
                                                     aria-current={currentPage === page ? 'page' : undefined}
-                                                    className={`h-8 w-8 flex items-center justify-center rounded-lg text-xs font-bold transition-all ${currentPage === page
-                                                        ? 'bg-blue-600 text-white shadow-sm'
-                                                        : 'border border-gray-200 bg-white hover:bg-gray-50 text-gray-600'
-                                                        }`}
+                                                    className={`h-8 w-8 flex items-center justify-center rounded-lg text-xs font-bold transition-all 
+                                                        ${currentPage === page
+                                                            ? 'bg-blue-600 text-white shadow-sm'
+                                                            : 'border border-gray-200 bg-white hover:bg-gray-50 text-gray-600'}`}
                                                 >
                                                     {page}
                                                 </button>
                                             );
                                         })}
 
-                                        {/* Next Button */}
                                         <button
                                             onClick={() => handlePageChange(currentPage + 1)}
                                             disabled={currentPage === totalPages || isPending}
@@ -634,7 +607,7 @@ const GovtJobs = () => {
                             </div>
                         )}
 
-                        {/* Internal Links Section */}
+                        {/* Internal Links */}
                         <div className="bg-blue-50/50 p-5 md:p-8 rounded-2xl border border-blue-100 mt-6">
                             <h2 className="text-sm md:text-xl font-black text-slate-800 mb-4 flex items-center gap-2">
                                 <Search size={18} className="text-blue-600" aria-hidden="true" />
@@ -660,7 +633,7 @@ const GovtJobs = () => {
                         </div>
                     </main>
 
-                    {/* ===================== SIDEBAR ===================== */}
+                    {/* ===== SIDEBAR ===== */}
                     <aside className="w-full md:w-[35%] space-y-4 sticky top-16">
 
                         {/* Trending Blogs */}
@@ -717,8 +690,7 @@ const GovtJobs = () => {
                                                 target={item.url?.startsWith('http') ? '_blank' : '_self'}
                                                 rel={item.url?.startsWith('http')
                                                     ? 'nofollow noopener noreferrer'
-                                                    : undefined
-                                                }
+                                                    : undefined}
                                                 className={`group flex items-center justify-between p-3 rounded-xl transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 ${LINK_GRADIENTS[index % LINK_GRADIENTS.length]} text-white`}
                                             >
                                                 <div className="flex items-center gap-2 flex-1">
@@ -741,7 +713,7 @@ const GovtJobs = () => {
                             </section>
                         )}
 
-                        {/* Premium Promo Card */}
+                        {/* Premium Card */}
                         <section className="p-4 md:p-6 bg-gradient-to-br from-blue-700 via-indigo-800 to-slate-900 rounded-2xl text-white shadow-xl border-b-4 border-black/20">
                             <p className="font-black text-sm md:text-lg mb-1 italic flex items-center gap-2 text-yellow-300">
                                 <ShoppingCart size={18} aria-hidden="true" />
@@ -768,10 +740,14 @@ const GovtJobs = () => {
                                 अभी खरीदें →
                             </a>
                         </section>
-
                     </aside>
                 </div>
             </div>
+
+            <style dangerouslySetInnerHTML={{__html: `
+                .no-scrollbar::-webkit-scrollbar { display: none; }
+                .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+            `}} />
         </section>
     );
 };

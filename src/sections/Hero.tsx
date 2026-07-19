@@ -2,13 +2,14 @@
 import React from 'react';
 import {
     ExternalLink, Sparkles, BookOpen,
-    Target, Award, ChevronRight, Bell, Wrench
+    Target, Award, ChevronRight, Bell, 
+    Wrench, Zap, ArrowRight, FileText
 } from 'lucide-react';
 import { useSiteContent } from "@/hooks/useSiteContent";
 import GlobalSearch from './GlobalSearch';
 
 // =========================================================
-// 🎯 ACTION BUTTONS CONFIG
+// 🎯 ACTION BUTTONS CONFIG - Wrench hata ke E-Books lagaya
 // =========================================================
 const ACTION_BUTTONS = [
     {
@@ -39,18 +40,19 @@ const ACTION_BUTTONS = [
             subText: 'text-emerald-200/60'
         }
     },
+    // ✅ Wrench hataya - ab E-Books lagaya
     {
-        id: 'sarkari-tools',
-        href: '/tools',
-        label: 'Sarkari Tools',
-        subLabel: 'Photo, PDF, Resume',
-        icon: Wrench,
+        id: 'ebooks',
+        href: '/ebooks',
+        label: 'E-Books',
+        subLabel: 'Free Download',
+        icon: FileText,
         colors: {
-            border: 'border-cyan-500/20',
-            iconBg: 'bg-cyan-500/10 border-cyan-500/20',
-            iconText: 'text-cyan-400',
-            iconHover: 'group-hover:bg-cyan-500',
-            subText: 'text-cyan-200/60'
+            border: 'border-purple-500/20',
+            iconBg: 'bg-purple-500/10 border-purple-500/20',
+            iconText: 'text-purple-400',
+            iconHover: 'group-hover:bg-purple-500',
+            subText: 'text-purple-200/60'
         }
     }
 ];
@@ -116,6 +118,70 @@ const Hero = () => {
                 />
             </div>
 
+            {/* ✅✅✅ NEW: SHINY SARKARI TOOLS BANNER - Top Center ✅✅✅ */}
+            <div className="max-w-5xl mx-auto relative z-20 mb-6 md:mb-8">
+                <a
+                    href="/tools"
+                    aria-label="Sarkari Tools - 16+ Free Tools"
+                    className="group relative flex items-center justify-center gap-2 md:gap-3 
+                               mx-auto max-w-xl w-fit px-4 py-2.5 md:px-6 md:py-3
+                               rounded-full overflow-hidden
+                               bg-gradient-to-r from-purple-600 via-pink-500 to-orange-500
+                               shadow-[0_0_40px_rgba(236,72,153,0.5)]
+                               hover:shadow-[0_0_60px_rgba(236,72,153,0.8)]
+                               hover:scale-105 active:scale-95
+                               transition-all duration-300
+                               animate-tools-glow
+                               border-2 border-white/20"
+                >
+                    {/* Shining sweep effect */}
+                    <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent 
+                                     -translate-x-full group-hover:translate-x-full 
+                                     transition-transform duration-1000 pointer-events-none" />
+                    
+                    {/* Sparkle decorations */}
+                    <span className="absolute top-0 left-4 text-yellow-200 text-xs animate-ping opacity-70">✨</span>
+                    <span className="absolute bottom-0 right-6 text-yellow-200 text-xs animate-ping delay-700 opacity-70">✨</span>
+                    
+                    {/* Tools Icon */}
+                    <div className="relative bg-white/20 backdrop-blur-sm p-1.5 md:p-2 rounded-full 
+                                    group-hover:rotate-12 transition-transform">
+                        <Wrench 
+                            size={16} 
+                            className="text-white md:w-5 md:h-5" 
+                            aria-hidden="true"
+                        />
+                    </div>
+                    
+                    {/* Text */}
+                    <div className="relative flex items-center gap-2">
+                        <span className="text-white font-black text-xs md:text-base uppercase tracking-wider">
+                            🎉 New: Sarkari Tools
+                        </span>
+                        <span className="hidden sm:inline-flex bg-yellow-400 text-red-700 
+                                         text-[8px] md:text-[10px] px-2 py-0.5 rounded-full 
+                                         font-black uppercase animate-bounce">
+                            16+ Free
+                        </span>
+                    </div>
+                    
+                    {/* Arrow */}
+                    <ArrowRight 
+                        size={14} 
+                        className="text-white group-hover:translate-x-1 transition-transform md:w-4 md:h-4" 
+                        aria-hidden="true"
+                    />
+                    
+                    {/* NEW badge - top right */}
+                    <span className="absolute -top-2 -right-2 bg-red-500 text-white 
+                                     text-[8px] px-1.5 py-0.5 rounded-full font-black 
+                                     animate-bounce shadow-lg border border-white">
+                        NEW
+                    </span>
+                </a>
+            </div>
+            {/* ✅✅✅ END OF SHINY BANNER ✅✅✅ */}
+
             <div className="max-w-5xl mx-auto relative z-10 text-center">
 
                 {/* Trust Badge */}
@@ -159,7 +225,7 @@ const Hero = () => {
                     </div>
                 </div>
 
-                {/* Action Buttons */}
+                {/* Action Buttons - Ab E-Books lagaya Wrench ki jagah */}
                 <nav
                     className="grid grid-cols-2 md:flex md:flex-wrap md:flex-row justify-center gap-3 md:gap-4 mb-16 relative z-10 w-full px-1 sm:px-0 max-w-5xl mx-auto"
                     aria-label="Quick Navigation"
@@ -301,7 +367,7 @@ const Hero = () => {
                 </div>
             </div>
 
-            {/* Marquee CSS */}
+            {/* ✅ Marquee + NEW Tools Glow Animation CSS */}
             <style>{`
                 @keyframes marquee {
                     0% { transform: translateX(0); }
@@ -314,8 +380,28 @@ const Hero = () => {
                 .animate-marquee:hover {
                     animation-play-state: paused;
                 }
+                
+                /* ✅ NEW: Tools banner glow animation */
+                @keyframes tools-glow {
+                    0%, 100% { 
+                        box-shadow: 0 0 30px rgba(236, 72, 153, 0.5),
+                                    0 0 60px rgba(168, 85, 247, 0.3);
+                    }
+                    50% { 
+                        box-shadow: 0 0 50px rgba(236, 72, 153, 0.8),
+                                    0 0 80px rgba(251, 146, 60, 0.5),
+                                    0 0 100px rgba(168, 85, 247, 0.4);
+                    }
+                }
+                .animate-tools-glow {
+                    animation: tools-glow 2.5s ease-in-out infinite;
+                }
+                
                 @media (prefers-reduced-motion: reduce) {
-                    .animate-marquee { animation: none; }
+                    .animate-marquee,
+                    .animate-tools-glow { 
+                        animation: none; 
+                    }
                 }
             `}</style>
         </header>

@@ -6,7 +6,24 @@ import { collection, query, orderBy, getDocs, doc, getDoc, setDoc, serverTimesta
 import { courseRepository } from '@/features/courses/data/courseRepository';
 import { useCourseAccess } from '../hooks/useCourseAccess';
 import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
-import { Lock, Unlock, FileText, Folder, Loader2, ArrowLeft, ChevronRight, Home, ExternalLink, ShoppingBag, CheckCircle, ShieldCheck, BadgePercent, Tag, ArrowRight } from 'lucide-react';
+import {
+  Lock,
+  Unlock,
+  FileText,
+  Folder,
+  Loader2,
+  ArrowLeft,
+  ChevronRight,
+  Home,
+  ExternalLink,
+  ShoppingBag,
+  CheckCircle,
+  ShieldCheck,
+  BadgePercent,
+  Tag,
+  ArrowRight,
+  BookOpen
+} from 'lucide-react';
 import SEO from '../components/SEO';
 
 interface CourseContent { id: string; title: string; seoTitle?: string; link?: string; type: 'PDF' | 'VIDEO' | 'FOLDER'; parentId?: string | null; }

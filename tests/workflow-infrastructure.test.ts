@@ -150,10 +150,11 @@ describe('Workflow Infrastructure — form validation', () => {
   });
 
   it('allows optional fields to be empty', () => {
-    const isOptional = (value: string) => true;
-    expect(isOptional('')).toBe(true);
-    expect(isOptional('anything')).toBe(true);
-  });
+  const isOptional = () => true;
+
+  expect(isOptional()).toBe(true);
+  expect(isOptional()).toBe(true);
+});
 });
 
 // ------------------------------------------------------------------

@@ -9,16 +9,24 @@ const ManualPayment = () => {
     const navigate = useNavigate();
     const location = useLocation();
     
-    const { itemId, itemName, amount } = location.state || { 
-        itemId: 'pro_plan_2026', 
-        itemName: 'Premium Access', 
-        amount: 199 
-    };
+    const paymentState = location.state ?? {};
 
-    const [loading, setLoading] = useState(false);
-    const [success, setSuccess] = useState(false);
-    // ✅ नया स्टेट जो यूनीक अमाउंट होल्ड करेगा
-    const [finalPayableAmount, setFinalPayableAmount] = useState<number>(amount);
+const itemId =
+  paymentState.itemId ?? "pro_plan_2026";
+
+const itemName =
+  paymentState.itemName ?? "Premium Access";
+
+const baseAmount =
+  typeof paymentState.amount === "number" &&
+  !Number.isNaN(paymentState.amount)
+    ? paymentState.amount
+    : 199;
+
+const [loading, setLoading] = useState(false);
+const [success, setSuccess] = useState(false);
+const [finalPayableAmount, setFinalPayableAmount] =
+  useState<number>(baseAmount);
 
     const upiId = import.meta.env.VITE_UPI_ID; 
 
@@ -43,7 +51,7 @@ const ManualPayment = () => {
                 });
 
                 // अगर 199 बिजी है, तो 199.01 चेक करो, फिर 199.02...
-                let uniqueAmount = amount;
+               let uniqueAmount = baseAmount;
                 while (usedAmounts.includes(parseFloat(uniqueAmount.toFixed(2)))) {
                     uniqueAmount += 0.01;
                 }
@@ -51,12 +59,12 @@ const ManualPayment = () => {
                 setFinalPayableAmount(parseFloat(uniqueAmount.toFixed(2)));
             } catch (error) {
                 console.error("Error generating unique amount:", error);
-                setFinalPayableAmount(amount); // एरर आने पर बेस अमाउंट ही दिखा दें
+                setFinalPayableAmount(baseAmount);// एरर आने पर बेस अमाउंट ही दिखा दें
             }
         };
 
         fetchUniqueAmount();
-    }, [itemId, amount]); 
+    }, [itemId, baseAmount]);
     
     // QR Code URL from Firebase
     const qrCodeUrl = import.meta.env.VITE_QR_CODE_URL; 

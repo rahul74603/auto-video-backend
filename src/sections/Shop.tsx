@@ -63,15 +63,16 @@ const Shop: React.FC = () => {
     const fetchData = async () => {
       try {
         // Courses लाना
-        let fetched = await courseRepository.listCourses();
+        const fetched = await courseRepository.listCourses();
         fetched.sort((a, b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999));
         setCourses(fetched);
 
         // ✅ Global Settings लाना (अब यह एरर नहीं देगा क्योंकि getDoc इम्पोर्टेड है)
-        const settingsSnap = await siteSettingsRepository.getGlobal();
-        if (settingsSnap.exists()) {
-          setGlobalSettings(settingsSnap.data());
-        }
+        const settings = await siteSettingsRepository.getGlobal();
+
+if (settings) {
+  setGlobalSettings(settings);
+}
       } catch (err) { 
         console.error("Data Fetch Error:", err); 
       } finally { 

@@ -32,7 +32,7 @@ const StudentDashboard = () => {
     try {
       const orders = await orderRepository.listByCustomerEmail(email, 'completed');
       
-      let courses: any[] = [];
+      const courses: any[] = [];
       orders.forEach(orderData => {
         if(orderData.items) {
             orderData.items.forEach((item: any) => {
