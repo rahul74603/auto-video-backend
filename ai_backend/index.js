@@ -378,11 +378,21 @@ async function handleMetaTags(req, res) {
         }
     }
     try {
-        const indexPath = path.resolve(__dirname, './index.html');
-        let html = fs.readFileSync(indexPath, 'utf8');
+        // Firebase Functions only deploys the ai_backend directory. The Vite
+        // index.html is therefore not available at __dirname in production.
+        // Use it when running from the repository and fall back to a minimal
+        // crawler-compatible document when it is not packaged with the function.
+        const templateCandidates = [
+            path.resolve(__dirname, './index.html'),
+            path.resolve(__dirname, '../index.html')
+        ];
+        const indexPath = templateCandidates.find((candidate) => fs.existsSync(candidate));
+        let html = indexPath
+            ? fs.readFileSync(indexPath, 'utf8')
+            : '<!doctype html><html lang="hi"><head><meta charset="UTF-8"><title>_OG_TITLE_</title><meta name="description" content="_OG_DESCRIPTION_"><meta property="og:title" content="_OG_TITLE_"><meta property="og:description" content="_OG_DESCRIPTION_"><meta property="og:image" content="_OG_IMAGE_"><meta property="og:url" content="_OG_URL_"></head><body><div id="root"></div></body></html>';
 
-        // अगर फंक्शन चला, तो पेज के एकदम नीचे ये ठप्पा लग जाएगा
-        html = html.replace('</body>', '\n\n</body>');
+        // Keep the response valid even when the deployed template is minimal.
+        html = html.includes('</body>') ? html : `${html}</body></html>`;
 
         // 🔥 CANONICAL URL GENERATOR (Removes trailing slash to fix Search Console Duplicates)
         let cleanPath = req.path;
@@ -492,16 +502,4 @@ exports.autoImageJobDrafts = onDocumentWritten("job_drafts/{docId}", (event) => 
 
 exports.autoImageFastTrack = onDocumentWritten("fast_track_drafts/{docId}", (event) => {
     return require('./autoImage').autoImageFastTrack(event);
-});
-
-exports.autoPremiumNoteConverter = onDocumentWritten("premium_notes_requests/{docId}", (event) => {
-    return require('./generatePremiumNote').autoPremiumNoteConverter(event);
-});
-
-exports.processLinkToPdf = onDocumentWritten("pdf_conversions/{docId}", (event) => {
-    return require("./processLinkToPdf").processLinkToPdf(event);
-});
-
-exports.directPdf = onRequest({ memory: "2GiB", timeoutSeconds: 300, cors: true }, (req, res) => {
-    return require("./directPdf").directPdf(req, res);
 });

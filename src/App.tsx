@@ -46,7 +46,6 @@ const FileViewer = lazy(() => import('./pages/FileViewer'));
 const Notes = lazy(() => import('@/sections/Notes'));
 const EbookDetails = lazy(() => import('./pages/EbookDetails'));
 const Shop = lazy(() => import('@/sections/Shop'));
-const HandwrittenNotes = lazy(() => import('./pages/handwritten'));
 
 // Courses
 const MyCourses = lazy(() => import('./pages/MyCourses'));
@@ -74,8 +73,8 @@ const ShippingPolicy = lazy(() => import('./pages/ShippingPolicy'));
 // Admin (NO GUARD - Direct access)
 const AdminPanel = lazy(() => import('./pages/AdminPage'));
 const AdminBlogWriter = lazy(() => import('./pages/AdminBlogWriter'));
-const AdminSidebarControl = lazy(() => import('./pages/admin/AdminSidebarControl'));
-const AdminJobDrafts = lazy(() => import('./pages/admin/Tabs/AdminJobDrafts'));
+const AdminSidebarControl = lazy(() => import('./pages/Admin/AdminSidebarControl'));
+const AdminJobDrafts = lazy(() => import('./pages/Admin/Tabs/AdminJobDrafts'));
 const AdminWebStories = lazy(() => import('./pages/Admin/Tabs/AdminWebStories'));
 const AdminBrowseTab = lazy(() => import('./pages/Admin/Tabs/AdminBrowseTab'));
 
@@ -353,11 +352,6 @@ function App() {
                                                 </PageWrapper>
                                             }
                                         />
-                                        <Route
-                                            path="/handwritten-premium"
-                                            element={<HandwrittenNotes />}
-                                        />
-
                                         {/* 🎓 COURSES */}
                                         <Route
                                             path="/my-courses"
