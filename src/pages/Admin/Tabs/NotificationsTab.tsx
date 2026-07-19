@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 // 👇 FIXED: Sirf 3 dots hone chahiye
 // 👇 ONLY 3 sets of dots
 import { db } from '../../../firebase/config';
-import { collection, getDocs, doc, setDoc, deleteDoc, query } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { categoryStatusRepository } from '@/features/category-status/data/categoryStatusRepository';
 import { Bell, Trash2, Save } from 'lucide-react';
 
 const JOB_CATEGORIES = [
@@ -20,9 +21,8 @@ const NotificationsTab = () => {
   useEffect(() => { fetchStatuses(); }, []);
 
   const fetchStatuses = async () => {
-      const q = query(collection(db, "category_status"));
-      const s = await getDocs(q);
-      setAllStatuses(s.docs.map(d => ({ id: d.id, text: d.data().text })));
+      const statuses = await categoryStatusRepository.listStatuses();
+      setAllStatuses(statuses as { id: string; text: string }[]);
   };
 
   const handleUpdate = async () => {

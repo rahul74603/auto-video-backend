@@ -57,6 +57,10 @@ export const orderRepository = {
     return mapOrders(await getDocs(query(ordersCollection, ...constraints)));
   },
 
+  async listAll(orderField = 'createdAt', direction: 'asc' | 'desc' = 'desc'): Promise<OrderRecord[]> {
+    return mapOrders(await getDocs(query(ordersCollection, orderBy(orderField, direction))));
+  },
+
   async listByStatus(status: OrderStatus): Promise<OrderRecord[]> {
     return mapOrders(await getDocs(query(ordersCollection, where('status', '==', status))));
   },

@@ -2,7 +2,8 @@
 import { useState, useEffect } from 'react';
 // 👇 ONLY 3 sets of dots (सुरक्षित रखा गया है)
 import { db } from '../../../firebase/config';
-import { collection, getDocs, doc, query, updateDoc, orderBy, deleteDoc } from 'firebase/firestore';
+import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { orderRepository } from '@/features/orders/data/orderRepository';
 import { ShoppingCart, User, CheckCircle, Trash2, Calendar, Package, Mail, IndianRupee, RefreshCw, Loader2 } from 'lucide-react';
 import emailjs from '@emailjs/browser';
 

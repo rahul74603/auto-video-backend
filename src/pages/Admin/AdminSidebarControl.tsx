@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
+import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { db } from '../../firebase/config'; 
 import { Save, Plus, Trash2, Sparkles, Link2, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
@@ -20,9 +21,8 @@ const AdminSidebarControl = () => {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const docSnap = await getDoc(doc(db, "site_settings", "global"));
-        if (docSnap.exists()) {
-          const data = docSnap.data();
+        const data = await siteSettingsRepository.getGlobal();
+        if (data) {
           setSettings({
             shopUpdates: data.shopUpdates || [],
             jobUpdates: data.jobUpdates || [],
