@@ -1,9 +1,8 @@
 // @ts-nocheck
 import { useLanguage } from '@/context/LanguageContext';
 import { examCategories } from '@/data/jobs';
-import { db } from '@/firebase/config';
-import { collection, getDocs } from 'firebase/firestore';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
+import { categoryStatusRepository } from '@/features/category-status/data/categoryStatusRepository';
 import { motion } from 'framer-motion';
 import {
   ArrowRight, Briefcase,
@@ -56,10 +55,10 @@ const ExamCategories: React.FC = () => {
 
     const fetchStatus = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, "category_status"));
+        const statuses = await categoryStatusRepository.listStatuses();
         const statusData: Record<string, string> = {};
-        querySnapshot.forEach((doc) => {
-          statusData[doc.id] = doc.data().text;
+        statuses.forEach((status) => {
+          statusData[status.id] = status.text as string;
         });
         setStatusMap(statusData);
       } catch (error) {
