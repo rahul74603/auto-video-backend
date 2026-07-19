@@ -35,6 +35,16 @@ export const materialRepository = {
     return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
   },
 
+  async addPublic(material: Record<string, unknown>): Promise<string> {
+    const snapshot = await addDoc(materialsCollection, material);
+    return snapshot.id;
+  },
+
+  async listPublic(): Promise<MaterialRecord[]> {
+    const snapshot = await getDocs(materialsCollection);
+    return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+  },
+
   async add(material: Record<string, unknown>): Promise<string> {
     const snapshot = await addDoc(serviceMaterialsCollection, {
       ...material,

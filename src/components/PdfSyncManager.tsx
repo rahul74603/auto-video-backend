@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { db } from '@/firebase/config';
-import { collection, addDoc, getDocs } from 'firebase/firestore';
+import { materialRepository } from '@/features/materials/data/materialRepository';
 import { RefreshCw, Server } from 'lucide-react';
 
 const PdfSyncManager = () => {
@@ -22,17 +21,16 @@ const PdfSyncManager = () => {
       const serverFiles = await response.json();
       setStatus(`Found ${serverFiles.length} files. Checking Database...`);
 
-      const existingRef = collection(db, 'study_materials');
-      const snapshot = await getDocs(existingRef);
+      const existingMaterials = await materialRepository.listPublic();
       // Create a Set of existing links for fast lookup
-      const existingLinks = new Set(snapshot.docs.map(doc => doc.data().applyLink));
+      const existingLinks = new Set(existingMaterials.map(material => material.applyLink));
 
       let newAdded = 0;
 
       for (const file of serverFiles) {
         if (!existingLinks.has(file.link)) {
           // Add to Firebase
-          await addDoc(existingRef, {
+          await materialRepository.addPublic({
             title: file.title.replace(/-/g, ' ').replace(/_/g, ' '),
             subject: file.category, // Folder name becomes Subject
             category: 'ssc', // Default category
