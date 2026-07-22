@@ -1,602 +1,649 @@
-// @ts-nocheck
-import { useState, useEffect, useRef } from 'react';
-import { db } from '../../../firebase/config'; 
-import { collection, addDoc, getDocs, deleteDoc, doc, getDoc, query, orderBy, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { FileText, Crown, Trash2, PlusCircle, Loader2, UploadCloud, ArrowLeft, Video, X, FilePenLine, Copy, ExternalLink, FolderPlus, Folder, ChevronRight, Home, ShieldCheck, CheckCircle, Edit, Globe, Link, ChevronUp, ChevronDown, Sparkles, Eye } from 'lucide-react';
-import SEO from '../../../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
+// C:\Users\Rahul\auto-video-backend\src\pages\Admin\Tabs\PremiumTab.tsx
+// ✅ COMPLETELY REPLACED - AI Generator UI
 
-interface Course { id: string; title: string; price: string; paymentLink?: string; description: string; type: 'premium'; createdAt: string; orderIndex?: number; lockMessage?: string; features?: string[]; }
-interface CourseContent { id: string; title: string; seoTitle?: string; link?: string; type: 'PDF' | 'VIDEO' | 'FOLDER' | 'article'; courseId: string; parentId: string | null; setNumber?: number; dynamicSetNum?: number; }
+import { useState, useEffect } from 'react';
+import { db } from '../../../firebase/config';
+import {
+  collection, getDocs, query,
+  orderBy, doc, getDoc
+} from 'firebase/firestore';
+import {
+  Zap, BookOpen,
+  CheckCircle, AlertCircle, Loader2,
+  Eye, RefreshCw,
+  Cpu, Globe, Hash, FileText
+} from 'lucide-react';
 
+// ============================================
+// TYPES
+// ============================================
+interface Course {
+  id: string;
+  title: string;
+}
+
+interface Folder {
+  id: string;
+  title: string;
+  parentId: string | null;
+}
+
+interface GenerationLog {
+  topic: string;
+  exam: string;
+  setNumber: number;
+  provider: string;
+  status: 'success' | 'error';
+  message: string;
+  id?: string;
+  time: string;
+}
+
+// ============================================
+// CLOUD FUNCTION URL
+// ============================================
+const CLOUD_FUNCTION_URL =
+   "https://generatepremiumnote-hf6vlh5cpq-uc.a.run.app";
+
+// ============================================
+// EXAMS LIST
+// ============================================
+const EXAMS = [
+  'SSC CGL', 'SSC CHSL', 'SSC MTS', 'SSC GD',
+  'Railway NTPC', 'Railway Group D',
+  'UP Police', 'Bihar Police', 'Rajasthan Police',
+  'CTET', 'UPTET', 'MPTET',
+  'UPSC CSE', 'UPPCS', 'BPSC',
+  'Bank PO', 'Bank Clerk', 'IBPS',
+  'NDA', 'CDS', 'AFCAT',
+  'CUET', 'Delhi Police', 'SSC CPO'
+];
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 const PremiumTab = () => {
-  const storage = getStorage(); 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [globalSettings, setGlobalSettings] = useState<any>(null);
-  const [managingCourse, setManagingCourse] = useState<Course | null>(null);
-  const [editingCourse, setEditingCourse] = useState<Course | null>(null); 
-  const [courseContent, setCourseContent] = useState<CourseContent[]>([]);
-  
-  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
-  const [folderPath, setFolderPath] = useState<{id: string, name: string}[]>([]);
 
-  const [showUploadForm, setShowUploadForm] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [progressMsg, setProgressMsg] = useState(""); 
+  // Form State
+  const [topic, setTopic]           = useState('');
+  const [exam, setExam]             = useState('SSC CGL');
+  const [subject, setSubject]       = useState('');
+  const [selectedCourse, setSelectedCourse] = useState('');
+  const [selectedFolder, setSelectedFolder] = useState('');
+  const [setNumber, setSetNumber]   = useState(1);
+  const [provider, setProvider]     = useState<'gemini' | 'vertex'>('gemini');
+  const [bulkCount, setBulkCount]   = useState(1);
 
-  const [aiTopic, setAiTopic] = useState("");
-  const [aiGenerating, setAiGenerating] = useState(false);
-  
-  const [formData, setFormData] = useState({ title: '', price: '499', paymentLink: '', description: '', lockMessage: '', features: [] as string[] });
-  const [featureInput, setFeatureInput] = useState(''); 
-  const [contentForm, setContentForm] = useState({ title: '', seoTitle: '', link: '', type: 'PDF', setNumber: 1 });
+  // Data State
+  const [courses, setCourses]       = useState<Course[]>([]);
+  const [folders, setFolders]       = useState<Folder[]>([]);
 
-  useEffect(() => { 
+  // Generation State
+  const [generating, setGenerating] = useState(false);
+  const [progress, setProgress]     = useState('');
+  const [percent, setPercent]       = useState(0);
+  const [logs, setLogs]             = useState<GenerationLog[]>([]);
+  const [lastResult, setLastResult] = useState<any>(null);
+
+  // UI State
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewHTML, setPreviewHTML] = useState('');
+
+  // ============================================
+  // FETCH COURSES
+  // ============================================
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        const snap = await getDocs(
+          query(collection(db, 'courses'), orderBy('createdAt', 'desc'))
+        );
+        const list: Course[] = snap.docs.map(d => ({
+          id: d.id,
+          title: d.data().title || d.id
+        }));
+        setCourses(list);
+        if (list.length > 0) setSelectedCourse(list[0].id);
+      } catch (err) {
+        console.error('Courses fetch error:', err);
+      }
+    };
     fetchCourses();
-    fetchGlobalSettings(); 
   }, []);
 
-  const fetchGlobalSettings = async () => {
-    try {
-      const settingsRef = doc(db, "site_settings", "global");
-      const settingsSnap = await getDoc(settingsRef);
-      if (settingsSnap.exists()) setGlobalSettings(settingsSnap.data());
-    } catch (err) { console.error(err); }
-  };
-
-  const fetchCourses = async () => {
-    try {
-        const q = query(collection(db, "courses")); 
-        const snapshot = await getDocs(q);
-        const fetchedCourses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
-        
-        fetchedCourses.sort((a, b) => {
-            const indexA = a.orderIndex ?? 999;
-            const indexB = b.orderIndex ?? 999;
-            return indexA - indexB;
-        });
-
-        setCourses(fetchedCourses);
-    } catch (err) { console.error("Error fetching courses:", err); }
-  };
-
-  const handleMove = async (index: number, direction: 'up' | 'down') => {
-      const newIndex = direction === 'up' ? index - 1 : index + 1;
-      if (newIndex < 0 || newIndex >= courses.length) return;
-
-      const batch = writeBatch(db);
-      const currentCourse = courses[index];
-      const neighborCourse = courses[newIndex];
-
-      batch.update(doc(db, "courses", currentCourse.id), { orderIndex: newIndex });
-      batch.update(doc(db, "courses", neighborCourse.id), { orderIndex: index });
-
+  // ============================================
+  // FETCH FOLDERS when course changes
+  // ============================================
+  useEffect(() => {
+    if (!selectedCourse) return;
+    const fetchFolders = async () => {
       try {
-          await batch.commit();
-          fetchCourses(); 
-      } catch (err) { alert("Move failed"); }
+        const snap = await getDocs(
+          collection(db, 'courses', selectedCourse, 'content')
+        );
+        const list: Folder[] = snap.docs
+          .filter(d => d.data().type === 'FOLDER')
+          .map(d => ({
+            id: d.id,
+            title: d.data().title || d.id,
+            parentId: d.data().parentId || null
+          }));
+        setFolders(list);
+        setSelectedFolder('');
+      } catch (err) {
+        console.error('Folders fetch error:', err);
+      }
+    };
+    fetchFolders();
+  }, [selectedCourse]);
+
+  // ============================================
+  // ADD LOG
+  // ============================================
+  const addLog = (log: GenerationLog) => {
+    setLogs(prev => [log, ...prev].slice(0, 20));
   };
 
-  const handleCreateNotes = async (e: React.FormEvent) => {
-      e.preventDefault();
-      setLoading(true);
-      try {
-          const nextIndex = courses.length;
-          await addDoc(collection(db, "courses"), { 
-              ...formData, 
-              type: 'premium', 
-              orderIndex: nextIndex,
-              createdAt: new Date().toISOString() });
-          alert("Notes Created!");
-          setShowUploadForm(false); 
-          setFormData({ title: '', price: '499', paymentLink: '', description: '', lockMessage: '', features: [] });
-          fetchCourses();
-      } catch(e) { alert("Error creating Notes"); } finally { setLoading(false); } 
-  };
+  // ============================================
+  // SINGLE GENERATE
+  // ============================================
+  const generateSingle = async (
+    topicValue: string,
+    setNum: number
+  ): Promise<boolean> => {
 
-  const fetchCourseContent = async (courseId: string) => {
-    const q = query(collection(db, `courses/${courseId}/content`));
-    const snapshot = await getDocs(q);
-    
-    const content = snapshot.docs.map(doc => {
-        const data = doc.data();
-        const titleMatch = (data.seoTitle || data.title || "").match(/set\s*(\d+)/i);
-        const titleNum = titleMatch ? parseInt(titleMatch[1], 10) : null;
-        const finalSetNum = titleNum !== null ? titleNum : (Number(data.setNumber) || 1);
-        return { id: doc.id, ...data, dynamicSetNum: finalSetNum } as CourseContent;
-    });
-    
-    content.sort((a, b) => (a.dynamicSetNum || 0) - (b.dynamicSetNum || 0));
-    setCourseContent(content);
+    setProgress(`Generating Set ${setNum} for "${topicValue}"...`);
+    setPercent(30);
 
-    const maxSet = content.reduce((max, item) => {
-        const currentNum = item.dynamicSetNum || 0;
-        return currentNum > max ? currentNum : max;
-    }, 0);
-    
-    setContentForm(prev => ({ ...prev, setNumber: maxSet + 1 }));
-  };
-
-  const handleUpdateNotes = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if(!editingCourse) return;
-    setLoading(true);
     try {
-        await updateDoc(doc(db, "courses", editingCourse.id), {
-            ...formData,
-            updatedAt: serverTimestamp()
+      const response = await fetch(CLOUD_FUNCTION_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: topicValue,
+          exam: exam,
+          subject: subject || topicValue,
+          packId: selectedCourse,
+          folderId: selectedFolder || null,
+          setNumber: setNum,
+          provider: provider
+        })
+      });
+
+      const data = await response.json();
+      setPercent(90);
+
+      if (data.success) {
+        addLog({
+          topic: topicValue,
+          exam,
+          setNumber: setNum,
+          provider: data.provider,
+          status: 'success',
+          message: `✅ Saved! ID: ${data.id} | Type: ${data.subjectType}`,
+          id: data.id,
+          time: new Date().toLocaleTimeString()
         });
-        alert("✅ Notes Updated Successfully!");
-        setEditingCourse(null);
-        setFormData({ title: '', price: '499', paymentLink: '', description: '', lockMessage: '', features: [] });
-        fetchCourses();
-    } catch (err) { alert("Update failed"); } finally { setLoading(false); }
-};
+        setLastResult(data);
+        return true;
+      } else {
+        throw new Error(data.error || 'Unknown error');
+      }
 
-const addFeature = () => {
-    if (featureInput.trim()) {
-        setFormData(prev => ({
-            ...prev,
-            features: [...(prev.features || []), featureInput.trim()]
-        }));
-        setFeatureInput('');
-    }
-};
-
-const removeFeature = (index: number) => {
-    setFormData(prev => ({
-        ...prev,
-        features: prev.features.filter((_, i) => i !== index)
-    }));
-};
-
-const handleCreateFolder = async () => {
-    if(!managingCourse) return;
-    const folderName = prompt("Enter Folder Name (e.g. GK, History):");
-    if(!folderName) return;
-    try {
-        await addDoc(collection(db, `courses/${managingCourse.id}/content`), {
-            title: folderName,
-            type: 'FOLDER',
-            courseId: managingCourse.id,
-            parentId: currentFolderId, 
-            createdAt: serverTimestamp()
-        });
-        fetchCourseContent(managingCourse.id);
-    } catch (e) { alert("Error creating folder"); }
-};
-
-const enterFolder = (folderId: string, folderName: string) => {
-    setCurrentFolderId(folderId);
-    setFolderPath([...folderPath, { id: folderId, name: folderName }]);
-};
-
-const navigateToBreadcrumb = (index: number) => {
-    if (index === -1) {
-        setCurrentFolderId(null);
-        setFolderPath([]);
-    } else {
-        const newPath = folderPath.slice(0, index + 1);
-        setFolderPath(newPath);
-        setCurrentFolderId(newPath[newPath.length - 1].id);
-    }
-};
-
-const visibleContent = courseContent.filter(item => {
-    if (currentFolderId === null) return !item.parentId;
-    return item.parentId === currentFolderId;
-});
-
-const handleDeleteItem = async (id: string) => {
-    if(confirm("Delete this Notes?")) {
-        await deleteDoc(doc(db, 'courses', id));
-        fetchCourses();
-    }
-};
-
-const handleRenameContent = async (contentId: string, oldTitle: string) => {
-    if(!managingCourse) return;
-    const newTitle = prompt("Enter new Display Title (SEO Name):", oldTitle);
-    if(!newTitle || newTitle === oldTitle) return;
-    try {
-        await updateDoc(doc(db, `courses/${managingCourse.id}/content`, contentId), { seoTitle: newTitle });
-        fetchCourseContent(managingCourse.id);
-    } catch (err) { alert("Error renaming."); }
-};
-
-const copyToClipboard = (id: string) => {
-    const link = `${window.location.origin}/pdf/${id}`;
-    navigator.clipboard.writeText(link);
-    alert("✅ Copied Short Link: " + link);
-};
-
-const handleGenerateAINote = async () => {
-    if (!aiTopic.trim()) return alert("पहिले टॉपिक तो लिखो भाई! 😂");
-    if (!managingCourse) return;
-
-    setAiGenerating(true);
-    try {
-        // ✅ यहाँ अपना नया वर्सेल लिंक डालें
-        const response = await fetch("https://studygyaan-api.vercel.app/api/generatePremiumNote", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-        topic: aiTopic,
-        packId: managingCourse.id, // यहाँ पक्का करें कि यह खाली न हो
-        folderId: currentFolderId || null,
-        setNumber: contentForm.setNumber 
-    })
-});
-
-        const data = await response.json();
-        if (data.success) {
-            alert("✨ StudyGyaan AI: प्रीमियम नोट (SET " + contentForm.setNumber + ") जोड़ दिया गया है!");
-            setAiTopic("");
-            fetchCourseContent(managingCourse.id); 
-        } else {
-            throw new Error(data.error || "Generation failed");
-        }
     } catch (err: any) {
-        alert("AI Error: " + err.message);
-    } finally {
-        setAiGenerating(false);
+      addLog({
+        topic: topicValue,
+        exam,
+        setNumber: setNum,
+        provider,
+        status: 'error',
+        message: `❌ ${err.message}`,
+        time: new Date().toLocaleTimeString()
+      });
+      return false;
     }
-};
+  };
 
-const handleAddContent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if(!managingCourse) return;
+  // ============================================
+  // HANDLE GENERATE (Single + Bulk)
+  // ============================================
+  const handleGenerate = async () => {
+    if (!topic.trim()) return alert('Topic भरो!');
+    if (!selectedCourse) return alert('Course select करो!');
 
-    const files = fileInputRef.current?.files;
-    const hasFiles = files && files.length > 0;
-    const hasLink = contentForm.link.trim() !== "";
-
-    if (!hasLink && !hasFiles) { alert("Please Paste a Link OR Select Files!"); return; }
-
-    setUploading(true); 
-    setProgressMsg("");
+    setGenerating(true);
+    setPercent(10);
+    setLastResult(null);
 
     try {
-        const autoFolderPathName = folderPath.map(f => f.name).join(" - ");
-        let currentSetNum = contentForm.setNumber;
+      if (bulkCount === 1) {
+        // Single
+        await generateSingle(topic, setNumber);
+      } else {
+        // Bulk
+        for (let i = 0; i < bulkCount; i++) {
+          const currentSetNum = setNumber + i;
+          setProgress(
+            `Bulk: Set ${i + 1}/${bulkCount} generating...`
+          );
+          setPercent(Math.round((i / bulkCount) * 100));
 
-        if (hasFiles) {
-            const totalFiles = files.length;
-            for (let i = 0; i < totalFiles; i++) {
-                const file = files[i];
-                setProgressMsg(`Uploading ${i + 1} of ${totalFiles}...`); 
+          const ok = await generateSingle(topic, currentSetNum);
 
-                const storageRef = ref(storage, `premium_content/${managingCourse.id}/${file.name}`);
-                const snapshot = await uploadBytes(storageRef, file);
-                const finalLink = await getDownloadURL(snapshot.ref);
-                
-                const fileNameTitle = file.name.replace(/\.[^/.]+$/, "").replace(/-/g, ' ');
-                const finalInternalTitle = contentForm.title || fileNameTitle;
-
-                const smartSeoTitle = contentForm.seoTitle 
-                  ? `${contentForm.seoTitle} - ${finalInternalTitle}` 
-                  : (autoFolderPathName ? `${autoFolderPathName} - ${finalInternalTitle}` : finalInternalTitle);
-
-                await addDoc(collection(db, `courses/${managingCourse.id}/content`), {
-                    title: finalInternalTitle,
-                    seoTitle: smartSeoTitle, 
-                    link: finalLink,
-                    type: 'PDF', 
-                    setNumber: currentSetNum,
-                    courseId: managingCourse.id,
-                    parentId: currentFolderId, 
-                    createdAt: serverTimestamp()
-                });
-                currentSetNum++;
-            }
-            alert(`✅ Successfully uploaded ${totalFiles} files with Unique SEO!`);
-        } else if (hasLink) {
-            const finalTitle = contentForm.title || "Untitled Link";
-            const smartSeoTitle = contentForm.seoTitle ? `${contentForm.seoTitle} - ${finalTitle}` : finalTitle;
-
-            await addDoc(collection(db, `courses/${managingCourse.id}/content`), {
-                title: finalTitle,
-                seoTitle: smartSeoTitle, 
-                link: contentForm.link,
-                type: 'PDF',
-                setNumber: currentSetNum,
-                courseId: managingCourse.id,
-                parentId: currentFolderId, 
-                createdAt: serverTimestamp()
-            });
-            alert("✅ Link Added with Unique SEO!");
-            currentSetNum++;
+          // Wait between requests to avoid rate limit
+          if (ok && i < bulkCount - 1) {
+            setProgress(`Set ${i + 1} done. Waiting 3s...`);
+            await new Promise(r => setTimeout(r, 3000));
+          }
         }
+      }
 
-        setContentForm({ title: '', seoTitle: '', link: '', type: 'PDF', setNumber: currentSetNum });
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        fetchCourseContent(managingCourse.id);
+      setProgress('Complete! ✅');
+      setPercent(100);
 
-    } catch (e:any) { 
-        alert("Upload Failed: " + e.message); 
-    } finally { 
-        setUploading(false);
-        setProgressMsg("");
+    } finally {
+      setGenerating(false);
+      setTimeout(() => {
+        setProgress('');
+        setPercent(0);
+      }, 3000);
     }
-};
+  };
 
-const handleDeleteContent = async (id: string) => {
-    if(confirm("Delete content?")) {
-        await deleteDoc(doc(db, `courses/${managingCourse?.id}/content`, id));
-        if(managingCourse) fetchCourseContent(managingCourse.id);
+  // ============================================
+  // PREVIEW LAST GENERATED
+  // ============================================
+  const handlePreview = async () => {
+    if (!lastResult?.id || !selectedCourse) return;
+    try {
+      const snap = await getDoc(
+        doc(db, 'courses', selectedCourse, 'content', lastResult.id)
+      );
+      if (snap.exists()) {
+        setPreviewHTML(snap.data().content || '');
+        setShowPreview(true);
+      }
+    } catch (err) {
+      console.error('Preview error:', err);
     }
-};
+  };
 
+  // ============================================
+  // RENDER
+  // ============================================
   return (
-    <div className="bg-white rounded-lg md:rounded-2xl shadow-lg border p-3 md:p-8 animate-in fade-in w-full overflow-hidden font-hindi">
-        
-        {/* 🔥 एडमिन पैनल के लिए डायनामिक टाइटल सेटअप */}
-        <SEO 
-            customTitle={managingCourse ? `Manage Content: ${managingCourse.title} | Admin` : "Premium Notes Management | StudyGyaan Admin"} 
-            customDescription="Admin control panel for managing premium study notes, uploading PDFs and generating AI content."
-        />
+    <div className="max-w-5xl mx-auto space-y-6 p-2">
 
-        {managingCourse ? (
-            <div>
-                <div className="bg-gradient-to-r from-purple-50 to-blue-50 p-4 md:p-6 rounded-xl md:rounded-2xl border-2 border-purple-100 mb-6 shadow-sm">
-                    <div className="flex items-center gap-2 mb-4">
-                        <div className="p-2 bg-purple-600 rounded-lg text-white">
-                            <Sparkles size={20} />
-                        </div>
-                        <div>
-                            <h4 className="font-black text-purple-900 text-sm md:text-lg uppercase">AI Premium Note Creator</h4>
-                            <p className="text-[10px] md:text-xs text-purple-600 font-bold uppercase tracking-widest">StudyGyaan Pattern: Header + 25 Q&A + Logics</p>
-                        </div>
-                    </div>
+      {/* ===== HEADER ===== */}
+      <div className="bg-gradient-to-r from-blue-700 to-purple-700 rounded-2xl p-5 text-white">
+        <div className="flex justify-between items-start flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-black flex items-center gap-2">
+              <Zap className="w-6 h-6 text-yellow-300" />
+              AI Premium Content Generator
+            </h1>
+            <p className="text-blue-200 text-sm mt-1">
+              One Click → Gemini/Vertex → Firestore → Live
+            </p>
+          </div>
+          <div className="text-right text-xs text-blue-200">
+            <p className="font-bold text-white text-sm">📚 StudyGyaan.in</p>
+            <p>📞 6263396446</p>
+            <p>✉️ contact@studygyaan.in</p>
+          </div>
+        </div>
+      </div>
 
-                    <div className="flex flex-col md:flex-row gap-3">
-                        <input 
-                            value={aiTopic}
-                            onChange={(e) => setAiTopic(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleGenerateAINote()}
-                            placeholder="Enter Topic (e.g. Percentage, Mughal Empire, Blood Relation)" 
-                            className="flex-1 p-3 md:p-4 rounded-xl border-2 border-purple-100 focus:border-purple-400 outline-none font-bold text-sm md:text-base shadow-inner bg-white"
-                        />
-                        <button 
-                            onClick={handleGenerateAINote}
-                            disabled={aiGenerating}
-                            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 md:py-4 rounded-xl font-black text-sm md:text-base flex items-center justify-center gap-2 transition active:scale-95 shadow-lg shadow-purple-200 disabled:opacity-50"
-                        >
-                            {aiGenerating ? (
-                                <><Loader2 className="animate-spin" size={20} /> Generating...</>
-                            ) : (
-                                <><Sparkles size={20} /> Generate AI Note</>
-                            )}
-                        </button>
-                    </div>
-                </div>
+      {/* ===== MAIN FORM ===== */}
+      <div className="bg-white rounded-2xl border shadow-sm p-6">
+        <h2 className="font-bold text-gray-700 mb-4 flex items-center gap-2">
+          <FileText className="w-5 h-5 text-blue-600" />
+          Generation Settings
+        </h2>
 
-                <button onClick={() => { setManagingCourse(null); setFolderPath([]); setCurrentFolderId(null); }} className="text-gray-500 mb-3 md:mb-6 font-bold flex items-center gap-1.5 md:gap-2 hover:text-gray-800 text-[10px] md:text-base">
-                  <ArrowLeft className="w-3.5 h-3.5 md:w-5 md:h-5"/> Back to All Notess
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          {/* Topic */}
+          <div className="md:col-span-2">
+            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">
+              📖 Topic *
+            </label>
+            <input
+              value={topic}
+              onChange={e => setTopic(e.target.value)}
+              placeholder="e.g. Speed Distance Time / मौर्य साम्राज्य / Blood Relations"
+              className="w-full p-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none text-sm"
+              disabled={generating}
+            />
+          </div>
+
+          {/* Exam */}
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">
+              🏛️ Exam *
+            </label>
+            <select
+              value={exam}
+              onChange={e => setExam(e.target.value)}
+              disabled={generating}
+              className="w-full p-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none text-sm"
+            >
+              {EXAMS.map(e => <option key={e}>{e}</option>)}
+            </select>
+          </div>
+
+          {/* Subject */}
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">
+              📚 Subject (Optional)
+            </label>
+            <input
+              value={subject}
+              onChange={e => setSubject(e.target.value)}
+              placeholder="e.g. Mathematics, Reasoning, History"
+              className="w-full p-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none text-sm"
+              disabled={generating}
+            />
+          </div>
+
+          {/* Course */}
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">
+              📦 Course/Pack *
+            </label>
+            <select
+              value={selectedCourse}
+              onChange={e => setSelectedCourse(e.target.value)}
+              disabled={generating}
+              className="w-full p-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none text-sm"
+            >
+              <option value="">-- Course Select करो --</option>
+              {courses.map(c => (
+                <option key={c.id} value={c.id}>{c.title}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Folder */}
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">
+              📂 Folder (Optional)
+            </label>
+            <select
+              value={selectedFolder}
+              onChange={e => setSelectedFolder(e.target.value)}
+              disabled={generating || folders.length === 0}
+              className="w-full p-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none text-sm"
+            >
+              <option value="">-- Root Level --</option>
+              {folders.map(f => (
+                <option key={f.id} value={f.id}>
+                  📁 {f.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* AI Provider */}
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">
+              🤖 AI Provider
+            </label>
+            <div className="flex gap-2">
+              {(['gemini',] as const).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setProvider(p)}
+                  disabled={generating}
+                  className={`flex-1 p-3 rounded-xl border-2 text-sm font-bold transition-all ${
+                    provider === p
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  <Cpu className="w-4 h-4 inline mr-1" />
+                  {p === 'gemini' ? 'Gemini' : 'Vertex AI'}
                 </button>
-                
-                <div className="bg-blue-50/50 p-3 md:p-6 rounded-lg md:rounded-2xl border border-blue-100 mb-4 md:mb-8">
-                    <h3 className="text-sm md:text-xl font-black mb-2 md:mb-4 text-blue-900 border-b border-blue-200 pb-1.5 md:pb-2">
-                        Managing: {managingCourse.title}
-                    </h3>
-
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 md:gap-4 mb-3 md:mb-6">
-                        <div className="flex items-center gap-1.5 md:gap-2 text-[8px] md:text-sm bg-white px-2 py-1 md:px-4 md:py-2 rounded-md md:rounded-xl shadow-sm border border-blue-100 w-full md:w-auto overflow-x-auto hide-scrollbar">
-                            <button onClick={() => navigateToBreadcrumb(-1)} className="flex items-center gap-1 text-blue-600 hover:underline font-bold whitespace-nowrap shrink-0">
-                                <Home className="w-3 h-3 md:w-4 md:h-4"/> Root
-                            </button>
-                            {folderPath.map((folder, index) => (
-                                <div key={folder.id} className="flex items-center gap-1 md:gap-2 shrink-0">
-                                    <ChevronRight className="w-3 h-3 md:w-4 md:h-4 text-gray-400"/>
-                                    <button 
-                                        onClick={() => navigateToBreadcrumb(index)} 
-                                        className={`hover:underline whitespace-nowrap ${index === folderPath.length - 1 ? "font-black text-gray-800" : "text-blue-600"}`}
-                                    >
-                                        {folder.name}
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-
-                        <button 
-                            onClick={handleCreateFolder} 
-                            className="bg-white text-blue-700 border md:border-2 border-blue-200 px-3 py-1.5 md:px-5 md:py-2 rounded-md md:rounded-xl font-bold flex items-center gap-1.5 md:gap-2 hover:bg-blue-50 hover:border-blue-300 transition shadow-sm w-full md:w-auto justify-center text-[10px] md:text-base shrink-0"
-                        >
-                            <FolderPlus className="w-4 h-4 md:w-5 md:h-5"/> Create New Folder
-                        </button>
-                    </div>
-
-                    <form onSubmit={handleAddContent} className="flex flex-col gap-2.5 md:gap-4 bg-white p-3 md:p-6 rounded-lg md:rounded-2xl border border-blue-100 shadow-sm">
-                        <div className="border border-dashed md:border-2 border-blue-200 bg-blue-50/30 p-3 md:p-6 rounded-md md:rounded-xl text-center cursor-pointer hover:bg-blue-50 transition" onClick={() => fileInputRef.current?.click()}>
-                            <input type="file" ref={fileInputRef} multiple accept=".pdf,.doc,.docx" className="hidden" />
-                            <UploadCloud className="mx-auto text-blue-500 mb-1 md:mb-2 w-6 h-6 md:w-8 md:h-8"/>
-                            <p className="font-bold text-gray-700 text-[10px] md:text-base">Click to Select Files (PDFs)</p>
-                        </div>
-                        
-                        <div className="bg-yellow-50/30 p-2 md:p-4 rounded-md md:rounded-xl border border-yellow-100">
-                            <label className="text-[7px] md:text-[10px] font-black text-yellow-600 uppercase mb-0.5 md:mb-1 block">SEO Attractive Title (For all files/links added below)</label>
-                            <div className="relative">
-                               <Globe className="absolute left-2 top-2 md:left-3 md:top-3 text-yellow-400 w-3.5 h-3.5 md:w-[18px] md:h-[18px]"/>
-                               <input value={contentForm.seoTitle} onChange={e=>setContentForm({...contentForm, seoTitle: e.target.value})} placeholder="e.g. SSC CGL 2026: Maths Best Notes" className="w-full pl-7 md:pl-10 p-1.5 md:p-3 border rounded-md md:rounded-xl font-bold bg-white outline-none focus:ring-1 md:focus:ring-2 focus:ring-yellow-400 text-[10px] md:text-base"/>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center justify-center text-gray-400 font-bold text-[8px] md:text-xs uppercase tracking-widest">- OR ADD LINK -</div>
-                        
-                        <div className="flex flex-col md:flex-row gap-1.5 md:gap-2">
-                            <input value={contentForm.title} onChange={e=>setContentForm({...contentForm, title: e.target.value})} placeholder="Internal Title" className="border p-1.5 md:p-3 rounded-md md:rounded-lg flex-1 font-medium text-[10px] md:text-base"/>
-                            <input value={contentForm.link} onChange={e=>setContentForm({...contentForm, link: e.target.value})} placeholder="Paste Set URL" className="border p-1.5 md:p-3 rounded-md md:rounded-lg flex-1 text-[10px] md:text-base"/>
-                            <div className="border p-1.5 md:p-3 rounded-md md:rounded-lg bg-white font-bold text-[10px] md:text-base flex items-center gap-1">
-                                <span className="text-gray-400">SET</span>
-                                <select value={contentForm.setNumber} onChange={e=>setContentForm({...contentForm, setNumber: parseInt(e.target.value)})} className="outline-none bg-transparent text-blue-700">
-                                    {[...Array(1000)].map((_, i) => (
-                                        <option key={i+1} value={i+1}>{i+1}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            
-                            <button className="bg-blue-600 hover:bg-blue-700 text-white p-2 md:px-6 md:py-3 rounded-md md:rounded-lg font-bold flex items-center justify-center gap-1.5 md:gap-2 transition active:scale-95" disabled={uploading}>
-                                {uploading ? (
-                                    <>
-                                        <Loader2 className="animate-spin w-3 h-3 md:w-5 md:h-5" /> 
-                                        <span className="text-[10px] md:text-sm">{progressMsg || "Uploading..."}</span>
-                                    </>
-                                ) : (
-                                    <PlusCircle className="w-4 h-4 md:w-5 md:h-5"/>
-                                )}
-                            </button>
-                        </div>
-                    </form>
-                </div>
-
-                <div className="space-y-1.5 md:space-y-3">
-                    <h4 className="font-bold text-gray-400 text-[9px] md:text-xs uppercase ml-1">
-                        Contents ({visibleContent.length})
-                    </h4>
-
-                    {visibleContent.filter(c => c.type === 'FOLDER').map(folder => (
-                        <div key={folder.id} onClick={() => enterFolder(folder.id, folder.title)} className="flex justify-between items-center p-2.5 md:p-4 border md:border-2 border-yellow-100 bg-yellow-50 rounded-lg md:rounded-xl cursor-pointer hover:border-yellow-300 hover:shadow-md transition group">
-                            <div className="flex items-center gap-2 md:gap-3">
-                                <Folder className="text-yellow-600 fill-yellow-200 w-5 h-5 md:w-6 md:h-6"/>
-                                <span className="font-bold text-yellow-900 text-xs md:text-lg">{folder.title}</span>
-                            </div>
-                            <div className="flex gap-1 md:gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition">
-                                <button onClick={(e) => { e.stopPropagation(); handleRenameContent(folder.id, folder.title); }} className="p-1 md:p-2 bg-white rounded md:rounded-lg text-purple-500 hover:text-purple-700"><FilePenLine className="w-3.5 h-3.5 md:w-4 md:h-4"/></button>
-                                <button onClick={(e) => { e.stopPropagation(); handleDeleteContent(folder.id); }} className="p-1 md:p-2 bg-white rounded md:rounded-lg text-red-500 hover:text-red-700"><Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4"/></button>
-                            </div>
-                        </div>
-                    ))}
-
-                    {visibleContent.filter(c => c.type !== 'FOLDER').map(content => (
-                        <div key={content.id} className="flex flex-col sm:flex-row justify-between sm:items-center p-2.5 md:p-4 border rounded-lg md:rounded-xl bg-white hover:shadow-sm transition group gap-2 md:gap-0">
-                            <div className="flex items-center gap-2 md:gap-3 overflow-hidden flex-1">
-                                <div className={`p-1.5 md:p-2 rounded md:rounded-lg shrink-0 ${content.type === 'PDF' || content.type === 'article' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
-                                    {content.type === 'PDF' || content.type === 'article' ? <FileText className="w-4 h-4 md:w-5 md:h-5"/> : <Video className="w-4 h-4 md:w-5 md:h-5"/>}
-                                </div>
-                                <div className="truncate flex-1">
-                                    <p className="font-bold text-gray-800 text-[10px] md:text-base truncate">{content.seoTitle || content.title}</p>
-                                    <div className="flex flex-wrap items-center gap-1.5 md:gap-2 text-[8px] md:text-xs text-gray-400 mt-0.5">
-                                        <span className="bg-blue-100 text-blue-700 px-1.5 rounded font-black whitespace-nowrap">SET {content.dynamicSetNum}</span>
-                                        <span className="text-[7px] md:text-[10px] text-gray-300">| {content.type === 'article' ? 'AI ARTICLE' : 'ID: ' + content.title}</span>
-                                        {content.type !== 'FOLDER' && content.link && <a href={content.link} target="_blank" className="text-blue-500 hover:underline flex items-center gap-0.5 md:gap-1" onClick={(e)=>e.stopPropagation()}><ExternalLink className="w-2.5 h-2.5 md:w-3 md:h-3"/> View</a>}
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div className="flex gap-1 md:gap-2 self-end sm:self-auto">
-                                <a href={`/pdf/${content.id}`} target="_blank" rel="noopener noreferrer" className="text-emerald-500 p-1.5 md:p-2 bg-emerald-50 md:bg-transparent hover:bg-emerald-100 rounded md:rounded-lg transition inline-flex items-center justify-center" title="View Note"><Eye className="w-3.5 h-3.5 md:w-[18px] md:h-[18px]"/></a>
-                                
-                                <button onClick={() => copyToClipboard(content.id)} className="text-blue-500 p-1.5 md:p-2 bg-blue-50 md:bg-transparent hover:bg-blue-100 rounded md:rounded-lg transition" title="Copy Link"><Copy className="w-3.5 h-3.5 md:w-[18px] md:h-[18px]"/></button>
-                                <button onClick={() => handleRenameContent(content.id, content.seoTitle || content.title)} className="text-purple-500 p-1.5 md:p-2 bg-purple-50 md:bg-transparent hover:bg-purple-100 rounded md:rounded-lg transition" title="Rename"><FilePenLine className="w-3.5 h-3.5 md:w-[18px] md:h-[18px]"/></button>
-                                <button onClick={() => handleDeleteContent(content.id)} className="text-red-500 p-1.5 md:p-2 bg-red-50 md:bg-transparent hover:bg-red-100 rounded md:rounded-lg transition" title="Delete"><Trash2 className="w-3.5 h-3.5 md:w-[18px] md:h-[18px]"/></button>
-                            </div>
-                        </div>
-                    ))}
-
-                    {visibleContent.length === 0 && (
-                        <div className="text-center py-6 md:py-12 border border-dashed md:border-2 rounded-xl md:rounded-2xl bg-gray-50">
-                            <p className="text-gray-400 font-bold uppercase tracking-widest text-[8px] md:text-xs">Folder is empty</p>
-                        </div>
-                    )}
-                </div>
+              ))}
             </div>
-        ) : (
-            <>
-                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 md:gap-0 mb-4 md:mb-6">
-                    <h3 className="text-base md:text-2xl font-black flex items-center gap-1.5 md:gap-2 text-gray-800"><Crown className="text-yellow-500 w-5 h-5 md:w-6 md:h-6"/> Premium Notess</h3>
-                    <button onClick={() => setShowUploadForm(true)} className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 md:px-5 py-2 md:py-2.5 rounded-lg md:rounded-xl font-black text-[10px] md:text-base flex justify-center items-center gap-1.5 md:gap-2 transition shadow-lg shadow-yellow-100 active:scale-95 w-full sm:w-auto"><PlusCircle className="w-4 h-4 md:w-5 md:h-5"/> New Notes</button>
-                </div>
+            <p className="text-xs text-gray-400 mt-1">
+              Auto-fallback: {provider === 'gemini' ? 'Gemini → Vertex' : 'Vertex → Gemini'}
+            </p>
+          </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
-                    {courses.map((course, index) => (
-                        <div key={course.id} className="border md:border-2 p-3 md:p-6 rounded-2xl md:rounded-3xl text-center hover:shadow-2xl transition-all relative group bg-white border-yellow-50 hover:border-yellow-300">
-                            
-                            <div className="absolute top-2 left-2 md:top-4 md:left-4 flex flex-col gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-all duration-300">
-                                <button onClick={() => handleMove(index, 'up')} disabled={index === 0} className={`p-1 md:p-1.5 rounded-md md:rounded-lg shadow-sm border bg-white text-blue-600 hover:bg-blue-50 disabled:opacity-30 disabled:hover:bg-white`} title="Move Up"><ChevronUp size={16} /></button>
-                                <button onClick={() => handleMove(index, 'down')} disabled={index === courses.length - 1} className={`p-1 md:p-1.5 rounded-md md:rounded-lg shadow-sm border bg-white text-blue-600 hover:bg-blue-50 disabled:opacity-30 disabled:hover:bg-white`} title="Move Down"><ChevronDown size={16} /></button>
-                            </div>
-
-                            <div className="absolute top-2 right-2 md:top-4 md:right-4 opacity-100 md:opacity-0 group-hover:opacity-100 transition duration-300 flex flex-col md:flex-row gap-1 md:gap-0">
-                                <button className="text-blue-500 p-1.5 md:p-2.5 bg-blue-50 hover:bg-blue-100 rounded-md md:rounded-xl md:mr-2 transition" onClick={() => { setEditingCourse(course); setFormData({ title: course.title, price: course.price, paymentLink: course.paymentLink || '', description: course.description, lockMessage: course.lockMessage || '', features: course.features || [] }); }}><Edit className="w-3.5 h-3.5 md:w-[18px] md:h-[18px]"/></button>
-                                <button className="text-red-500 p-1.5 md:p-2.5 bg-red-50 hover:bg-red-100 rounded-md md:rounded-xl transition" onClick={() => handleDeleteItem(course.id)}><Trash2 className="w-3.5 h-3.5 md:w-[18px] md:h-[18px]"/></button>
-                            </div>
-                            
-                            <div className="w-8 h-8 md:w-16 md:h-16 mx-auto bg-yellow-50 rounded-lg md:rounded-2xl flex items-center justify-center mb-2 md:mb-5 shadow-inner"><Crown className="text-yellow-500 w-4 h-4 md:w-8 md:h-8"/></div>
-                            <h4 className="text-[10px] md:text-xl font-black mb-0.5 md:mb-1 text-gray-800 uppercase tracking-tight">{course.title}</h4>
-                            <p className="text-[8px] md:text-sm text-gray-400 mb-2 md:mb-5 line-clamp-2 font-medium px-1 md:px-4">{course.description}</p>
-                            
-                            <div className="flex flex-wrap items-center justify-center gap-1 md:gap-2 mb-3 md:mb-8">
-                                <span className="line-through text-gray-400 text-[8px] md:text-sm font-bold italic">
-                                  Rs.{globalSettings?.mrpPrice || '499'}
-                                </span>
-                                <span className="text-red-500 font-black text-[8px] md:text-sm">
-                                  {globalSettings?.discountPercent || '85'}% OFF
-                                </span>
-                                <div className="font-black text-emerald-600 bg-emerald-50 inline-block px-2 md:px-5 py-0.5 md:py-1.5 rounded-full text-[9px] md:text-lg shadow-sm border border-emerald-100 uppercase tracking-tighter">
-                                    Rs.{Math.round((globalSettings?.mrpPrice || 499) * (1 - (globalSettings?.discountPercent || 85) / 100))}
-                                </div>
-                            </div>
-
-                            <button onClick={() => { setManagingCourse(course); fetchCourseContent(course.id); }} className="w-full bg-gray-900 hover:bg-black text-white py-2 md:py-3.5 rounded-lg md:rounded-2xl font-black transition-all shadow-xl active:scale-95 uppercase tracking-widest text-[8px] md:text-xs">Manage Content</button>
-                        </div>
-                    ))}
-                </div>
-            </>
-        )}
-
-        {(showUploadForm || editingCourse) && (
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-2 md:p-4">
-              <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-[2.5rem] border md:border-2 border-yellow-100 relative animate-in zoom-in-95 duration-200 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                <button onClick={() => { setShowUploadForm(false); setEditingCourse(null); setFormData({ title: '', price: '499', paymentLink: '', description: '', lockMessage: '', features: [] }); }} className="absolute top-3 right-3 md:top-6 md:right-6 text-gray-300 hover:text-red-500 transition"><X className="w-5 h-5 md:w-7 md:h-7"/></button>
-                <h4 className="text-sm md:text-2xl font-black mb-3 md:mb-6 text-gray-800 uppercase tracking-tight pr-6">{editingCourse ? `Edit Notes` : 'Create New Notes'}</h4>
-                <form onSubmit={editingCourse ? handleUpdateNotes : handleCreateNotes} className="space-y-3 md:space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-4">
-                        <div><label className="text-[7px] md:text-[10px] font-black text-gray-400 uppercase mb-0.5 md:mb-1 block">Notes Name</label><input value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full p-2 md:p-4 bg-gray-50 border-none rounded-lg md:rounded-2xl focus:ring-1 md:focus:ring-2 focus:ring-yellow-400 outline-none font-black text-[10px] md:text-base" placeholder="SSC Dhamaka 2026" required/></div>
-                        <div><label className="text-[7px] md:text-[10px] font-black text-gray-400 uppercase mb-0.5 md:mb-1 block">Internal MRP (₹)</label><input value={formData.price} onChange={e=>setFormData({...formData, price: e.target.value})} className="w-full p-2 md:p-4 bg-gray-50 border-none rounded-lg md:rounded-2xl focus:ring-1 md:focus:ring-2 focus:ring-yellow-400 outline-none font-black text-[10px] md:text-base" placeholder="499" type="number" required/></div>
-                    </div>
-                    
-                    <div>
-                        <label className="text-[7px] md:text-[10px] font-black text-blue-600 uppercase mb-0.5 md:mb-1 block flex items-center gap-1.5">
-                            <Link size={12}/> Secure Payment Link
-                        </label>
-                        <input value={formData.paymentLink} onChange={e=>setFormData({...formData, paymentLink: e.target.value})} className="w-full p-2 md:p-4 bg-blue-50/30 border border-blue-100 rounded-lg md:rounded-2xl focus:ring-1 md:focus:ring-2 focus:ring-blue-400 outline-none font-bold text-[10px] md:text-base text-blue-800" placeholder="Paste payment gateway URL here..." />
-                    </div>
-
-                    <div><label className="text-[7px] md:text-[10px] font-black text-gray-400 uppercase mb-0.5 md:mb-1 block">Short Description</label><textarea value={formData.description} onChange={e=>setFormData({...formData, description: e.target.value})} className="w-full p-2 md:p-4 bg-gray-50 border-none rounded-lg md:rounded-2xl focus:ring-1 md:focus:ring-2 focus:ring-yellow-400 outline-none font-bold h-16 md:h-24 resize-none text-[10px] md:text-base" placeholder="Mention subjects and exam years..." /></div>
-
-                    <div className="bg-blue-50/50 p-3 md:p-6 rounded-xl md:rounded-3xl border border-blue-100 space-y-2.5 md:space-y-4 shadow-inner">
-                        <h4 className="text-[9px] md:text-xs font-black text-blue-700 uppercase flex items-center gap-1.5 md:gap-2">
-                            <ShieldCheck className="w-3.5 h-3.5 md:w-5 md:h-5" /> Premium Display Settings (For SEO)
-                        </h4>
-                        <div>
-                            <label className="text-[7px] md:text-[10px] font-black text-gray-400 mb-0.5 md:mb-1 block uppercase tracking-widest">Lock Screen Message</label>
-                            <textarea name="lockMessage" value={formData.lockMessage} onChange={e=>setFormData({...formData, lockMessage: e.target.value})} placeholder="Explain why they should buy this..." className="w-full p-2 md:p-4 bg-white border border-blue-100 rounded-lg md:rounded-2xl font-bold text-[10px] md:text-sm h-12 md:h-20 resize-none outline-none focus:ring-1 md:focus:ring-2 focus:ring-blue-400" />
-                        </div>
-                        <div>
-                            <label className="text-[7px] md:text-[10px] font-black text-gray-400 mb-0.5 md:mb-1 block uppercase tracking-widest">Notes Features (True Features)</label>
-                            <div className="flex flex-col sm:flex-row gap-1.5 md:gap-2 mb-2 md:mb-3">
-                                <input value={featureInput} onChange={(e) => setFeatureInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addFeature())} placeholder="e.g. Bilingual Support" className="flex-1 p-2 md:p-3 bg-white border border-blue-100 rounded-md md:rounded-xl font-black text-[10px] md:text-sm outline-none" />
-                                <button type="button" onClick={addFeature} className="bg-blue-600 text-white px-3 md:px-5 py-2 md:py-0 rounded-md md:rounded-xl font-black hover:bg-blue-700 transition text-[10px] md:text-base shrink-0">Add</button>
-                            </div>
-                            <div className="flex flex-wrap gap-1 md:gap-2">
-                                {formData.features?.map((feat, idx) => (
-                                    <div key={idx} className="bg-blue-600 text-white px-2 md:px-4 py-1 md:py-1.5 rounded-full text-[8px] md:text-[10px] font-black flex items-center gap-1 md:gap-2 shadow-lg shadow-blue-500/20">
-                                        <CheckCircle className="w-2.5 h-2.5 md:w-3 md:h-3" /> {feat}
-                                        <button type="button" onClick={() => removeFeature(idx)} className="text-blue-200 hover:text-white"><X className="w-2.5 h-2.5 md:w-3 md:h-3"/></button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    <button className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-2 md:py-4 rounded-xl md:rounded-3xl font-black text-[10px] md:text-xl shadow-xl shadow-yellow-500/20 transition-all active:scale-95" disabled={loading}>{loading ? "Saving..." : editingCourse ? "Update Notes" : "Launch Notes"}</button>
-                </form>
+          {/* Set Number + Bulk */}
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">
+              🔢 Set Number & Bulk
+            </label>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <p className="text-xs text-gray-400 mb-1">Start Set#</p>
+                <input
+                  type="number"
+                  value={setNumber}
+                  onChange={e => setSetNumber(Number(e.target.value))}
+                  min={1}
+                  disabled={generating}
+                  className="w-full p-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none text-sm"
+                />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-gray-400 mb-1">Total Sets</p>
+                <select
+                  value={bulkCount}
+                  onChange={e => setBulkCount(Number(e.target.value))}
+                  disabled={generating}
+                  className="w-full p-3 border-2 rounded-xl focus:border-blue-500 focus:outline-none text-sm"
+                >
+                  {[1, 2, 3, 5, 10].map(n => (
+                    <option key={n} value={n}>
+                      {n === 1 ? '1 (Single)' : `${n} Sets (Bulk)`}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-        )}
+            {bulkCount > 1 && (
+              <p className="text-xs text-orange-500 mt-1">
+                ⚠️ Bulk: Set {setNumber} to Set {setNumber + bulkCount - 1}
+                will be generated
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* ===== GENERATE BUTTON ===== */}
+        <div className="mt-6">
+          <button
+            onClick={handleGenerate}
+            disabled={generating || !topic || !selectedCourse}
+            className={`w-full py-4 rounded-xl text-lg font-black text-white
+              transition-all transform active:scale-95 ${
+              generating || !topic || !selectedCourse
+                ? 'bg-gray-300 cursor-not-allowed'
+                : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:shadow-xl hover:scale-[1.01]'
+            }`}
+          >
+            {generating ? (
+              <span className="flex items-center justify-center gap-3">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                {progress || 'Generating...'}
+              </span>
+            ) : (
+              <span className="flex items-center justify-center gap-2">
+                <Zap className="w-5 h-5 text-yellow-300" />
+                {bulkCount > 1
+                  ? `Generate ${bulkCount} Sets (Bulk)`
+                  : 'Generate Content'}
+              </span>
+            )}
+          </button>
+
+          {/* Progress Bar */}
+          {generating && (
+            <div className="mt-3">
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-1 text-center">
+                {percent}% • Provider: {provider}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ===== LAST RESULT ===== */}
+      {lastResult && (
+        <div className="bg-green-50 border border-green-200 rounded-2xl p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-bold text-green-800">
+                  Content Generated Successfully!
+                </p>
+                <p className="text-sm text-green-600 mt-1">
+                  ID: {lastResult.id} |
+                  Provider: {lastResult.provider} |
+                  Type: {lastResult.subjectType}
+                </p>
+                {lastResult.seo && (
+                  <div className="mt-2 space-y-1">
+                    <p className="text-xs text-green-700">
+                      <Globe className="w-3 h-3 inline mr-1" />
+                      SEO Title: {lastResult.seo.metaTitle}
+                    </p>
+                    <p className="text-xs text-green-700">
+                      <Hash className="w-3 h-3 inline mr-1" />
+                      Slug: /notes/{lastResult.seo.slug}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={handlePreview}
+              className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-bold
+                flex items-center gap-1 hover:bg-green-700 shrink-0"
+            >
+              <Eye className="w-4 h-4" /> Preview
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ===== GENERATION LOGS ===== */}
+      {logs.length > 0 && (
+        <div className="bg-white rounded-2xl border shadow-sm p-5">
+          <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+            <BookOpen className="w-5 h-5 text-blue-600" />
+            Generation Logs ({logs.length})
+          </h3>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {logs.map((log, i) => (
+              <div
+                key={i}
+                className={`p-3 rounded-xl text-sm border ${
+                  log.status === 'success'
+                    ? 'bg-green-50 border-green-200'
+                    : 'bg-red-50 border-red-200'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2">
+                    {log.status === 'success'
+                      ? <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                      : <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+                    }
+                    <div>
+                      <p className={`font-bold ${
+                        log.status === 'success' ? 'text-green-800' : 'text-red-800'
+                      }`}>
+                        {log.topic} - Set {log.setNumber}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {log.message}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-xs text-gray-400">{log.time}</span>
+                    <br />
+                    <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">
+                      {log.provider}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => setLogs([])}
+            className="mt-3 text-xs text-gray-400 hover:text-red-500 flex items-center gap-1"
+          >
+            <RefreshCw className="w-3 h-3" /> Clear Logs
+          </button>
+        </div>
+      )}
+
+      {/* ===== QUICK TIPS ===== */}
+      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
+        <h3 className="font-bold text-blue-800 mb-3">💡 Quick Tips</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-blue-700">
+          <div className="flex items-start gap-2">
+            <span className="shrink-0">📐</span>
+            <p>Math/Reasoning topics → Auto Formula + Solution</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="shrink-0">📚</span>
+            <p>GK/History topics → Only Question Table</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="shrink-0">🤖</span>
+            <p>Vertex AI → Better quality, Gemini → Faster</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="shrink-0">🔄</span>
+            <p>Auto-fallback: अगर एक fail हो, दूसरा try होगा</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="shrink-0">📦</span>
+            <p>Bulk = Multiple sets एक click में</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="shrink-0">🌐</span>
+            <p>SEO auto-generate होता है हर content के साथ</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ===== PREVIEW MODAL ===== */}
+      {showPreview && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="font-bold text-lg">
+                👁️ Content Preview
+              </h3>
+              <button
+                onClick={() => setShowPreview(false)}
+                className="p-2 hover:bg-gray-100 rounded-xl font-bold text-gray-500"
+              >
+                ✕ Close
+              </button>
+            </div>
+            <div
+              className="flex-1 overflow-y-auto p-6 prose max-w-none"
+              dangerouslySetInnerHTML={{ __html: previewHTML }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
