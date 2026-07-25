@@ -2,8 +2,9 @@ name: StudyGyaan SEO and Indexing Agent
 
 on:
   schedule:
-    # 9:00 PM IST (15:30 UTC). GitHub schedules can start late under load.
+    # 9:00 PM IST (15:30 UTC)
     - cron: '30 15 * * *'
+
   workflow_dispatch:
     inputs:
       mode:
@@ -14,10 +15,12 @@ on:
         options:
           - audit
           - auto
+
       url:
         description: 'Optional single StudyGyaan URL to audit'
         required: false
         type: string
+
       max_urls:
         description: 'Maximum URLs to audit (1-2000)'
         required: true
@@ -31,7 +34,8 @@ concurrency:
 jobs:
   seo-indexing-agent:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+
     defaults:
       run:
         working-directory: ai_backend
@@ -50,25 +54,88 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Show active service-account identity
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+        run: |
+          node - <<'NODE'
+          let raw = process.env.SERVICE_ACCOUNT_JSON || '';
+
+          if (!raw) {
+            console.error('SERVICE_ACCOUNT_JSON secret is empty or unavailable.');
+            process.exit(1);
+          }
+
+          let key;
+
+          try {
+            key = JSON.parse(raw);
+          } catch (jsonError) {
+            try {
+              key = JSON.parse(
+                Buffer.from(raw, 'base64').toString('utf8')
+              );
+            } catch (base64Error) {
+              console.error(
+                'SERVICE_ACCOUNT_JSON is neither valid JSON nor valid base64 JSON.'
+              );
+              process.exit(1);
+            }
+          }
+
+          if (!key.project_id || !key.client_email) {
+            console.error(
+              'Secret does not look like a Google service-account JSON.'
+            );
+            process.exit(1);
+          }
+
+          console.log('========================================');
+          console.log('Active Google service-account identity');
+          console.log('Project ID     :', key.project_id);
+          console.log('Client Email   :', key.client_email);
+          console.log('Private Key ID :', key.private_key_id || 'not available');
+          console.log('========================================');
+          console.log('Private key was intentionally NOT printed.');
+          NODE
+
       - name: Run technical SEO and indexing agent
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+
           WEBSITE_URL: https://studygyaan.in
           SITEMAP_URL: https://studygyaan.in/sitemap.xml
           SEARCH_CONSOLE_SITE_URL: sc-domain:studygyaan.in
+
           SEARCH_CONSOLE_INSPECTION_ENABLED: 'true'
           SEARCH_CONSOLE_SITEMAP_SUBMIT_ENABLED: 'true'
+
           INDEXING_API_ENABLED: 'true'
           INDEXING_DAILY_LIMIT: '180'
+
           SEO_AGENT_MAX_URLS: ${{ github.event.inputs.max_urls || '200' }}
           SEO_INSPECTION_LIMIT: '25'
-          SEO_AUDIT_CONCURRENCY: '5'
+          SEO_AUDIT_CONCURRENCY: '2'
+          SEO_AUDIT_TIMEOUT_MS: '30000'
           SEO_REPORT_PATH: seo-audit-report.json
+
         run: |
           MODE="${{ github.event_name == 'schedule' && 'auto' || github.event.inputs.mode }}"
           URL="${{ github.event.inputs.url }}"
+
+          if [ -z "$MODE" ]; then
+            MODE="audit"
+          fi
+
           ARGS="--mode=${MODE} --max=${SEO_AGENT_MAX_URLS} --output=seo-audit-report.json"
-          if [ -n "$URL" ]; then ARGS="$ARGS --url=$URL"; fi
+
+          if [ -n "$URL" ]; then
+            ARGS="$ARGS --url=$URL"
+          fi
+
+          echo "Running SEO agent in mode: $MODE"
+          echo "Maximum audit URLs: $SEO_AGENT_MAX_URLS"
+
           node google_indexing.js $ARGS
 
       - name: Publish report in workflow summary
@@ -76,17 +143,38 @@ jobs:
         run: |
           if [ -f seo-audit-report.json ]; then
             node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
-          const r = require('./seo-audit-report.json');
-          console.log('## StudyGyaan SEO Agent');
-          console.log(`- Mode: **${r.mode}**`);
-          console.log(`- Sitemap unique URLs: **${r.sitemap.unique}**`);
-          console.log(`- Audited: **${r.summary.audited}**`);
-          console.log(`- Technically clean: **${r.summary.cleanIndexable}**`);
-          console.log(`- Issues: \`${JSON.stringify(r.summary.issueCounts)}\``);
-          console.log(`- Search Console verdicts: \`${JSON.stringify(r.summary.searchConsoleVerdicts)}\``);
-          console.log(`- Indexing API accepted notifications: **${r.summary.indexingApiAcceptedNotifications}**`);
-          console.log('> Accepted notification ≠ indexed page. Search Console verdict is the source of truth.');
+          const report = require('./seo-audit-report.json');
+
+          console.log('## StudyGyaan SEO and Indexing Agent');
+          console.log('');
+          console.log(`- Mode: **${report.mode}**`);
+          console.log(
+            `- Sitemap unique URLs: **${report.sitemap.unique}**`
+          );
+          console.log(
+            `- URLs audited: **${report.summary.audited}**`
+          );
+          console.log(
+            `- Technically clean/indexable: **${report.summary.cleanIndexable}**`
+          );
+          console.log(
+            `- Issues: \`${JSON.stringify(report.summary.issueCounts)}\``
+          );
+          console.log(
+            `- Search Console verdicts: \`${JSON.stringify(report.summary.searchConsoleVerdicts)}\``
+          );
+          console.log(
+            `- Indexing API accepted notifications: **${report.summary.indexingApiAcceptedNotifications}**`
+          );
+          console.log('');
+          console.log(
+            '> Important: An accepted Indexing API notification does not prove that Google indexed the URL.'
+          );
           NODE
+          else
+            echo "## StudyGyaan SEO Agent" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Report file was not generated." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload detailed JSON report
