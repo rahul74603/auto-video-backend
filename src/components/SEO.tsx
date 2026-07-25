@@ -3,27 +3,29 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useLocation } from 'react-router-dom';
 
+const CURRENT_YEAR = new Date().getFullYear();
+
 // =========================================================
 // 📊 PAGE-WISE DEFAULT SEO DATABASE
 // =========================================================
 const PAGE_SEO_MAP = {
     '/': {
-        title: 'StudyGyaan - Free Study Material, Govt Jobs & Mock Tests 2025',
+        title: `StudyGyaan - Free Study Material, Govt Jobs & Mock Tests ${CURRENT_YEAR}`,
         description: 'StudyGyaan पर पाएं Latest Sarkari Naukri, Free PDF Notes, Online Mock Tests, Admit Card, Result और Premium Study Material। SSC, Railway, Bank, Police Exam की सबसे बेहतर तैयारी।',
-        keywords: 'studygyaan, sarkari naukri 2025, govt jobs, free study material, mock test, SSC CGL, RRB NTPC'
+        keywords: `studygyaan, sarkari naukri ${CURRENT_YEAR}, govt jobs, free study material, mock test, SSC CGL, RRB NTPC`
     },
     '/govt-jobs': {
-        title: 'Latest Govt Jobs 2025 - सरकारी नौकरी | StudyGyaan',
-        description: 'सभी Latest Government Jobs 2025 की जानकारी। SSC, Railway, Bank, Police, UPSC और State PSC की Vacancy। Free Application, Syllabus और Preparation Tips।',
-        keywords: 'govt jobs 2025, sarkari naukri, government vacancy, sarkari job alert'
+        title: `Latest Govt Jobs ${CURRENT_YEAR} - सरकारी नौकरी | StudyGyaan`,
+        description: `सभी Latest Government Jobs ${CURRENT_YEAR} की जानकारी। SSC, Railway, Bank, Police, UPSC और State PSC की Vacancy। Free Application, Syllabus और Preparation Tips।`,
+        keywords: `govt jobs ${CURRENT_YEAR}, sarkari naukri, government vacancy, sarkari job alert`
     },
     '/blog': {
-        title: 'Education Blog - Exam Tips & Updates 2025 | StudyGyaan',
+        title: `Education Blog - Exam Tips & Updates ${CURRENT_YEAR} | StudyGyaan`,
         description: 'Latest Education News, Exam Analysis, Study Tips और Competitive Exam Updates। SSC, Railway, Banking Exam की पूरी जानकारी Hindi में।',
         keywords: 'education blog hindi, exam tips, study tips, competitive exam updates'
     },
     '/test': {
-        title: 'Free Online Mock Tests 2025 - Practice Sets | StudyGyaan',
+        title: `Free Online Mock Tests ${CURRENT_YEAR} - Practice Sets | StudyGyaan`,
         description: 'SSC, Railway, Bank, Police के Free Online Mock Tests। Bilingual Hindi+English Practice Sets with Timer। Previous Year Papers और Expected Questions।',
         keywords: 'free mock test, online test series, practice set, SSC mock test, railway mock test'
     },
@@ -33,17 +35,17 @@ const PAGE_SEO_MAP = {
         keywords: 'web stories, exam updates, sarkari naukri stories, quick updates'
     },
     '/free-study-material': {
-        title: 'Free Study Material PDF Download 2025 | StudyGyaan',
+        title: `Free Study Material PDF Download ${CURRENT_YEAR} | StudyGyaan`,
         description: 'SSC, Railway, Bank, Police, UPSC के लिए Free PDF Notes Download करें। Complete Study Material, Previous Year Papers और Topic-wise Notes।',
         keywords: 'free study material pdf, free notes download, SSC notes, railway notes, bank exam pdf'
     },
     '/e-books': {
-        title: 'Free E-Books Download 2025 - All Exams | StudyGyaan',
+        title: `Free E-Books Download ${CURRENT_YEAR} - All Exams | StudyGyaan`,
         description: 'All Competitive Exams के लिए Free E-Books। GK, Math, Reasoning, English, Hindi और Science की Complete Books।',
         keywords: 'free ebooks, competitive exam books, GK book pdf, math ebook, reasoning book'
     },
     '/premium-notes': {
-        title: 'Premium Notes & Study Material 2025 | StudyGyaan',
+        title: `Premium Notes & Study Material ${CURRENT_YEAR} | StudyGyaan`,
         description: 'Expert-prepared Premium Notes जो आपकी Exam Preparation को Next Level ले जाएंगे। Topic-wise Complete Notes with Practice Questions।',
         keywords: 'premium notes, best study material, expert notes, exam preparation notes'
     },
@@ -75,7 +77,7 @@ const PAGE_SEO_MAP = {
 };
 
 const DEFAULT_SEO = {
-    title: 'StudyGyaan - Sarkari Naukri & Exam Preparation 2025',
+    title: `StudyGyaan - Sarkari Naukri & Exam Preparation ${CURRENT_YEAR}`,
     description: 'StudyGyaan पर पाएं Latest Govt Jobs, Free Study Material, Mock Tests और Exam Updates। SSC, Railway, Bank, Police की Best Preparation।',
     keywords: 'studygyaan, sarkari naukri, exam preparation, free study material',
     image: 'https://studygyaan.in/og-image.jpg'
@@ -84,15 +86,47 @@ const DEFAULT_SEO = {
 // =========================================================
 // 🔧 HELPER: Clean URL
 // =========================================================
-function cleanUrl(url) {
-    if (!url) return 'https://studygyaan.in';
-    // Trailing slash हटाओ (homepage छोड़कर)
-    if (url !== 'https://studygyaan.in' &&
-        url !== 'https://studygyaan.in/' &&
-        url.endsWith('/')) {
-        return url.slice(0, -1);
+const CANONICAL_PATH_ALIASES = {
+    '/about': '/about-us',
+    '/contact': '/contact-us',
+    '/mock-tests': '/test',
+    '/all-stories': '/web-stories',
+    '/fasttrack': '/govt-jobs',
+    '/jobs': '/govt-jobs',
+    '/refund-policy': '/refund-cancellation-policy'
+};
+
+/**
+ * Canonical URL is normalized in one place so query strings, fragments,
+ * trailing slashes and legacy route names can never create duplicate signals.
+ */
+export function cleanUrl(value) {
+    const baseUrl = 'https://studygyaan.in';
+    try {
+        const url = new URL(value || baseUrl, baseUrl);
+        let pathname = url.pathname.replace(/\/{2,}/g, '/');
+
+        pathname = CANONICAL_PATH_ALIASES[pathname] || pathname;
+        const prefixAliases = [
+            ['/jobs/', '/job/'],
+            ['/blogs/', '/blog/'],
+            ['/mock-tests/', '/test/'],
+            ['/fasttrack/', '/update/'],
+            ['/free-study-material/', '/material/'],
+            ['/e-book/', '/ebook/']
+        ];
+        for (const [legacyPrefix, canonicalPrefix] of prefixAliases) {
+            if (pathname.startsWith(legacyPrefix)) {
+                pathname = `${canonicalPrefix}${pathname.slice(legacyPrefix.length)}`;
+                break;
+            }
+        }
+
+        if (pathname.length > 1) pathname = pathname.replace(/\/+$/, '');
+        return pathname === '/' ? baseUrl : `${baseUrl}${pathname}`;
+    } catch {
+        return baseUrl;
     }
-    return url;
 }
 
 // =========================================================

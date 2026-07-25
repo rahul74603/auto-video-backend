@@ -28,5 +28,10 @@
     "sharp": "^0.34.5",
     "xml2js": "^0.6.2"
   },
-  "private": true
+  "private": true,
+  "scripts": {
+    "check": "node --check index.js && node --check google_indexing.js && node --check agents/seo_indexing_agent.js",
+    "test": "node --test tests/*.test.js",
+    "seo:audit": "node google_indexing.js --audit"
+  }
 }

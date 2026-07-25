@@ -229,7 +229,7 @@ function App() {
                                             element={
                                                 <CategoryRoute
                                                     category="Admit Card"
-                                                    pageTitle="Latest Admit Cards 2025"
+                                                    pageTitle={`Latest Admit Cards ${new Date().getFullYear()}`}
                                                     description="सभी सरकारी परीक्षाओं के एडमिट कार्ड सबसे पहले यहाँ से डाउनलोड करें।"
                                                 />
                                             }
@@ -239,7 +239,7 @@ function App() {
                                             element={
                                                 <CategoryRoute
                                                     category="Result"
-                                                    pageTitle="Exam Results 2025"
+                                                    pageTitle={`Exam Results ${new Date().getFullYear()}`}
                                                     description="अपने परीक्षा परिणाम और मेरिट लिस्ट की सबसे तेज़ अपडेट।"
                                                 />
                                             }
@@ -249,27 +249,21 @@ function App() {
                                             element={
                                                 <CategoryRoute
                                                     category="Answer Key"
-                                                    pageTitle="Official Answer Keys 2025"
+                                                    pageTitle={`Official Answer Keys ${new Date().getFullYear()}`}
                                                     description="परीक्षा के तुरंत बाद सटीक Answer Key PDF डाउनलोड करें।"
                                                 />
                                             }
                                         />
                                         <Route
                                             path="/jobs"
-                                            element={
-                                                <CategoryRoute
-                                                    category="Jobs"
-                                                    pageTitle="Latest Govt Jobs 2025"
-                                                    description="10वीं, 12वीं और ग्रेजुएट्स के लिए नई सरकारी नौकरियों की जानकारी।"
-                                                />
-                                            }
+                                            element={<Navigate to="/govt-jobs" replace />}
                                         />
                                         <Route
                                             path="/syllabus"
                                             element={
                                                 <CategoryRoute
                                                     category="Syllabus"
-                                                    pageTitle="Syllabus & Exam Pattern 2025"
+                                                    pageTitle={`Syllabus & Exam Pattern ${new Date().getFullYear()}`}
                                                     description="सभी परीक्षाओं का लेटेस्ट सिलेबस और एग्जाम पैटर्न यहाँ देखें।"
                                                 />
                                             }

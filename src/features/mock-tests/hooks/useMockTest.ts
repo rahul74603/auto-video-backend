@@ -13,7 +13,7 @@ export function useMockTest(id?: string) {
     if (!id) return () => { active = false; };
 
     mockTestRepository
-      .getById(id)
+      .getBySlugOrId(id)
       .then((result) => {
         if (active) setTest(result);
       })

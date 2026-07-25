@@ -212,7 +212,7 @@ const PlayMockTest = () => {
                 <SEO 
                     customTitle={`${testData.title} - Ready to Play | StudyGyaan`}
                     customDescription={`Attempt this free '${testData.title}' mock test. Total ${testData.totalQuestions} questions.`}
-                    customUrl={`https://studygyaan.in/test/${id}`}
+                    customUrl={`https://studygyaan.in/test/${testData.slug || testData.id || id}`}
                     customImage="https://studygyaan.in/og-image.jpg"
                 />
                 <script 
@@ -305,7 +305,7 @@ const PlayMockTest = () => {
                 <SEO 
                     customTitle={`Result: ${testData.title} | StudyGyaan`}
                     customDescription={`Check your score for '${testData.title}'.`}
-                    customUrl={`https://studygyaan.in/test/${id}`}
+                    customUrl={`https://studygyaan.in/test/${testData.slug || testData.id || id}`}
                     customImage="https://studygyaan.in/og-image.jpg"
                 />
                 <div className="max-w-4xl mx-auto space-y-10 pb-20">
@@ -449,7 +449,7 @@ const PlayMockTest = () => {
             <SEO 
                 customTitle={`Playing: ${testData.title} | StudyGyaan 2026`}
                 customDescription={`Attempting live exam: ${testData.title}. Total ${testData.totalQuestions} questions.`}
-                customUrl={`https://studygyaan.in/test/${id}`}
+                customUrl={`https://studygyaan.in/test/${testData.slug || testData.id || id}`}
                 customImage="https://studygyaan.in/og-image.jpg"
             />
 

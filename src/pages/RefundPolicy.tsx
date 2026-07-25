@@ -16,7 +16,7 @@ const RefundPolicy = () => {
       <SEO 
         customTitle="Refund & Cancellation Policy - StudyGyaan Official | 2026 Guide"
         customDescription="Read the comprehensive Refund and Cancellation policy of StudyGyaan. Information regarding Premium PDF Notes, Mock Tests, and digital course refunds."
-        customUrl="https://studygyaan.in/refund-policy"
+        customUrl="https://studygyaan.in/refund-cancellation-policy"
         customImage="https://studygyaan.in/og-image.jpg"
       />
 

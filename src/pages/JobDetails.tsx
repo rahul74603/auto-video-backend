@@ -29,6 +29,20 @@ function formatDate(d) {
     }
 }
 
+function getContentYear(job) {
+    const titleYear = String(job?.title || '').match(/\b20\d{2}\b/)?.[0];
+    if (titleYear) return titleYear;
+    try {
+        const value = job?.createdAt?.seconds
+            ? new Date(job.createdAt.seconds * 1000)
+            : job?.createdAt?.toDate
+                ? job.createdAt.toDate()
+                : new Date(job?.createdAt);
+        if (!Number.isNaN(value.getTime())) return String(value.getFullYear());
+    } catch { /* use current year */ }
+    return String(new Date().getFullYear());
+}
+
 function getIsoDate(d) {
     if (!d) return new Date().toISOString();
     try {
@@ -204,11 +218,13 @@ const JobDetails = () => {
     const jobSlug = job.slug || docId || id;
     const canonicalUrl = `https://studygyaan.in/job/${jobSlug}`;
     const publishedIso = getIsoDate(job.createdAt);
+    const contentYear = getContentYear(job);
+    const titleAlreadyHasYear = String(job.title || '').includes(contentYear);
 
-    const seoTitle = `${job.title} Online Form 2025 - ${job.vacancies || ''} Vacancies | StudyGyaan`;
-    const seoDesc = job.description
+    const seoTitle = `${job.title}${titleAlreadyHasYear ? '' : ` ${contentYear}`} - ${job.vacancies || 'Latest'} Vacancies | StudyGyaan`;
+    const seoDesc = job.metaDescription || (job.description
         ? job.description.substring(0, 160)
-        : `Apply online for ${job.title} recruitment 2025. ${job.organization || ''} - ${job.vacancies || 'Various'} vacancies. Check eligibility, salary ₹${job.salary || 'as per rules'}, last date ${job.lastDate || 'check notification'}.`;
+        : `Apply online for ${job.title} recruitment ${contentYear}. ${job.organization || ''} - ${job.vacancies || 'Various'} vacancies. Check eligibility, salary ₹${job.salary || 'as per rules'}, last date ${job.lastDate || 'check notification'}.`);
 
     const seoImage = job.imageUrl
         || job.image
@@ -217,13 +233,41 @@ const JobDetails = () => {
     const seoKeywords = [
         job.title,
         job.organization,
-        `${job.title} 2025`,
+        `${job.title} ${contentYear}`,
         `${job.title} online form`,
         `${job.organization} vacancy`,
         job.location || 'India',
-        'Sarkari Naukri 2025',
+        `Sarkari Naukri ${contentYear}`,
         'StudyGyaan'
     ].filter(Boolean).join(', ');
+
+    const parsedLastDate = job.lastDate ? new Date(job.lastDate) : null;
+    const jobPostingSchema = {
+        "@context": "https://schema.org",
+        "@type": "JobPosting",
+        title: job.title,
+        description: String(job.description || seoDesc).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
+        datePosted: publishedIso,
+        ...(parsedLastDate && !Number.isNaN(parsedLastDate.getTime())
+            ? { validThrough: parsedLastDate.toISOString() }
+            : {}),
+        ...(job.employmentType ? { employmentType: job.employmentType } : {}),
+        hiringOrganization: {
+            "@type": "Organization",
+            name: job.organization || "Government Organization"
+        },
+        jobLocation: {
+            "@type": "Place",
+            address: {
+                "@type": "PostalAddress",
+                addressLocality: job.location || "India",
+                addressCountry: "IN"
+            }
+        },
+        ...(job.vacancies ? { totalJobOpenings: String(job.vacancies) } : {}),
+        url: canonicalUrl,
+        directApply: false
+    };
 
     // =========================================================
     // 🎨 RENDER
@@ -243,6 +287,10 @@ const JobDetails = () => {
                 modifiedDate={publishedIso}
                 author={job.author || "Rahul Sir"}
                 category={job.category || "Govt Jobs"}
+            />
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPostingSchema) }}
             />
 
             <div className="max-w-7xl mx-auto px-2 md:px-6">
@@ -305,7 +353,7 @@ const JobDetails = () => {
                                         className="text-lg md:text-3xl font-black mb-3 leading-tight uppercase tracking-tight"
                                         itemProp="title"
                                     >
-                                        {job.title} Online Form 2025
+                                        {job.title}{titleAlreadyHasYear ? '' : ` ${contentYear}`}
                                     </h1>
 
                                     <div className="flex flex-wrap gap-3 md:gap-6 text-blue-100 font-bold text-[9px] md:text-xs pt-3 border-t border-white/10">
