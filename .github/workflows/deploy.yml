@@ -1,4 +1,4 @@
-name: Manual Deploy Firebase Functions
+name: Deploy Firebase Hosting and Functions
 
 on:
   workflow_dispatch:
@@ -6,28 +6,35 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
-    # 👇 यह Actions को ai_backend फोल्डर के अंदर काम करने को कहेगा
-    defaults:
-      run:
-        working-directory: ai_backend
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
 
-      - name: Install Dependencies
-        run: npm install
+      - name: Install frontend dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Install Functions dependencies
+        working-directory: ai_backend
+        run: npm ci --legacy-peer-deps
+
+      - name: Package the built app shell for server SEO rendering
+        run: cp dist/index.html ai_backend/index.html
 
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
 
-      - name: Deploy to Firebase Functions
-        run: firebase deploy --only functions --project studymaterial-406ad
+      - name: Deploy Hosting rewrites, assets and Functions together
+        run: firebase deploy --only hosting,functions --project studymaterial-406ad --non-interactive
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
