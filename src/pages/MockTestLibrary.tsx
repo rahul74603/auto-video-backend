@@ -47,7 +47,7 @@ const MockTestLibrary = () => {
         "itemListElement": tests.map((test, index) => ({
             "@type": "ListItem",
             "position": index + 1,
-            "url": `https://studygyaan.in/test/${test.id}`,
+            "url": `https://studygyaan.in/test/${test.slug || test.id}`,
             "name": test.title
         }))
     };
@@ -64,7 +64,7 @@ const MockTestLibrary = () => {
             <SEO 
                 customTitle="Online Mock Tests 2026 - Practice Portal | StudyGyaan"
                 customDescription="Improve your score with latest pattern mock tests for SSC, Railway, and State exams 2026. Practice daily on StudyGyaan Hub."
-                customUrl="https://studygyaan.in/mock-tests"
+                customUrl="https://studygyaan.in/test"
                 customImage="https://studygyaan.in/og-image.jpg"
             />
 

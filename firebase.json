@@ -1,21 +1,53 @@
 {
   "hosting": {
     "public": "dist",
-
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ],
-
     "redirects": [
       {
         "source": "/feed",
         "destination": "/feed.xml",
         "type": 301
+      },
+      {
+        "source": "/mock-tests",
+        "destination": "/test",
+        "type": 301
+      },
+      {
+        "source": "/all-stories",
+        "destination": "/web-stories",
+        "type": 301
+      },
+      {
+        "source": "/fasttrack",
+        "destination": "/govt-jobs",
+        "type": 301
+      },
+      {
+        "source": "/about",
+        "destination": "/about-us",
+        "type": 301
+      },
+      {
+        "source": "/contact",
+        "destination": "/contact-us",
+        "type": 301
+      },
+      {
+        "source": "/jobs",
+        "destination": "/govt-jobs",
+        "type": 301
+      },
+      {
+        "source": "/refund-policy",
+        "destination": "/refund-cancellation-policy",
+        "type": 301
       }
     ],
-
     "headers": [
       {
         "source": "/404.html",
@@ -27,134 +59,225 @@
         ]
       }
     ],
-
     "rewrites": [
       {
         "source": "/sitemap.xml",
-        "function": "generateSitemap"
+        "function": "generateSitemapIndex"
       },
-
+      {
+        "source": "/sitemap-main",
+        "function": "generateSitemapMain"
+      },
+      {
+        "source": "/sitemap-main.xml",
+        "function": "generateSitemapMain"
+      },
+      {
+        "source": "/sitemap-blogs",
+        "function": "generateSitemapBlogs"
+      },
+      {
+        "source": "/sitemap-blogs.xml",
+        "function": "generateSitemapBlogs"
+      },
+      {
+        "source": "/sitemap-jobs",
+        "function": "generateSitemapJobs"
+      },
+      {
+        "source": "/sitemap-jobs.xml",
+        "function": "generateSitemapJobs"
+      },
+      {
+        "source": "/sitemap-tests",
+        "function": "generateSitemapTests"
+      },
+      {
+        "source": "/sitemap-tests.xml",
+        "function": "generateSitemapTests"
+      },
+      {
+        "source": "/sitemap-stories",
+        "function": "generateSitemapStories"
+      },
+      {
+        "source": "/sitemap-stories.xml",
+        "function": "generateSitemapStories"
+      },
+      {
+        "source": "/sitemap-updates",
+        "function": "generateSitemapUpdates"
+      },
+      {
+        "source": "/sitemap-updates.xml",
+        "function": "generateSitemapUpdates"
+      },
+      {
+        "source": "/sitemap-news",
+        "function": "generateSitemapNews"
+      },
+      {
+        "source": "/sitemap-news.xml",
+        "function": "generateSitemapNews"
+      },
       {
         "source": "/web-stories-sitemap.xml",
-        "run": {
-          "serviceId": "generatestoriessitemap",
-          "region": "us-central1"
-        }
+        "function": "generateSitemapStories"
       },
-
       {
-        "source": "/generateSitemap",
+        "source": "/sitemap-all.xml",
         "function": "generateSitemap"
       },
-
+      {
+        "source": "/generateSitemap",
+        "function": "generateSitemapIndex"
+      },
       {
         "source": "/forcePushSitemap",
         "function": "forcePushSitemap"
       },
-
       {
         "source": "/generateRss",
         "function": "generateRss"
       },
-
       {
         "source": "/feed.xml",
         "function": "rssFeed"
       },
-
-      
-     {
+      {
         "source": "/test/**",
-        "run": {
-          "serviceId": "serversidemetatags",
-          "region": "us-central1"
-        }
+        "function": "serverSideMetaTags"
       },
-      
       {
         "source": "/web-stories/**",
-        "run": {
-          "serviceId": "serversidemetatags",
-          "region": "us-central1"
-        }
+        "function": "serverSideMetaTags"
       },
-
       {
         "source": "/job/**",
-        "run": {
-          "serviceId": "serversidemetatags",
-          "region": "us-central1"
-        }
+        "function": "serverSideMetaTags"
       },
-
       {
         "source": "/jobs/**",
-        "run": {
-          "serviceId": "serversidemetatags",
-          "region": "us-central1"
-        }
+        "function": "serverSideMetaTags"
       },
-
       {
         "source": "/blog/**",
-        "run": {
-          "serviceId": "serversidemetatags",
-          "region": "us-central1"
-        }
+        "function": "serverSideMetaTags"
       },
-
       {
         "source": "/blogs/**",
-        "run": {
-          "serviceId": "serversidemetatags",
-          "region": "us-central1"
-        }
+        "function": "serverSideMetaTags"
       },
-
+      {
+        "source": "/update/**",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/fasttrack/**",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/course/**",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/material/**",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/ebook/**",
+        "function": "serverSideMetaTags"
+      },
       {
         "source": "/admit_cards/**",
-        "run": {
-          "serviceId": "serversidemetatags",
-          "region": "us-central1"
-        }
+        "function": "serverSideMetaTags"
       },
-
       {
         "source": "/results/**",
-        "run": {
-          "serviceId": "serversidemetatags",
-          "region": "us-central1"
-        }
+        "function": "serverSideMetaTags"
       },
-
-    
       {
         "source": "/",
-        "destination": "/index.html"
+        "function": "serverSideMetaTags"
       },
-
       {
-        "source": "/about",
-        "destination": "/index.html"
+        "source": "/about-us",
+        "function": "serverSideMetaTags"
       },
-
       {
-        "source": "/contact",
-        "destination": "/index.html"
+        "source": "/contact-us",
+        "function": "serverSideMetaTags"
       },
-
       {
         "source": "/privacy-policy",
-        "destination": "/index.html"
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/terms-conditions",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/refund-cancellation-policy",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/shipping-policy",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/disclaimer",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/govt-jobs",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/admit-card",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/results",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/answer-key",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/syllabus",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/blog",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/test",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/web-stories",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/free-study-material",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/e-books",
+        "function": "serverSideMetaTags"
+      },
+      {
+        "source": "/premium-notes",
+        "function": "serverSideMetaTags"
       }
     ]
   },
-
   "functions": [
     {
       "source": "ai_backend",
       "codebase": "default",
-
       "ignore": [
         "node_modules",
         ".git",
@@ -162,24 +285,19 @@
         "firebase-debug.*.log",
         "*.local"
       ],
-
       "disallowLegacyRuntimeConfig": true
     }
   ],
-
   "emulators": {
     "functions": {
       "port": 5001
     },
-
     "hosting": {
       "port": 5000
     },
-
     "ui": {
       "enabled": true
     },
-
     "singleProjectMode": true
   }
 }

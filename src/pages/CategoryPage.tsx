@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { fastTrackRepository } from '@/features/fast-track/data/fastTrackRepository';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Calendar, ArrowRight, FileText, AlertCircle } from 'lucide-react';
 import SEO from '../components/SEO'; // ✅ SEO कम्पोनेंट इम्पोर्ट किया
 
@@ -15,6 +15,8 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ category, pageTitle, descri
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
+  const canonicalUrl = `https://studygyaan.in${location.pathname}`;
 
   useEffect(() => {
     const fetchCategoryData = async () => {
@@ -62,7 +64,7 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ category, pageTitle, descri
     "@type": "CollectionPage",
     "name": pageTitle,
     "description": description,
-    "url": window.location.href,
+    "url": canonicalUrl,
     "mainEntity": {
       "@type": "ItemList",
       "itemListElement": data.map((item, index) => ({
@@ -81,7 +83,7 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ category, pageTitle, descri
       <SEO 
         customTitle={`${pageTitle} 2026 - StudyGyaan`}
         customDescription={description}
-        customUrl={window.location.href}
+        customUrl={canonicalUrl}
         customImage="https://studygyaan.in/og-image.jpg"
       />
 

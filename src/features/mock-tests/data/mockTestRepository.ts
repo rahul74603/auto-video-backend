@@ -10,6 +10,7 @@ import {
   query,
   updateDoc,
   deleteDoc,
+  where,
 } from 'firebase/firestore';
 
 export type MockTestRecord = {
@@ -62,6 +63,19 @@ export const mockTestRepository = {
   async getById(id: string): Promise<MockTestRecord | null> {
     const snapshot = await getDoc(doc(db, 'mock_tests', id));
     return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
+  },
+
+  async getBySlug(slug: string): Promise<MockTestRecord | null> {
+    const snapshot = await getDocs(
+      query(testsCollection, where('slug', '==', slug), limit(1))
+    );
+    if (snapshot.empty) return null;
+    const test = snapshot.docs[0];
+    return { id: test.id, ...test.data() };
+  },
+
+  async getBySlugOrId(value: string): Promise<MockTestRecord | null> {
+    return (await this.getBySlug(value)) || this.getById(value);
   },
 };
 

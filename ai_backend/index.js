@@ -7,8 +7,10 @@ const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 require("dotenv").config();
-const fs = require("fs");
 const path = require("path");
+const { registerAgentRoutes, authorizeAgentRequest } = require("./agents/agent_orchestrator");
+const { enhanceCommand } = require("./agents/prompt_enhancer");
+const { SEOIndexingAgent } = require("./agents/seo_indexing_agent");
 setGlobalOptions({
   maxInstances: 10,
   timeoutSeconds: 300,
@@ -23,6 +25,37 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 const db = admin.firestore();
+
+// Manual and automatic specialist-agent entry points. Cost-bearing routes are
+// protected with AGENT_ADMIN_TOKEN inside the orchestrator.
+registerAgentRoutes(app);
+app.post("/seo/indexing-audit", async (req, res) => {
+  const auth = authorizeAgentRequest(req);
+  if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
+
+  try {
+    const agent = new SEOIndexingAgent();
+    const report = await agent.run({
+      mode: req.body?.mode === "auto" ? "auto" : "audit",
+      url: req.body?.url,
+      maxUrls: Math.min(Number(req.body?.maxUrls) || 50, 200),
+      outputPath: path.resolve("/tmp", `seo-audit-${Date.now()}.json`)
+    });
+    return res.json({
+      success: true,
+      runId: report.runId,
+      mode: report.mode,
+      sitemap: report.sitemap,
+      summary: report.summary,
+      searchConsole: report.searchConsole,
+      indexingApi: report.indexingApi,
+      audits: report.audits
+    });
+  } catch (error) {
+    console.error("SEO indexing agent error:", error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 /* ================= AI MODEL CONFIG ================= */
 const AI_MODELS = {
@@ -75,6 +108,14 @@ app.post("/generate", async (req, res) => {
       responseMimeType: "application/json",
     });
 
+    const enhancedIntent = await enhanceCommand({
+      agentId: "mock-test",
+      command: topic,
+      mode: req.body?.mode === "auto" ? "auto" : "manual",
+      context: { totalQuestions, audience: "Indian competitive-exam students", bilingual: true },
+      outputContract: "Use this as a precise topic/exam brief for the downstream JSON mock-test generator."
+    });
+
     let allQuestions = [];
     const seen = new Set();
 
@@ -94,6 +135,11 @@ Act as a Senior Paper Setter for Indian Competitive Exams like SSC CGL, Railway 
 Generate EXACTLY ${currentBatchSize} UNIQUE and HIGH-LEVEL questions.
 
 Requested Topic/Exam: "${topic}"
+
+PROMPT-ENGINEER BRIEF (use it only to clarify the same request; never change the requested exam/topic):
+<enhanced_brief>
+${enhancedIntent.prompt}
+</enhanced_brief>
 
 CRITICAL RULES:
 
@@ -205,11 +251,19 @@ app.post("/generate-blog", async (req, res) => {
   try {
     const model = getModel(AI_MODELS.BLOG, {
       maxOutputTokens: 8000,
-      temperature: 0.8, // Thoda creative
+      temperature: 0.65,
       responseMimeType: "application/json",
     });
 
-    // 1. 🔥 PROMPT MEIN IMAGE KA LOGIC ADD KIYA
+    const enhancedIntent = await enhanceCommand({
+      agentId: "blog-editor",
+      command: topic,
+      mode: req.body?.mode === "auto" ? "auto" : "manual",
+      context: { site: "StudyGyaan.in", audience: "Indian students", language: "Hindi/Hinglish" },
+      outputContract: "Create a research and editorial brief for the downstream blog writer; do not write the article yet."
+    });
+
+    // Prompt Engineer Agent output is passed to the specialist Blog Agent.
     const prompt = `
 You are an Indian Hindi content creator.
 Bharatiya students ke liye SEO friendly Hinglish blog likho
@@ -247,6 +301,11 @@ Format:
 }
 
 Topic: "${topic}"
+
+EDITORIAL BRIEF FROM PROMPT-ENGINEER AGENT:
+<enhanced_brief>
+${enhancedIntent.prompt}
+</enhanced_brief>
 `;
 
     const resp = await model.generateContent(prompt);
@@ -361,90 +420,15 @@ Topic: "${topic}"
   }
 });
 
-async function handleMetaTags(req, res) {
-    const parts = req.path.split('/').filter(p => p !== "");
-    const category = parts[0]; 
-    const postId = parts[1];
-    
-// 🚀 NEW: GOOGLE WEB STORIES SMART INTERCEPTOR
-    if (category === "web-stories" && postId) {
-        try {
-            const { renderWebStory } = require("./web_stories");
-            req.params = { id: postId }; 
-            return await renderWebStory(req, res);
-        } catch (err) {
-            console.error("Web Story Error:", err);
-            return res.status(500).send("Web Story Server Error");
-        }
-    }
-    try {
-        // Firebase Functions only deploys the ai_backend directory. The Vite
-        // index.html is therefore not available at __dirname in production.
-        // Use it when running from the repository and fall back to a minimal
-        // crawler-compatible document when it is not packaged with the function.
-        const templateCandidates = [
-            path.resolve(__dirname, './index.html'),
-            path.resolve(__dirname, '../index.html')
-        ];
-        const indexPath = templateCandidates.find((candidate) => fs.existsSync(candidate));
-        let html = indexPath
-            ? fs.readFileSync(indexPath, 'utf8')
-            : '<!doctype html><html lang="hi"><head><meta charset="UTF-8"><title>_OG_TITLE_</title><meta name="description" content="_OG_DESCRIPTION_"><meta property="og:title" content="_OG_TITLE_"><meta property="og:description" content="_OG_DESCRIPTION_"><meta property="og:image" content="_OG_IMAGE_"><meta property="og:url" content="_OG_URL_"></head><body><div id="root"></div></body></html>';
-
-        // Keep the response valid even when the deployed template is minimal.
-        html = html.includes('</body>') ? html : `${html}</body></html>`;
-
-        // 🔥 CANONICAL URL GENERATOR (Removes trailing slash to fix Search Console Duplicates)
-        let cleanPath = req.path;
-        if (cleanPath.length > 1 && cleanPath.endsWith('/')) {
-            cleanPath = cleanPath.slice(0, -1);
-        }
-        const canonicalUrl = `https://studygyaan.in${cleanPath}`;
-
-        // 🔥 INJECT CANONICAL TAG JUST BEFORE </head>
-        html = html.replace('</head>', `\n<link rel="canonical" href="${canonicalUrl}" />\n</head>`);
-
-        if (postId && category) {
-            let collectionName = category;
-            if (category === "job") collectionName = "jobs"; 
-            if (category === "blog") collectionName = "blogs"; 
-            if (category === "test") collectionName = "mock_tests"; // ✅ TEST के लिए कलेक्शन ऐड किया
-
-            const postDoc = await db.collection(collectionName).doc(postId).get();
-            
-            if (postDoc.exists) {
-                const data = postDoc.data();
-                const title = data.title || data.post_name || "StudyGyaan Update";
-                const desc = data.shortDescription || "Latest update on StudyGyaan";
-                
-                const defaultImg = "https://studygyaan.in/og-image.jpg";
-                let img = data.subject_img || data.imageUrl || defaultImg;
-                
-                html = html.replace(/_OG_TITLE_/g, title);
-                html = html.replace(/_OG_DESCRIPTION_/g, desc);
-                html = html.replace(/_OG_IMAGE_/g, img);
-                html = html.replace(/_OG_URL_/g, canonicalUrl); 
-                
-                html = html.replace('</body>', '\n\n</body>');
-                res.set('Cache-Control', 'no-store');
-                return res.status(200).send(html);
-            } else {
-                // 🚨 ट्रैकर: अगर बैकएंड चलेगा तो स्क्रीन पर React नहीं, बल्कि यह टेक्स्ट दिखेगा
-                res.set('Cache-Control', 'no-store');
-                return res.status(404).send("<h2>BINGO_404: Backend 100% Sahi Chal Raha Hai!</h2>"); 
-            }
-        }
-        res.set('Cache-Control', 'no-store'); 
-        return res.status(200).send(html);
-    } catch (e) {
-        return res.status(500).send("Backend Crash: " + e.message);
-    }
-}
+const handleMetaTags = require("./server_seo_renderer").createServerSeoHandler({
+  db,
+  renderWebStory: (req, res) => require("./web_stories").renderWebStory(req, res)
+});
 /* ================= FINAL EXPORTS (TIMEOUT FIX & VISIBLE) ================= */
 
 // 0. API Core & Meta Tags (Working)
 exports.api = onRequest({
- secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GEMINI_API_KEY", "GMAIL_CREDENTIALS", "SERVICE_ACCOUNT_JSON"],
+ secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GEMINI_API_KEY", "GMAIL_CREDENTIALS", "SERVICE_ACCOUNT_JSON", "AGENT_ADMIN_TOKEN"],
   maxInstances: 10,
   timeoutSeconds: 300,
   memory: "1GiB",
@@ -471,8 +455,20 @@ exports.onFastTrackApprovedSendTelegram = require("./fast_track_updates").onFast
 
 // 3. News, RSS & SEO
 exports.rssFeed = onRequest({ memory: "1GiB" }, (req, res) => require("./newsFeed").rssFeed(req, res));
-exports.generateSitemap = onRequest({ memory: "512MiB" }, (req, res) => require("./seo_functions").generateSitemap(req, res));
-exports.generateRss = onRequest({ memory: "512MiB" }, (req, res) => require("./seo_functions").generateRss(req, res));
+const proxySeoFunction = (name) => onRequest({ memory: "512MiB", timeoutSeconds: 300 }, (req, res) => {
+    return require("./seo_functions")[name](req, res);
+});
+exports.generateSitemapIndex = proxySeoFunction("generateSitemapIndex");
+exports.generateSitemapMain = proxySeoFunction("generateSitemapMain");
+exports.generateSitemapBlogs = proxySeoFunction("generateSitemapBlogs");
+exports.generateSitemapJobs = proxySeoFunction("generateSitemapJobs");
+exports.generateSitemapTests = proxySeoFunction("generateSitemapTests");
+exports.generateSitemapStories = proxySeoFunction("generateSitemapStories");
+exports.generateSitemapUpdates = proxySeoFunction("generateSitemapUpdates");
+exports.generateSitemapNews = proxySeoFunction("generateSitemapNews");
+// Legacy all-in-one sitemap remains available at /sitemap-all.xml only.
+exports.generateSitemap = proxySeoFunction("generateSitemap");
+exports.generateRss = proxySeoFunction("generateRss");
 
 // 4. Web Stories
 exports.renderWebStory = onRequest({ cors: true }, (req, res) => {

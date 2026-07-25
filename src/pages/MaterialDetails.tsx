@@ -62,7 +62,7 @@ const MaterialDetails = () => {
       <SEO 
         customTitle={`${item.title} - Free PDF Download | StudyGyaan 2026`}
         customDescription={item.description || `Download free PDF: ${item.title} for your exam preparation. Best high-quality study notes on StudyGyaan.`}
-        customUrl={`https://studygyaan.in/free-study-material/${id}`}
+        customUrl={`https://studygyaan.in/material/${id}`}
         customImage="https://studygyaan.in/og-image.jpg"
       />
 

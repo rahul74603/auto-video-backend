@@ -35,6 +35,31 @@ function getUtcDate(timeSource, fallback) {
     return new Date(timeSource).toUTCString();
 }
 
+const STATIC_PAGES = [
+    { path: "", priority: "1.0", freq: "daily" },
+    { path: "/govt-jobs", priority: "0.9", freq: "daily" },
+    { path: "/blog", priority: "0.9", freq: "daily" },
+    { path: "/test", priority: "0.9", freq: "daily" },
+    { path: "/web-stories", priority: "0.9", freq: "daily" },
+    { path: "/free-study-material", priority: "0.8", freq: "weekly" },
+    { path: "/e-books", priority: "0.8", freq: "weekly" },
+    { path: "/premium-notes", priority: "0.8", freq: "weekly" },
+    { path: "/about-us", priority: "0.6", freq: "monthly" },
+    { path: "/contact-us", priority: "0.6", freq: "monthly" },
+    { path: "/privacy-policy", priority: "0.5", freq: "monthly" },
+    { path: "/terms-conditions", priority: "0.5", freq: "monthly" }
+];
+
+function isIndexableDocument(data = {}) {
+    if (data.noIndex === true || data.deleted === true || data.isDeleted === true) return false;
+    const status = String(data.status || "").trim().toLowerCase();
+    return !["draft", "pending", "rejected", "private", "archived", "deleted", "trash"].includes(status);
+}
+
+function hasUsefulTitle(data = {}) {
+    return String(data.title || data.post_name || "").trim().length >= 5;
+}
+
 // =========================================================
 // 1. SITEMAP INDEX (Master Sitemap)
 // =========================================================
@@ -43,15 +68,14 @@ exports.generateSitemapIndex = onRequest({
     memory: "256MiB"
 }, async (req, res) => {
     try {
-        const now = new Date().toISOString();
-
         const sitemaps = [
-            `${WEBSITE_URL}/sitemap-main`,
-            `${WEBSITE_URL}/sitemap-blogs`,
-            `${WEBSITE_URL}/sitemap-jobs`,
-            `${WEBSITE_URL}/sitemap-tests`,
-            `${WEBSITE_URL}/sitemap-stories`,
-            `${WEBSITE_URL}/sitemap-news`
+            `${WEBSITE_URL}/sitemap-main.xml`,
+            `${WEBSITE_URL}/sitemap-blogs.xml`,
+            `${WEBSITE_URL}/sitemap-jobs.xml`,
+            `${WEBSITE_URL}/sitemap-tests.xml`,
+            `${WEBSITE_URL}/sitemap-stories.xml`,
+            `${WEBSITE_URL}/sitemap-updates.xml`,
+            `${WEBSITE_URL}/sitemap-news.xml`
         ];
 
         let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
@@ -60,7 +84,6 @@ exports.generateSitemapIndex = onRequest({
         sitemaps.forEach(url => {
             xml += `  <sitemap>\n`;
             xml += `    <loc>${url}</loc>\n`;
-            xml += `    <lastmod>${now}</lastmod>\n`;
             xml += `  </sitemap>\n`;
         });
 
@@ -83,31 +106,12 @@ exports.generateSitemapMain = onRequest({
     memory: "256MiB"
 }, async (req, res) => {
     try {
-        const now = new Date().toISOString();
-
-        const staticPages = [
-            { path: "", priority: "1.0", freq: "daily" },
-            { path: "/govt-jobs", priority: "0.9", freq: "daily" },
-            { path: "/blog", priority: "0.9", freq: "daily" },
-            { path: "/test", priority: "0.9", freq: "daily" },
-            { path: "/web-stories", priority: "0.9", freq: "daily" },
-            { path: "/free-study-material", priority: "0.8", freq: "weekly" },
-            { path: "/e-books", priority: "0.8", freq: "weekly" },
-            { path: "/premium-notes", priority: "0.8", freq: "weekly" },
-            { path: "/fasttrack", priority: "0.7", freq: "weekly" },
-            { path: "/about-us", priority: "0.6", freq: "monthly" },
-            { path: "/contact-us", priority: "0.6", freq: "monthly" },
-            { path: "/privacy-policy", priority: "0.5", freq: "monthly" },
-            { path: "/terms-conditions", priority: "0.5", freq: "monthly" }
-        ];
-
         let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
         xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
 
-        staticPages.forEach(p => {
+        STATIC_PAGES.forEach(p => {
             xml += `  <url>\n`;
             xml += `    <loc>${WEBSITE_URL}${p.path}</loc>\n`;
-            xml += `    <lastmod>${now}</lastmod>\n`;
             xml += `    <changefreq>${p.freq}</changefreq>\n`;
             xml += `    <priority>${p.priority}</priority>\n`;
             xml += `  </url>\n`;
@@ -146,6 +150,7 @@ exports.generateSitemapBlogs = onRequest({
 
         snap.forEach(doc => {
             const data = doc.data();
+            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
             const slugOrId = data.slug || doc.id;
             const safeSlug = safeXml(slugOrId);
             const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
@@ -200,7 +205,8 @@ exports.generateSitemapJobs = onRequest({
         snap.forEach(doc => {
             const data = doc.data();
             const typeValue = (data.type || "").toUpperCase();
-            const route = typeValue === 'COURSE' ? 'course' : 'job';
+            if (!isIndexableDocument(data) || !hasUsefulTitle(data) || typeValue === "COURSE") return;
+            const route = 'job';
             const slugOrId = data.slug || doc.id;
             const safeSlug = safeXml(slugOrId);
             const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
@@ -250,6 +256,7 @@ exports.generateSitemapTests = onRequest({
 
         snap.forEach(doc => {
             const data = doc.data();
+            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
             const slugOrId = data.slug || doc.id;
             const safeSlug = safeXml(slugOrId);
             const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
@@ -294,6 +301,7 @@ exports.generateSitemapStories = onRequest({
 
         snap.forEach(doc => {
             const data = doc.data();
+            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
             const slug = data.slug || doc.id;
             const safeSlug = safeXml(slug);
             const updateTime = getIsoDate(data.createdAt, now);
@@ -326,7 +334,47 @@ exports.generateSitemapStories = onRequest({
 });
 
 // =========================================================
-// 7. GOOGLE NEWS SITEMAP (Last 2 Days Only)
+// 7. FAST-TRACK UPDATES SITEMAP (canonical /update route)
+// =========================================================
+exports.generateSitemapUpdates = onRequest({
+    timeoutSeconds: 300,
+    memory: "512MiB"
+}, async (_req, res) => {
+    try {
+        const now = new Date().toISOString();
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+        xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+
+        const snap = await db.collection("fast_track")
+            .orderBy("createdAt", "desc")
+            .limit(1000)
+            .get();
+
+        snap.forEach(doc => {
+            const data = doc.data();
+            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+            const slug = safeXml(data.slug || doc.id);
+            const updateTime = getIsoDate(data.updatedAt || data.publishedAt || data.createdAt, now);
+            xml += `  <url>\n`;
+            xml += `    <loc>${WEBSITE_URL}/update/${slug}</loc>\n`;
+            xml += `    <lastmod>${updateTime}</lastmod>\n`;
+            xml += `    <changefreq>daily</changefreq>\n`;
+            xml += `    <priority>0.8</priority>\n`;
+            xml += `  </url>\n`;
+        });
+
+        xml += `</urlset>`;
+        res.set('Cache-Control', 'public, max-age=300, s-maxage=600');
+        res.set('Content-Type', 'text/xml; charset=utf-8');
+        res.status(200).send(xml);
+    } catch (error) {
+        console.error("❌ Updates Sitemap Error:", error.message);
+        res.status(500).send("Error");
+    }
+});
+
+// =========================================================
+// 8. GOOGLE NEWS SITEMAP (Last 2 Days Only)
 // =========================================================
 exports.generateSitemapNews = onRequest({
     timeoutSeconds: 120,
@@ -348,7 +396,7 @@ exports.generateSitemapNews = onRequest({
 
         snap.forEach(doc => {
             const data = doc.data();
-            if (!data.createdAt) return;
+            if (!isIndexableDocument(data) || !hasUsefulTitle(data) || !data.createdAt) return;
 
             const pubDate = data.createdAt.toDate
                 ? data.createdAt.toDate()
@@ -433,6 +481,7 @@ exports.generateRss = onRequest({
 
         snap.forEach(doc => {
             const d = doc.data();
+            if (!isIndexableDocument(d) || !hasUsefulTitle(d)) return;
             const slugOrId = d.slug || doc.id;
             const pubDate = getUtcDate(d.createdAt, now);
             const pubIso = getIsoDate(d.createdAt, nowIso);
@@ -493,26 +542,9 @@ exports.generateSitemap = onRequest({
         xml += `        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n`;
 
         // ============ STATIC PAGES ============
-        const staticPages = [
-            { path: "", priority: "1.0", freq: "daily" },
-            { path: "/govt-jobs", priority: "0.9", freq: "daily" },
-            { path: "/blog", priority: "0.9", freq: "daily" },
-            { path: "/test", priority: "0.9", freq: "daily" },
-            { path: "/web-stories", priority: "0.9", freq: "daily" },
-            { path: "/free-study-material", priority: "0.8", freq: "weekly" },
-            { path: "/e-books", priority: "0.8", freq: "weekly" },
-            { path: "/premium-notes", priority: "0.8", freq: "weekly" },
-            { path: "/fasttrack", priority: "0.7", freq: "weekly" },
-            { path: "/about-us", priority: "0.6", freq: "monthly" },
-            { path: "/contact-us", priority: "0.6", freq: "monthly" },
-            { path: "/privacy-policy", priority: "0.5", freq: "monthly" },
-            { path: "/terms-conditions", priority: "0.5", freq: "monthly" }
-        ];
-
-        staticPages.forEach(p => {
+        STATIC_PAGES.forEach(p => {
             xml += `  <url>\n`;
             xml += `    <loc>${WEBSITE_URL}${p.path}</loc>\n`;
-            xml += `    <lastmod>${now}</lastmod>\n`;
             xml += `    <changefreq>${p.freq}</changefreq>\n`;
             xml += `    <priority>${p.priority}</priority>\n`;
             xml += `  </url>\n`;
@@ -527,6 +559,7 @@ exports.generateSitemap = onRequest({
             
             blogsSnap.forEach(doc => {
                 const data = doc.data();
+                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
                 const imageUrl = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
@@ -556,7 +589,8 @@ exports.generateSitemap = onRequest({
             
             jobsSnap.forEach(doc => {
                 const data = doc.data();
-                const route = (data.type || "").toUpperCase() === 'COURSE' ? 'course' : 'job';
+                if (!isIndexableDocument(data) || !hasUsefulTitle(data) || (data.type || "").toUpperCase() === "COURSE") return;
+                const route = 'job';
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
                 const imageUrl = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
@@ -586,6 +620,7 @@ exports.generateSitemap = onRequest({
             
             testsSnap.forEach(doc => {
                 const data = doc.data();
+                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
 
@@ -609,6 +644,7 @@ exports.generateSitemap = onRequest({
             
             storiesSnap.forEach(doc => {
                 const data = doc.data();
+                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.createdAt, now);
                 const coverImage = safeXml(data.coverImage || `${WEBSITE_URL}/og-image.jpg`);
@@ -631,18 +667,19 @@ exports.generateSitemap = onRequest({
 
         // ============ FAST TRACK ============
         try {
-            const fastSnap = await db.collection("fasttrack")
+            const fastSnap = await db.collection("fast_track")
                 .orderBy("createdAt", "desc")
                 .limit(500)
                 .get();
             
             fastSnap.forEach(doc => {
                 const data = doc.data();
+                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
 
                 xml += `  <url>\n`;
-                xml += `    <loc>${WEBSITE_URL}/fasttrack/${slug}</loc>\n`;
+                xml += `    <loc>${WEBSITE_URL}/update/${slug}</loc>\n`;
                 xml += `    <lastmod>${updateTime}</lastmod>\n`;
                 xml += `    <changefreq>weekly</changefreq>\n`;
                 xml += `    <priority>0.7</priority>\n`;

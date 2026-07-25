@@ -81,7 +81,7 @@ const EbookDetails = () => {
       <SEO 
         customTitle={`${ebook.title} - StudyGyaan 2026`}
         customDescription={ebook.description || "Get the best study material and e-books for govt exams on StudyGyaan."}
-        customUrl={`https://studygyaan.in/e-book/${id}`}
+        customUrl={`https://studygyaan.in/ebook/${id}`}
         customImage={ebook.imageUrl || "https://studygyaan.in/og-image.jpg"}
       />
 
