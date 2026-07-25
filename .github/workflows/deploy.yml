@@ -28,15 +28,19 @@ jobs:
         working-directory: ai_backend
         run: npm ci --legacy-peer-deps
 
-      - name: Package the built app shell for server SEO rendering
+      - name: Package built app for server SEO
         run: cp dist/index.html ai_backend/index.html
 
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
 
-      - name: Deploy Hosting rewrites, assets and Functions together
+      - name: Deploy selected Functions safely
         run: |
-  firebase deploy --only "functions:api,functions:serverSideMetaTags,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemap" --project studymaterial-406ad --non-interactive
-  firebase deploy --only hosting --project studymaterial-406ad --non-interactive
+          firebase deploy --only "functions:api,functions:serverSideMetaTags,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemap,functions:generateRss" --project studymaterial-406ad --non-interactive
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+      - name: Deploy Firebase Hosting
+        run: firebase deploy --only hosting --project studymaterial-406ad --non-interactive
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
