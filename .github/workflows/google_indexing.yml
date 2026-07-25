@@ -1,34 +1,99 @@
-name: StudyGyaan Daily Google Indexing 🚀
+name: StudyGyaan SEO and Indexing Agent
 
 on:
   schedule:
-    # 🕒 रात 9:00 PM IST (15:30 UTC) पर रोज़ाना चलेगा
+    # 9:00 PM IST (15:30 UTC). GitHub schedules can start late under load.
     - cron: '30 15 * * *'
-  
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'audit = read-only, auto = sitemap submit + eligible JobPosting notifications'
+        required: true
+        default: 'audit'
+        type: choice
+        options:
+          - audit
+          - auto
+      url:
+        description: 'Optional single StudyGyaan URL to audit'
+        required: false
+        type: string
+      max_urls:
+        description: 'Maximum URLs to audit (1-2000)'
+        required: true
+        default: '200'
+        type: string
+
+concurrency:
+  group: studygyaan-seo-indexing-agent
+  cancel-in-progress: false
 
 jobs:
-  run-indexing:
+  seo-indexing-agent:
     runs-on: ubuntu-latest
-
-    # 👇 यह सुनिश्चित करता है कि सभी कमांड्स ai_backend फोल्डर के अंदर चलें
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: ai_backend
 
     steps:
-      - name: 📥 Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🟢 Setup Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+          cache-dependency-path: ai_backend/package-lock.json
 
-      - name: 📦 Install Dependencies
-        run: npm install
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
 
-      - name: 🚀 Run Indexing Script
+      - name: Run technical SEO and indexing agent
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
-        run: node google_indexing.js
+          WEBSITE_URL: https://studygyaan.in
+          SITEMAP_URL: https://studygyaan.in/sitemap.xml
+          SEARCH_CONSOLE_SITE_URL: sc-domain:studygyaan.in
+          SEARCH_CONSOLE_INSPECTION_ENABLED: 'true'
+          SEARCH_CONSOLE_SITEMAP_SUBMIT_ENABLED: 'true'
+          INDEXING_API_ENABLED: 'true'
+          INDEXING_DAILY_LIMIT: '180'
+          SEO_AGENT_MAX_URLS: ${{ github.event.inputs.max_urls || '200' }}
+          SEO_INSPECTION_LIMIT: '25'
+          SEO_AUDIT_CONCURRENCY: '5'
+          SEO_REPORT_PATH: seo-audit-report.json
+        run: |
+          MODE="${{ github.event_name == 'schedule' && 'auto' || github.event.inputs.mode }}"
+          URL="${{ github.event.inputs.url }}"
+          ARGS="--mode=${MODE} --max=${SEO_AGENT_MAX_URLS} --output=seo-audit-report.json"
+          if [ -n "$URL" ]; then ARGS="$ARGS --url=$URL"; fi
+          node google_indexing.js $ARGS
+
+      - name: Publish report in workflow summary
+        if: always()
+        run: |
+          if [ -f seo-audit-report.json ]; then
+            node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const r = require('./seo-audit-report.json');
+          console.log('## StudyGyaan SEO Agent');
+          console.log(`- Mode: **${r.mode}**`);
+          console.log(`- Sitemap unique URLs: **${r.sitemap.unique}**`);
+          console.log(`- Audited: **${r.summary.audited}**`);
+          console.log(`- Technically clean: **${r.summary.cleanIndexable}**`);
+          console.log(`- Issues: \`${JSON.stringify(r.summary.issueCounts)}\``);
+          console.log(`- Search Console verdicts: \`${JSON.stringify(r.summary.searchConsoleVerdicts)}\``);
+          console.log(`- Indexing API accepted notifications: **${r.summary.indexingApiAcceptedNotifications}**`);
+          console.log('> Accepted notification ≠ indexed page. Search Console verdict is the source of truth.');
+          NODE
+          fi
+
+      - name: Upload detailed JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seo-audit-${{ github.run_id }}
+          path: ai_backend/seo-audit-report.json
+          if-no-files-found: warn
+          retention-days: 30
