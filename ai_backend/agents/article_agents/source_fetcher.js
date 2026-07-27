@@ -159,6 +159,116 @@ function extractFromHtml(html, baseUrl) {
   };
 }
 
+/* ------------------------------------------------------------------ *
+ *  Production fetch helpers
+ * ------------------------------------------------------------------ */
+
+// Real browser headers — bahut si govt/news sites obvious bot User-Agent ko
+// turant 403 kar deti hain, isliye normal Chrome jaisa request bhejte hain.
+const BROWSER_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf;q=0.8,*/*;q=0.7",
+  "Accept-Language": "hi-IN,hi;q=0.9,en-IN;q=0.8,en;q=0.7"
+};
+
+// pdf-parse lazy-loaded (sirf tab chahiye jab PDF aaye).
+let pdfParse;
+function getPdfParse() {
+  if (pdfParse === undefined) {
+    try {
+      pdfParse = require("pdf-parse");
+    } catch {
+      pdfParse = null;
+    }
+  }
+  return pdfParse;
+}
+
+function toBuffer(data) {
+  if (Buffer.isBuffer(data)) return data;
+  if (typeof data === "string") return Buffer.from(data, "utf-8");
+  if (data instanceof ArrayBuffer) return Buffer.from(data);
+  if (ArrayBuffer.isView(data)) return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  return Buffer.from(String(data || ""), "utf-8");
+}
+
+function looksLikePdf(url, headers, buffer) {
+  const contentType = String(headers?.["content-type"] || headers?.["Content-Type"] || "").toLowerCase();
+  if (contentType.includes("application/pdf")) return true;
+  let pathname = "";
+  try {
+    pathname = new URL(url).pathname.toLowerCase();
+  } catch {
+    pathname = "";
+  }
+  if (pathname.endsWith(".pdf")) return true;
+  return buffer.length > 5 && buffer.subarray(0, 5).toString("latin1") === "%PDF-";
+}
+
+/** Text straight out of a notification PDF (SSR-safe, no rendering needed). */
+async function extractFromPdf(buffer, url) {
+  const pdfParseModule = getPdfParse();
+  if (!pdfParseModule || !pdfParseModule.PDFParse) {
+    const err = new Error("PDF notification mila par pdf-parse library backend me available nahi hai");
+    err.code = "SOURCE_TOO_THIN";
+    throw err;
+  }
+  const pdf = new pdfParseModule.PDFParse({ data: buffer });
+  let result;
+  try {
+    result = await pdf.getText();
+  } catch (e) {
+    const err = new Error(`PDF padha nahi ja saka (corrupt ya password-protected?): ${e.message}`);
+    err.code = "SOURCE_TOO_THIN";
+    throw err;
+  } finally {
+    if (typeof pdf.destroy === "function") await pdf.destroy().catch(() => {});
+  }
+  const text = normalizeWhitespace(result.text || "");
+  if (text.length < 120) {
+    const err = new Error(
+      "PDF se readable text nahi mila (scanned image PDF lagta hai) — kisi official PAGE ka link try karo"
+    );
+    err.code = "SOURCE_TOO_THIN";
+    throw err;
+  }
+  const firstLine = text.split("\n").map((l) => l.trim()).find(Boolean) || "";
+  return {
+    pageTitle: firstLine.slice(0, 250) || url.split("/").pop().slice(0, 250),
+    metaDescription: "",
+    text: text.slice(0, MAX_TEXT_CHARS),
+    tables: [],
+    links: []
+  };
+}
+
+/**
+ * Headless-Chrome render fallback — jab plain fetch pe page ka text bahut kam
+ * mile (JavaScript se render hone wale govt portals), ek baar real browser se
+ * page khol kar HTML lete hain. Sirf production path par chalta hai
+ * (tests me injected httpGet hota hai, tab ye skip hota hai).
+ */
+async function renderWithChromium(url, timeoutMs) {
+  let browser;
+  try {
+    const chromium = require("@sparticuz/chromium");
+    const puppeteer = require("puppeteer-core");
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+      defaultViewport: { width: 1280, height: 800 }
+    });
+    const page = await browser.newPage();
+    await page.setUserAgent(BROWSER_HEADERS["User-Agent"]);
+    await page.goto(url, { waitUntil: "networkidle2", timeout: timeoutMs || 30000 });
+    return await page.content();
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+}
+
 /**
  * Fetch a URL and extract source material.
  * deps.httpGet is injectable for tests; must resolve to { data, headers }.
@@ -170,14 +280,11 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
     deps.httpGet ||
     ((url) =>
       axios.get(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; StudyGyaanBot/1.0)",
-          Accept: "text/html,application/xhtml+xml,text/plain;q=0.9"
-        },
+        headers: BROWSER_HEADERS,
         timeout: deps.timeoutMs || 25000,
         maxRedirects: 5,
-        maxContentLength: 6 * 1024 * 1024,
-        responseType: "text",
+        maxContentLength: 12 * 1024 * 1024,
+        responseType: "arraybuffer",
         validateStatus: (status) => status >= 200 && status < 300
       }));
 
@@ -185,29 +292,67 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
   try {
     response = await httpGet(parsed.toString());
   } catch (err) {
-    const wrapped = new Error(`Source fetch failed: ${err.message}`);
+    const status = err?.response?.status;
+    const wrapped = new Error(
+      `Source page fetch nahi ho paya${status ? ` (site ne status ${status} diya — shayad block kiya)` : ""}: ${err.message}`
+    );
     wrapped.code = "SOURCE_FETCH_FAILED";
     throw wrapped;
   }
 
-  const rawHtml = typeof response.data === "string" ? response.data : String(response.data || "");
-  if (rawHtml.length < 80) {
-    const err = new Error("Source page is empty or unreadable");
+  const buffer = toBuffer(response.data);
+
+  // PDF notification → direct text extraction.
+  if (looksLikePdf(parsed.toString(), response.headers, buffer)) {
+    const extracted = await extractFromPdf(buffer, parsed.toString());
+    return {
+      ok: true,
+      url: parsed.toString(),
+      fetchedAt: new Date().toISOString(),
+      via: "pdf",
+      ...extracted
+    };
+  }
+
+  const rawHtml = buffer.toString("utf-8");
+  let extracted = rawHtml.length >= 80 ? extractFromHtml(rawHtml, parsed.toString()) : null;
+
+  // JS-render fallback: plain HTML me text na mile to ek baar headless Chrome se
+  // render karke dobara try karo (sirf jab test-injected fetcher na ho).
+  if ((!extracted || !extracted.text || extracted.text.length < 120) && !deps.httpGet) {
+    try {
+      const renderedHtml = await renderWithChromium(parsed.toString(), deps.timeoutMs || 30000);
+      if (typeof renderedHtml === "string" && renderedHtml.length >= 80) {
+        const rendered = extractFromHtml(renderedHtml, parsed.toString());
+        if (rendered.text && rendered.text.length >= 120) {
+          extracted = { ...rendered, viaRender: true };
+        }
+      }
+    } catch (renderErr) {
+      console.warn(`render fallback failed for ${parsed.toString()}:`, renderErr.message);
+    }
+  }
+
+  if (!extracted) {
+    const err = new Error("Source page is empty or unreadable — sahi (direct) link check karo");
     err.code = "SOURCE_TOO_THIN";
     throw err;
   }
-
-  const extracted = extractFromHtml(rawHtml, parsed.toString());
   if (!extracted.text || extracted.text.length < 120) {
-    const err = new Error("Source page has too little readable text to ground an article");
+    const err = new Error(
+      "Source page has too little readable text to ground an article — page JavaScript se banta hai ya text bahut kam hai; notification ka direct page/PDF link daalo"
+    );
     err.code = "SOURCE_TOO_THIN";
     throw err;
   }
 
+  const via = extracted.viaRender ? "render" : "http";
+  delete extracted.viaRender;
   return {
     ok: true,
     url: parsed.toString(),
     fetchedAt: new Date().toISOString(),
+    via,
     ...extracted
   };
 }

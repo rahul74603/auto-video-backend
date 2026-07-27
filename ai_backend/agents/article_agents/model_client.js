@@ -33,10 +33,10 @@ function parseJsonObject(text) {
 }
 
 /**
- * Default JSON generator: asks Gemini for application/json and parses it.
+ * Single Gemini call: asks for application/json and parses it.
  * Throws WRITER_BAD_JSON when the model output is not parseable.
  */
-async function generateJson(prompt, options = {}) {
+async function generateJsonOnce(prompt, options = {}) {
   const ai = getClient();
   const modelName = options.model || process.env.AI_AGENT_MODEL || "gemini-2.5-flash";
   const model = ai.getGenerativeModel({
@@ -47,7 +47,17 @@ async function generateJson(prompt, options = {}) {
       responseMimeType: "application/json"
     }
   });
-  const response = await model.generateContent(prompt);
+  let response;
+  try {
+    response = await model.generateContent(prompt);
+  } catch (err) {
+    // Gemini quota / model / network errors ko saaf message do taaki admin ko
+    // toast me samajh aaye kya toota.
+    const msg = String(err?.message || err);
+    const wrapped = new Error(`Gemini call failed — ${msg}`);
+    wrapped.code = "GEMINI_CALL_FAILED";
+    throw wrapped;
+  }
   const text = response.response?.text?.();
   const parsed = parseJsonObject(text);
   if (!parsed) {
@@ -56,6 +66,24 @@ async function generateJson(prompt, options = {}) {
     throw err;
   }
   return parsed;
+}
+
+/**
+ * Default JSON generator with one strict retry: agar Gemini pehli baar me
+ * non-JSON de (kabhi-kabhi hota hai), ek baar aur strict instruction ke saath
+ * poochte hain. Doosri baar bhi fail ho to WRITER_BAD_JSON throw hota hai.
+ */
+async function generateJson(prompt, options = {}) {
+  try {
+    return await generateJsonOnce(prompt, options);
+  } catch (firstError) {
+    if (firstError.code !== "WRITER_BAD_JSON") throw firstError;
+    const strictPrompt =
+      `${prompt}\n\nSTRICT RETRY: pichhla jawab valid JSON nahi tha. ` +
+      `Is baar SIRF ek valid JSON object return karo — koi markdown fences, ` +
+      `explanation ya extra text bilkul nahi.`;
+    return generateJsonOnce(strictPrompt, options);
+  }
 }
 
 module.exports = { generateJson, parseJsonObject };

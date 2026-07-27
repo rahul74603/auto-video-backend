@@ -90,10 +90,21 @@ const AdminAIArticleStudio = () => {
 
   const handleApiError = (err: unknown, fallback: string) => {
     const status = apiErrorStatus(err);
+    const msg = err instanceof Error ? err.message : fallback;
     if (status === 401) toast.error('Unauthorized — admin Gmail se dubara login karke dekho');
-    else if (status === 409) toast.error(err instanceof Error ? err.message : fallback);
+    else if (status === 409) toast.error(msg);
     else if (status === 404) toast.error('Backend functions पुराने हैं — ai_backend डिप्लॉय करें');
-    else toast.error(err instanceof Error ? err.message : fallback);
+    else if (status === 502) {
+      // Source fetch/extract fail — backend message + actionable tip
+      toast.error(
+        `${msg} — 💡 Tip: notification का DIRECT page या PDF link डालें (homepage/menu page नहीं चलेगा)। Site block करे तो दूसरा official link try करें।`,
+        { duration: 9000 }
+      );
+    } else if (status === 503) {
+      toast.error('GEMINI_API_KEY backend में set नहीं है — ai_backend/.env में key डालकर functions redeploy करें', {
+        duration: 9000,
+      });
+    } else toast.error(msg);
   };
 
   // ================= GENERATE =================
