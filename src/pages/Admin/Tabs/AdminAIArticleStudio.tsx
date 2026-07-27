@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Sparkles, Eye, RefreshCcw, Save, Send, Trash2, Link2, FileText,
-  ShieldCheck, ShieldAlert, Clock, CheckCircle2, XCircle, KeyRound, Briefcase, Zap
+  ShieldCheck, ShieldAlert, Clock, CheckCircle2, XCircle, Briefcase, Zap
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useAIArticleDrafts from '@/features/ai-articles/hooks/useAIArticleDrafts';
@@ -11,12 +11,6 @@ import aiArticleRepository, {
   EDITORIAL_AUTHOR,
 } from '@/features/ai-articles/data/aiArticleRepository';
 import type { AIArticleDraftRecord } from '@/features/ai-articles/data/aiArticleRepository';
-
-const TOKEN_STORAGE_KEY = 'sg_agent_admin_token';
-
-// Local dev में .env.local में VITE_AGENT_ADMIN_TOKEN=<backend AGENT_ADMIN_TOKEN> डाल दो —
-// token field auto fill हो जाएगी, हर बार हाथ से डालने की ज़रूरत नहीं।
-const ENV_AGENT_TOKEN = (import.meta.env.VITE_AGENT_ADMIN_TOKEN as string | undefined) || '';
 
 /** JOBS AI tab की draft row से generate form prefill करने का custom event. */
 export const AI_ARTICLE_PREFILL_EVENT = 'sg-ai-article-prefill';
@@ -48,10 +42,6 @@ const AdminAIArticleStudio = () => {
   const [genType, setGenType] = useState('job'); // 'job' | 'fast-track'
   const [sourceUrl, setSourceUrl] = useState('');
   const [instructions, setInstructions] = useState('');
-  const [agentToken, setAgentToken] = useState(() => {
-    if (ENV_AGENT_TOKEN) return ENV_AGENT_TOKEN;
-    try { return localStorage.getItem(TOKEN_STORAGE_KEY) || ''; } catch { return ''; }
-  });
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(''); // '', 'generate', 'preview', 'regenerate', 'apply', 'publish', 'delete'
@@ -62,13 +52,6 @@ const AdminAIArticleStudio = () => {
     () => drafts.find((d) => d.id === selectedId) || null,
     [drafts, selectedId]
   );
-
-  const persistToken = (value: string) => {
-    setAgentToken(value);
-    try { localStorage.setItem(TOKEN_STORAGE_KEY, value || ''); } catch { /* ignore */ }
-  };
-
-  const tokenHeaders = () => ({ token: agentToken || undefined });
 
   // 📩 JOBS AI draft row का '✨ AI Article' बटन — generate form auto-prefill
   useEffect(() => {
@@ -107,8 +90,7 @@ const AdminAIArticleStudio = () => {
 
   const handleApiError = (err: unknown, fallback: string) => {
     const status = apiErrorStatus(err);
-    if (status === 503) toast.error('Backend पर AGENT_ADMIN_TOKEN secret set नहीं है — firebase functions:secrets:set AGENT_ADMIN_TOKEN चलाओ', { duration: 6000 });
-    else if (status === 401) toast.error('Admin Token गलत है — सही token डालें');
+    if (status === 401) toast.error('Unauthorized — admin Gmail se dubara login karke dekho');
     else if (status === 409) toast.error(err instanceof Error ? err.message : fallback);
     else if (status === 404) toast.error('Backend functions पुराने हैं — ai_backend डिप्लॉय करें');
     else toast.error(err instanceof Error ? err.message : fallback);
@@ -120,10 +102,6 @@ const AdminAIArticleStudio = () => {
       toast.error('पहले official notification / page की URL डालें');
       return;
     }
-    if (!agentToken) {
-      toast.error('Agent Token खाली है — .env.local में VITE_AGENT_ADMIN_TOKEN डालो या नीचे token field भरो', { duration: 5000 });
-      return;
-    }
     setBusy('generate');
     const toastId = toast.loading(`${genType === 'job' ? 'Job' : 'Fast Track'} Writer source पढ़ रहा है...`);
     try {
@@ -132,7 +110,7 @@ const AdminAIArticleStudio = () => {
         sourceUrl: sourceUrl.trim(),
         instructions: instructions.trim(),
         mode: 'manual', // draft-first: कभी भी direct publish नहीं
-      }, tokenHeaders());
+      });
 
       if (result.review?.verdict === 'pass') {
         toast.success(`Draft तैयार! Review पास (score ${result.review.score ?? '-'})`, { id: toastId, duration: 5000 });
@@ -161,7 +139,7 @@ const AdminAIArticleStudio = () => {
     setBusy('preview');
     try {
       // Server से latest draft + review state refresh
-      const result = await callArticleApi<ArticleApiResult>('/articles/preview', { draftId: selected.id }, tokenHeaders());
+      const result = await callArticleApi<ArticleApiResult>('/articles/preview', { draftId: selected.id });
       if (result?.draft) loadIntoEditor(result.draft);
       setShowPreview(true);
       toast.success('Preview ready');
@@ -180,17 +158,13 @@ const AdminAIArticleStudio = () => {
       toast.error('पहले कोई draft चुनें');
       return;
     }
-    if (!agentToken) {
-      toast.error('Backend Agent Token डालें');
-      return;
-    }
     setBusy('regenerate');
     const toastId = toast.loading('Writer दोबारा article लिख रहा है...');
     try {
       const result = await callArticleApi<ArticleApiResult>('/articles/regenerate', {
         draftId: selected.id,
         instructions: instructions.trim() || undefined,
-      }, tokenHeaders());
+      });
       await refresh();
       const fresh = await aiArticleRepository.getDraft(selected.id);
       if (fresh) loadIntoEditor(fresh);
@@ -213,10 +187,6 @@ const AdminAIArticleStudio = () => {
       toast.error('पहले कोई draft चुनें');
       return;
     }
-    if (!agentToken) {
-      toast.error('Backend Agent Token डालें');
-      return;
-    }
     setBusy('apply');
     const toastId = toast.loading('Edits save हो रहे हैं + Fact & Quality review...');
     try {
@@ -228,7 +198,7 @@ const AdminAIArticleStudio = () => {
           metaDescription: editForm.metaDescription,
           articleHtml: editForm.articleHtml,
         },
-      }, tokenHeaders());
+      });
       await refresh();
       const fresh = await aiArticleRepository.getDraft(selected.id);
       if (fresh) loadIntoEditor(fresh);
@@ -273,7 +243,7 @@ const AdminAIArticleStudio = () => {
     try {
       let resultInfo = '';
       try {
-        const result = await callArticleApi<ArticleApiResult>('/articles/publish', { draftId: selected.id }, tokenHeaders());
+        const result = await callArticleApi<ArticleApiResult>('/articles/publish', { draftId: selected.id });
         resultInfo = `${result.collection}/${result.docId}`;
       } catch (apiErr) {
         const status = apiErrorStatus(apiErr);
@@ -406,8 +376,8 @@ const AdminAIArticleStudio = () => {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-4">
-            <div className="md:col-span-2">
+          <div>
+            <div>
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Extra Instructions (optional)</label>
               <input
                 type="text"
@@ -416,19 +386,6 @@ const AdminAIArticleStudio = () => {
                 placeholder="जैसे: dates section को detail में लिखो"
                 className="mt-1.5 w-full p-3 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-blue-500 transition-all"
               />
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><KeyRound size={11} /> Agent Admin Token</label>
-              <input
-                type="password"
-                value={agentToken}
-                onChange={(e) => persistToken(e.target.value)}
-                placeholder="Backend का AGENT_ADMIN_TOKEN"
-                className="mt-1.5 w-full p-3 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-blue-500 transition-all"
-              />
-              <p className="mt-1 text-[9px] font-bold text-slate-400 leading-snug">
-                Deployed backend का secret password है। Local dev: <code className="bg-slate-100 px-1 rounded">.env.local</code> में <code className="bg-slate-100 px-1 rounded">VITE_AGENT_ADMIN_TOKEN=...</code> डालो — auto भर जाएगा।
-              </p>
             </div>
           </div>
 

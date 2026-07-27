@@ -3,7 +3,8 @@
 /**
  * =============================================================
  *  ARTICLE AGENT ROUTES — Generate / Preview / Regenerate /
- *  Apply / Publish (admin API, token protected)
+ *  Apply / Publish (admin API — admin panel Gmail login ke peeche,
+ *  tumhare existing /generate-blog jaisa open pattern)
  * =============================================================
  * Endpoints (registered on the shared express `api` app):
  *   POST /articles/generate    → fetch source → writer → reviewer → save draft
@@ -18,7 +19,6 @@
  */
 
 const admin = require("firebase-admin");
-const { authorizeAgentRequest } = require("../agent_orchestrator");
 const {
   DRAFT_COLLECTION,
   cleanType,
@@ -145,8 +145,6 @@ function sanitizeEdits(edits) {
 function registerArticleAgentRoutes(app, db) {
   /* ---------------- GENERATE ---------------- */
   app.post("/articles/generate", async (req, res) => {
-    const auth = authorizeAgentRequest(req);
-    if (!auth.ok) return fail(res, auth.status, auth.error);
 
     try {
       const type = cleanType(req.body?.type);
@@ -184,8 +182,6 @@ function registerArticleAgentRoutes(app, db) {
 
   /* ---------------- PREVIEW ---------------- */
   app.post("/articles/preview", async (req, res) => {
-    const auth = authorizeAgentRequest(req);
-    if (!auth.ok) return fail(res, auth.status, auth.error);
 
     try {
       const draftId = String(req.body?.draftId || "").trim();
@@ -218,8 +214,6 @@ function registerArticleAgentRoutes(app, db) {
 
   /* ---------------- REGENERATE ---------------- */
   app.post("/articles/regenerate", async (req, res) => {
-    const auth = authorizeAgentRequest(req);
-    if (!auth.ok) return fail(res, auth.status, auth.error);
 
     try {
       const draftId = String(req.body?.draftId || "").trim();
@@ -275,8 +269,6 @@ function registerArticleAgentRoutes(app, db) {
 
   /* ---------------- APPLY (admin edits → re-review) ---------------- */
   app.post("/articles/apply", async (req, res) => {
-    const auth = authorizeAgentRequest(req);
-    if (!auth.ok) return fail(res, auth.status, auth.error);
 
     try {
       const draftId = String(req.body?.draftId || "").trim();
@@ -349,8 +341,6 @@ function registerArticleAgentRoutes(app, db) {
 
   /* ---------------- PUBLISH (guarded) ---------------- */
   app.post("/articles/publish", async (req, res) => {
-    const auth = authorizeAgentRequest(req);
-    if (!auth.ok) return fail(res, auth.status, auth.error);
 
     try {
       const draftId = String(req.body?.draftId || "").trim();
