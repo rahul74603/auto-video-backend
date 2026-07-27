@@ -44,13 +44,42 @@ function writerFor(type) {
 }
 
 /** Compact, reviewable snapshot of the fetched source (for re-checks without re-downloading). */
+
+/**
+ * Firestore arrays ke andar arrays allow nahi karta ("invalid nested entity"),
+ * isliye tables ko save karte waqt object-shape me pack karte hain:
+ *   [["a","b"],["c"]]  →  [{ rows: [{ cells: ["a","b"] }, { cells: ["c"] }] }]
+ */
+function packTables(tables) {
+  return (Array.isArray(tables) ? tables : []).slice(0, 15).map((rows) => ({
+    rows: (Array.isArray(rows) ? rows : []).slice(0, 80).map((cells) => ({
+      cells: (Array.isArray(cells) ? cells : []).slice(0, 14).map((c) => String(c ?? "").slice(0, 300))
+    }))
+  }));
+}
+
+/** Pack kiye tables ko wapas normal array-of-arrays shape me laata hai.
+ *  Dono shapes sambhalta hai (fresh in-memory arrays bhi pass-through hote hain). */
+function unpackTables(stored) {
+  if (!Array.isArray(stored)) return [];
+  return stored
+    .map((t) => {
+      if (Array.isArray(t)) return t; // fresh/unpacked shape
+      if (t && Array.isArray(t.rows)) {
+        return t.rows.map((r) => (r && Array.isArray(r.cells) ? r.cells : [])).filter((r) => r.length);
+      }
+      return [];
+    })
+    .filter((r) => r.length);
+}
+
 function snapshotOf(source) {
   return {
     url: source.url,
     fetchedAt: source.fetchedAt,
     pageTitle: source.pageTitle || "",
     text: String(source.text || "").slice(0, 12000),
-    tables: (source.tables || []).slice(0, 15),
+    tables: packTables(source.tables),
     links: (source.links || []).slice(0, 80),
     sha256: crypto.createHash("sha256").update(String(source.text || "")).digest("hex")
   };
@@ -63,6 +92,8 @@ function snapshotOf(source) {
 async function runGeneratePipeline({ type, sourceUrl, instructions, mode, source, existing }, deps = {}) {
   const cleanArticleType = cleanType(type);
   const fetchedSource = source || (await fetchAndExtractSource(sourceUrl, deps.fetchDeps));
+  // Snapshot se aaya source ho to packed tables ko normal shape me lao.
+  fetchedSource.tables = unpackTables(fetchedSource.tables);
   const generate = writerFor(cleanArticleType);
   const article = await generate(
     { source: fetchedSource, instructions },
@@ -89,11 +120,12 @@ async function runGeneratePipeline({ type, sourceUrl, instructions, mode, source
  * stored source snapshot.
  */
 function reReview({ type, article, sourceSnapshot, existing }) {
+  const source = { ...(sourceSnapshot || {}), tables: unpackTables(sourceSnapshot?.tables) };
   const normalized =
     type === ARTICLE_TYPES.JOB
-      ? normalizeJobArticle(article, { source: sourceSnapshot })
-      : normalizeFastTrackArticle(article, { source: sourceSnapshot });
-  const review = reviewArticle({ type: normalized.type, article: normalized, source: sourceSnapshot, existing });
+      ? normalizeJobArticle(article, { source })
+      : normalizeFastTrackArticle(article, { source });
+  const review = reviewArticle({ type: normalized.type, article: normalized, source, existing });
   return { article: normalized, review };
 }
 
@@ -270,5 +302,7 @@ module.exports = {
   buildJobPublishPayload,
   buildFastTrackPublishPayload,
   buildPublishPayload,
-  normalizeArticleHtml
+  normalizeArticleHtml,
+  packTables,
+  unpackTables
 };
