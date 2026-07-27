@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import jobDraftRepository, { type JobDraftRecord } from '@/features/job-drafts/data/jobDraftRepository';
+import { AI_ARTICLE_PREFILL_EVENT } from './AdminAIArticleStudio';
 import { asText, toDateSafe, type TimestampLike } from '@/types/firestore';
-import { Trash2, Edit3, Sparkles, Clock, RotateCw } from 'lucide-react';
+import { Trash2, Edit3, Sparkles, Clock, RotateCw, Wand2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const AdminJobDrafts = () => {
@@ -57,6 +58,19 @@ const AdminJobDrafts = () => {
     } finally {
       setIsRefreshing(false);
     }
+  };
+
+  // 1.5 ✨ इस fetched job draft से AI Article बनाना (ऊपर studio में prefill)
+  const handleGenerateArticle = (job: JobDraftRecord) => {
+    const sourceUrl = asText(job.sourceUrl) || asText(job.applyLink) || asText(job.officialLink) || asText(job.link);
+    window.dispatchEvent(new CustomEvent(AI_ARTICLE_PREFILL_EVENT, {
+      detail: {
+        sourceUrl,
+        title: asText(job.title),
+        organization: asText(job.organization),
+        category: asText(job.category),
+      }
+    }));
   };
 
   // 2. किसी ड्राफ्ट को डिलीट करना
@@ -133,6 +147,13 @@ const AdminJobDrafts = () => {
                     </td>
                     <td className="p-6">
                         <div className="flex justify-center gap-3">
+                        <button
+                            onClick={() => handleGenerateArticle(job)}
+                            className="p-3 bg-purple-600 text-white rounded-xl hover:bg-purple-800 shadow-lg shadow-purple-100 transition-all active:scale-90"
+                            title="इस Job से AI Article बनाएं (ऊपर Studio में)"
+                        >
+                            <Wand2 size={20} />
+                        </button>
                         <button
                             onClick={() => navigate('/secret-admin', {
                               state: {

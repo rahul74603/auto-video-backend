@@ -43,8 +43,8 @@ const AdminPage = () => {
     
     const location = useLocation(); 
 
-    // ✅ Active Tab State (Added 'PAYMENTS', 'AI WRITER')
-    type AdminTab = 'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'SIDEBAR' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'AI WRITER' | 'PAYMENTS';
+    // ✅ Active Tab State — AI Article Studio अब JOBS AI tab के अंदर ही है
+    type AdminTab = 'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'SIDEBAR' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'PAYMENTS';
     const [activeTab, setActiveTab] = useState<AdminTab>('BROWSE');
 
     const { content: siteContent, updateContent: updateSiteContent } = useSiteContent();
@@ -135,14 +135,13 @@ const AdminPage = () => {
                     
                     {/* NAVIGATION TABS (Added PAYMENTS) */}
                     <div className="flex flex-wrap gap-1 md:gap-2 w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scroll-smooth items-center no-scrollbar">
-                        {['BROWSE', 'JOBS AI', 'AI WRITER', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'SIDEBAR', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE'].map(t => (
+                        {['BROWSE', 'JOBS AI', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'SIDEBAR', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE'].map(t => (
                             <button 
                                 key={t} 
                                 onClick={() => setActiveTab(t as AdminTab)} 
                                 className={`px-3 py-1.5 md:px-5 md:py-2.5 rounded-md md:rounded-xl font-black text-[9px] md:text-xs whitespace-nowrap shrink-0 transition-all uppercase tracking-tighter ${activeTab === t ? 'bg-blue-600 text-white shadow-xl scale-105' : 'bg-gray-50 text-gray-400 border border-gray-100 hover:bg-white hover:text-blue-600 hover:shadow-md'}`}
                             >
-                                {t === 'JOBS AI' ? <span className="flex items-center gap-1"><Sparkles size={12}/> JOBS AI</span> : 
-                                 t === 'AI WRITER' ? <span className="flex items-center gap-1"><Sparkles size={12}/> AI WRITER</span> :
+                                {t === 'JOBS AI' ? <span className="flex items-center gap-1"><Sparkles size={12}/> JOBS AI</span> :
                                  t === 'FAST TRACK' ? <span className="flex items-center gap-1"><Zap size={12}/> FAST TRACK</span> : 
                                  t === 'WEB STORIES' ? <span className="flex items-center gap-1"><Layers size={12}/> WEB STORIES</span> : 
                                  t === 'PAYMENTS' ? <span className="flex items-center gap-1 text-green-500 group-hover:text-white"><IndianRupee size={12}/> PAYMENTS</span> :
@@ -163,8 +162,14 @@ const AdminPage = () => {
                 {/* 🧩 DYNAMIC TAB CONTENT AREA */}
                 <div className="min-h-[60vh]">
                     {activeTab === 'BROWSE' && <AdminBrowseTab />}
-                    {activeTab === 'JOBS AI' && <AdminJobDrafts />}
-                    {activeTab === 'AI WRITER' && <AdminAIArticleStudio />}
+                    {activeTab === 'JOBS AI' && (
+                        <div className="space-y-4">
+                            {/* ✍️ AI Article Studio — उपर: fetched jobs से Article बनाने का इंजन */}
+                            <AdminAIArticleStudio />
+                            {/* 📥 AI Job Drafts — नीचे: auto-fetched jobs review & publish */}
+                            <AdminJobDrafts />
+                        </div>
+                    )}
                     {activeTab === 'FOLDERS' && <AdminFoldersTab />}
                     {activeTab === 'HOMEPAGE' && <AdminHomepageTab siteContent={siteContent} updateSiteContent={updateSiteContent} />}
                     {activeTab === 'FAST TRACK' && <FastTrackManager />} 
