@@ -1,13 +1,11 @@
-// @ts-nocheck
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, Download, ShoppingCart, Info, Sparkles, Tag, ExternalLink, Flame, ArrowRight } from 'lucide-react';
+import { BookOpen, Download, ShoppingCart, Info, Sparkles, Tag, ExternalLink, ArrowRight } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { db } from '../firebase/config'; 
 import { doc, getDoc } from 'firebase/firestore';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
-import ShareButtons from '../components/ShareButtons'; 
 import { useNavigate } from 'react-router-dom';
 import SEO from '../components/SEO'; 
 
@@ -20,11 +18,27 @@ interface AffiliateItem {
   imageUrl?: string;
 }
 
+type NotesLink = {
+  title?: string;
+  name?: string;
+  url?: string;
+};
+
+type NotesSettings = {
+  mrpPrice?: string | number;
+  discountPercent?: string | number;
+  relatedBlogs?: NotesLink[];
+  ebookUpdates?: NotesLink[];
+  sidebarLinks?: NotesLink[];
+  premiumBoxTitle?: string;
+  premiumBoxDesc?: string;
+};
+
 const Notes: React.FC = () => {
   const [notes, setNotes] = useState<AffiliateItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showEbooks, setShowEbooks] = useState(true);
-  const [globalSettings, setGlobalSettings] = useState<any>(null); 
+  const [globalSettings, setGlobalSettings] = useState<NotesSettings | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -35,22 +49,22 @@ const Notes: React.FC = () => {
         // 1. Settings Check (Sidebar & Controls)
         try {
             const settingsSnap = await siteSettingsRepository.getGlobal();
-            if (settingsSnap) setGlobalSettings(settingsSnap);
+            if (settingsSnap) setGlobalSettings(settingsSnap as NotesSettings);
 
             const configRef = doc(db, "siteSettings", "controls"); 
             const configSnap = await getDoc(configRef);
             if (configSnap.exists()) {
                 setShowEbooks(configSnap.data().ebooksActive); 
             }
-        } catch (e) {
+        } catch {
             console.log("Config/Settings not found.");
         }
 
         // 2. DATA FETCHING
         const affiliateJobs = await jobRepository.list({ type: "AFFILIATE" });
         const fetchedNotes: AffiliateItem[] = affiliateJobs.map((job) => ({
-          id: job.id,
-          ...job
+          ...job,
+          id: job.id
         } as AffiliateItem));
         
         setNotes(fetchedNotes);
@@ -74,7 +88,7 @@ const Notes: React.FC = () => {
   ];
 
   const trendingBlogs = (globalSettings?.relatedBlogs || []).slice(0, 5); 
-  const pageQuickLinks = (globalSettings?.ebookUpdates?.length > 0) ? globalSettings.ebookUpdates : (globalSettings?.sidebarLinks || []);
+  const pageQuickLinks = ((globalSettings?.ebookUpdates?.length ?? 0) > 0 ? globalSettings?.ebookUpdates : globalSettings?.sidebarLinks) || [];
 
   // 🔥 1. BREADCRUMB SCHEMA (Google Search Hierarchy)
   const breadcrumbSchema = {
@@ -222,7 +236,7 @@ const Notes: React.FC = () => {
                     </h2>
                     
                     <ul className="space-y-3 relative z-10">
-                        {trendingBlogs.map((item: any, index: number) => {
+                        {trendingBlogs.map((item, index: number) => {
                             const style = loopColors[index % loopColors.length];
                             return (
                               <li key={index} onClick={() => item.url && window.open(item.url, '_blank')} className={`group cursor-pointer border-2 ${style.border} ${style.bg} p-3 md:p-4 rounded-xl md:rounded-2xl transition-all hover:-translate-y-1 shadow-sm hover:shadow-md flex items-center justify-between`}>
@@ -247,7 +261,7 @@ const Notes: React.FC = () => {
                         <Tag size={18} className="text-blue-600 animate-bounce" aria-hidden="true" /> महत्वपूर्ण लिंक्स 🔗
                     </h2>
                     <ul className="space-y-3 relative z-10">
-                        {pageQuickLinks.map((item: any, index: number) => {
+                        {pageQuickLinks.map((item, index: number) => {
                             const linkGradients = [
                               "bg-gradient-to-r from-blue-600 to-cyan-500 shadow-blue-500/30",
                               "bg-gradient-to-r from-purple-600 to-fuchsia-500 shadow-purple-500/30",

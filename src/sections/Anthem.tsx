@@ -1,9 +1,8 @@
-// @ts-nocheck
-import React, { useRef, useState } from 'react';
-import { Music, Zap, ShieldCheck, PlayCircle } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Zap, ShieldCheck, PlayCircle } from 'lucide-react';
 
 const Anthem = () => {
-  const videoRef = useRef(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // 🔥 28-Second Loop Logic

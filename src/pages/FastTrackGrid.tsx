@@ -1,5 +1,3 @@
-// @ts-nocheck
-import { useEffect, useState } from 'react';
 import { useFastTracks } from '@/features/fast-track/hooks/useFastTracks';
 import { Trophy, Ticket, Key, BookOpen, ChevronRight, Sparkles, Zap, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -22,7 +20,7 @@ const FastTrackGrid = () => {
     { title: 'Admit Card', cat: 'Admit Card', manualKey: 'admitCard', icon: <Ticket size={22} className="text-rose-600" />, bgGrad: 'from-rose-50 to-rose-100/50', border: 'border-rose-100', text: 'text-rose-700' },
     { title: 'Answer Key', cat: 'Answer Key', manualKey: 'answerKey', icon: <Key size={22} className="text-blue-600" />, bgGrad: 'from-blue-50 to-blue-100/50', border: 'border-blue-100', text: 'text-blue-700' },
     { title: 'Syllabus', cat: 'Syllabus', manualKey: 'syllabus', icon: <BookOpen size={22} className="text-purple-600" />, bgGrad: 'from-purple-50 to-purple-100/50', border: 'border-purple-100', text: 'text-purple-700' },
-  ];
+  ] as const;
 
   return (
     <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-10">
@@ -53,12 +51,12 @@ const FastTrackGrid = () => {
         
         {sections.map((sec) => {
           // 🔥 हाइब्रिड लॉजिक: एडमिन डेटा + ऑटो डेटा
-          const manualLinks = content?.buttons?.[sec.manualKey] || [];
+          const manualLinks = content?.buttons?.[sec.manualKey] ?? [];
           const autoLinks = getAutoData(sec.cat);
           
           // दोनों को मिला रहे हैं
-          const formattedManual = manualLinks.map((m: any, idx: number) => ({ id: `manual-${idx}`, title: m.text, link: m.link, isManual: true }));
-          const formattedAuto = autoLinks.map((a: any) => ({ id: a.id, title: a.title, link: `/update/${a.id}`, isManual: false }));
+          const formattedManual = manualLinks.map((m, idx: number) => ({ id: `manual-${idx}`, title: m.text, link: m.link, isManual: true }));
+          const formattedAuto = autoLinks.map((a) => ({ id: a.id, title: a.title, link: `/update/${a.id}`, isManual: false }));
           
           // टॉप 5 आइटम ही दिखाएंगे ताकि डब्बा बहुत लम्बा न हो जाये
           const combinedLinks = [...formattedManual, ...formattedAuto].slice(0, 5);

@@ -1,6 +1,7 @@
-// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { fastTrackRepository } from '@/features/fast-track/data/fastTrackRepository';
+import type { FastTrackItem, TimestampLike } from '@/types/firestore';
+import { toDateSafe } from '@/types/firestore';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Calendar, ArrowRight, FileText, AlertCircle } from 'lucide-react';
 import SEO from '../components/SEO'; // ✅ SEO कम्पोनेंट इम्पोर्ट किया
@@ -11,31 +12,42 @@ interface CategoryPageProps {
   description: string;
 }
 
+// Item ki display date (Firestore 'date' field ya createdAt)
+const itemDate = (item: FastTrackItem): string => {
+  const raw = (item['date'] ?? item.createdAt) as TimestampLike;
+  const d = toDateSafe(raw);
+  return d ? d.toLocaleDateString('hi-IN') : 'Recent';
+};
+
 const CategoryPage: React.FC<CategoryPageProps> = ({ category, pageTitle, description }) => {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<FastTrackItem[]>([]);
+  const [loadedCategory, setLoadedCategory] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const canonicalUrl = `https://studygyaan.in${location.pathname}`;
 
+  // Derived loading state: jab tak current category load na ho
+  const loading = loadedCategory !== category;
+
   useEffect(() => {
-    const fetchCategoryData = async () => {
-      setLoading(true);
-      try {
-        const fetchedData = await fastTrackRepository.listByCategory(category);
+    let cancelled = false;
+    fastTrackRepository
+      .listByCategory(category)
+      .then((fetchedData) => {
+        if (cancelled) return;
         setData(fetchedData
           .filter(item => item.status === "published" || !item.status)
-          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
-      } catch (err) {
+          .sort((a, b) =>
+            (toDateSafe(b.createdAt)?.getTime() ?? 0) - (toDateSafe(a.createdAt)?.getTime() ?? 0)));
+        setLoadedCategory(category);
+      })
+      .catch((err) => {
+        if (cancelled) return;
         console.error(`Error fetching ${category}:`, err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    
-    fetchCategoryData();
+        setLoadedCategory(category);
+      });
     window.scrollTo(0, 0);
+    return () => { cancelled = true; };
   }, [category]);
 
   // 🔥 1. BREADCRUMB SCHEMA (Google Search Hierarchy)
@@ -128,7 +140,7 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ category, pageTitle, descri
                     <div className="flex justify-between items-center">
                       <span className="bg-blue-600 text-white text-[10px] font-black px-2 py-1 rounded-md shadow-sm uppercase">{item.category}</span>
                       <time className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
-                        <Calendar size={12} aria-hidden="true" /> {item.date ? new Date(item.date.seconds * 1000).toLocaleDateString('hi-IN') : 'Recent'}
+                        <Calendar size={12} aria-hidden="true" /> {itemDate(item)}
                       </time>
                     </div>
                     {/* ✅ SEO FIX: H2/H3 structure */}

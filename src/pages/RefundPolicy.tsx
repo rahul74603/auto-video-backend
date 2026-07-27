@@ -1,6 +1,5 @@
-// @ts-nocheck
-import React, { useEffect } from 'react';
-import { RefreshCcw, AlertOctagon, HelpCircle, Calendar, Banknote, ShieldCheck, Mail, History } from 'lucide-react';
+import { useEffect } from 'react';
+import { RefreshCcw, AlertOctagon, HelpCircle, Calendar, Banknote, ShieldCheck, History } from 'lucide-react';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 
 const RefundPolicy = () => {

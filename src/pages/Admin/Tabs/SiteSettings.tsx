@@ -1,22 +1,44 @@
-// @ts-nocheck
 import { useState, useEffect } from 'react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { toast } from 'sonner';
+import { asText } from '@/types/firestore';
 import { 
     Settings, Save, Link as LinkIcon, ShoppingBag, 
     PlusCircle, Trash2, Megaphone, ToggleRight, ToggleLeft, BookOpen
 } from 'lucide-react';
 
+// =========================================================
+// 🧾 SETTINGS TYPE (type alias → Record<string, unknown> compatible)
+// =========================================================
+type SiteSettingsState = {
+    sidebarLinks: { name: string; url: string }[];
+    relatedBlogs: { title: string; url: string }[];
+    premiumBoxTitle: string;
+    premiumBoxDesc: string;
+    bottomBarText: string;
+    premiumPrice: string;
+    mrpPrice: string;
+    discountPercent: string;
+    popupActive: boolean;
+    popupTitle: string;
+    popupDescription: string;
+    popupButtonText: string;
+};
+
+const strVal = (v: unknown, fb: string): string => (v !== undefined ? asText(v, fb) : fb);
+const linkList = <T,>(v: unknown, fb: T): T =>
+    (Array.isArray(v) ? (v as unknown as T) : fb);
+
 const SiteSettings = () => {
     const [loading, setLoading] = useState(false);
-    const [settings, setSettings] = useState({
+    const [settings, setSettings] = useState<SiteSettingsState>({
         sidebarLinks: [], // इसे खाली रखा है ताकि डेटाबेस से आए
         relatedBlogs: [],
         premiumBoxTitle: "",
         premiumBoxDesc: "",
         bottomBarText: "",
         premiumPrice: "0",
-        mrpPrice: "0", 
+        mrpPrice: "0",
         discountPercent: "0",
         popupActive: true,
         popupTitle: "",
@@ -25,13 +47,30 @@ const SiteSettings = () => {
     });
 
     useEffect(() => {
-        const fetchSettings = async () => {
-            const data = await siteSettingsRepository.getGlobal();
-            if (data) {
-                setSettings(prev => ({ ...prev, ...data }));
-            }
-        };
-        fetchSettings();
+        let cancelled = false;
+        siteSettingsRepository.getGlobal()
+            .then((data) => {
+                if (cancelled || !data) return;
+                setSettings(prev => ({
+                    ...prev,
+                    sidebarLinks: linkList(data['sidebarLinks'], prev.sidebarLinks),
+                    relatedBlogs: linkList(data['relatedBlogs'], prev.relatedBlogs),
+                    premiumBoxTitle: strVal(data['premiumBoxTitle'], prev.premiumBoxTitle),
+                    premiumBoxDesc: strVal(data['premiumBoxDesc'], prev.premiumBoxDesc),
+                    bottomBarText: strVal(data['bottomBarText'], prev.bottomBarText),
+                    premiumPrice: strVal(data['premiumPrice'], prev.premiumPrice),
+                    mrpPrice: strVal(data['mrpPrice'], prev.mrpPrice),
+                    discountPercent: strVal(data['discountPercent'], prev.discountPercent),
+                    popupActive: typeof data['popupActive'] === 'boolean'
+                        ? data['popupActive']
+                        : prev.popupActive,
+                    popupTitle: strVal(data['popupTitle'], prev.popupTitle),
+                    popupDescription: strVal(data['popupDescription'], prev.popupDescription),
+                    popupButtonText: strVal(data['popupButtonText'], prev.popupButtonText)
+                }));
+            })
+            .catch((err) => console.error("Settings fetch error:", err));
+        return () => { cancelled = true; };
     }, []);
 
     // --- Sidebar Links Handlers (For All-in-1 Sidebars) ---

@@ -93,6 +93,39 @@ const AGENTS = Object.freeze({
       "Separate facts from mnemonics and opinions.",
       "Include a final factual and formatting QA pass."
     ]
+  },
+  "job-article-writer": {
+    label: "Job Article Writer Agent",
+    purpose: "Write 1600-2500 word source-grounded Hindi/Hinglish government-job articles from the extracted official source only.",
+    output: "Strict JSON: SEO metadata, single-H1 HTML article with responsive tables, FAQs, verified facts and JobPosting/FAQPage structured data.",
+    rules: [
+      "Use only facts present in the fetched official source extract.",
+      "Never invent dates, fees, vacancies, age limits, salary or links.",
+      "Missing facts stay empty and point to the official notification instead.",
+      "Attribute authorship to the StudyGyaan Editorial Team, never to an individual."
+    ]
+  },
+  "fast-track-article-writer": {
+    label: "Fast Track Article Writer Agent",
+    purpose: "Write 1600-2500 word source-grounded Hindi/Hinglish fast-track update articles (Result, Admit Card, Answer Key, Syllabus, Admission).",
+    output: "Strict JSON: SEO metadata, single-H1 HTML article with responsive tables, FAQs, verified facts and Article/FAQPage structured data.",
+    rules: [
+      "Direct links, dates and details must come from the fetched source only.",
+      "Never invent cut-offs, dates, links or steps.",
+      "Missing facts stay empty and point to the official website instead.",
+      "Attribute authorship to the StudyGyaan Editorial Team, never to an individual."
+    ]
+  },
+  "fact-quality-reviewer": {
+    label: "Fact & Quality Reviewer Agent",
+    purpose: "Independently verify an article against its source and block hallucinated, duplicate or low-quality drafts from publishing.",
+    output: "Verdict (pass/fail), score, blocking issues, warnings and quality metrics.",
+    rules: [
+      "Every date, fee, vacancy number and percentage must exist in the source.",
+      "Block exact/near duplicates of titles, slugs and existing content.",
+      "Block keyword stuffing, multiple H1s and missing required sections.",
+      "A failed review blocks publishing; never let unverified facts go live."
+    ]
   }
 });
 

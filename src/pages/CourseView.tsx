@@ -1,8 +1,7 @@
-// @ts-nocheck
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../firebase/config';
-import { collection, query, orderBy, getDocs, doc, getDoc, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { courseRepository } from '@/features/courses/data/courseRepository';
 import { useCourseAccess } from '../hooks/useCourseAccess';
 import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
@@ -28,13 +27,33 @@ import SEO from '../components/SEO';
 
 interface CourseContent { id: string; title: string; seoTitle?: string; link?: string; type: 'PDF' | 'VIDEO' | 'FOLDER'; parentId?: string | null; }
 
+type CourseViewData = {
+  title?: string;
+  description?: string;
+  imageUrl?: string;
+  lockMessage?: string;
+  features?: string[];
+};
+
+type SidebarQuickLink = {
+  title?: string;
+  name?: string;
+  url?: string;
+};
+
+type GlobalSettingsView = {
+  mrpPrice?: string;
+  discountPercent?: string;
+  sidebarLinks?: SidebarQuickLink[];
+};
+
 const CourseView = () => {
-  const { id } = useParams(); 
+  const { id } = useParams();
   const navigate = useNavigate();
-  const { hasAccess, loading: authLoading } = useCourseAccess(id || ""); 
-  
-  const [course, setCourse] = useState<any>(null);
-  const [globalSettings, setGlobalSettings] = useState<any>(null); 
+  const { hasAccess, loading: authLoading } = useCourseAccess(id || "");
+
+  const [course, setCourse] = useState<CourseViewData | null>(null);
+  const [globalSettings, setGlobalSettings] = useState<GlobalSettingsView | null>(null);
   const [allContent, setAllContent] = useState<CourseContent[]>([]); 
   const [loading, setLoading] = useState(true);
   const [finalPrice, setFinalPrice] = useState<number | null>(null);
@@ -55,17 +74,27 @@ const CourseView = () => {
         // 1. Fetch Course Data
         const courseData = await courseRepository.getCourseById(id);
         if (courseData) {
-          setCourse(courseData);
-          
+          setCourse(courseData as unknown as CourseViewData);
+
           // 2. Fetch Content
           const content = await courseContentRepository.listContent(id, { orderByCreatedAt: true });
-          setAllContent(content);
+          setAllContent(content.map((record) => {
+            const rawType = typeof record.type === 'string' ? record.type : 'PDF';
+            return {
+              id: record.id,
+              title: typeof record.title === 'string' ? record.title : '',
+              seoTitle: typeof record.seoTitle === 'string' ? record.seoTitle : undefined,
+              link: typeof record.link === 'string' ? record.link : undefined,
+              type: (rawType === 'VIDEO' || rawType === 'FOLDER' ? rawType : 'PDF') as CourseContent['type'],
+              parentId: (record.parentId as string | null | undefined) ?? null,
+            };
+          }));
         }
 
         // 3. Fetch Global Settings
         const settingsSnap = await getDoc(doc(db, "site_settings", "global"));
         if (settingsSnap.exists()) {
-          setGlobalSettings(settingsSnap.data());
+          setGlobalSettings(settingsSnap.data() as GlobalSettingsView);
         }
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -88,7 +117,6 @@ const CourseView = () => {
 
         while (attempts < 10 && !isLocked) {
           const randomPaise = (Math.floor(Math.random() * 99) + 1) / 100;
-          const tempPrice = basePrice + randomPaise;
           const calculated = basePrice + randomPaise;
           generatedPrice = Number(calculated.toFixed(2));
           const lockId = `${id}_${generatedPrice.toFixed(2)}`;
@@ -133,7 +161,7 @@ const CourseView = () => {
         setTimeLeft(timeLeft - 1);
       }, 1000);
       return () => clearTimeout(timerId);
-    } else if (timeLeft === 0 && finalPrice > 0 && id) {
+    } else if (timeLeft === 0 && finalPrice !== null && finalPrice > 0 && id) {
        // Unlock price when timer expires
        const releaseLock = async () => {
           const lockId = `${id}_${finalPrice.toFixed(2)}`;
@@ -147,10 +175,6 @@ const CourseView = () => {
   const handlePaymentRedirect = () => {
     navigate('/manual-payment', { state: { itemId: id, itemName: course?.title || "Premium Course", amount: finalPrice } });
   };
-
-  const sellingPrice = Math.round(
-    (parseInt(globalSettings?.mrpPrice || "499")) * (1 - (parseInt(globalSettings?.discountPercent || "85")) / 100)
-  );
 
   const pageQuickLinks = globalSettings?.sidebarLinks || [];
 
@@ -350,7 +374,7 @@ const CourseView = () => {
                       <Tag size={20} className="text-blue-600 animate-bounce" /> महत्वपूर्ण लिंक्स 🔗
                   </h3>
                   <ul className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 relative z-10">
-                      {pageQuickLinks.map((item: any, index: number) => {
+                      {pageQuickLinks.map((item, index: number) => {
                           const linkGradients = [
                             "bg-gradient-to-r from-blue-600 to-cyan-500 shadow-blue-500/30",
                             "bg-gradient-to-r from-purple-600 to-fuchsia-500 shadow-purple-500/30",

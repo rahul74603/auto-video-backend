@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { asText } from '@/types/firestore';
 import { useMockTests } from '@/features/mock-tests/hooks/useMockTests';
 import { useNavigate } from 'react-router-dom';
 import { Play, Zap, ArrowRight, Clock, BookOpen } from 'lucide-react';
@@ -49,17 +49,17 @@ const MockTestHomeSection = () => {
                             {/* Text Info */}
                             <div className="flex-1 min-w-0 md:w-full">
                                 <h3 className="text-[10px] md:text-xl font-bold text-slate-100 truncate md:whitespace-normal md:line-clamp-2 uppercase tracking-tight md:mb-4">
-                                    {test.title || "Mock Test"}
+                                    {asText(test.title) || "Mock Test"}
                                 </h3>
                                 
                                 {/* Stats: PC par extra detail dikhegi */}
                                 <div className="flex items-center gap-2 mt-1 md:mt-0">
                                     <span className="text-[7px] md:text-[10px] text-blue-400 font-bold px-1 md:px-2 md:py-0.5 bg-blue-500/10 rounded uppercase">Live</span>
                                     <div className="hidden md:flex items-center gap-4 text-slate-500 font-bold text-xs ml-auto">
-                                        <span className="flex items-center gap-1"><Clock size={14} className="text-orange-500"/> {test.durationMinutes}m</span>
-                                        <span className="flex items-center gap-1"><BookOpen size={14} className="text-emerald-500"/> {test.totalQuestions}Q</span>
+                                        <span className="flex items-center gap-1"><Clock size={14} className="text-orange-500"/> {asText(test.durationMinutes)}m</span>
+                                        <span className="flex items-center gap-1"><BookOpen size={14} className="text-emerald-500"/> {asText(test.totalQuestions)}Q</span>
                                     </div>
-                                    <span className="md:hidden text-[8px] text-slate-500 font-medium">{test.totalQuestions || '25'}Q</span>
+                                    <span className="md:hidden text-[8px] text-slate-500 font-medium">{asText(test.totalQuestions) || '25'}Q</span>
                                 </div>
                             </div>
 

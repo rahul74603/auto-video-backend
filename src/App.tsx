@@ -1,5 +1,4 @@
-// @ts-nocheck
-import React, { Suspense, lazy, memo } from 'react';
+import { Suspense, lazy, memo, type ReactNode } from 'react';
 import {
     BrowserRouter as Router,
     Routes,
@@ -91,7 +90,7 @@ const PopupAd = lazy(() =>
 // =========================================================
 // 📦 PAGE WRAPPER
 // =========================================================
-const PageWrapper = memo(({ children, className = "" }) => (
+const PageWrapper = memo(({ children, className = "" }: { children?: ReactNode; className?: string }) => (
     <div className={`pt-14 md:pt-20 ${className}`}>
         {children}
     </div>
@@ -118,7 +117,7 @@ const SilentLoader = () => null;
 // =========================================================
 // 📋 CATEGORY ROUTE HELPER
 // =========================================================
-const CategoryRoute = ({ category, pageTitle, description }) => (
+const CategoryRoute = ({ category, pageTitle, description }: { category: string; pageTitle: string; description: string }) => (
     <PageWrapper>
         <CategoryPage
             category={category}

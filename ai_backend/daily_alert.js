@@ -1,4 +1,3 @@
-// @ts-nocheck
 const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const axios = require("axios");

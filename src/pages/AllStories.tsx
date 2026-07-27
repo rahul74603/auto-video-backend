@@ -1,6 +1,6 @@
-// @ts-nocheck
-import React from 'react';
+
 import { useStories } from '@/features/stories/hooks/useStories';
+import { asText } from '@/types/firestore';
 import { useNavigate } from 'react-router-dom';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 import { ChevronLeft, Zap } from 'lucide-react';
@@ -55,7 +55,7 @@ const AllStories = () => {
                                 className="aspect-[9/16] relative rounded-3xl overflow-hidden cursor-pointer group border-4 border-white shadow-xl hover:shadow-2xl hover:-translate-y-2 transition-all duration-300"
                             >
                                 <img 
-                                    src={story.coverImage || 'https://studygyaan.in/og-image.jpg'} 
+                                    src={asText(story.coverImage) || 'https://studygyaan.in/og-image.jpg'} 
                                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
                                     alt="story" 
                                 />
@@ -63,10 +63,10 @@ const AllStories = () => {
                                 
                                 <div className="absolute bottom-0 p-4 w-full">
                                     <span className={`text-[8px] font-black text-white px-2 py-0.5 rounded-lg uppercase mb-2 inline-block shadow-sm ${story.storyType === 'blog' ? 'bg-emerald-600' : 'bg-purple-600'}`}>
-                                        {story.storyType || 'Job'}
+                                        {asText(story.storyType) || 'Job'}
                                     </span>
                                     <h4 className="text-white font-bold text-xs md:text-sm leading-tight line-clamp-3 drop-shadow-lg">
-                                        {story.title}
+                                        {asText(story.title)}
                                     </h4>
                                 </div>
                             </div>

@@ -184,7 +184,7 @@ export const orderServices = {
 
 // Ads Services
 export const adServices = {
-  async getActiveAds(position: string): Promise<any[]> {
+  async getActiveAds(position: string): Promise<Record<string, unknown>[]> {
     const q = query(
       collection(db, 'ads'),
       where('isActive', '==', true),
@@ -217,13 +217,13 @@ export const adServices = {
 
 // SEO Services
 export const seoServices = {
-  async getSEOMeta(page: string): Promise<any> {
+  async getSEOMeta(page: string): Promise<Record<string, unknown> | null> {
     const docRef = doc(db, 'seo', page);
     const docSnap = await getDoc(docRef);
     return docSnap.exists() ? docSnap.data() : null;
   },
 
-  async updateSEOMeta(page: string, meta: any): Promise<void> {
+  async updateSEOMeta(page: string, meta: Record<string, unknown>): Promise<void> {
     await setDoc(doc(db, 'seo', page), meta, { merge: true });
   }
 };

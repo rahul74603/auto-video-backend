@@ -1,42 +1,52 @@
-// @ts-nocheck
 import { useState, useEffect } from 'react';
 // 👇 ONLY 3 sets of dots (सुरक्षित रखा गया है)
 import { orderRepository } from '@/features/orders/data/orderRepository';
+import { toDateSafe, type TimestampLike } from '@/types/firestore';
 import { ShoppingCart, User, CheckCircle, Trash2, Calendar, Package, Mail, IndianRupee, RefreshCw, Loader2 } from 'lucide-react';
 import emailjs from '@emailjs/browser';
 
-interface Order { id: string; customerName: string; customerEmail: string; items: any[]; totalAmount: number; status: string; date: any; }
+type OrderItem = {
+  product?: { name?: string };
+};
+
+type Order = {
+  id: string;
+  customerName?: string;
+  customerEmail?: string;
+  items?: OrderItem[];
+  totalAmount?: number | string;
+  status?: string;
+  date?: TimestampLike;
+};
 
 const OrdersTab = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { fetchOrders(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    orderRepository.listAll('date', 'desc')
+      .then((records) => { if (!cancelled) setOrders(records as Order[]); })
+      .catch((error) => { console.error("Error fetching orders:", error); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const q = query(collection(db, "orders"), orderBy("date", "desc"));
-      const snapshot = await getDocs(q);
-      setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
-    } catch (error) { 
-      console.error("Error fetching orders:", error); 
-    } finally { 
-      setLoading(false); 
+      const records = await orderRepository.listAll('date', 'desc');
+      setOrders(records as Order[]);
+    } catch (error) {
+      console.error("Error fetching orders:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
   // 🔥 SAFE DATE FORMATTER (व्हाइट स्क्रीन एरर रोकने के लिए)
-  const formatDate = (dateValue: any) => {
-    if (!dateValue) return 'N/A';
-    try {
-      // अगर Firebase Timestamp है
-      if (dateValue.toDate) return dateValue.toDate().toLocaleDateString();
-      // अगर String या Number है
-      return new Date(dateValue).toLocaleDateString();
-    } catch (e) {
-      return 'Invalid Date';
-    }
+  const formatDate = (dateValue: TimestampLike): string => {
+    return toDateSafe(dateValue)?.toLocaleDateString() ?? 'N/A';
   };
 
   const markOrderComplete = async (orderId: string) => {
@@ -47,7 +57,7 @@ const OrdersTab = () => {
         await orderRepository.updateStatus(orderId, 'completed');
         
         // Email Logic (Safe Access)
-        const productNames = order.items?.map((i:any) => i.product?.name || "Premium Material").join(', ') || "Your Course";
+        const productNames = order.items?.map((i) => i.product?.name || "Premium Material").join(', ') || "Your Course";
         
         const emailParams = {
             to_name: order.customerName, 
@@ -66,8 +76,8 @@ const OrdersTab = () => {
         }
         alert("✅ Order Approved!"); 
         fetchOrders();
-      } catch (error) { 
-        alert("Error updating order."); 
+      } catch {
+        alert("Error updating order.");
       }
     }
   };
@@ -128,7 +138,7 @@ const OrdersTab = () => {
                                     
                                     {/* PURCHASED ITEMS TAGS */}
                                     <div className="flex flex-wrap gap-1.5 mt-2.5 md:mt-4">
-                                        {o.items?.map((item:any, idx:number) => (
+                                        {o.items?.map((item, idx: number) => (
                                             <span key={idx} className="bg-blue-50 text-blue-600 text-[8px] md:text-[10px] font-black uppercase tracking-wider px-2 md:px-3 py-0.5 md:py-1 rounded-full border border-blue-100 truncate max-w-[150px]">
                                                 {item.product?.name || "Premium Course"}
                                             </span>

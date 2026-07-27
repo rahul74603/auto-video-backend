@@ -1,60 +1,95 @@
-// @ts-nocheck
-import React, { useState, useEffect } from 'react';
-import { Globe, Save, Zap, Plus, Trash2, Layout, Link as LinkIcon, ListOrdered } from 'lucide-react';
+import { useState } from 'react';
+import { Globe, Zap, Trash2, Layout } from 'lucide-react';
+import type { SiteContent } from '@/hooks/useSiteContent';
 
-const AdminHomepageTab = ({ siteContent, updateSiteContent }) => {
-    const [seoLocal, setSeoLocal] = useState({ title: '', description: '' });
-    const [yellowBarLocal, setYellowBarLocal] = useState({ updates: [] });
+// =========================================================
+// 🧾 TYPES
+// =========================================================
+interface LinkUpdate {
+    text: string;
+    link: string;
+}
 
-    // डेटा सिंक
-    useEffect(() => {
-        if (siteContent) {
-            setSeoLocal(siteContent.seo || { title: '', description: '' });
-            setYellowBarLocal(siteContent.liveUpdate || { updates: [] });
-        }
-    }, [siteContent]);
+interface SeoForm {
+    title: string;
+    description: string;
+}
+
+interface AdminHomepageTabProps {
+    siteContent: SiteContent | null;
+    updateSiteContent: (newContent: Partial<SiteContent>) => Promise<void>;
+}
+
+type ButtonSectionKey = keyof SiteContent['buttons'];
+
+const EMPTY_UPDATE_STATE: { updates: LinkUpdate[] } = { updates: [] };
+
+const AdminHomepageTab = ({ siteContent, updateSiteContent }: AdminHomepageTabProps) => {
+    // SEO draft (null = siteContent ka original value dikhao)
+    const [seoDraft, setSeoDraft] = useState<SeoForm | null>(null);
+
+    // Derived data (sync effect zaroori nahi)
+    const seoLocal: SeoForm = seoDraft
+        ?? (siteContent?.seo
+            ? { title: siteContent.seo.title ?? '', description: siteContent.seo.description ?? '' }
+            : { title: '', description: '' });
+
+    const liveUpdates: LinkUpdate[] = Array.isArray(siteContent?.liveUpdate?.updates)
+        ? (siteContent?.liveUpdate?.updates as LinkUpdate[])
+        : [];
+
+    const getInputValue = (id: string): string =>
+        (document.getElementById(id) as HTMLInputElement | null)?.value.trim() ?? '';
+
+    const clearInputs = (ids: string[]) => {
+        ids.forEach(id => {
+            const el = document.getElementById(id) as HTMLInputElement | null;
+            if (el) el.value = '';
+        });
+    };
 
     // --- 🛠️ मास्टर हैंडलर्स ---
 
     // 1. Live Marquee के लिए
     const handleAddLive = () => {
-        const t = document.getElementById('lt').value;
-        const l = document.getElementById('ll').value;
+        const t = getInputValue('lt');
+        const l = getInputValue('ll');
         if (t && l) {
-            const newUpdates = [{ text: t, link: l }, ...(yellowBarLocal.updates || [])];
-            updateSiteContent({ liveUpdate: { ...yellowBarLocal, updates: newUpdates } });
-            document.getElementById('lt').value = ''; document.getElementById('ll').value = '';
+            const newUpdates = [{ text: t, link: l }, ...liveUpdates];
+            void updateSiteContent({
+                liveUpdate: { ...(siteContent?.liveUpdate ?? EMPTY_UPDATE_STATE), updates: newUpdates }
+            });
+            clearInputs(['lt', 'll']);
         }
     };
 
     // 2. चारों कैटेगरी (Results, Admit Card आदि) के लिए कॉमन हैंडलर
-    const handleAddLink = (categoryKey) => {
-        const t = document.getElementById(`t-${categoryKey}`).value;
-        const l = document.getElementById(`l-${categoryKey}`).value;
+    const handleAddLink = (categoryKey: ButtonSectionKey) => {
+        const t = getInputValue(`t-${categoryKey}`);
+        const l = getInputValue(`l-${categoryKey}`);
         if (t && l) {
             const currentLinks = siteContent?.buttons?.[categoryKey] || [];
             const newLinks = [{ text: t, link: l }, ...currentLinks];
-            
-            updateSiteContent({ 
-                buttons: { 
-                    ...siteContent.buttons, 
-                    [categoryKey]: newLinks 
-                } 
+
+            void updateSiteContent({
+                buttons: {
+                    ...siteContent?.buttons,
+                    [categoryKey]: newLinks
+                } as SiteContent['buttons']
             });
 
-            document.getElementById(`t-${categoryKey}`).value = '';
-            document.getElementById(`l-${categoryKey}`).value = '';
+            clearInputs([`t-${categoryKey}`, `l-${categoryKey}`]);
         }
     };
 
-    const handleDeleteLink = (categoryKey, index) => {
+    const handleDeleteLink = (categoryKey: ButtonSectionKey, index: number) => {
         const currentLinks = siteContent?.buttons?.[categoryKey] || [];
         const filteredLinks = currentLinks.filter((_, i) => i !== index);
-        updateSiteContent({ 
-            buttons: { 
-                ...siteContent.buttons, 
-                [categoryKey]: filteredLinks 
-            } 
+        void updateSiteContent({
+            buttons: {
+                ...siteContent?.buttons,
+                [categoryKey]: filteredLinks
+            } as SiteContent['buttons']
         });
     };
 
@@ -75,9 +110,9 @@ const AdminHomepageTab = ({ siteContent, updateSiteContent }) => {
                 <div className="grid grid-cols-1 gap-4">
                     <div className="space-y-1">
                         <label className="text-[10px] font-black text-slate-400 ml-2 uppercase">Meta Title</label>
-                        <input value={seoLocal.title} onChange={e => setSeoLocal({...seoLocal, title: e.target.value})} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold focus:ring-2 focus:ring-purple-200 outline-none transition-all" placeholder="StudyGyaan: Latest Govt Jobs..." />
+                        <input value={seoLocal.title} onChange={e => setSeoDraft({ ...seoLocal, title: e.target.value })} className="w-full p-4 bg-slate-50 border rounded-2xl font-bold focus:ring-2 focus:ring-purple-200 outline-none transition-all" placeholder="StudyGyaan: Latest Govt Jobs..." />
                     </div>
-                    <button onClick={() => { updateSiteContent({ seo: seoLocal }); alert("SEO Saved! ✅"); }} className="bg-purple-600 hover:bg-purple-700 text-white px-10 py-4 rounded-2xl font-black shadow-lg shadow-purple-200 active:scale-95 transition-all w-fit">
+                    <button onClick={() => { void updateSiteContent({ seo: { title: seoLocal.title, description: seoLocal.description, keywords: siteContent?.seo?.keywords ?? '' } }); setSeoDraft(null); alert("SEO Saved! ✅"); }} className="bg-purple-600 hover:bg-purple-700 text-white px-10 py-4 rounded-2xl font-black shadow-lg shadow-purple-200 active:scale-95 transition-all w-fit">
                         SAVE SEO CONFIG
                     </button>
                 </div>
@@ -96,15 +131,17 @@ const AdminHomepageTab = ({ siteContent, updateSiteContent }) => {
                     </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-                    {yellowBarLocal.updates?.map((up, i) => (
+                    {liveUpdates.map((up, i) => (
                         <div key={i} className="flex justify-between items-center p-4 bg-yellow-50/50 rounded-2xl border border-yellow-100 group">
                             <div className="flex flex-col truncate">
                                 <span className="font-black text-slate-800 text-sm truncate">{up.text}</span>
                                 <span className="text-[10px] text-blue-500 truncate">{up.link}</span>
                             </div>
                             <button onClick={() => {
-                                const filtered = yellowBarLocal.updates.filter((_, idx) => idx !== i);
-                                updateSiteContent({ liveUpdate: { ...yellowBarLocal, updates: filtered } });
+                                const filtered = liveUpdates.filter((_, idx) => idx !== i);
+                                void updateSiteContent({
+                                    liveUpdate: { ...(siteContent?.liveUpdate ?? EMPTY_UPDATE_STATE), updates: filtered }
+                                });
                             }} className="p-2 bg-white text-red-400 rounded-xl shadow-sm hover:text-red-600 transition-colors">
                                 <Trash2 size={18} />
                             </button>
@@ -118,26 +155,26 @@ const AdminHomepageTab = ({ siteContent, updateSiteContent }) => {
                 <h3 className="flex items-center gap-2 font-black text-blue-700 mb-8 text-xl uppercase">
                     <Layout /> Manual Sections Controller
                 </h3>
-                
+
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {[
+                    {([
                         { key: 'results', label: 'Results Section', color: 'red' },
                         { key: 'admitCard', label: 'Admit Card Section', color: 'blue' },
                         { key: 'answerKey', label: 'Answer Key Section', color: 'green' },
                         { key: 'syllabus', label: 'Syllabus Section', color: 'purple' }
-                    ].map((sec) => (
+                    ] as { key: ButtonSectionKey; label: string; color: string }[]).map((sec) => (
                         <div key={sec.key} className={`p-6 rounded-[2.5rem] bg-${sec.color}-50/30 border border-${sec.color}-100`}>
                             <h4 className={`text-${sec.color}-600 font-black mb-4 uppercase tracking-widest text-sm flex items-center gap-2`}>
                                 <div className={`w-2 h-2 bg-${sec.color}-600 rounded-full animate-pulse`}></div>
                                 {sec.label}
                             </h4>
-                            
+
                             {/* Inputs */}
                             <div className="space-y-3 mb-6">
                                 <input id={`t-${sec.key}`} placeholder="Job Title" className="w-full p-3 border rounded-xl font-bold text-xs" />
                                 <div className="flex gap-2">
                                     <input id={`l-${sec.key}`} placeholder="Link" className="flex-1 p-3 border rounded-xl text-xs" />
-                                    <button 
+                                    <button
                                         onClick={() => handleAddLink(sec.key)}
                                         className={`bg-${sec.color}-600 text-white px-4 py-2 rounded-xl font-black text-[10px] hover:brightness-90 active:scale-95 transition-all`}
                                     >
@@ -156,7 +193,7 @@ const AdminHomepageTab = ({ siteContent, updateSiteContent }) => {
                                         </button>
                                     </div>
                                 ))}
-                                {(!siteContent?.buttons?.[sec.key] || siteContent.buttons[sec.key].length === 0) && (
+                                {(!siteContent?.buttons?.[sec.key] || (siteContent.buttons[sec.key] || []).length === 0) && (
                                     <p className="text-center py-4 text-slate-300 italic text-[10px]">No manual links added.</p>
                                 )}
                             </div>
@@ -164,7 +201,7 @@ const AdminHomepageTab = ({ siteContent, updateSiteContent }) => {
                     ))}
                 </div>
             </div>
-            
+
             <style>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 5px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }

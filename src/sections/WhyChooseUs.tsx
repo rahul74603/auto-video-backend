@@ -1,8 +1,7 @@
-// @ts-nocheck
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Globe, Award, Clock, Gift, CheckCircle, Star } from 'lucide-react';
-import { useLanguage } from '@/context/LanguageContext';
+import { useLanguage } from '@/context/useLanguage';
 
 const features = [
   {

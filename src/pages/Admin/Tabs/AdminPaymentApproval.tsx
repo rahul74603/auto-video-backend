@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { toDateSafe, type TimestampLike } from '@/types/firestore';
 import { useEffect, useState } from 'react';
 // 🔥 Path check: 'src' folder tak pahunchne ke liye 3 levels piche
 import { paymentRepository } from '@/features/payments/data/paymentRepository';
@@ -15,14 +15,28 @@ import {
     AlertCircle 
 } from 'lucide-react';
 
+type PaymentRequestView = {
+    id: string;
+    timestamp?: TimestampLike;
+    createdAt?: TimestampLike;
+    userEmail?: string;
+    userId?: string;
+    utr?: string;
+    amount?: number | string;
+    screenshotUrl?: string;
+    itemName?: string;
+    courseId?: string;
+    itemId?: string;
+};
+
 const AdminPaymentApproval = () => {
-    const [requests, setRequests] = useState<any[]>([]);
+    const [requests, setRequests] = useState<PaymentRequestView[]>([]);
     const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState<string | null>(null);
 
     useEffect(() => {
         const unsubscribe = paymentRepository.subscribePendingPayments((payments) => {
-            setRequests(payments);
+            setRequests(payments as PaymentRequestView[]);
             setLoading(false);
         }, (error) => {
             console.error("Payment requests error:", error);
@@ -32,9 +46,14 @@ const AdminPaymentApproval = () => {
         return () => unsubscribe();
     }, []);
 
-    const handleAction = async (requestId: string, userId: string, itemId: string, action: 'approved' | 'rejected') => {
+    const handleAction = async (requestId: string, userId: string | undefined, itemId: string | undefined, action: 'approved' | 'rejected') => {
         const confirmMsg = `Kya aap is payment ko ${action === 'approved' ? 'APPROVE' : 'REJECT'} karna chahte hain?`;
         if (!window.confirm(confirmMsg)) return;
+
+        if (!userId || !itemId) {
+            alert("Payment data incomplete (user/item missing).");
+            return;
+        }
 
         setProcessingId(requestId);
         try {
@@ -94,7 +113,7 @@ const AdminPaymentApproval = () => {
                                     </div>
                                     <p className="text-slate-400 text-[10px] font-bold">
                                         {/* Fallback for both new and old timestamp fields */}
-                                        {req.timestamp?.toDate() ? new Date(req.timestamp.toDate()).toLocaleString() : req.createdAt?.toDate() ? new Date(req.createdAt.toDate()).toLocaleString() : 'Just Now'}
+                                        {(toDateSafe(req.timestamp) ?? toDateSafe(req.createdAt))?.toLocaleString() ?? 'Just Now'}
                                     </p>
                                 </div>
 

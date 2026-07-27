@@ -1,4 +1,3 @@
-// @ts-nocheck
 const admin = require("firebase-admin");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 require("dotenv").config();

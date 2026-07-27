@@ -1,28 +1,52 @@
-// @ts-nocheck
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, type ChangeEvent } from 'react';
 import { auth, storage } from '../firebase/config';
-import { onAuthStateChanged } from 'firebase/auth'; 
+import { onAuthStateChanged, type User } from 'firebase/auth'; 
 import { serverTimestamp } from 'firebase/firestore';
 import { blogRepository } from '@/features/blogs/data/blogRepository';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; 
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css'; 
-import { Flame, Link as LinkIcon, Sparkles, PlusCircle, Edit, Trash2, X, ShieldAlert, Image as ImageIcon, Save, Globe, UploadCloud, Wand2 } from 'lucide-react';
+import { Flame, Sparkles, PlusCircle, Edit, Trash2, X, ShieldAlert, Image as ImageIcon, Save, Globe, UploadCloud, Wand2 } from 'lucide-react';
+type BlogRow = {
+  id: string;
+  title?: string;
+  category?: string;
+  author?: string;
+  imageUrl?: string;
+  content?: string;
+  seoDesc?: string;
+  seoKeywords?: string;
+  status?: string;
+};
+
+type SidebarBlogLink = {
+  title?: string;
+  url?: string;
+};
+
+type AIGeneratedBlog = {
+  title?: string;
+  content?: string;
+  metaDescription?: string;
+  imageUrl?: string;
+  tags?: string[];
+};
+
 const AdminBlogWriter = () => {
   const API_BASE_URL = "https://api-hf6vlh5cpq-uc.a.run.app";
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL;
 const [aiGenerating, setAiGenerating] = useState(false);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
-  const [author, setAuthor] = useState('Rahul Sir');
+  const [author, setAuthor] = useState('StudyGyaan Editorial Team');
   const [imageUrl, setImageUrl] = useState('');
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
   
-  const [blogsList, setBlogsList] = useState<any[]>([]);
+  const [blogsList, setBlogsList] = useState<BlogRow[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [rambanText, setRambanText] = useState('');
@@ -31,7 +55,7 @@ const [aiGenerating, setAiGenerating] = useState(false);
   const [seoDesc, setSeoDesc] = useState('');
   const [seoKeywords, setSeoKeywords] = useState('');
   const [imageUploading, setImageUploading] = useState(false);
-  const quillRef = useRef(null); 
+  const quillRef = useRef<ReactQuill | null>(null); 
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -48,16 +72,19 @@ const [aiGenerating, setAiGenerating] = useState(false);
   const fetchBlogs = async () => {
     try {
       const blogs = await blogRepository.listLatest();
-      setBlogsList(blogs);
+      setBlogsList(blogs as BlogRow[]);
     } catch (error) {
       console.error("Error fetching blogs:", error);
     }
   };
 
   useEffect(() => {
-    if (user) {
-      fetchBlogs(); 
-    }
+    if (!user) return;
+    let cancelled = false;
+    blogRepository.listLatest()
+      .then((blogs) => { if (!cancelled) setBlogsList(blogs as BlogRow[]); })
+      .catch((error) => { console.error("Error fetching blogs:", error); });
+    return () => { cancelled = true; };
   }, [user]);
 
   const compressImage = (file: File): Promise<File> => {
@@ -88,8 +115,8 @@ const [aiGenerating, setAiGenerating] = useState(false);
     });
   };
 
-  const handleCoverUpload = async (e: any) => {
-    const file = e.target.files[0];
+  const handleCoverUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
     setImageUploading(true);
     try {
@@ -120,12 +147,12 @@ const [aiGenerating, setAiGenerating] = useState(false);
         const storageRef = ref(storage, `blog_content_images/${Date.now()}_${file.name}`);
         await uploadBytes(storageRef, compressedFile);
         const url = await getDownloadURL(storageRef);
-        
-        // @ts-ignore
-        const quill = quillRef.current.getEditor();
+
+        const quill = quillRef.current?.getEditor();
+        if (!quill) return;
         const range = quill.getSelection(true);
         quill.insertEmbed(range.index, 'image', url);
-      } catch (e) {
+      } catch {
         alert("Editor image upload failed!");
       }
     };
@@ -185,20 +212,20 @@ const handleAIGenerateBlog = async () => {
       body: JSON.stringify({ topic: title })
     });
 
-    const data = await res.json();
+    const data: { success?: boolean; data?: AIGeneratedBlog } = await res.json();
 if (data.success && data.data) {
-  setTitle(data.data.title || "");
-  setContent(data.data.content || "");
-  setSeoDesc(data.data.metaDescription || "");
-  setImageUrl(data.data.imageUrl || ""); 
-  setSeoKeywords(
-    Array.isArray(data.data.tags)
-      ? data.data.tags.join(", ")
-      : ""
-  );
+  setTitle(data.data.title || "");
+  setContent(data.data.content || "");
+  setSeoDesc(data.data.metaDescription || "");
+  setImageUrl(data.data.imageUrl || ""); 
+  setSeoKeywords(
+    Array.isArray(data.data.tags)
+      ? data.data.tags.join(", ")
+      : ""
+  );
 
-  alert("✨ AI Blog Generated Successfully!\n(यह डेटाबेस में सेव हो चुका है और Telegram पर भी जा चुका है!)");
-  fetchBlogs(); 
+  alert("✨ AI Blog Generated Successfully!\n(यह डेटाबेस में सेव हो चुका है और Telegram पर भी जा चुका है!)");
+  fetchBlogs(); 
 } else {
   alert("AI generation failed");
 }
@@ -237,13 +264,15 @@ if (data.success && data.data) {
             const settings = await siteSettingsRepository.getGlobal();
             if(settings && action === 'publish') {
                 const currentData = settings;
-                const currentRelated = currentData.relatedBlogs || [];
-                const updatedRelated = currentRelated.map((item: any) => 
+                const currentRelated = (currentData.relatedBlogs ?? []) as SidebarBlogLink[];
+                const updatedRelated = currentRelated.map((item) =>
                     item.url === `/blog/${editingId}` ? { ...item, title: title } : item
                 );
                 await siteSettingsRepository.updateGlobal({ relatedBlogs: updatedRelated });
             }
-        } catch(e) {}
+        } catch (sidebarErr) {
+            console.log("Sidebar update skipped:", sidebarErr);
+        }
 
         alert(action === 'draft' ? '✅ ड्राफ्ट सेव हो गया!' : '✅ कमाल है! आपका ब्लॉग सफलतापूर्वक अपडेट हो गया है!');
       } else {
@@ -258,8 +287,8 @@ if (data.success && data.data) {
             
             if(settings) {
                const currentData = settings;
-               const currentRelated = currentData.relatedBlogs || [];
-               
+               const currentRelated = (currentData.relatedBlogs ?? []) as SidebarBlogLink[];
+
                const newSidebarLink = { title: title, url: `/blog/${newBlogId}` };
                const updatedRelated = [newSidebarLink, ...currentRelated].slice(0, 5);
                
@@ -285,11 +314,11 @@ if (data.success && data.data) {
     }
   };
 
-  const startEdit = (blog: any) => {
+  const startEdit = (blog: BlogRow) => {
     setEditingId(blog.id);
     setTitle(blog.title || '');
     setCategory(blog.category || '');
-    setAuthor(blog.author || 'Rahul Sir');
+    setAuthor(blog.author || 'StudyGyaan Editorial Team');
     setImageUrl(blog.imageUrl || '');
     setContent(blog.content || '');
     setSeoDesc(blog.seoDesc || ''); 
@@ -301,7 +330,7 @@ if (data.success && data.data) {
     setEditingId(null);
     setTitle('');
     setCategory('');
-    setAuthor('Rahul Sir');
+    setAuthor('StudyGyaan Editorial Team');
     setImageUrl('');
     setContent('');
     setSeoDesc('');
@@ -322,9 +351,9 @@ if (data.success && data.data) {
           const settings = await siteSettingsRepository.getGlobal();
           if (settings) {
               const currentData = settings;
-              const currentRelated = currentData.relatedBlogs || [];
+              const currentRelated = (currentData.relatedBlogs ?? []) as SidebarBlogLink[];
               // Filter out the deleted blog by matching the URL
-              const updatedRelated = currentRelated.filter((item: any) => item.url !== `/blog/${id}`);
+              const updatedRelated = currentRelated.filter((item) => item.url !== `/blog/${id}`);
               await siteSettingsRepository.updateGlobal({ relatedBlogs: updatedRelated });
           }
       } catch (sidebarErr) {
@@ -580,7 +609,7 @@ if (data.success && data.data) {
                               </button>
                               
                               <button 
-                                onClick={() => handleDelete(b.id, b.title)} 
+                                onClick={() => handleDelete(b.id, b.title ?? '')} 
                                 className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors flex items-center gap-1 font-bold text-xs"
                               >
                                  <Trash2 size={14}/> Delete

@@ -81,7 +81,7 @@ async function runAgent({
   const model = ai.getGenerativeModel({
     model: modelName,
     generationConfig: {
-      temperature: agentId === "mock-test" || agentId === "job-research" ? 0.2 : 0.45,
+      temperature: ["mock-test", "job-research", "fact-quality-reviewer"].includes(agentId) ? 0.2 : 0.45,
       maxOutputTokens: Number(process.env.AI_AGENT_MAX_OUTPUT_TOKENS || 8192),
       responseMimeType: mimeType
     }

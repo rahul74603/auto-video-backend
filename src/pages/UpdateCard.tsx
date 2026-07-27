@@ -1,6 +1,6 @@
-// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { fastTrackRepository } from '@/features/fast-track/data/fastTrackRepository';
+import { toDateSafe, type FastTrackItem } from '@/types/firestore';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, FileText, AlertCircle, ArrowRight } from 'lucide-react';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
@@ -12,27 +12,26 @@ interface CategoryPageProps {
 }
 
 const CategoryPage: React.FC<CategoryPageProps> = ({ category, pageTitle, description }) => {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<FastTrackItem[]>([]);
+  const [loadedCategory, setLoadedCategory] = useState<string | null>(null);
   const navigate = useNavigate();
+  const loading = loadedCategory !== category;
 
   useEffect(() => {
-    const fetchCategoryData = async () => {
-      setLoading(true);
-      try {
-        const fetchedData = await fastTrackRepository.listByCategory(category);
+    let cancelled = false;
+    fastTrackRepository.listByCategory(category)
+      .then((fetchedData) => {
+        if (cancelled) return;
         setData(fetchedData
           .filter(item => item.status === "published" || !item.status)
-          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
-      } catch (err) {
+          .sort((a, b) => (toDateSafe(b.createdAt)?.getTime() ?? 0) - (toDateSafe(a.createdAt)?.getTime() ?? 0)));
+        setLoadedCategory(category);
+      })
+      .catch((err) => {
         console.error(`Error fetching ${category}:`, err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    
-    fetchCategoryData();
+        if (!cancelled) setLoadedCategory(category);
+      });
+    return () => { cancelled = true; };
   }, [category]);
 
   return (
@@ -83,7 +82,7 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ category, pageTitle, descri
                     <div className="flex justify-between items-center">
                       <span className="bg-blue-600 text-white text-[10px] font-black px-2 py-1 rounded-md shadow-sm uppercase">{item.category}</span>
                       <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
-                        <Calendar size={12}/> {item.createdAt ? new Date(item.createdAt.seconds * 1000).toLocaleDateString('hi-IN') : 'Recent'}
+                        <Calendar size={12}/> {toDateSafe(item.createdAt)?.toLocaleDateString('hi-IN') ?? 'Recent'}
                       </span>
                     </div>
                     <h3 className="text-lg font-black text-slate-800 leading-snug group-hover:text-blue-600 transition-colors line-clamp-2">{item.title}</h3>

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { useState, useEffect, useMemo } from 'react';
 import { materialRepository } from '@/features/materials/data/materialRepository';
 import { categoryRepository } from '@/features/categories/data/categoryRepository';
@@ -10,14 +9,29 @@ import { useNavigate } from 'react-router-dom';
 import SEO from '../components/SEO'; 
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
+import { toDateSafe, type TimestampLike } from '@/types/firestore';
 
-interface Category { id: string; name: string; parentId: string; }
-interface Material { id: string; title: string; applyLink: string; category: string; fileSize?: string; updatedAt?: string; }
+type Category = { id: string; name: string; parentId: string | null };
+type Material = { id: string; title: string; applyLink: string; category: string; fileSize?: string; updatedAt?: TimestampLike };
+
+type MaterialPageLink = {
+  title?: string;
+  name?: string;
+  url?: string;
+};
+
+type MaterialPageSettings = {
+  mrpPrice?: string | number;
+  discountPercent?: string | number;
+  relatedBlogs?: MaterialPageLink[];
+  pdfUpdates?: MaterialPageLink[];
+  sidebarLinks?: MaterialPageLink[];
+};
 
 const StudyMaterials: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
-  const [globalSettings, setGlobalSettings] = useState<any>(null); 
+  const [globalSettings, setGlobalSettings] = useState<MaterialPageSettings | null>(null);
   const [loading, setLoading] = useState(true);
   
   const [currentFolderId, setCurrentFolderId] = useState<string>('root');
@@ -55,15 +69,15 @@ const StudyMaterials: React.FC = () => {
         jobResults.forEach(job => {
             const data = job;
             if (data.type !== 'MATERIAL') return;
-            fetchedMats.push({ id: job.id, ...data } as Material);
+            fetchedMats.push({ ...data, id: job.id } as Material);
         });
         materialResults.forEach(material => { fetchedMats.push(material as Material); });
 
-        fetchedMats.sort((a, b) => (b.updatedAt ? new Date(b.updatedAt).getTime() : 0) - (a.updatedAt ? new Date(a.updatedAt).getTime() : 0));
+        fetchedMats.sort((a, b) => (toDateSafe(b.updatedAt)?.getTime() ?? 0) - (toDateSafe(a.updatedAt)?.getTime() ?? 0));
         setMaterials(fetchedMats);
 
         const settingsSnap = await siteSettingsRepository.getGlobal();
-        if (settingsSnap) setGlobalSettings(settingsSnap);
+        if (settingsSnap) setGlobalSettings(settingsSnap as MaterialPageSettings);
       } catch (error) { console.error(error); } finally { setLoading(false); }
     };
     fetchData();
@@ -97,7 +111,7 @@ const StudyMaterials: React.FC = () => {
     if (currentCat) {
       const parentId = currentCat.parentId;
       const parentCat = categories.find(c => c.id === parentId);
-      setCurrentFolderId(parentId);
+      setCurrentFolderId(parentId ?? 'root');
       setCurrentFolderName(parentCat ? parentCat.name : 'All Subjects');
     } else {
       goHome();
@@ -115,7 +129,7 @@ const StudyMaterials: React.FC = () => {
   ];
 
   const trendingBlogs = (globalSettings?.relatedBlogs || []).slice(0, 5);
-  const pageQuickLinks = (globalSettings?.pdfUpdates?.length > 0) ? globalSettings.pdfUpdates : (globalSettings?.sidebarLinks || []);
+  const pageQuickLinks = ((globalSettings?.pdfUpdates?.length ?? 0) > 0 ? globalSettings?.pdfUpdates : globalSettings?.sidebarLinks) || [];
 
   // 🔥 1. BREADCRUMB SCHEMA
   const breadcrumbSchema = {
@@ -248,7 +262,7 @@ const StudyMaterials: React.FC = () => {
                     </h2>
                     
                     <ul className="space-y-3 relative z-10">
-                        {trendingBlogs.map((item: any, index: number) => {
+                        {trendingBlogs.map((item, index: number) => {
                             const style = loopColors[index % loopColors.length];
                             return (
                               <li key={index} onClick={() => item.url && window.open(item.url, '_blank')} className={`group cursor-pointer border-2 ${style.border} ${style.bg} p-3 md:p-4 rounded-xl md:rounded-2xl transition-all hover:-translate-y-1 shadow-sm hover:shadow-md flex items-center justify-between`}>
@@ -272,7 +286,7 @@ const StudyMaterials: React.FC = () => {
                         <Tag size={18} className="text-blue-600 animate-bounce" aria-hidden="true" /> महत्वपूर्ण लिंक्स 🔗
                     </h2>
                     <ul className="space-y-3 relative z-10">
-                        {pageQuickLinks.map((item: any, index: number) => {
+                        {pageQuickLinks.map((item, index: number) => {
                             const linkGradients = [
                               "bg-gradient-to-r from-blue-600 to-cyan-500",
                               "bg-gradient-to-r from-purple-600 to-fuchsia-500",

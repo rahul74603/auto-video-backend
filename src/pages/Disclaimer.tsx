@@ -1,6 +1,5 @@
-// @ts-nocheck
-import React, { useEffect } from 'react';
-import { AlertTriangle, ShieldAlert, Info, ExternalLink, Gavel, FileWarning, Mail, Smartphone, Globe } from 'lucide-react';
+import { useEffect } from 'react';
+import { AlertTriangle, ShieldAlert, Info, ExternalLink, Gavel, FileWarning, Mail, Smartphone} from 'lucide-react';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 
 const Disclaimer = () => {

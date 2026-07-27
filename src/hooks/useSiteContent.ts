@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useEffect } from 'react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 
@@ -10,7 +9,13 @@ export interface SiteContent {
     author?: string;
     ogImage?: string;
   };
-  liveUpdate: { text: string; link: string; active: boolean; showPulse?: boolean };
+  liveUpdate: {
+    text?: string;
+    link?: string;
+    active?: boolean;
+    showPulse?: boolean;
+    updates?: { text: string; link: string }[];
+  };
   buttons: {
     results: { text: string; link: string }[];
     admitCard: { text: string; link: string }[];
@@ -21,6 +26,9 @@ export interface SiteContent {
   shopUpdates?: { title: string; url: string }[];
   jobUpdates?: { title: string; url: string }[];
   pdfUpdates?: { title: string; url: string }[];
+  // ✅ Dynamic text/pricing fields (admin panel se control)
+  premiumPrice?: string | number;
+  heroDescription?: string;
 }
 
 const defaultContent: SiteContent = {
@@ -40,7 +48,7 @@ export const useSiteContent = () => {
     try {
       const cachedData = localStorage.getItem(CACHE_KEY);
       return cachedData ? JSON.parse(cachedData) : defaultContent;
-    } catch (e) { return defaultContent; }
+    } catch { return defaultContent; }
   });
 
   const [loading, setLoading] = useState<boolean>(() => {
@@ -52,7 +60,7 @@ export const useSiteContent = () => {
     // ताकि AdminSidebarControl के साथ मैच हो सके
     const unsubscribe = siteSettingsRepository.subscribeGlobal((settings) => {
       if (settings) {
-        const freshData = settings as SiteContent;
+        const freshData = settings as unknown as SiteContent;
         setContent(freshData);
         localStorage.setItem(CACHE_KEY, JSON.stringify(freshData));
       } else {
@@ -68,7 +76,7 @@ export const useSiteContent = () => {
     try {
       await siteSettingsRepository.setGlobal(newContent as Record<string, unknown>, true);
       // alert('Website Updated! 🎉'); // इसे यहाँ रहने दें या हटा दें आपकी मर्ज़ी
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error updating: ", error);
     }
   };

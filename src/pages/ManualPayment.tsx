@@ -1,7 +1,7 @@
-// @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { db, auth } from '../firebase/config';
+import { auth } from '../firebase/config';
 import { paymentRepository } from '@/features/payments/data/paymentRepository';
+import { toDateSafe, type TimestampLike } from '@/types/firestore';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { CheckCircle, IndianRupee, ArrowLeft, Loader2, MessageCircle } from 'lucide-react';
 
@@ -44,9 +44,10 @@ const [finalPayableAmount, setFinalPayableAmount] =
                 // पिछले 16 मिनट में इस्तेमाल हुए सभी अमाउंट्स की लिस्ट बनाएँ
                 const usedAmounts: number[] = [];
                 pendingPayments.forEach(data => {
-                    const purchaseDate = data.timestamp?.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
-                    if (purchaseDate > timeLimit) {
-                        usedAmounts.push(data.amount);
+                    const purchaseDate = toDateSafe(data.timestamp as TimestampLike);
+                    const amount = Number(data.amount);
+                    if (purchaseDate && purchaseDate > timeLimit && !Number.isNaN(amount)) {
+                        usedAmounts.push(amount);
                     }
                 });
 

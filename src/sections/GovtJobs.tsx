@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, {
     useState, useEffect, useCallback,
     useMemo, useTransition
@@ -6,13 +5,14 @@ import React, {
 import {
     Briefcase, MapPin, Clock, ArrowRight,
     Search, FileText, ChevronLeft, ChevronRight,
-    Share2, MessageCircle, Sparkles, Tag,
-    ExternalLink, ShoppingCart, Filter
+    MessageCircle, Sparkles, Tag,
+    ExternalLink, ShoppingCart
 } from 'lucide-react';
-import { useLanguage } from '@/context/LanguageContext';
+import { useLanguage } from '@/context/useLanguage';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import SEO from '../components/SEO';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+import type { TimestampLike } from '@/types/firestore';
 
 // =========================================================
 // 🛠️ CONSTANTS
@@ -50,9 +50,48 @@ const LINK_GRADIENTS = [
 ];
 
 // =========================================================
+// 🧾 VIEW TYPES
+// =========================================================
+interface JobCardItem {
+    id: string;
+    slug: string;
+    title: string;
+    organization: string;
+    vacancies: string;
+    location: string;
+    lastDate: string;
+    salary: string;
+    applyLink: string;
+    category: string;
+    advtNo: string;
+    isExpired: boolean;
+    createdAt: TimestampLike;
+}
+
+interface QuickLink {
+    title?: string;
+    name?: string;
+    url?: string;
+}
+
+interface GovtJobSettings {
+    relatedBlogs?: QuickLink[];
+    jobUpdates?: QuickLink[];
+    sidebarLinks?: QuickLink[];
+    mrpPrice?: string | number;
+    discountPercent?: string | number;
+}
+
+/** Raw Firestore snapshot ya pre-processed object — dono ho sakte hain. */
+type SettingsResult = (GovtJobSettings & {
+    exists?: () => boolean;
+    data?: () => Record<string, unknown>;
+}) | null;
+
+// =========================================================
 // 🛠️ HELPERS
 // =========================================================
-function checkIsExpired(lastDateStr) {
+function checkIsExpired(lastDateStr: string): boolean {
     if (!lastDateStr) return false;
 
     const lower = String(lastDateStr).trim().toLowerCase();
@@ -67,10 +106,10 @@ function checkIsExpired(lastDateStr) {
     ) return false;
 
     try {
-        let parsedDate = null;
+        let parsedDate: Date | null = null;
 
         // Format 1: DD/MM/YYYY ya DD-MM-YYYY
-        const indianFormat = lastDateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        const indianFormat = lastDateStr.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
         if (indianFormat) {
             const day = parseInt(indianFormat[1], 10);
             const month = parseInt(indianFormat[2], 10) - 1;
@@ -110,7 +149,7 @@ function checkIsExpired(lastDateStr) {
     }
 }
 
-function safeExternalUrl(url) {
+function safeExternalUrl(url: string): string {
     if (!url || url === '#') return '#';
     if (url.startsWith('http') && !url.includes('studygyaan.in')) {
         return `/redirect?url=${encodeURIComponent(url)}`;
@@ -121,7 +160,10 @@ function safeExternalUrl(url) {
 // =========================================================
 // 🃏 JOB CARD COMPONENT
 // =========================================================
-const JobCard = React.memo(({ job, onWhatsAppShare }) => {
+const JobCard = React.memo(({ job, onWhatsAppShare }: {
+    job: JobCardItem;
+    onWhatsAppShare: (title: string, jobUrl: string) => void;
+}) => {
     const isExpired = job.isExpired;
     const jobUrl = `/job/${job.slug || job.id}`;
 
@@ -264,98 +306,88 @@ const GovtJobs = () => {
     const { t } = useLanguage();
     const [isPending, startTransition] = useTransition();
 
-    const [jobs, setJobs] = useState([]);
+    const [jobs, setJobs] = useState<JobCardItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [searchInput, setSearchInput] = useState('');
-    const [globalSettings, setGlobalSettings] = useState(null);
+    const [globalSettings, setGlobalSettings] = useState<GovtJobSettings | null>(null);
     const [currentPage, setCurrentPage] = useState(1);
 
     // =========================================================
-// 📡 DATA FETCH - FINAL FIXED VERSION
-// =========================================================
-useEffect(() => {
-    const loadData = async () => {
-        try {
-            setLoading(true);
+    // 📡 DATA FETCH
+    // =========================================================
+    useEffect(() => {
+        let cancelled = false;
 
-            const [jobsResult, settingsResult] = await Promise.allSettled([
-                jobRepository.listLatest({ limitCount: 150 }),
-                siteSettingsRepository.getGlobal()
-            ]);
+        Promise.allSettled([
+            jobRepository.listLatest({ limitCount: 150 }),
+            siteSettingsRepository.getGlobal()
+        ])
+            .then(([jobsResult, settingsResult]) => {
+                if (cancelled) return;
 
-            // ✅ CONFIRMED FIX: 
-            // listLatest() returns: [{id, title, org, ...}, ...]
-            // .data() NAHI karna hai
-            if (jobsResult.status === 'fulfilled') {
-                
-                const fetchedJobs = jobsResult.value
-                    .filter(job => {
-                        // ✅ null/undefined skip
-                        if (!job) return false;
-                        
-                        // ✅ type nahi hai to include karo (default JOB)
-                        if (!job.type) return true;
-                        
-                        // ✅ JOB/job type include karo
-                        const jobType = String(job.type).toUpperCase();
-                        return jobType === 'JOB';
-                    })
-                    .filter(job => job.isLive !== false) // draft skip
-                    .map(job => ({
-                        id: job.id,
-                        slug: job.slug || job.id,
-                        title: String(job.title || ''),
-                        organization: String(job.organization || ''),
-                        vacancies: String(job.vacancies || ''),
-                        location: String(job.location || 'All India'),
-                        lastDate: String(job.lastDate || ''),
-                        salary: String(job.salary || ''),
-                        applyLink: String(job.applyLink || ''),
-                        category: String(job.category || 'other').toLowerCase(),
-                        advtNo: String(job.advtNo || ''),
-                        isExpired: checkIsExpired(String(job.lastDate || '')),
-                        createdAt: job.createdAt || null
-                    }));
+                if (jobsResult.status === 'fulfilled') {
+                    const fetchedJobs: JobCardItem[] = jobsResult.value
+                        .filter(job => {
+                            if (!job) return false;
+                            if (!job.type) return true;
+                            return String(job.type).toUpperCase() === 'JOB';
+                        })
+                        .filter(job => job.isLive !== false) // draft skip
+                        .map(job => ({
+                            id: job.id,
+                            slug: job.slug || job.id,
+                            title: String(job.title || ''),
+                            organization: String(job.organization || ''),
+                            vacancies: String(job.vacancies || ''),
+                            location: String(job.location || 'All India'),
+                            lastDate: String(job.lastDate || ''),
+                            salary: String(job.salary || ''),
+                            applyLink: String(job.applyLink || ''),
+                            category: String(job.category || 'other').toLowerCase(),
+                            advtNo: String(job.advtNo || ''),
+                            isExpired: checkIsExpired(String(job.lastDate || '')),
+                            createdAt: job.createdAt || null
+                        }));
 
-                // Active pehle, expired baad mein
-                fetchedJobs.sort((a, b) => {
-                    if (a.isExpired !== b.isExpired) {
-                        return a.isExpired ? 1 : -1;
+                    // Active pehle, expired baad mein
+                    fetchedJobs.sort((a, b) => {
+                        if (a.isExpired !== b.isExpired) {
+                            return a.isExpired ? 1 : -1;
+                        }
+                        return 0;
+                    });
+
+                    setJobs(fetchedJobs);
+                    console.log(`✅ ${fetchedJobs.length} jobs loaded`);
+                }
+
+                // ✅ Settings - dono cases handle karo
+                if (settingsResult.status === 'fulfilled' && settingsResult.value) {
+                    const val = settingsResult.value as unknown as SettingsResult;
+
+                    // Case 1: Raw Firebase doc (has .exists() method)
+                    if (typeof val?.exists === 'function') {
+                        if (val.exists()) {
+                            setGlobalSettings((val.data?.() || null) as GovtJobSettings | null);
+                        }
                     }
-                    return 0;
-                });
-
-                setJobs(fetchedJobs);
-                console.log(`✅ ${fetchedJobs.length} jobs loaded`);
-            }
-
-            // ✅ Settings - dono cases handle karo
-            if (settingsResult.status === 'fulfilled' && settingsResult.value) {
-                const val = settingsResult.value;
-                
-                // Case 1: Raw Firebase doc (has .exists() method)
-                if (typeof val.exists === 'function') {
-                    if (val.exists()) {
-                        setGlobalSettings(val.data());
+                    // Case 2: Already processed plain object
+                    else if (val && typeof val === 'object') {
+                        setGlobalSettings(val);
                     }
                 }
-                // Case 2: Already processed plain object
-                else if (typeof val === 'object' && val !== null) {
-                    setGlobalSettings(val);
-                }
-            }
+            })
+            .catch(error => {
+                console.error("Jobs fetch error:", error);
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
 
-        } catch (error) {
-            console.error("Jobs fetch error:", error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    loadData();
-}, []);
+        return () => { cancelled = true; };
+    }, []);
 
     // =========================================================
     // 🔍 SEARCH DEBOUNCE
@@ -406,7 +438,7 @@ useEffect(() => {
     // =========================================================
     // 💬 WHATSAPP SHARE
     // =========================================================
-    const handleWhatsAppShare = useCallback((title, jobUrl) => {
+    const handleWhatsAppShare = useCallback((title: string, jobUrl: string) => {
         const msg = encodeURIComponent(
             `🔥 *New Job Update!*\n\n📌 *${title}*\n\nपूरी जानकारी 👇\n${jobUrl}\n\n(via StudyGyaan.in)`
         );
@@ -416,7 +448,7 @@ useEffect(() => {
     // =========================================================
     // 📄 PAGE CHANGE
     // =========================================================
-    const handlePageChange = useCallback((page) => {
+    const handlePageChange = useCallback((page: number) => {
         startTransition(() => setCurrentPage(page));
         const section = document.getElementById('govt-jobs');
         if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -436,13 +468,13 @@ useEffect(() => {
     );
 
     const pageQuickLinks = useMemo(() =>
-        globalSettings?.jobUpdates?.length > 0
-            ? globalSettings.jobUpdates
+        (globalSettings?.jobUpdates?.length ?? 0) > 0
+            ? (globalSettings?.jobUpdates ?? [])
             : (globalSettings?.sidebarLinks || []),
         [globalSettings]
     );
 
-    const handleCategoryChange = useCallback((catId) => {
+    const handleCategoryChange = useCallback((catId: string) => {
         startTransition(() => {
             setSelectedCategory(catId);
             setCurrentPage(1);
@@ -651,7 +683,7 @@ useEffect(() => {
                                             item.url?.startsWith('/');
                                         const href = isInternal
                                             ? (item.url?.replace('https://studygyaan.in', '') || '/blog')
-                                            : safeExternalUrl(item.url);
+                                            : safeExternalUrl(item.url ?? '#');
 
                                         return (
                                             <li key={index}>
@@ -686,7 +718,7 @@ useEffect(() => {
                                     {pageQuickLinks.map((item, index) => (
                                         <li key={index}>
                                             <a
-                                                href={safeExternalUrl(item.url)}
+                                                href={safeExternalUrl(item.url ?? '#')}
                                                 target={item.url?.startsWith('http') ? '_blank' : '_self'}
                                                 rel={item.url?.startsWith('http')
                                                     ? 'nofollow noopener noreferrer'

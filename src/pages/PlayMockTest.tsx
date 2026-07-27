@@ -1,14 +1,34 @@
-// @ts-nocheck
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useMockTest } from '@/features/mock-tests/hooks/useMockTest';
-import { 
+import type { MockQuestion } from '@/types/firestore';
+import { asText } from '@/types/firestore';
+import {
     Clock, CheckCircle, XCircle, ArrowRight,
-    Trophy, LayoutGrid, Settings2, 
-    ToggleRight, ToggleLeft, BookOpen, 
+    Trophy, LayoutGrid, Settings2,
+    ToggleRight, ToggleLeft, BookOpen,
     CheckSquare, Lightbulb, X
 } from 'lucide-react';
-import SEO from '../components/SEO'; 
+import SEO from '../components/SEO';
+
+// Strict view of the mock test document used by the player.
+interface PlayTestData {
+    id: string;
+    title?: string;
+    slug?: string;
+    durationMinutes?: number;
+    negativeMarking?: number;
+    totalQuestions?: number;
+    questions?: MockQuestion[];
+}
+
+interface OptionTheme {
+    border: string;
+    bg: string;
+    active: string;
+    text: string;
+    icon: string;
+}
 
 // ================================================
 // 🔥 404 SCREEN - Component ke BAHAR (sahi jagah)
@@ -42,24 +62,31 @@ const PlayMockTest = () => {
     // ✅ Step 2: Hook ANDAR call karo, id milne ke baad
     const { test: loadedTest, loading: testLoading } = useMockTest(id);
 
+    // =============== DERIVED DATA ===============
+    const testData = loadedTest as PlayTestData | null;
+    const questions: MockQuestion[] = useMemo(() => testData?.questions ?? [], [testData]);
+    const totalQuestions = testData?.totalQuestions ?? questions.length;
+    const loading = testLoading;
+
     // =============== STATES ===============
-    const [testData, setTestData] = useState(null);
-    const [loading, setLoading] = useState(true);
     const [testStarted, setTestStarted] = useState(false);
     const [showFullImage, setShowFullImage] = useState(false);
-    const [correctMarks, setCorrectMarks] = useState(2); 
-    const [negativeMarks, setNegativeMarks] = useState(0.5);   
-    const [isNegEnabled, setIsNegEnabled] = useState(true);      
+    const [correctMarks, setCorrectMarks] = useState(2);
+    const [negOverride, setNegOverride] = useState<number | null>(null);
+    const [isNegEnabled, setIsNegEnabled] = useState(true);
     const [currentQIndex, setCurrentQIndex] = useState(0);
-    const [selectedAnswers, setSelectedAnswers] = useState({});
+    const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
     const [timeLeft, setTimeLeft] = useState(0);
     const [isSubmitted, setIsSubmitted] = useState(false);
-    const [result, setResult] = useState({ 
-        score: 0, correct: 0, wrong: 0, skipped: 0 
+    const [result, setResult] = useState({
+        score: 0, correct: 0, wrong: 0, skipped: 0
     });
 
+    // Test ki default negative marking (user start screen par badal sakta hai)
+    const negativeMarks = negOverride ?? (testData?.negativeMarking ?? 0.5);
+
     // =============== OPTION THEMES ===============
-    const optionThemes = [
+    const optionThemes: OptionTheme[] = [
         { 
             border: 'border-blue-400', bg: 'bg-blue-50', 
             active: 'bg-blue-600', text: 'text-blue-900', 
@@ -82,54 +109,35 @@ const PlayMockTest = () => {
         }
     ];
 
-    // =============== EFFECT: DATA LOAD ===============
+    // =============== EFFECT: DOCUMENT TITLE ===============
     useEffect(() => {
-        setTestData(loadedTest);
-        setLoading(testLoading);
         if (loadedTest) {
-            document.title = `Play: ${loadedTest.title} | StudyGyaan`;
-            setTimeLeft((loadedTest.durationMinutes || 60) * 60);
-            if (loadedTest.negativeMarking !== undefined) {
-                setNegativeMarks(loadedTest.negativeMarking);
-            }
+            document.title = `Play: ${asText(loadedTest.title)} | StudyGyaan`;
         }
-    }, [loadedTest, testLoading]);
+    }, [loadedTest]);
 
     // =============== EFFECT: TIMER ===============
     useEffect(() => {
         if (!testStarted || isSubmitted || timeLeft <= 0) return;
 
         const timer = setInterval(() => {
-            setTimeLeft(prev => {
-                if (prev <= 1) {
-                    clearInterval(timer);
-                    return 0;
-                }
-                return prev - 1;
-            });
+            setTimeLeft(prev => Math.max(0, prev - 1));
         }, 1000);
 
         return () => clearInterval(timer);
-    }, [testStarted, isSubmitted]);
-
-    // Timer 0 hone par auto submit
-    useEffect(() => {
-        if (timeLeft === 0 && testStarted && !isSubmitted && testData) {
-            submitTest();
-        }
-    }, [timeLeft]);
+    }, [testStarted, isSubmitted, timeLeft]);
 
     // =============== FUNCTIONS ===============
 
     // Time format: 3600 => 60:00
-    const formatTime = (seconds) => {
+    const formatTime = (seconds: number): string => {
         const m = Math.floor(seconds / 60).toString().padStart(2, '0');
         const s = (seconds % 60).toString().padStart(2, '0');
         return `${m}:${s}`;
     };
 
     // Option select
-    const handleOptionSelect = (optionIndex) => {
+    const handleOptionSelect = (optionIndex: number) => {
         setSelectedAnswers(prev => ({
             ...prev,
             [currentQIndex]: optionIndex
@@ -137,15 +145,15 @@ const PlayMockTest = () => {
     };
 
     // Test submit
-    const submitTest = () => {
-        if (!testData) return;
+    const submitTest = useCallback(() => {
+        if (questions.length === 0) return;
 
         let correct = 0;
         let wrong = 0;
         let skipped = 0;
         let score = 0;
 
-        testData.questions.forEach((q, idx) => {
+        questions.forEach((q, idx) => {
             const userAns = selectedAnswers[idx];
             if (userAns === undefined) {
                 skipped++;
@@ -158,13 +166,26 @@ const PlayMockTest = () => {
             }
         });
 
-        setResult({ 
-            score: Math.round(score * 100) / 100, 
-            correct, 
-            wrong, 
-            skipped 
+        setResult({
+            score: Math.round(score * 100) / 100,
+            correct,
+            wrong,
+            skipped
         });
         setIsSubmitted(true);
+    }, [questions, selectedAnswers, correctMarks, isNegEnabled, negativeMarks]);
+
+    // Timer 0 hone par auto submit (async callback — sync setState-in-effect se bachne ke liye)
+    useEffect(() => {
+        if (timeLeft !== 0 || !testStarted || isSubmitted || !testData) return;
+        const t = setTimeout(() => submitTest(), 0);
+        return () => clearTimeout(t);
+    }, [timeLeft, testStarted, isSubmitted, testData, submitTest]);
+
+    // Test start karte waqt timer seed
+    const startTest = () => {
+        setTimeLeft((testData?.durationMinutes || 60) * 60);
+        setTestStarted(true);
     };
 
     // =============== QUIZ SCHEMA ===============
@@ -172,20 +193,23 @@ const PlayMockTest = () => {
         "@context": "https://schema.org",
         "@type": "Quiz",
         "name": testData.title,
-        "description": `Free mock test: ${testData.title}. Practice ${testData.totalQuestions} questions.`,
-        "hasPart": testData.questions.slice(0, 10).map((q) => ({
-            "@type": "Question",
-            "name": q.qText || "Refer to diagram",
-            "eduQuestionType": "Multiple choice",
-            "acceptedAnswer": {
-                "@type": "Answer",
-                "text": q.options[q.correctOption] || "Correct Option"
-            },
-            "suggestedAnswer": q.options.map((opt) => ({
-                "@type": "Answer",
-                "text": opt
-            }))
-        }))
+        "description": `Free mock test: ${testData.title}. Practice ${totalQuestions} questions.`,
+        "hasPart": questions.slice(0, 10).map((q) => {
+            const opts = q.options ?? [];
+            return {
+                "@type": "Question",
+                "name": q.qText || "Refer to diagram",
+                "eduQuestionType": "Multiple choice",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": opts[q.correctOption ?? 0] || "Correct Option"
+                },
+                "suggestedAnswer": opts.map((opt) => ({
+                    "@type": "Answer",
+                    "text": opt
+                }))
+            };
+        })
     } : null;
 
     // ================================================
@@ -229,7 +253,7 @@ const PlayMockTest = () => {
                         </h1>
                         <div className="flex justify-center gap-3 mt-4 text-[9px] font-black uppercase tracking-wider">
                             <span className="bg-white/10 px-4 py-1.5 rounded-xl">
-                                <BookOpen size={12} className="inline mr-1"/> {testData.totalQuestions} Questions
+                                <BookOpen size={12} className="inline mr-1"/> {totalQuestions} Questions
                             </span>
                             <span className="bg-white/10 px-4 py-1.5 rounded-xl">
                                 <Clock size={12} className="inline mr-1"/> {testData.durationMinutes} Min
@@ -269,12 +293,12 @@ const PlayMockTest = () => {
                                             }
                                         </button>
                                     </div>
-                                    <input 
-                                        type="number" 
-                                        step="0.25" 
-                                        disabled={!isNegEnabled} 
-                                        value={negativeMarks} 
-                                        onChange={(e) => setNegativeMarks(Number(e.target.value))} 
+                                    <input
+                                        type="number"
+                                        step="0.25"
+                                        disabled={!isNegEnabled}
+                                        value={negativeMarks}
+                                        onChange={(e) => setNegOverride(Number(e.target.value))}
                                         className={`w-full p-3 rounded-2xl border-2 font-black text-xl outline-none transition-all
                                             ${isNegEnabled 
                                                 ? 'bg-white border-red-100 text-red-600 focus:border-red-500' 
@@ -284,8 +308,8 @@ const PlayMockTest = () => {
                             </div>
                         </section>
 
-                        <button 
-                            onClick={() => setTestStarted(true)} 
+                        <button
+                            onClick={startTest}
                             className="w-full bg-blue-600 hover:bg-slate-900 text-white font-black py-5 rounded-[28px] text-lg transition-all shadow-xl active:scale-95 uppercase tracking-widest"
                         >
                             Start Examination 🚀
@@ -349,7 +373,7 @@ const PlayMockTest = () => {
                             <CheckSquare className="text-blue-600"/> Answer Analysis
                         </h2>
 
-                        {testData.questions.map((q, idx) => {
+                        {questions.map((q, idx) => {
                             const userAns = selectedAnswers[idx];
                             const isCorrect = userAns === q.correctOption;
                             return (
@@ -385,7 +409,7 @@ const PlayMockTest = () => {
 
                                     {/* Options */}
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-                                        {q.options.map((opt, oIdx) => (
+                                        {(q.options ?? []).map((opt, oIdx) => (
                                             <div 
                                                 key={oIdx} 
                                                 className={`p-4 rounded-2xl text-xs font-bold flex items-center gap-3 border 
@@ -438,11 +462,11 @@ const PlayMockTest = () => {
     // ================================================
     // PLAY SCREEN
     // ================================================
-    const question = testData.questions[currentQIndex];
-    const sections = [
-        ...new Set(testData.questions.map(q => q.subject || "General Awareness"))
+    const question: MockQuestion = questions[currentQIndex] ?? {};
+    const sections: string[] = [
+        ...new Set(questions.map(q => asText(q.subject) || "General Awareness"))
     ];
-    const currentSection = question?.subject || "General Awareness";
+    const currentSection = asText(question.subject) || "General Awareness";
 
     return (
         <div className="h-screen max-h-screen bg-slate-50 flex flex-col font-hindi overflow-hidden selection:bg-blue-600 selection:text-white">
@@ -494,8 +518,8 @@ const PlayMockTest = () => {
                     <button
                         key={idx}
                         onClick={() => {
-                            const firstIdx = testData.questions.findIndex(
-                                q => (q.subject || "General Awareness") === section
+                            const firstIdx = questions.findIndex(
+                                q => (asText(q.subject) || "General Awareness") === section
                             );
                             setCurrentQIndex(firstIdx);
                         }}
@@ -519,7 +543,7 @@ const PlayMockTest = () => {
                         {/* Counter + Marks */}
                         <div className="mb-2 flex justify-between items-center px-1 shrink-0">
                             <span className="bg-slate-900 text-white px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-[7px] sm:text-[8px] font-black uppercase tracking-widest shadow-md">
-                                Q {currentQIndex + 1} / {testData.totalQuestions}
+                                Q {currentQIndex + 1} / {totalQuestions}
                             </span>
                             <div className="flex gap-1 sm:gap-2 text-[6px] sm:text-[7px] font-black">
                                 <span className="bg-white border border-emerald-100 px-1.5 py-0.5 rounded-md sm:rounded-lg text-emerald-600 shadow-sm">
@@ -560,8 +584,8 @@ const PlayMockTest = () => {
 
                         {/* Options */}
                         <div className="flex flex-col items-start gap-1 sm:gap-1.5 mt-3 w-full md:w-[85%] lg:w-[70%] mx-auto">
-                            {question.options.map((opt, idx) => {
-                                const theme = optionThemes[idx];
+                            {(question.options ?? []).map((opt, idx) => {
+                                const theme = optionThemes[idx] ?? optionThemes[0];
                                 const isSelected = selectedAnswers[currentQIndex] === idx;
                                 return (
                                     <button 
@@ -596,9 +620,9 @@ const PlayMockTest = () => {
                             >
                                 Prev
                             </button>
-                            <button 
-                                onClick={() => setCurrentQIndex(prev => Math.min(testData.totalQuestions - 1, prev + 1))} 
-                                disabled={currentQIndex === testData.totalQuestions - 1} 
+                            <button
+                                onClick={() => setCurrentQIndex(prev => Math.min(totalQuestions - 1, prev + 1))}
+                                disabled={currentQIndex === totalQuestions - 1}
                                 className="px-4 py-1.5 bg-slate-900 text-white rounded-lg font-black hover:bg-blue-600 shadow-lg flex items-center gap-1 active:scale-90 text-[7px] uppercase tracking-wider transition-all disabled:opacity-40"
                             >
                                 Next <ArrowRight size={10}/>
@@ -617,7 +641,7 @@ const PlayMockTest = () => {
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 sm:gap-2 overflow-y-auto pr-0.5 no-scrollbar h-fit max-h-[70%] py-1 content-start">
-                        {testData.questions.map((_, i) => (
+                        {questions.map((_, i) => (
                             <button 
                                 key={i}
                                 onClick={() => setCurrentQIndex(i)}

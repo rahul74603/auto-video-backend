@@ -1,15 +1,54 @@
-// @ts-nocheck
-import { useState, useEffect } from 'react';
-import { storage } from '../../../firebase/config'; 
+import { useState, useEffect, useCallback } from 'react';
+import type { ChangeEvent } from 'react';
+import { storage } from '../../../firebase/config';
 import { serverTimestamp } from 'firebase/firestore';
 import { mockTestRepository } from '@/features/mock-tests/data/mockTestRepository';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; 
-import { 
-    BookOpen, PlusCircle, Save, Trash2, Clock, CheckCircle, 
-    Target, Copy, ImageIcon, Loader2, AlertCircle, MinusSquare, X,
-    LayoutGrid, Lightbulb, Edit3, RefreshCcw, Zap 
+import type { MockTestRecord } from '@/features/mock-tests/data/mockTestRepository';
+import type { MockQuestion } from '@/types/firestore';
+import { asText } from '@/types/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import {
+    BookOpen, PlusCircle, Trash2, Clock,
+    Target, Copy, ImageIcon, Loader2, X,
+    LayoutGrid, Lightbulb, Edit3, Zap
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+// =========================================================
+// 🧾 VIEW TYPES
+// =========================================================
+interface AdminTestItem {
+    id: string;
+    title: string;
+    durationMinutes: string;
+    totalQuestions: string;
+    negativeMarking: string;
+    questions: MockQuestion[];
+}
+
+/** Firestore Timestamp / Date / ISO string / number → epoch ms (safe). */
+function timeVal(v: unknown): number {
+    if (!v) return 0;
+    try {
+        if (v instanceof Date) return v.getTime();
+        const d = v as { seconds?: number; toDate?: () => Date };
+        if (typeof d.seconds === 'number') return d.seconds * 1000;
+        if (typeof d.toDate === 'function') return d.toDate().getTime();
+        const t = new Date(v as string | number).getTime();
+        return Number.isNaN(t) ? 0 : t;
+    } catch {
+        return 0;
+    }
+}
+
+const normTest = (t: MockTestRecord): AdminTestItem => ({
+    id: t.id,
+    title: asText(t['title']),
+    durationMinutes: asText(t['durationMinutes']),
+    totalQuestions: asText(t['totalQuestions']),
+    negativeMarking: asText(t['negativeMarking']),
+    questions: Array.isArray(t['questions']) ? (t['questions'] as MockQuestion[]) : []
+});
 
 const AdminMockTest = () => {
 
@@ -20,20 +59,20 @@ const AdminMockTest = () => {
     const [aiLoading, setAiLoading] = useState(false);
     const [imgUploading, setImgUploading] = useState(false);
     const [logicImgUploading, setLogicImgUploading] = useState(false);
-    const [tests, setTests] = useState([]);
+    const [tests, setTests] = useState<AdminTestItem[]>([]);
 
-    const [editingTestId, setEditingTestId] = useState(null);
-    const [editingQIndex, setEditingQIndex] = useState(null);
+    const [editingTestId, setEditingTestId] = useState<string | null>(null);
+    const [editingQIndex, setEditingQIndex] = useState<number | null>(null);
 
     const [testTitle, setTestTitle] = useState('');
     const [duration, setDuration] = useState('60');
     const [negMark, setNegMark] = useState('0.50');
 
-    const [questions, setQuestions] = useState([]);
+    const [questions, setQuestions] = useState<MockQuestion[]>([]);
 
     const [qText, setQText] = useState('');
     const [qImage, setQImage] = useState('');
-    const [options, setOptions] = useState(['', '', '', '']);
+    const [options, setOptions] = useState<string[]>(['', '', '', '']);
     const [correctOption, setCorrectOption] = useState(0);
     const [qLogic, setQLogic] = useState('');
     const [qLogicImage, setQLogicImage] = useState('');
@@ -44,7 +83,7 @@ const AdminMockTest = () => {
     const [exam, setExam] = useState("SSC CGL");
     const [totalQuestions, setTotalQuestions] = useState(25);
 
-    const examOptions = {
+    const examOptions: Record<string, string[]> = {
         SSC: ["SSC CGL", "SSC CHSL", "SSC MTS", "SSC GD"],
         Railway: ["RRB NTPC", "RRB Group D", "RRB JE"],
         Banking: ["IBPS PO", "SBI Clerk", "RBI Grade B"],
@@ -56,16 +95,28 @@ const AdminMockTest = () => {
 
     // ================= FETCH TESTS =================
 
-    const fetchTests = async () => {
+    const loadTests = async (): Promise<AdminTestItem[]> => {
         const data = await mockTestRepository.listLatest();
-        setTests(data.sort((a, b) => {
-            const dateA = a.createdAt?.seconds || 0;
-            const dateB = b.createdAt?.seconds || 0;
-            return dateB - dateA;
-        }));
+        return data
+            .sort((a, b) => timeVal(b.createdAt) - timeVal(a.createdAt))
+            .map(normTest);
     };
 
-    useEffect(() => { fetchTests(); }, []);
+    const fetchTests = useCallback(async () => {
+        try {
+            setTests(await loadTests());
+        } catch (err) {
+            console.error(err);
+        }
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        loadTests()
+            .then(data => { if (!cancelled) setTests(data); })
+            .catch(err => console.error(err));
+        return () => { cancelled = true; };
+    }, []);
 
     // ================= AI GENERATE =================
 
@@ -104,16 +155,21 @@ const AdminMockTest = () => {
 
     // ================= IMAGE LOGIC =================
 
-    const compressImage = (file) => {
+    const compressImage = (file: File): Promise<Blob | null> => {
         return new Promise((resolve) => {
             const reader = new FileReader();
             reader.readAsDataURL(file);
             reader.onload = (event) => {
+                const result = event.target?.result;
+                if (typeof result !== 'string') {
+                    resolve(null);
+                    return;
+                }
                 const img = new Image();
-                img.src = event.target.result;
+                img.src = result;
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 800; 
+                    const MAX_WIDTH = 800;
                     let width = img.width;
                     let height = img.height;
                     if (width > MAX_WIDTH) {
@@ -123,30 +179,38 @@ const AdminMockTest = () => {
                     canvas.width = width;
                     canvas.height = height;
                     const ctx = canvas.getContext('2d');
+                    if (!ctx) {
+                        resolve(null);
+                        return;
+                    }
                     ctx.drawImage(img, 0, 0, width, height);
-                    canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.7); 
+                    canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.7);
                 };
             };
         });
     };
 
-    const handleImageUpload = async (e, type) => {
-        const file = e.target.files[0];
+    const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>, type: 'question' | 'logic') => {
+        const file = e.target.files?.[0];
         if (!file) return;
 
-        type === 'question' ? setImgUploading(true) : setLogicImgUploading(true);
+        if (type === 'question') setImgUploading(true);
+        else setLogicImgUploading(true);
 
         try {
             const compressedFile = await compressImage(file);
+            if (!compressedFile) throw new Error("Image compress failed");
             const storageRef = ref(storage, `mock_tests/${Date.now()}_${type}.jpg`);
             await uploadBytes(storageRef, compressedFile);
             const url = await getDownloadURL(storageRef);
-            type === 'question' ? setQImage(url) : setQLogicImage(url);
+            if (type === 'question') setQImage(url);
+            else setQLogicImage(url);
             toast.success("Image Uploaded! ✅");
         } catch {
             toast.error("Upload failed!");
         } finally {
-            type === 'question' ? setImgUploading(false) : setLogicImgUploading(false);
+            if (type === 'question') setImgUploading(false);
+            else setLogicImgUploading(false);
         }
     };
 // ================= ADD QUESTION =================
@@ -159,7 +223,7 @@ const addQuestion = () => {
     if (options.some(opt => !opt))
         return toast.error("सारे ऑप्शंस भरें!");
 
-    const questionData = {
+    const questionData: MockQuestion = {
         qText,
         qImage,
         options,
@@ -280,7 +344,7 @@ const addQuestion = () => {
             value={category}
             onChange={(e) => {
                 setCategory(e.target.value);
-                setExam(examOptions[e.target.value][0]);
+                setExam((examOptions[e.target.value] ?? [])[0] ?? '');
             }}
             className="p-3 rounded-xl border font-bold"
         >
@@ -294,7 +358,7 @@ const addQuestion = () => {
             onChange={(e) => setExam(e.target.value)}
             className="p-3 rounded-xl border font-bold"
         >
-            {examOptions[category].map(ex => (
+            {(examOptions[category] ?? []).map((ex: string) => (
                 <option key={ex} value={ex}>{ex}</option>
             ))}
         </select>
@@ -398,22 +462,22 @@ const addQuestion = () => {
                                             <div key={idx} className={`bg-white/5 border p-5 rounded-[32px] relative group animate-in slide-in-from-right-5 ${editingQIndex === idx ? 'border-blue-500 bg-blue-500/10' : 'border-white/5'}`}>
                                                 <div className="absolute top-4 right-4 flex gap-2">
                                                     <button onClick={() => {
-                                                        setQText(q.qText || q.questionText || '');
+                                                        setQText(q.qText || asText(q.questionText));
                                                         setQImage(q.qImage || '');
-                                                        setOptions(q.options);
-                                                        setCorrectOption(q.correctOption);
+                                                        setOptions(q.options ?? ['', '', '', '']);
+                                                        setCorrectOption(q.correctOption ?? 0);
                                                         setQLogic(q.qLogic || '');
                                                         setQLogicImage(q.qLogicImage || '');
-                                                        setEditingQIndex(idx); 
-                                                        window.scrollTo({ top: 400, behavior: 'smooth' }); 
+                                                        setEditingQIndex(idx);
+                                                        window.scrollTo({ top: 400, behavior: 'smooth' });
                                                     }} className="text-slate-400 hover:text-blue-400 transition-all"><Edit3 size={16}/></button>
                                                     <button onClick={() => setQuestions(questions.filter((_, i) => i !== idx))} className="text-slate-500 hover:text-red-400 transition-all"><Trash2 size={16}/></button>
                                                 </div>
                                                 <p className="text-[10px] font-black text-blue-400 mb-1">QUESTION {idx + 1}</p>
-                                                <p className="font-bold text-sm leading-relaxed mb-3 pr-10">{q.qText || q.questionText || "(Image only)"}</p>
+                                                <p className="font-bold text-sm leading-relaxed mb-3 pr-10">{q.qText || asText(q.questionText) || "(Image only)"}</p>
                                                 {q.qImage && <img src={q.qImage} className="w-full h-32 object-contain rounded-2xl bg-white/10 p-2 mb-3 border border-white/10" />}
                                                 <div className="flex justify-between items-center">
-                                                    <div className="bg-green-500/10 text-green-400 px-3 py-1 rounded-xl border border-green-500/20 text-[10px] font-black">Ans: {q.options[q.correctOption]}</div>
+                                                    <div className="bg-green-500/10 text-green-400 px-3 py-1 rounded-xl border border-green-500/20 text-[10px] font-black">Ans: {(q.options ?? [])[q.correctOption ?? 0]}</div>
                                                     {(q.qLogic || q.qLogicImage) && <span className="text-[9px] text-blue-400 font-bold uppercase">✨ Solution added</span>}
                                                 </div>
                                             </div>
@@ -443,9 +507,9 @@ const addQuestion = () => {
                                     <button onClick={() => {
                                         setEditingTestId(test.id);
                                         setTestTitle(test.title);
-                                        setDuration(test.durationMinutes.toString());
-                                        setNegMark(test.negativeMarking.toString());
-                                        setQuestions(test.questions || []);
+                                        setDuration(test.durationMinutes || '60');
+                                        setNegMark(test.negativeMarking || '0.50');
+                                        setQuestions(test.questions);
                                         window.scrollTo({ top: 0, behavior: 'smooth' });
                                         toast.info("Editing Mode Active.");
                                     }} className="bg-blue-100 text-blue-700 py-4 rounded-2xl font-black text-xs flex justify-center items-center gap-2 hover:bg-blue-600 hover:text-white transition-all">

@@ -1,10 +1,8 @@
-// @ts-nocheck
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { 
-  Target, Users, BookOpen, CheckCircle, Briefcase, Zap, 
-  Trophy, Shield, Globe, Rocket, Award, Heart, Star, 
-  MapPin, GraduationCap, Flame, Search, Smartphone, ShieldCheck
-} from 'lucide-react';
+  Target, Users, BookOpen, Briefcase, Zap, 
+  Trophy, Shield, Rocket, Award, Heart, Star, 
+  MapPin, Flame, Search, Smartphone} from 'lucide-react';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 
 const AboutUs = () => {

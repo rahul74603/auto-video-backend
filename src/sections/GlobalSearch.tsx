@@ -1,21 +1,33 @@
-// @ts-nocheck
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Loader2, ArrowRight, FileText, Crown } from 'lucide-react';
 import { db } from '@/firebase/config';
 import { collectionGroup, getDocs, query } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 
+// =========================================================
+// 🧾 SEARCH RESULT TYPE
+// =========================================================
+interface SearchResultItem {
+  id: string;
+  collectionOrigin: string;
+  isPremiumFlag: boolean;
+  resolvedCourseId: string | null;
+  title?: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
 const GlobalSearch = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [results, setResults] = useState([]);
+  const [results, setResults] = useState<SearchResultItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
-  const searchRef = useRef(null);
+  const searchRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (searchRef.current && !searchRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setShowDropdown(false);
       }
     };
@@ -23,24 +35,12 @@ const GlobalSearch = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      if (searchTerm.trim().length > 2) {
-        performSearch(searchTerm);
-      } else {
-        setResults([]);
-      }
-    }, 400);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchTerm]);
-
-  const performSearch = async (term) => {
+  const performSearch = async (term: string) => {
     setIsSearching(true);
     setShowDropdown(true);
     try {
       const lowerTerm = term.toLowerCase();
-      const searchResults = [];
+      const searchResults: SearchResultItem[] = [];
 
       const collectionsToSearch = [
         'jobs', 
@@ -68,7 +68,7 @@ const GlobalSearch = () => {
             return; 
           }
 
-          let derivedCourseId = null;
+          let derivedCourseId: string | null = null;
           const pathSegments = doc.ref.path.split('/');
           const coursesIndex = pathSegments.indexOf('courses');
           
@@ -123,7 +123,20 @@ const GlobalSearch = () => {
     setIsSearching(false);
   };
 
-  const handleResultClick = (result) => {
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (searchTerm.trim().length > 2) {
+        performSearch(searchTerm);
+      } else {
+        setResults([]);
+      }
+    }, 400);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm]);
+
+
+  const handleResultClick = (result: SearchResultItem) => {
     setShowDropdown(false);
     setSearchTerm('');
     
@@ -142,13 +155,13 @@ const GlobalSearch = () => {
       return;
     }
 
-    const routeMap = {
+    const routeMap: Record<string, string> = {
       jobs: '/job',
       study_materials: '/material',
       fast_track: '/update',
       blogs: '/blog',
-      posts: '/blog',            
-      articles: '/blog',         
+      posts: '/blog',
+      articles: '/blog',
       mock_tests: '/test',
       content: '/pdf'
     };

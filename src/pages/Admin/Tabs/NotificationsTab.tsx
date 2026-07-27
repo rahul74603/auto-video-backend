@@ -16,12 +16,18 @@ const NotificationsTab = () => {
   const [statusText, setStatusText] = useState('');
   const [allStatuses, setAllStatuses] = useState<{id: string, text: string}[]>([]);
 
-  useEffect(() => { fetchStatuses(); }, []);
-
   const fetchStatuses = async () => {
       const statuses = await categoryStatusRepository.listStatuses();
       setAllStatuses(statuses as { id: string; text: string }[]);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    categoryStatusRepository.listStatuses()
+      .then((statuses) => { if (!cancelled) setAllStatuses(statuses as { id: string; text: string }[]); })
+      .catch((error) => { console.error("Status fetch error:", error); });
+    return () => { cancelled = true; };
+  }, []);
 
   const handleUpdate = async () => {
       if(!statusText) return alert("Text required");

@@ -1,5 +1,4 @@
-// @ts-nocheck
-import { useLanguage } from '@/context/LanguageContext';
+import { useLanguage } from '@/context/useLanguage';
 import { examCategories } from '@/data/jobs';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { categoryStatusRepository } from '@/features/category-status/data/categoryStatusRepository';
@@ -37,8 +36,9 @@ const ExamCategories: React.FC = () => {
 
         jobs.forEach((job) => {
           const data = job;
+          if (!data.lastDate) return;
           const jobDate = new Date(data.lastDate);
-          
+
           if (jobDate >= today) {
              const category = data.category ? data.category.toLowerCase() : 'other';
              if (newCounts[category]) newCounts[category]++;
@@ -92,10 +92,18 @@ const ExamCategories: React.FC = () => {
   const otherCategories = examCategories.filter(c => !['civil-services', 'upsc', 'state'].includes(c.id.toLowerCase()));
   const civilServicesCard = examCategories.find(c => ['civil-services', 'upsc'].includes(c.id.toLowerCase()));
 
+  type ExamCategoryCard = {
+    id: string;
+    name: string;
+    nameHi?: string;
+    icon: string;
+    color: string;
+  };
+
   const finalList = [
     allJobsCard, civilServicesCard, ...otherCategories.slice(0, 2),
     stateJobsCard, ...otherCategories.slice(2)
-  ].filter(Boolean);
+  ].filter(Boolean) as ExamCategoryCard[];
 
   return (
     <section className="py-4 md:py-16 bg-[#F8FAFC] font-hindi antialiased">
@@ -117,7 +125,7 @@ const ExamCategories: React.FC = () => {
           viewport={{ once: true }} 
           className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 md:gap-4"
         >
-          {finalList.map((category: any) => {
+          {finalList.map((category) => {
             const Icon = iconMap[category.icon] || FileText;
             const isFeatured = category.id === 'all';
             const realCount = category.id === 'all' ? totalJobs : (counts[category.id] || 0);

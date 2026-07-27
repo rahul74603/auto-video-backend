@@ -11,10 +11,9 @@ import {
   where,
 } from 'firebase/firestore';
 
-export type FastTrackRecord = {
-  id: string;
-  [key: string]: unknown;
-};
+import type { FastTrackItem } from '@/types/firestore';
+
+export type FastTrackRecord = FastTrackItem;
 
 const fastTrackCollection = collection(db, 'fast_track');
 

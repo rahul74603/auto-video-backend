@@ -1,8 +1,7 @@
-// @ts-nocheck
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Star, Quote } from 'lucide-react';
-import { useLanguage } from '@/context/LanguageContext';
+import { useLanguage } from '@/context/useLanguage';
 import { testimonials } from '@/data/jobs';
 
 const Testimonials: React.FC = () => {

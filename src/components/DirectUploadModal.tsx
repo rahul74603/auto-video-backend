@@ -63,9 +63,9 @@ const DirectUploadModal = ({ folderId, folderName, onClose, onSuccess }: Props) 
         onClose();   // Close Modal
       }, 1000);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      alert("Error: " + error.message);
+      alert("Error: " + (error instanceof Error ? error.message : String(error)));
       setUploadProgress('Failed ❌');
     } finally {
       setLoading(false);

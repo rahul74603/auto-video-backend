@@ -1,25 +1,56 @@
-// @ts-nocheck
-import React, { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStory } from '@/features/stories/hooks/useStory';
 import {
-    X, Loader2, ChevronLeft, ChevronRight,
+    X, Loader2,
     ExternalLink, Share2, Check
 } from 'lucide-react';
 import SEO from '../components/SEO';
+import { toDateSafe } from '@/types/firestore';
+import type { TimestampLike } from '@/types/firestore';
+
+// =========================================================
+// 🧾 STORY DOC TYPES
+// =========================================================
+interface StoryStat {
+    icon?: string;
+    value?: string;
+    label?: string;
+}
+
+interface StorySlide {
+    type?: string;
+    badge?: string;
+    title?: string;
+    subtitle?: string;
+    heading?: string;
+    stats?: StoryStat[];
+    lines?: string[];
+    ctaText?: string;
+    ctaLink?: string;
+}
+
+interface StoryDocData {
+    title?: string;
+    slug?: string;
+    coverImage?: string;
+    applyLink?: string;
+    storyType?: string;
+    category?: string;
+    author?: string;
+    subject?: string;
+    questions?: string | number;
+    duration?: string | number;
+    description?: string;
+    createdAt?: TimestampLike;
+    slides?: StorySlide[];
+}
 
 // =========================================================
 // 🛠️ HELPERS
 // =========================================================
-function getIsoDate(timeSource) {
-    if (!timeSource) return new Date().toISOString();
-    try {
-        if (timeSource.toDate) return timeSource.toDate().toISOString();
-        if (timeSource.seconds) return new Date(timeSource.seconds * 1000).toISOString();
-        return new Date(timeSource).toISOString();
-    } catch {
-        return new Date().toISOString();
-    }
+function getIsoDate(timeSource: TimestampLike): string {
+    return (toDateSafe(timeSource) || new Date()).toISOString();
 }
 
 // =========================================================
@@ -35,9 +66,7 @@ const SLIDE_GRADIENTS = [
     'linear-gradient(135deg, #0f0f1a, #1a1a3e, #1e3a8a)'
 ];
 
-function buildSlideContent(slide, applyLink, isLast) {
-    if (!slide) return '';
-
+function buildSlideContent(slide: StorySlide, applyLink: string): string {
     switch (slide.type) {
         case 'cover':
             return `
@@ -48,7 +77,7 @@ function buildSlideContent(slide, applyLink, isLast) {
                     <div class="brand-tag">🌐 StudyGyaan.in</div>
                 </div>`;
 
-        case 'stats':
+        case 'stats': {
             const statsHtml = (slide.stats || []).map(s =>
                 `<div class="stat-card">
                     <span class="stat-icon">${s.icon}</span>
@@ -62,8 +91,9 @@ function buildSlideContent(slide, applyLink, isLast) {
                     <div class="stats-grid">${statsHtml}</div>
                     <div class="brand-wm">StudyGyaan.in</div>
                 </div>`;
+        }
 
-        case 'cta':
+        case 'cta': {
             const ctaLines = (slide.lines || []).map(l =>
                 `<div class="cta-line">${l}</div>`
             ).join('');
@@ -76,10 +106,11 @@ function buildSlideContent(slide, applyLink, isLast) {
                     </a>
                     <div class="brand-wm">StudyGyaan.in</div>
                 </div>`;
+        }
 
         case 'info':
         case 'content':
-        default:
+        default: {
             const lines = (slide.lines || []).map(l =>
                 `<div class="info-line">${l}</div>`
             ).join('');
@@ -89,13 +120,14 @@ function buildSlideContent(slide, applyLink, isLast) {
                     <div class="lines-box">${lines}</div>
                     <div class="brand-wm">StudyGyaan.in</div>
                 </div>`;
+        }
     }
 }
 
 // =========================================================
 // 🏗️ MULTI-PAGE STORY BUILDER
 // =========================================================
-function buildMultiPageStory(data, storyId) {
+function buildMultiPageStory(data: StoryDocData, storyId: string): string {
     const title = data.title || "StudyGyaan Update";
     const canonicalStoryId = data.slug || storyId;
     const coverImage = data.coverImage
@@ -105,7 +137,7 @@ function buildMultiPageStory(data, storyId) {
     const badgeColor = storyType === 'blog' ? '#059669' : '#2563eb';
 
     // ✅ Slides - Firestore से या default
-    let slides = data.slides;
+    let slides: StorySlide[] | undefined = data.slides;
     if (!slides || slides.length < 3) {
         if (storyType === 'blog') {
             slides = [
@@ -120,7 +152,7 @@ function buildMultiPageStory(data, storyId) {
                     heading: '📌 About This Article',
                     lines: [
                         `📁 ${data.category || 'Education'}`,
-                        `✍️ ${data.author || 'Rahul Sir'}`,
+                        `✍️ ${data.author || 'StudyGyaan Editorial Team'}`,
                         '🌐 StudyGyaan.in',
                         '📅 Latest 2025 Update'
                     ]
@@ -215,7 +247,7 @@ function buildMultiPageStory(data, storyId) {
         const pageId = idx === 0 ? 'page-cover' : `page-${idx + 1}`;
         const bgGrad = SLIDE_GRADIENTS[idx % SLIDE_GRADIENTS.length];
         const autoAdv = slide.type === 'cta' ? '8s' : '6s';
-        const content = buildSlideContent(slide, applyLink, idx === slides.length - 1);
+        const content = buildSlideContent(slide, applyLink);
         const isLastPage = idx === slides.length - 1;
 
         let bgLayer = '';
@@ -472,28 +504,19 @@ const WebStoryViewer = () => {
     const { id } = useParams();
     const navigate = useNavigate();
 
-    const [storyData, setStoryData] = useState(null);
-    const [htmlContent, setHtmlContent] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [notFound, setNotFound] = useState(false);
     const [copied, setCopied] = useState(false);
-    const [docId, setDocId] = useState(null);
 
     const { story: loadedStory, loading: storyLoading, error: storyError } = useStory(id);
 
-    useEffect(() => {
-        setLoading(storyLoading);
-        if (!id || storyError) {
-            setNotFound(true);
-            return;
-        }
-        if (!loadedStory?.id) return;
-
-        setNotFound(false);
-        setStoryData(loadedStory);
-        setDocId(loadedStory.id);
-        setHtmlContent(buildMultiPageStory(loadedStory, loadedStory.id));
-    }, [id, loadedStory, storyLoading, storyError]);
+    // Derived data (sync effect zaroori nahi)
+    const storyData = loadedStory as StoryDocData | null;
+    const docId = loadedStory?.id ?? null;
+    const loading = storyLoading;
+    const notFound = Boolean(!id || storyError) || (!storyLoading && !loadedStory?.id);
+    const htmlContent = useMemo(
+        () => (storyData && docId ? buildMultiPageStory(storyData, docId) : null),
+        [storyData, docId]
+    );
 
     // =========================================================
     // 📤 SHARE
@@ -544,7 +567,7 @@ const WebStoryViewer = () => {
     // =========================================================
     // ❌ NOT FOUND
     // =========================================================
-    if (notFound || !htmlContent) {
+    if (notFound || !htmlContent || !storyData) {
         return (
             <>
                 <SEO

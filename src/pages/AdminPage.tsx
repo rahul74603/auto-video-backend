@@ -1,4 +1,3 @@
-// @ts-nocheck
 import SEO from '../components/SEO';
 import { 
     onAuthStateChanged, 
@@ -9,7 +8,7 @@ import {
     signInWithPopup 
 } from 'firebase/auth';
 import {
-    Briefcase, FilePenLine, Globe, Settings, ShieldCheck, User, Sparkles, Zap, Layers, IndianRupee
+    FilePenLine, ShieldCheck, Sparkles, Zap, Layers, IndianRupee
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -29,6 +28,7 @@ import AdminFoldersTab from './Admin/Tabs/AdminFoldersTab';
 import AdminBrowseTab from './Admin/Tabs/AdminBrowseTab';
 import AdminStorageTab from './Admin/Tabs/AdminStorageTab';
 import AdminJobDrafts from './Admin/Tabs/AdminJobDrafts'; 
+import AdminAIArticleStudio from './Admin/Tabs/AdminAIArticleStudio';
 import FastTrackManager from './Admin/Tabs/FastTrackManager'; 
 import AdminWebStories from './Admin/Tabs/AdminWebStories';
 // 🔥 NEW: Payment Approval Tab Import
@@ -43,24 +43,28 @@ const AdminPage = () => {
     
     const location = useLocation(); 
 
-    // ✅ Active Tab State (Added 'PAYMENTS')
-    const [activeTab, setActiveTab] = useState<'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'SIDEBAR' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'PAYMENTS'>('BROWSE');
+    // ✅ Active Tab State (Added 'PAYMENTS', 'AI WRITER')
+    type AdminTab = 'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'SIDEBAR' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'AI WRITER' | 'PAYMENTS';
+    const [activeTab, setActiveTab] = useState<AdminTab>('BROWSE');
 
     const { content: siteContent, updateContent: updateSiteContent } = useSiteContent();
 
-    // --- 🚀 TAB SWITCHING LOGIC ---
-    useEffect(() => {
-        if (location.state?.activeTab) {
-            setActiveTab(location.state.activeTab);
+    // --- 🚀 TAB SWITCHING LOGIC (render-time sync, no effect needed) ---
+    const [prevLocationState, setPrevLocationState] = useState(location.state);
+    if (location.state !== prevLocationState) {
+        setPrevLocationState(location.state);
+        const requestedTab = (location.state as { activeTab?: AdminTab } | null)?.activeTab;
+        if (requestedTab) {
+            setActiveTab(requestedTab);
         }
-    }, [location.state]);
+    }
 
     // --- 🔐 AUTHENTICATION LOGIC ---
     const handleGoogleLogin = async () => {
         const provider = new GoogleAuthProvider();
         try {
             await signInWithPopup(auth, provider);
-        } catch (err: any) {
+        } catch {
             setLoginError("Google Login Failed");
         }
     };
@@ -101,7 +105,7 @@ const AdminPage = () => {
                     <hr className="flex-1 border-gray-100" />
                 </div>
 
-                <form onSubmit={async (e) => { e.preventDefault(); try { await signInWithEmailAndPassword(auth, loginEmail, loginPassword); } catch (err: any) { setLoginError("Invalid Credentials") } }}>
+                <form onSubmit={async (e) => { e.preventDefault(); try { await signInWithEmailAndPassword(auth, loginEmail, loginPassword); } catch { setLoginError("Invalid Credentials") } }}>
                     <input type="email" placeholder="Admin Email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full p-3 border rounded-xl mb-4 outline-none text-sm focus:ring-2 ring-blue-500 transition-all" />
                     <input type="password" placeholder="Password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} className="w-full p-3 border rounded-xl mb-4 outline-none text-sm focus:ring-2 ring-blue-500 transition-all" />
                     {loginError && <p className="text-red-500 text-xs font-bold mb-4 animate-bounce">{loginError}</p>}
@@ -131,13 +135,14 @@ const AdminPage = () => {
                     
                     {/* NAVIGATION TABS (Added PAYMENTS) */}
                     <div className="flex flex-wrap gap-1 md:gap-2 w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scroll-smooth items-center no-scrollbar">
-                        {['BROWSE', 'JOBS AI', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'SIDEBAR', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE'].map(t => (
+                        {['BROWSE', 'JOBS AI', 'AI WRITER', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'SIDEBAR', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE'].map(t => (
                             <button 
                                 key={t} 
-                                onClick={() => setActiveTab(t as any)} 
+                                onClick={() => setActiveTab(t as AdminTab)} 
                                 className={`px-3 py-1.5 md:px-5 md:py-2.5 rounded-md md:rounded-xl font-black text-[9px] md:text-xs whitespace-nowrap shrink-0 transition-all uppercase tracking-tighter ${activeTab === t ? 'bg-blue-600 text-white shadow-xl scale-105' : 'bg-gray-50 text-gray-400 border border-gray-100 hover:bg-white hover:text-blue-600 hover:shadow-md'}`}
                             >
                                 {t === 'JOBS AI' ? <span className="flex items-center gap-1"><Sparkles size={12}/> JOBS AI</span> : 
+                                 t === 'AI WRITER' ? <span className="flex items-center gap-1"><Sparkles size={12}/> AI WRITER</span> :
                                  t === 'FAST TRACK' ? <span className="flex items-center gap-1"><Zap size={12}/> FAST TRACK</span> : 
                                  t === 'WEB STORIES' ? <span className="flex items-center gap-1"><Layers size={12}/> WEB STORIES</span> : 
                                  t === 'PAYMENTS' ? <span className="flex items-center gap-1 text-green-500 group-hover:text-white"><IndianRupee size={12}/> PAYMENTS</span> :
@@ -159,6 +164,7 @@ const AdminPage = () => {
                 <div className="min-h-[60vh]">
                     {activeTab === 'BROWSE' && <AdminBrowseTab />}
                     {activeTab === 'JOBS AI' && <AdminJobDrafts />}
+                    {activeTab === 'AI WRITER' && <AdminAIArticleStudio />}
                     {activeTab === 'FOLDERS' && <AdminFoldersTab />}
                     {activeTab === 'HOMEPAGE' && <AdminHomepageTab siteContent={siteContent} updateSiteContent={updateSiteContent} />}
                     {activeTab === 'FAST TRACK' && <FastTrackManager />} 

@@ -29,6 +29,9 @@ const db = admin.firestore();
 // Manual and automatic specialist-agent entry points. Cost-bearing routes are
 // protected with AGENT_ADMIN_TOKEN inside the orchestrator.
 registerAgentRoutes(app);
+// Source-grounded Job / Fast-track article agents (Generate, Preview,
+// Regenerate, Apply, Publish). Draft-first; failed review blocks publishing.
+require("./agents/article_agents/article_routes").registerArticleAgentRoutes(app, db);
 app.post("/seo/indexing-audit", async (req, res) => {
   const auth = authorizeAgentRequest(req);
   if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });

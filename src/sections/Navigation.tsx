@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -11,6 +10,14 @@ import {
     signOut, onAuthStateChanged
 } from 'firebase/auth';
 
+// Cached/auth user ka minimal shape
+interface NavUser {
+    displayName?: string | null;
+    photoURL?: string | null;
+    email?: string | null;
+    uid?: string;
+}
+
 const navLinks = [
     { name: 'Home', path: '/' },
     { name: 'Mock Test', path: '/mock-tests' },
@@ -22,7 +29,17 @@ const navLinks = [
 
 const Navigation = () => {
     const [isOpen, setIsOpen] = useState(false);
-    const [user, setUser] = useState(null);
+    const [user, setUser] = useState<NavUser | null>(() => {
+        // ✅ localStorage se cached user — instant dikhega (lazy init)
+        const cachedUser = localStorage.getItem('sg_user');
+        if (!cachedUser) return null;
+        try {
+            return JSON.parse(cachedUser) as NavUser;
+        } catch {
+            localStorage.removeItem('sg_user');
+            return null;
+        }
+    });
     const navigate = useNavigate();
     const location = useLocation();
     const authInitialized = useRef(false);
@@ -30,17 +47,7 @@ const Navigation = () => {
     useEffect(() => {
         let unsubscribe = () => {};
 
-        // ✅ Step 1: localStorage se cached user lo — instant dikhega
-        const cachedUser = localStorage.getItem('sg_user');
-        if (cachedUser) {
-            try {
-                setUser(JSON.parse(cachedUser));
-            } catch {
-                localStorage.removeItem('sg_user');
-            }
-        }
-
-        // ✅ Step 2: Firebase Auth ko defer karo
+        // ✅ Firebase Auth ko defer karo
         const initAuth = () => {
             if (authInitialized.current) return;
             authInitialized.current = true;
@@ -123,7 +130,7 @@ const Navigation = () => {
         navigate('/');
     };
 
-    const isActive = (path) => location.pathname === path;
+    const isActive = (path: string) => location.pathname === path;
 
     // ========== NEECHE SE SAB SAME HAI — EK LINE BHI NAHI BADLI ==========
 

@@ -1,5 +1,4 @@
-// @ts-nocheck
-import React from 'react';
+
 import { Youtube, MessageCircle, Send, Facebook } from 'lucide-react';
 
 const FloatingSocials = () => {

@@ -1,55 +1,83 @@
-// @ts-nocheck
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { Save, Plus, Trash2, Sparkles, Link2, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 
-const AdminSidebarControl = () => {
-  const [settings, setSettings] = useState({
+// =========================================================
+// 🧾 TYPES
+// =========================================================
+interface SidebarLinkItem {
+    title: string;
+    url: string;
+}
+
+type SectionKey =
+    | 'shopUpdates'
+    | 'jobUpdates'
+    | 'pdfUpdates'
+    | 'eBookUpdates'
+    | 'mockBlogs'
+    | 'mockLinks';
+
+type SidebarSettingsState = Record<SectionKey, SidebarLinkItem[]>;
+
+const SECTIONS: SectionKey[] = [
+    'shopUpdates', 'jobUpdates', 'pdfUpdates',
+    'eBookUpdates', 'mockBlogs', 'mockLinks'
+];
+
+const EMPTY_SETTINGS: SidebarSettingsState = {
     shopUpdates: [],
     jobUpdates: [],
     pdfUpdates: [],
-    eBookUpdates: [], 
+    eBookUpdates: [],
     mockBlogs: [],    // ✅ Mock Test: Trending Blogs के लिए
     mockLinks: []     // ✅ Mock Test: Important Links के लिए
-  });
+};
+
+const toLinkList = (value: unknown): SidebarLinkItem[] =>
+    Array.isArray(value) ? (value as SidebarLinkItem[]) : [];
+
+const AdminSidebarControl = () => {
+  const [settings, setSettings] = useState<SidebarSettingsState>(EMPTY_SETTINGS);
   const [loading, setLoading] = useState(true);
 
   // --- 📥 DATABASE SE DATA LANA ---
   useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const data = await siteSettingsRepository.getGlobal();
-        if (data) {
+    let cancelled = false;
+    siteSettingsRepository.getGlobal()
+      .then((data) => {
+        if (!cancelled && data) {
           setSettings({
-            shopUpdates: data.shopUpdates || [],
-            jobUpdates: data.jobUpdates || [],
-            pdfUpdates: data.pdfUpdates || [],
-            eBookUpdates: data.eBookUpdates || [],
-            mockBlogs: data.mockBlogs || [],
-            mockLinks: data.mockLinks || []
+            shopUpdates: toLinkList(data['shopUpdates']),
+            jobUpdates: toLinkList(data['jobUpdates']),
+            pdfUpdates: toLinkList(data['pdfUpdates']),
+            eBookUpdates: toLinkList(data['eBookUpdates']),
+            mockBlogs: toLinkList(data['mockBlogs']),
+            mockLinks: toLinkList(data['mockLinks'])
           });
         }
-      } catch (err) {
+      })
+      .catch((err) => {
         console.error("Fetch Error:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchSettings();
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, []);
 
-  const handleAdd = (section) => {
+  const handleAdd = (section: SectionKey) => {
     setSettings({ ...settings, [section]: [...settings[section], { title: '', url: '' }] });
   };
 
-  const handleChange = (section, index, field, value) => {
+  const handleChange = (section: SectionKey, index: number, field: keyof SidebarLinkItem, value: string) => {
     const updated = [...settings[section]];
     updated[index][field] = value;
     setSettings({ ...settings, [section]: updated });
   };
 
-  const handleRemove = (section, index) => {
+  const handleRemove = (section: SectionKey, index: number) => {
     const updated = settings[section].filter((_, i) => i !== index);
     setSettings({ ...settings, [section]: updated });
   };
@@ -59,7 +87,7 @@ const AdminSidebarControl = () => {
     try {
       await siteSettingsRepository.updateGlobal(settings);
       toast.success("All Sidebar Settings Updated! 🚀");
-    } catch (err) {
+    } catch {
       toast.error("Error updating settings!");
     }
   };
@@ -93,7 +121,7 @@ const AdminSidebarControl = () => {
         {/* --- DYNAMIC SECTIONS GRID --- */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* ✅ यहाँ सारे 6 सेक्शन्स की लिस्ट है, Mock Test वाले भी शामिल हैं */}
-            {['shopUpdates', 'jobUpdates', 'pdfUpdates', 'eBookUpdates', 'mockBlogs', 'mockLinks'].map((section) => (
+            {SECTIONS.map((section) => (
             <div key={section} className="bg-white p-6 rounded-[35px] shadow-sm border border-slate-100 flex flex-col h-full transition-all hover:shadow-md">
                 <h3 className="text-[11px] font-black uppercase mb-6 text-blue-600 tracking-[0.15em] flex items-center gap-2 border-b pb-3">
                     <Link2 size={16} />

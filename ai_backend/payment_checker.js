@@ -1,4 +1,3 @@
-// @ts-nocheck
 const admin = require("firebase-admin");
 const { google } = require("googleapis");
 require("dotenv").config();

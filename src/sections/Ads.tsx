@@ -1,40 +1,66 @@
-// @ts-nocheck
-import React, {
+import {
     useEffect, useState, useCallback,
-    useRef, createContext, useContext
+    useRef, createContext
 } from 'react';
+import type { ReactNode } from 'react';
 import { X, ExternalLink, Bell, Zap } from 'lucide-react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+
+// =========================================================
+// 🧾 SETTINGS TYPE (site_settings/global doc ke known ad fields)
+// =========================================================
+interface AdSettings {
+    headerAdActive?: boolean;
+    headerAdLink?: string;
+    headerAdTitle?: string;
+    discountPercent?: string | number;
+    popupActive?: boolean;
+    popupTitle?: string;
+    popupDescription?: string;
+    popupButtonText?: string;
+    premiumPrice?: string | number;
+    mrpPrice?: string | number;
+}
+
+interface SettingsContextValue {
+    settings: AdSettings | null;
+    loaded: boolean;
+}
+
+declare global {
+    interface Window {
+        adsbygoogle?: unknown[];
+    }
+}
 
 // =========================================================
 // 🔄 GLOBAL SETTINGS CONTEXT
 // (एक ही Firestore read, सब components use करें)
 // =========================================================
-const SiteSettingsContext = createContext(null);
+const SiteSettingsContext = createContext<SettingsContextValue | null>(null);
 
-export const SiteSettingsProvider = ({ children }) => {
-    const [settings, setSettings] = useState(null);
+export const SiteSettingsProvider = ({ children }: { children: ReactNode }) => {
+    const [settings, setSettings] = useState<AdSettings | null>(null);
     const [loaded, setLoaded] = useState(false);
     const fetchedRef = useRef(false);
 
     useEffect(() => {
         if (fetchedRef.current) return;
         fetchedRef.current = true;
+        let cancelled = false;
 
-        const fetchSettings = async () => {
-            try {
-                const snap = await siteSettingsRepository.getGlobal();
-                if (snap) {
-                    setSettings(snap);
-                }
-            } catch (err) {
+        siteSettingsRepository.getGlobal()
+            .then((snap) => {
+                if (!cancelled && snap) setSettings(snap as AdSettings);
+            })
+            .catch((err) => {
                 console.error("Settings fetch error:", err);
-            } finally {
-                setLoaded(true);
-            }
-        };
+            })
+            .finally(() => {
+                if (!cancelled) setLoaded(true);
+            });
 
-        fetchSettings();
+        return () => { cancelled = true; };
     }, []);
 
     return (
@@ -44,42 +70,30 @@ export const SiteSettingsProvider = ({ children }) => {
     );
 };
 
-// ✅ Hook for consuming settings
-function useSiteSettings() {
-    const context = useContext(SiteSettingsContext);
-    if (!context) {
-        // Fallback: standalone fetch if no provider
-        return { settings: null, loaded: false };
-    }
-    return context;
-}
-
 // =========================================================
 // 🔝 1. HEADER AD (Dynamic - Admin Panel से)
 // =========================================================
 export const HeaderAd = () => {
-    const [isVisible, setIsVisible] = useState(true);
-    const [settings, setSettings] = useState(null);
+    const [isVisible, setIsVisible] = useState(
+        () => !sessionStorage.getItem('headerAdDismissed')
+    );
+    const [settings, setSettings] = useState<AdSettings | null>(null);
 
     useEffect(() => {
-        // ✅ Session में पहले से dismissed है तो hide करो
-        const dismissed = sessionStorage.getItem('headerAdDismissed');
-        if (dismissed) {
-            setIsVisible(false);
-            return;
-        }
+        // ✅ Session में पहले से dismissed है तो fetch skip
+        if (!isVisible) return;
+        let cancelled = false;
 
-        const fetchSettings = async () => {
-            try {
-                const snap = await siteSettingsRepository.getGlobal();
-                if (snap) setSettings(snap);
-            } catch (err) {
+        siteSettingsRepository.getGlobal()
+            .then((snap) => {
+                if (!cancelled && snap) setSettings(snap as AdSettings);
+            })
+            .catch((err) => {
                 console.error("HeaderAd fetch:", err);
-            }
-        };
+            });
 
-        fetchSettings();
-    }, []);
+        return () => { cancelled = true; };
+    }, [isVisible]);
 
     const handleClose = useCallback(() => {
         setIsVisible(false);
@@ -214,36 +228,40 @@ export const InlineAd = () => {
 // =========================================================
 export const PopupAd = () => {
     const [isVisible, setIsVisible] = useState(false);
-    const [settings, setSettings] = useState(null);
+    const [settings, setSettings] = useState<AdSettings | null>(null);
 
     useEffect(() => {
         // ✅ Session check - एक बार दिखाओ, बार-बार नहीं
         const alreadyShown = sessionStorage.getItem('popupShown');
         if (alreadyShown) return;
 
-        const fetchAndShow = async () => {
-            try {
-                const snap = await siteSettingsRepository.getGlobal();
-                if (!snap) return;
+        let cancelled = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
 
-                const data = snap;
+        siteSettingsRepository.getGlobal()
+            .then((snap) => {
+                if (cancelled || !snap) return;
+
+                const data = snap as AdSettings;
                 setSettings(data);
 
                 if (data.popupActive) {
                     // ✅ 15s delay (Lighthouse LCP safe)
-                    const timer = setTimeout(() => {
+                    timer = setTimeout(() => {
+                        if (cancelled) return;
                         setIsVisible(true);
                         sessionStorage.setItem('popupShown', '1');
                     }, 15000);
-
-                    return () => clearTimeout(timer);
                 }
-            } catch (err) {
+            })
+            .catch((err) => {
                 console.error("PopupAd fetch:", err);
-            }
-        };
+            });
 
-        fetchAndShow();
+        return () => {
+            cancelled = true;
+            if (timer) clearTimeout(timer);
+        };
     }, []);
 
     const handleClose = useCallback(() => {
@@ -259,7 +277,7 @@ export const PopupAd = () => {
     // ✅ ESC key support
     useEffect(() => {
         if (!isVisible) return;
-        const handleEsc = (e) => {
+        const handleEsc = (e: KeyboardEvent) => {
             if (e.key === 'Escape') handleClose();
         };
         document.addEventListener('keydown', handleEsc);
@@ -347,8 +365,8 @@ export const PopupAd = () => {
 // =========================================================
 // 📊 5. GOOGLE ADSENSE (Fixed - No Memory Leak)
 // =========================================================
-export const GoogleAdSense = ({ slot, format = 'auto' }) => {
-    const containerRef = useRef(null);
+export const GoogleAdSense = ({ slot, format = 'auto' }: { slot: string; format?: string }) => {
+    const containerRef = useRef<HTMLDivElement | null>(null);
     const initialized = useRef(false);
 
     useEffect(() => {
@@ -370,16 +388,16 @@ export const GoogleAdSense = ({ slot, format = 'auto' }) => {
 
         // ✅ AdSense push safely
         try {
-            const adsbygoogle = (window).adsbygoogle || [];
+            const adsbygoogle = window.adsbygoogle ?? [];
             adsbygoogle.push({});
-            (window).adsbygoogle = adsbygoogle;
+            window.adsbygoogle = adsbygoogle;
         } catch (e) {
             console.error("AdSense Error:", e);
         }
         // ✅ Script remove नहीं करो! AdSense globally needed है
     }, [slot]);
 
-    const sizeClasses = {
+    const sizeClasses: Record<string, string> = {
         auto: 'min-h-[250px] w-full',
         rectangle: 'w-[300px] h-[250px]',
         vertical: 'w-[160px] h-[600px]',
@@ -389,7 +407,7 @@ export const GoogleAdSense = ({ slot, format = 'auto' }) => {
     return (
         <div
             ref={containerRef}
-            className={`bg-gray-100 rounded-lg flex items-center justify-center relative overflow-hidden ${sizeClasses[format] || sizeClasses.auto}`}
+            className={`bg-gray-100 rounded-lg flex items-center justify-center relative overflow-hidden ${sizeClasses[format] || sizeClasses['auto']}`}
             aria-label="Sponsored Content"
             role="complementary"
         >
@@ -412,12 +430,9 @@ export const GoogleAdSense = ({ slot, format = 'auto' }) => {
 // 🎯 6. PROMO BANNER (Internal - SEO Friendly)
 // =========================================================
 export const PromoBanner = () => {
-    const [dismissed, setDismissed] = useState(false);
-
-    useEffect(() => {
-        const isDismissed = sessionStorage.getItem('promoBannerDismissed');
-        if (isDismissed) setDismissed(true);
-    }, []);
+    const [dismissed, setDismissed] = useState(
+        () => Boolean(sessionStorage.getItem('promoBannerDismissed'))
+    );
 
     if (dismissed) return null;
 
@@ -454,7 +469,7 @@ export const PromoBanner = () => {
 // =========================================================
 // 🔧 DEFAULT EXPORT
 // =========================================================
-const Ads = ({ position }) => {
+const Ads = ({ position }: { position: string }) => {
     switch (position) {
         case 'header': return <HeaderAd />;
         case 'sidebar': return <SidebarAd />;

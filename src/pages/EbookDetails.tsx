@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
@@ -10,11 +9,32 @@ import {
 import { Button } from '../components/ui/button';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 
+type EbookView = {
+  title?: string;
+  description?: string;
+  imageUrl?: string;
+  price?: string | number;
+  applyLink?: string;
+};
+
+type EbookLink = {
+  title?: string;
+  name?: string;
+  url?: string;
+};
+
+type EbookSettings = {
+  mrpPrice?: string | number;
+  discountPercent?: string | number;
+  relatedBlogs?: EbookLink[];
+  sidebarLinks?: EbookLink[];
+};
+
 const EbookDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [ebook, setEbook] = useState<any>(null);
-  const [globalSettings, setGlobalSettings] = useState<any>(null);
+  const [ebook, setEbook] = useState<EbookView | null>(null);
+  const [globalSettings, setGlobalSettings] = useState<EbookSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,14 +46,14 @@ const EbookDetails = () => {
         const ebookData = await jobRepository.getById(id);
         
         if (ebookData) {
-          setEbook(ebookData);
+          setEbook(ebookData as unknown as EbookView);
           // document.title यहाँ से हटा दिया गया है क्योंकि अब SEO कम्पोनेंट यह काम करेगा
         }
 
         // 2. Fetch Global Settings for Sidebar
         const settingsSnap = await siteSettingsRepository.getGlobal();
         if (settingsSnap) {
-          setGlobalSettings(settingsSnap);
+          setGlobalSettings(settingsSnap as EbookSettings);
         } else {
           setGlobalSettings({
             relatedBlogs: [],
@@ -180,8 +200,8 @@ const EbookDetails = () => {
                     <Sparkles size={16} className="text-purple-600 animate-pulse" /> TRENDING 🔥
                   </h3>
                   <ul className="space-y-2 md:space-y-4 relative z-10 font-black">
-                      {globalSettings.relatedBlogs.map((b: any, i: number) => (
-                          <li key={i} onClick={() => window.open(b.url, '_blank')} className={`bg-gradient-to-r ${loopColors[i % loopColors.length]} p-[0.8px] rounded-lg cursor-pointer active:scale-95 shadow-sm`}>
+                      {globalSettings.relatedBlogs.map((b, i: number) => (
+                          <li key={i} onClick={() => { if (b.url) window.open(b.url, '_blank'); }} className={`bg-gradient-to-r ${loopColors[i % loopColors.length]} p-[0.8px] rounded-lg cursor-pointer active:scale-95 shadow-sm`}>
                               <div className="bg-white p-1.5 md:p-4 rounded-[7px] text-[8.5px] md:text-[11.5px] text-slate-800 line-clamp-2 leading-snug">
                                   {b.title}
                               </div>
@@ -198,7 +218,7 @@ const EbookDetails = () => {
                      <Tag size={18} className="text-blue-600 animate-bounce" /> महत्वपूर्ण लिंक्स 🔗
                   </h3>
                   <ul className="space-y-3 relative z-10">
-                      {pageQuickLinks.map((item: any, index: number) => {
+                      {pageQuickLinks.map((item, index: number) => {
                           const linkGradients = [
                             "bg-gradient-to-r from-blue-600 to-cyan-500 shadow-blue-500/30",
                             "bg-gradient-to-r from-purple-600 to-fuchsia-500 shadow-purple-500/30",

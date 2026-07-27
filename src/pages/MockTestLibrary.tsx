@@ -1,43 +1,50 @@
-// @ts-nocheck
 import { useState, useEffect } from 'react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { useMockTests } from '@/features/mock-tests/hooks/useMockTests';
 import { useNavigate, Link } from 'react-router-dom';
-import { 
-    Clock, BookOpen, ArrowRight, Zap, Target, 
-    ChevronRight, Flame, ExternalLink, Sparkles
+import {
+    Clock, BookOpen, ArrowRight, Zap, Target,
+    ChevronRight, ExternalLink, Sparkles
 } from 'lucide-react';
-import SEO from '../components/SEO'; 
+import SEO from '../components/SEO';
+import { asText } from '@/types/firestore';
+
+// =========================================================
+// 🧾 SIDEBAR LINK TYPE
+// =========================================================
+interface SidebarLinkItem {
+    title?: string;
+    name?: string;
+    url?: string;
+}
+
+const toLinkList = (value: unknown): SidebarLinkItem[] =>
+    Array.isArray(value) ? (value as SidebarLinkItem[]) : [];
 
 const MockTestLibrary = () => {
     const { tests, loading: testsLoading } = useMockTests();
-    const [mockBlogs, setMockBlogs] = useState([]); 
-    const [mockLinks, setMockLinks] = useState([]); 
+    const [mockBlogs, setMockBlogs] = useState<SidebarLinkItem[]>([]);
+    const [mockLinks, setMockLinks] = useState<SidebarLinkItem[]>([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
 
     // --- 📥 FETCH ALL DATA ---
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                setLoading(true);
-                
-                // 2. Fetch Global Sidebar Settings
-                const globalSnap = await siteSettingsRepository.getGlobal();
-                if (globalSnap) {
-                    const data = globalSnap;
-                    setMockBlogs(data.mockBlogs || []); 
-                    setMockLinks(data.mockLinks || []);  
-                }
-
-            } catch (err) { 
+        let cancelled = false;
+        siteSettingsRepository.getGlobal()
+            .then((data) => {
+                if (cancelled || !data) return;
+                setMockBlogs(toLinkList(data['mockBlogs']));
+                setMockLinks(toLinkList(data['mockLinks']));
+            })
+            .catch((err) => {
                 console.error("Data fetching error:", err);
-            } finally { 
-                setLoading(false); 
-            }
-        };
-        fetchData();
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
         window.scrollTo(0, 0);
+        return () => { cancelled = true; };
     }, []);
 
     // 🔥 ITEM LIST SCHEMA FOR GOOGLE SEARCH 🔥
@@ -47,8 +54,8 @@ const MockTestLibrary = () => {
         "itemListElement": tests.map((test, index) => ({
             "@type": "ListItem",
             "position": index + 1,
-            "url": `https://studygyaan.in/test/${test.slug || test.id}`,
-            "name": test.title
+            "url": `https://studygyaan.in/test/${asText(test.slug) || test.id}`,
+            "name": asText(test.title) || "Mock Test"
         }))
     };
 
@@ -117,7 +124,7 @@ const MockTestLibrary = () => {
 
                                             {/* ✅ SEO FIX: Semantic H2 */}
                                             <h2 className="text-lg md:text-xl font-black text-white mb-5 leading-tight group-hover:text-blue-400 transition-colors line-clamp-2">
-                                                {test.title}
+                                                {asText(test.title) || 'Mock Test'}
                                             </h2>
 
                                             <div className="grid grid-cols-2 gap-3 mb-6">
@@ -126,14 +133,14 @@ const MockTestLibrary = () => {
                                                         <Clock size={12} className="text-orange-400" aria-hidden="true"/>
                                                         <span className="text-[8px] font-black text-slate-500 uppercase">Duration</span>
                                                     </div>
-                                                    <p className="text-sm md:text-base font-black text-white">{test.durationMinutes || '60'} Min</p>
+                                                    <p className="text-sm md:text-base font-black text-white">{asText(test.durationMinutes) || '60'} Min</p>
                                                 </div>
                                                 <div className="bg-white/5 p-3 rounded-2xl border border-white/5">
                                                     <div className="flex items-center gap-1.5 mb-1">
                                                         <BookOpen size={12} className="text-emerald-400" aria-hidden="true"/>
                                                         <span className="text-[8px] font-black text-slate-500 uppercase">Questions</span>
                                                     </div>
-                                                    <p className="text-sm md:text-base font-black text-white">{test.totalQuestions || '100'} Q</p>
+                                                    <p className="text-sm md:text-base font-black text-white">{asText(test.totalQuestions) || '100'} Q</p>
                                                 </div>
                                             </div>
 
@@ -171,7 +178,7 @@ const MockTestLibrary = () => {
                                 </h2>
                                 <div className="space-y-3">
                                     {mockBlogs.map((blog, idx) => (
-                                        <Link key={idx} to={blog.url} className="block bg-white/5 hover:bg-blue-600/10 border border-white/5 p-3 rounded-2xl transition-all group">
+                                        <Link key={idx} to={blog.url || '/blog'} className="block bg-white/5 hover:bg-blue-600/10 border border-white/5 p-3 rounded-2xl transition-all group">
                                             <div className="flex items-start justify-between gap-3">
                                                 <p className="text-[11px] font-bold text-slate-300 leading-tight group-hover:text-blue-400">
                                                     {blog.title || blog.name}
@@ -191,7 +198,7 @@ const MockTestLibrary = () => {
                                 </h2>
                                 <div className="space-y-3">
                                     {mockLinks.map((link, idx) => (
-                                        <a key={idx} href={link.url} target="_blank" rel="noopener noreferrer" className="block bg-gradient-to-br from-blue-600 to-indigo-700 p-4 rounded-2xl text-white group shadow-lg active:scale-95 transition-all">
+                                        <a key={idx} href={link.url || '#'} target="_blank" rel="noopener noreferrer" className="block bg-gradient-to-br from-blue-600 to-indigo-700 p-4 rounded-2xl text-white group shadow-lg active:scale-95 transition-all">
                                             <div className="flex justify-between items-center">
                                                 <p className="font-black text-[10px] uppercase tracking-tighter">{link.title || link.name || 'Important Link'}</p>
                                                 <ExternalLink size={12} className="opacity-50 group-hover:opacity-100 transition-opacity" aria-hidden="true"/>

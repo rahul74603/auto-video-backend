@@ -83,7 +83,13 @@ const PremiumTab = () => {
   const [progress, setProgress]     = useState('');
   const [percent, setPercent]       = useState(0);
   const [logs, setLogs]             = useState<GenerationLog[]>([]);
-  const [lastResult, setLastResult] = useState<any>(null);
+  type LastGenerationResult = {
+    id?: string;
+    provider?: string;
+    subjectType?: string;
+    seo?: { metaTitle?: string; slug?: string };
+  };
+  const [lastResult, setLastResult] = useState<LastGenerationResult | null>(null);
 
   // UI State
   const [showPreview, setShowPreview] = useState(false);
@@ -190,14 +196,14 @@ const PremiumTab = () => {
         throw new Error(data.error || 'Unknown error');
       }
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       addLog({
         topic: topicValue,
         exam,
         setNumber: setNum,
         provider,
         status: 'error',
-        message: `❌ ${err.message}`,
+        message: `❌ ${err instanceof Error ? err.message : String(err)}`,
         time: new Date().toLocaleTimeString()
       });
       return false;

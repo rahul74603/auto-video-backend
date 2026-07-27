@@ -1,35 +1,44 @@
-// @ts-nocheck
 import { useEffect, useState } from 'react';
-import { collection, getDocs, query, orderBy, } from 'firebase/firestore';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
-import { db } from '@/firebase/config';
 import { courseRepository } from '@/features/courses/data/courseRepository';
 import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Crown, ArrowRight, Star, BookOpen, Sparkles, MessageCircle, FileText, Lock, Tag, ExternalLink, ShoppingCart, Flame } from 'lucide-react';
+import { Crown, ArrowRight, Star, BookOpen, Sparkles, MessageCircle, FileText, Lock, Tag, ExternalLink, Flame } from 'lucide-react';
 import { Button } from '../components/ui/button';
-import SEO from '../components/SEO'; 
+import SEO from '../components/SEO';
 
-interface Course {
+type Course = {
   id: string;
-  title: string;
-  price: string;
-  description: string;
-}
+  title?: string;
+  price?: string | number;
+  description?: string;
+};
+
+type CourseFileView = {
+  id: string;
+  title?: string;
+};
+
+type PremiumGlobalSettings = {
+  mrpPrice?: string | number;
+  discountPercent?: string | number;
+  relatedBlogs?: { title?: string; url?: string }[];
+  sidebarLinks?: { name?: string; url?: string }[];
+};
 
 /**
  * 📂 Sub-component: Course Files List (Logic untouched)
  */
 const CourseFilesList = ({ courseId }: { courseId: string }) => {
-  const [files, setFiles] = useState<any[]>([]);
+  const [files, setFiles] = useState<CourseFileView[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchFiles = async () => {
       try {
         const content = await courseContentRepository.listContent(courseId, { orderByCreatedAt: true });
-        setFiles(content);
+        setFiles(content as CourseFileView[]);
       } catch (err) {
         console.error("Error fetching files:", err);
       } finally {
@@ -64,7 +73,7 @@ const CourseFilesList = ({ courseId }: { courseId: string }) => {
 
 const PremiumSection = () => {
   const [courses, setCourses] = useState<Course[]>([]);
-  const [globalSettings, setGlobalSettings] = useState<any>(null);
+  const [globalSettings, setGlobalSettings] = useState<PremiumGlobalSettings | null>(null);
   const myPhoneNumber = "916263396446"; 
   const navigate = useNavigate();
 
@@ -75,7 +84,7 @@ const PremiumSection = () => {
         setCourses(courses as Course[]);
 
         const settingsSnap = await siteSettingsRepository.getGlobal();
-        if (settingsSnap) setGlobalSettings(settingsSnap);
+        if (settingsSnap) setGlobalSettings(settingsSnap as PremiumGlobalSettings);
       } catch (error) {
         console.error("Error fetching data:", error);
       }
@@ -111,8 +120,6 @@ const PremiumSection = () => {
       }
     }))
   };
-
-  const sellingPrice = Math.round(Number(globalSettings?.mrpPrice || 499) * (1 - Number(globalSettings?.discountPercent || 85) / 100));
 
   if (courses.length === 0) return null;
 
@@ -152,7 +159,7 @@ const PremiumSection = () => {
           
           {/* ✅ LEFT SIDE: PREMIUM CARDS (60%) */}
           <div className="w-[60%] md:w-[65%] grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-6">
-            {courses.map((course, index) => (
+            {courses.map((course) => (
               <motion.article
                 key={course.id}
                 initial={{ opacity: 0, y: 30 }}
@@ -210,7 +217,7 @@ const PremiumSection = () => {
                       <Sparkles size={10} className="text-purple-600 animate-pulse" aria-hidden="true" /> ट्रेंडिंग 🔥
                     </h2>
                     <ul className="space-y-1.5 md:space-y-2.5">
-                        {globalSettings.relatedBlogs.map((blogInfo: any, index: number) => (
+                        {globalSettings.relatedBlogs.map((blogInfo, index: number) => (
                             <li key={index} onClick={() => blogInfo.url && window.open(blogInfo.url, '_blank')} className={`bg-gradient-to-r ${loopColors[index % loopColors.length]} p-[0.6px] rounded-[3px] md:rounded-lg cursor-pointer active:scale-95 shadow-sm`}>
                                 <div className="bg-white p-1 md:p-2 rounded-[2.5px] md:rounded-[7.5px] text-[7.5px] md:text-[11px] font-black text-slate-800 line-clamp-2 leading-tight">
                                     {blogInfo.title}
@@ -237,7 +244,7 @@ const PremiumSection = () => {
                   <Tag size={10} className="text-blue-600" aria-hidden="true" /> क्विक लिंक्स
                 </h2>
                 <ul className="space-y-1">
-                  {globalSettings?.sidebarLinks?.map((item: any, index: number) => (
+                  {globalSettings?.sidebarLinks?.map((item, index: number) => (
                     <li key={index} onClick={() => item.url && window.open(item.url, '_blank')} className="flex items-center justify-between p-1 md:p-2.5 bg-slate-50 rounded-md hover:bg-blue-50 transition-all cursor-pointer">
                       <span className="text-slate-600 font-bold text-[7.5px] md:text-[10px] truncate pr-1">{item.name}</span>
                       <ExternalLink size={8} className="text-slate-300" aria-hidden="true" />

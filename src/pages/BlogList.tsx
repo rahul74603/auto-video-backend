@@ -1,13 +1,27 @@
-// @ts-nocheck
 import SEO from '../components/SEO';
 import { useEffect, useState } from 'react';
 import { useBlogs } from '@/features/blogs/hooks/useBlogs';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Sparkles, Clock, Flame, Tag, ExternalLink, ShoppingCart } from 'lucide-react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+import { asText, toDateSafe, type TimestampLike } from '@/types/firestore';
+
+type BlogListLink = {
+  title?: string;
+  name?: string;
+  url?: string;
+};
+
+type BlogListSettings = {
+  mrpPrice?: string | number;
+  discountPercent?: string | number;
+  relatedBlogs?: BlogListLink[];
+  sidebarLinks?: BlogListLink[];
+};
+
 const BlogList = () => {
   const { blogs, loading: blogsLoading } = useBlogs();
-  const [globalSettings, setGlobalSettings] = useState<any>(null);
+  const [globalSettings, setGlobalSettings] = useState<BlogListSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -15,7 +29,7 @@ const BlogList = () => {
     const loadSettings = async () => {
       try {
         const settingsSnap = await siteSettingsRepository.getGlobal();
-        if (settingsSnap) setGlobalSettings(settingsSnap);
+        if (settingsSnap) setGlobalSettings(settingsSnap as BlogListSettings);
       } catch (error) {
         console.error("Error loading data:", error);
       } finally {
@@ -83,14 +97,14 @@ const BlogList = () => {
                   <Link to={`/blog/${blog.id}`} key={blog.id} className="group">
                     <div className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl transition-all flex flex-col h-full">
                       <div className="h-32 md:h-44 overflow-hidden relative">
-                        <img src={blog.imageUrl || 'https://via.placeholder.com/400x300'} alt={blog.title || "StudyGyaan Blog"} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                        <div className="absolute top-2 left-2 bg-blue-600/90 backdrop-blur-md text-white text-[8px] md:text-[10px] font-black px-2.5 py-1 rounded-md uppercase shadow-lg">{blog.category || 'New'}</div>
+                        <img src={asText(blog.imageUrl) || 'https://via.placeholder.com/400x300'} alt={asText(blog.title) || "StudyGyaan Blog"} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <div className="absolute top-2 left-2 bg-blue-600/90 backdrop-blur-md text-white text-[8px] md:text-[10px] font-black px-2.5 py-1 rounded-md uppercase shadow-lg">{asText(blog.category) || 'New'}</div>
                       </div>
                       <div className="p-3 md:p-4 flex-grow flex flex-col justify-between">
-                        <h2 className="text-[12px] md:text-[15px] font-black text-slate-800 line-clamp-2 leading-snug mb-3 group-hover:text-blue-600 transition-colors">{blog.title}</h2>
+                        <h2 className="text-[12px] md:text-[15px] font-black text-slate-800 line-clamp-2 leading-snug mb-3 group-hover:text-blue-600 transition-colors">{asText(blog.title)}</h2>
                         <div className="flex items-center justify-between pt-2 border-t border-slate-50">
                            <span className="text-[9px] md:text-[11px] text-slate-400 font-bold flex items-center gap-1">
-                             <Clock size={12} className="md:w-3.5 md:h-3.5" /> {blog.date ? new Date(blog.date.seconds * 1000).toLocaleDateString('hi-IN') : 'Recent'}
+                             <Clock size={12} className="md:w-3.5 md:h-3.5" /> {toDateSafe(blog.date as TimestampLike)?.toLocaleDateString('hi-IN') ?? 'Recent'}
                            </span>
                            <ArrowRight size={14} className="text-blue-500 md:w-4 md:h-4 group-hover:translate-x-1 transition-transform" />
                         </div>
@@ -115,7 +129,7 @@ const BlogList = () => {
                   </h3>
                   
                   <ul className="space-y-3 relative z-10">
-                      {trendingUpdates.map((item: any, index: number) => {
+                      {trendingUpdates.map((item, index: number) => {
                           const style = loopColors[index % loopColors.length];
                           return (
                             <li 
@@ -146,7 +160,7 @@ const BlogList = () => {
                      <Tag size={18} className="text-blue-600 animate-bounce" /> महत्वपूर्ण लिंक्स 🔗
                   </h3>
                   <ul className="space-y-3 relative z-10">
-                      {pageQuickLinks.map((item: any, index: number) => {
+                      {pageQuickLinks.map((item, index: number) => {
                           const linkGradients = [
                             "bg-gradient-to-r from-blue-600 to-cyan-500 shadow-blue-500/30",
                             "bg-gradient-to-r from-purple-600 to-fuchsia-500 shadow-purple-500/30",

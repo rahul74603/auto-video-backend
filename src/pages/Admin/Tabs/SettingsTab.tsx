@@ -14,7 +14,8 @@ const SettingsTab = () => {
         const docRef = doc(db, 'siteSettings', 'controls');
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setSettings(docSnap.data() as any);
+          const data = docSnap.data();
+          setSettings({ shopActive: Boolean(data.shopActive), ebooksActive: Boolean(data.ebooksActive) });
         }
       } catch (err) {
         console.error("Settings load error:", err);

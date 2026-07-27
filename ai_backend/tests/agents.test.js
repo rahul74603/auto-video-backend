@@ -23,7 +23,10 @@ test("specialist registry contains separate production roles", () => {
     "mock-test",
     "web-story",
     "media-producer",
-    "notes-pdf"
+    "notes-pdf",
+    "job-article-writer",
+    "fast-track-article-writer",
+    "fact-quality-reviewer"
   ]);
 });
 

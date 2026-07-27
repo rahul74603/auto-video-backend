@@ -1,9 +1,8 @@
-// @ts-nocheck
-import React from 'react';
+
 import {
     ExternalLink, Sparkles, BookOpen,
     Target, Award, ChevronRight, Bell, 
-    Wrench, Zap, ArrowRight, FileText
+    Wrench, ArrowRight, FileText
 } from 'lucide-react';
 import { useSiteContent } from "@/hooks/useSiteContent";
 import GlobalSearch from './GlobalSearch';

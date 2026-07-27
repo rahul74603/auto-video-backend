@@ -1,5 +1,5 @@
-// @ts-nocheck
-import React from 'react';
+
+import { asText } from '@/types/firestore';
 import { useStories } from '@/features/stories/hooks/useStories';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
@@ -43,9 +43,9 @@ const HomeWebStories = () => {
                     >
                         {/* ✅ SEO & SPEED FIX: Added Alt Tag and Lazy Loading */}
                         <img 
-                            src={story.coverImage || 'https://studygyaan.in/og-image.jpg'} 
+                            src={asText(story.coverImage) || 'https://studygyaan.in/og-image.jpg'} 
                             className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
-                            alt={story.title || "StudyGyaan Web Story"} 
+                            alt={asText(story.title) || "StudyGyaan Web Story"} 
                             loading="lazy"
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent"></div>
@@ -55,7 +55,7 @@ const HomeWebStories = () => {
                                 {story.storyType === 'blog' ? '📝 Blog' : '🎯 Mock Test'}
                             </span>
                             <h4 className="text-white font-bold text-[11px] md:text-xs leading-tight line-clamp-3 drop-shadow-md">
-                                {story.title}
+                                {asText(story.title)}
                             </h4>
                         </div>
                     </div>

@@ -1,14 +1,39 @@
-// @ts-nocheck
-import React, { useEffect, useState, useCallback } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useLocation } from 'react-router-dom';
 
 const CURRENT_YEAR = new Date().getFullYear();
+const DEFAULT_AUTHOR = 'StudyGyaan Editorial Team';
+
+interface PageSeoEntry {
+    title: string;
+    description: string;
+    keywords: string;
+}
+
+interface SchemaObject {
+    [key: string]: unknown;
+}
+
+export interface SEOProps {
+    customTitle?: string;
+    customDescription?: string;
+    customImage?: string;
+    customUrl?: string;
+    customKeywords?: string;
+    ogType?: string;
+    publishedDate?: string;
+    modifiedDate?: string;
+    author?: string;
+    category?: string;
+    noIndex?: boolean;
+    noFollow?: boolean;
+    schemaType?: string;
+}
 
 // =========================================================
 // 📊 PAGE-WISE DEFAULT SEO DATABASE
 // =========================================================
-const PAGE_SEO_MAP = {
+const PAGE_SEO_MAP: Record<string, PageSeoEntry> = {
     '/': {
         title: `StudyGyaan - Free Study Material, Govt Jobs & Mock Tests ${CURRENT_YEAR}`,
         description: 'StudyGyaan पर पाएं Latest Sarkari Naukri, Free PDF Notes, Online Mock Tests, Admit Card, Result और Premium Study Material। SSC, Railway, Bank, Police Exam की सबसे बेहतर तैयारी।',
@@ -86,7 +111,7 @@ const DEFAULT_SEO = {
 // =========================================================
 // 🔧 HELPER: Clean URL
 // =========================================================
-const CANONICAL_PATH_ALIASES = {
+const CANONICAL_PATH_ALIASES: Record<string, string> = {
     '/about': '/about-us',
     '/contact': '/contact-us',
     '/mock-tests': '/test',
@@ -100,7 +125,7 @@ const CANONICAL_PATH_ALIASES = {
  * Canonical URL is normalized in one place so query strings, fragments,
  * trailing slashes and legacy route names can never create duplicate signals.
  */
-export function cleanUrl(value) {
+function cleanUrl(value?: string): string {
     const baseUrl = 'https://studygyaan.in';
     try {
         const url = new URL(value || baseUrl, baseUrl);
@@ -132,7 +157,7 @@ export function cleanUrl(value) {
 // =========================================================
 // 🔧 HELPER: Path to Readable Name
 // =========================================================
-function pathToTitle(path) {
+function pathToTitle(path: string): string {
     if (!path) return 'StudyGyaan';
     return path
         .replace(/-/g, ' ')
@@ -144,7 +169,7 @@ function pathToTitle(path) {
 // =========================================================
 // 📊 JSON-LD SCHEMA GENERATORS
 // =========================================================
-function getOrganizationSchema() {
+function getOrganizationSchema(): SchemaObject {
     return {
         "@context": "https://schema.org",
         "@type": "Organization",
@@ -169,7 +194,7 @@ function getOrganizationSchema() {
     };
 }
 
-function getWebsiteSchema() {
+function getWebsiteSchema(): SchemaObject {
     return {
         "@context": "https://schema.org",
         "@type": "WebSite",
@@ -188,11 +213,11 @@ function getWebsiteSchema() {
     };
 }
 
-function getBreadcrumbSchema(pathname) {
+function getBreadcrumbSchema(pathname: string): SchemaObject | null {
     const parts = pathname.split('/').filter(Boolean);
     if (parts.length === 0) return null;
 
-    const items = [
+    const items: { "@type": string; position: number; name: string; item: string }[] = [
         {
             "@type": "ListItem",
             "position": 1,
@@ -219,7 +244,14 @@ function getBreadcrumbSchema(pathname) {
     };
 }
 
-function getArticleSchema(title, description, image, url, publishedDate, author) {
+function getArticleSchema(
+    title: string,
+    description: string,
+    image: string,
+    url: string,
+    publishedDate?: string,
+    author?: string
+): SchemaObject {
     return {
         "@context": "https://schema.org",
         "@type": "NewsArticle",
@@ -235,8 +267,8 @@ function getArticleSchema(title, description, image, url, publishedDate, author)
         "datePublished": publishedDate || new Date().toISOString(),
         "dateModified": new Date().toISOString(),
         "author": {
-            "@type": "Person",
-            "name": author || "Rahul Sir",
+            "@type": "Organization",
+            "name": author || DEFAULT_AUTHOR,
             "url": "https://studygyaan.in"
         },
         "publisher": {
@@ -284,7 +316,7 @@ const SEO = ({
 
     // Schema
     schemaType = "website" // website | article | breadcrumb | all
-}) => {
+}: SEOProps) => {
     const location = useLocation();
     const baseUrl = "https://studygyaan.in";
 
@@ -324,7 +356,7 @@ const SEO = ({
     ].join(', ');
 
     // ✅ JSON-LD Schemas
-    const schemas = [];
+    const schemas: SchemaObject[] = [];
 
     // Homepage पर Organization + Website schema
     if (cleanPathname === '/' || cleanPathname === '') {
@@ -360,7 +392,7 @@ const SEO = ({
             <title>{finalTitle}</title>
             <meta name="description" content={finalDesc} />
             <meta name="keywords" content={finalKeywords} />
-            <meta name="author" content={author || 'StudyGyaan'} />
+            <meta name="author" content={author || DEFAULT_AUTHOR} />
             <meta name="robots" content={robotsContent} />
             <meta name="googlebot" content={robotsContent} />
 
@@ -391,7 +423,7 @@ const SEO = ({
                 <>
                     <meta property="article:published_time" content={pubTime} />
                     <meta property="article:modified_time" content={modTime} />
-                    <meta property="article:author" content={author || 'Rahul Sir'} />
+                    <meta property="article:author" content={author || DEFAULT_AUTHOR} />
                     {category && (
                         <meta property="article:section" content={category} />
                     )}

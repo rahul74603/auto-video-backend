@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useBlog } from '@/features/blogs/hooks/useBlog';
@@ -7,42 +6,38 @@ import {
     Calendar, User, Tag, Clock, ChevronLeft,
     Share2, ExternalLink, Flame, ShoppingCart,
     ArrowRight, Sparkles, FileSearch, Eye,
-    Copy, Check
+    Check
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SEO from '../components/SEO';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+import type { BlogPostRecord, TimestampLike } from '@/types/firestore';
 
 // =========================================================
 // 🛠️ HELPERS
 // =========================================================
-function formatDate(dateField) {
-    if (!dateField) return new Date().toLocaleDateString('hi-IN');
+function toDateObj(dateField: TimestampLike): Date | null {
+    if (!dateField) return null;
     try {
-        if (dateField?.seconds)
-            return new Date(dateField.seconds * 1000).toLocaleDateString('hi-IN');
-        if (dateField?.toDate)
-            return dateField.toDate().toLocaleDateString('hi-IN');
-        return new Date(dateField).toLocaleDateString('hi-IN');
+        if (dateField instanceof Date) return dateField;
+        const d = dateField as { seconds?: number; toDate?: () => Date };
+        if (typeof d.seconds === 'number') return new Date(d.seconds * 1000);
+        if (typeof d.toDate === 'function') return d.toDate();
+        return new Date(dateField as string | number);
     } catch {
-        return new Date().toLocaleDateString('hi-IN');
+        return null;
     }
 }
 
-function getIsoDate(dateField) {
-    if (!dateField) return new Date().toISOString();
-    try {
-        if (dateField?.seconds)
-            return new Date(dateField.seconds * 1000).toISOString();
-        if (dateField?.toDate)
-            return dateField.toDate().toISOString();
-        return new Date(dateField).toISOString();
-    } catch {
-        return new Date().toISOString();
-    }
+function formatDate(dateField: TimestampLike): string {
+    return (toDateObj(dateField) || new Date()).toLocaleDateString('hi-IN');
 }
 
-function estimateReadTime(content) {
+function getIsoDate(dateField: TimestampLike): string {
+    return (toDateObj(dateField) || new Date()).toISOString();
+}
+
+function estimateReadTime(content?: string): string {
     if (!content) return '5 मिनट';
     const text = content.replace(/<[^>]*>/g, '');
     const words = text.split(/\s+/).length;
@@ -144,7 +139,29 @@ const BlogPostSkeleton = () => (
 // =========================================================
 // 🔧 DEFAULT SETTINGS
 // =========================================================
-function getDefaultSettings() {
+interface SidebarLink {
+    name?: string;
+    title?: string;
+    url?: string;
+}
+
+interface RelatedBlogLink {
+    title?: string;
+    url?: string;
+}
+
+interface SidebarSettings {
+    sidebarLinks: SidebarLink[];
+    relatedBlogs: RelatedBlogLink[];
+    premiumBoxTitle: string;
+    premiumBoxDesc: string;
+    bottomBarText: string;
+    premiumPrice: string;
+    mrpPrice: string;
+    discountPercent: string;
+}
+
+function getDefaultSettings(): SidebarSettings {
     return {
         sidebarLinks: [
             { name: 'New Govt Job Details', url: '/govt-jobs' },
@@ -168,40 +185,40 @@ const BlogPost = () => {
     const { id } = useParams();
     const navigate = useNavigate();
 
-    const [blog, setBlog] = useState(null);
-    const [globalSettings, setGlobalSettings] = useState(null);
-    const [notFound, setNotFound] = useState(false);
+    const [globalSettings, setGlobalSettings] = useState<SidebarSettings | null>(null);
     const [voted, setVoted] = useState(false);
     const [copied, setCopied] = useState(false);
-    const [docId, setDocId] = useState(null);
 
     const { blog: loadedBlog, loading: blogLoading, error: blogError } = useBlog(id);
 
+    // Derived data (no syncing effect zaroori nahi)
+    const blog = loadedBlog as BlogPostRecord | null;
+    const docId = loadedBlog?.id ?? null;
+    const notFound = Boolean(!id || blogError) || (!blogLoading && !loadedBlog?.id);
+
     useEffect(() => {
-        if (!id || blogError) {
-            setNotFound(true);
-            return;
-        }
         if (!loadedBlog?.id) return;
+        let cancelled = false;
+        const loadedId = loadedBlog.id;
 
-        setNotFound(false);
-        setBlog(loadedBlog);
-        setDocId(loadedBlog.id);
-        blogRepository.incrementViews(loadedBlog.id).catch(() => { /* silent */ });
+        blogRepository.incrementViews(loadedId).catch(() => { /* silent */ });
 
-        siteSettingsRepository.getGlobal().then((settingsSnap) => {
-            setGlobalSettings(
-                settingsSnap || getDefaultSettings()
-            );
-        }).catch(() => setGlobalSettings(getDefaultSettings()));
+        siteSettingsRepository.getGlobal()
+            .then((settingsSnap) => {
+                if (!cancelled) setGlobalSettings((settingsSnap || getDefaultSettings()) as SidebarSettings);
+            })
+            .catch(() => {
+                if (!cancelled) setGlobalSettings(getDefaultSettings());
+            });
 
         window.scrollTo(0, 0);
-    }, [id, loadedBlog, blogLoading, blogError]);
+        return () => { cancelled = true; };
+    }, [id, loadedBlog]);
 
     // =========================================================
     // 💬 FEEDBACK
     // =========================================================
-    const handleFeedback = useCallback(async (type) => {
+    const handleFeedback = useCallback(async (type: 'yes' | 'no') => {
         if (voted) return toast.info('आप पहले ही अपनी राय दे चुके हैं!');
         if (!docId) return;
         try {
@@ -323,7 +340,7 @@ const BlogPost = () => {
                 ogType="article"
                 publishedDate={publishedIso}
                 modifiedDate={publishedIso}
-                author={blog.author || 'Rahul Sir'}
+                author={blog.author || 'StudyGyaan Editorial Team'}
                 category={blog.category || 'Education'}
             />
 
@@ -409,7 +426,7 @@ const BlogPost = () => {
                             <div className="flex flex-wrap items-center gap-2 md:gap-3 p-3 md:p-5 border-b border-slate-100 text-slate-600 text-[10px] md:text-sm font-bold bg-slate-50/50">
                                 <div className="flex items-center bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-slate-200">
                                     <User className="w-3.5 h-3.5 mr-1 text-blue-500" aria-hidden="true" />
-                                    <span itemProp="author">{blog.author || 'Rahul Sir'}</span>
+                                    <span itemProp="author">{blog.author || 'StudyGyaan Editorial Team'}</span>
                                 </div>
                                 <div className="flex items-center bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-slate-200">
                                     <Calendar className="w-3.5 h-3.5 mr-1 text-blue-500" aria-hidden="true" />
@@ -433,7 +450,7 @@ const BlogPost = () => {
                             <div className="p-4 md:p-8">
                                 <div
                                     className="prose prose-sm md:prose-base max-w-none text-slate-700 [&_p]:!text-left [word-break:break-word] prose-p:leading-relaxed prose-p:mb-5 prose-strong:text-blue-900 prose-strong:font-black prose-headings:text-slate-900 prose-headings:font-black prose-headings:mb-3 prose-ul:space-y-2 prose-ul:mb-5 prose-li:marker:text-blue-500 prose-img:rounded-xl prose-img:shadow-md"
-                                    dangerouslySetInnerHTML={{ __html: blog.content }}
+                                    dangerouslySetInnerHTML={{ __html: blog.content ?? '' }}
                                     itemProp="articleBody"
                                 />
 

@@ -1,62 +1,76 @@
-// @ts-nocheck
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useJob } from '@/features/jobs/hooks/useJob';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
+import type { JobPost, SiteContentDoc, TimestampLike } from '@/types/firestore';
 import {
     Briefcase, Calendar, MapPin, Banknote, Clock,
     Download, ExternalLink, ArrowLeft, Share2,
     CheckCircle, FileText, Smartphone, Sparkles,
-    Tag, ShoppingCart, Flame, ArrowRight, Zap,
+    Flame, ArrowRight, Zap,
     Trophy, GraduationCap, Users, Search,
-    Globe, ShieldCheck, Eye, Check, Copy
+    Globe, ShieldCheck, Eye, Check
 } from 'lucide-react';
 import SEO from '../components/SEO';
 
 // =========================================================
 // 🛠️ HELPERS
 // =========================================================
-function formatDate(d) {
+function formatDate(d: TimestampLike): string {
     if (!d) return "New Update";
     try {
-        if (d?.seconds) return new Date(d.seconds * 1000).toLocaleDateString('hi-IN');
-        if (d?.toDate) return d.toDate().toLocaleDateString('hi-IN');
-        return new Date(d).toLocaleDateString('hi-IN');
+        const ts = d as { seconds?: number; toDate?: () => Date };
+        if (ts?.seconds) return new Date(ts.seconds * 1000).toLocaleDateString('hi-IN');
+        if (ts?.toDate) return ts.toDate().toLocaleDateString('hi-IN');
+        return new Date(d as string | number | Date).toLocaleDateString('hi-IN');
     } catch {
         return "New Update";
     }
 }
 
-function getContentYear(job) {
+interface GlobalSettings {
+    jobUpdates: SiteContentDoc[];
+    relatedBlogs: SiteContentDoc[];
+    premiumBoxTitle: string;
+    premiumBoxDesc: string;
+    bottomBarText: string;
+    premiumPrice: string;
+    mrpPrice: string;
+    discountPercent: string;
+}
+
+function getContentYear(job: JobPost | null): string {
     const titleYear = String(job?.title || '').match(/\b20\d{2}\b/)?.[0];
     if (titleYear) return titleYear;
     try {
-        const value = job?.createdAt?.seconds
-            ? new Date(job.createdAt.seconds * 1000)
-            : job?.createdAt?.toDate
-                ? job.createdAt.toDate()
-                : new Date(job?.createdAt);
+        const ts = job?.createdAt as { seconds?: number; toDate?: () => Date } | undefined;
+        const value = ts?.seconds
+            ? new Date(ts.seconds * 1000)
+            : ts?.toDate
+                ? ts.toDate()
+                : new Date(job?.createdAt as string);
         if (!Number.isNaN(value.getTime())) return String(value.getFullYear());
     } catch { /* use current year */ }
     return String(new Date().getFullYear());
 }
 
-function getIsoDate(d) {
+function getIsoDate(d: TimestampLike): string {
     if (!d) return new Date().toISOString();
     try {
-        if (d?.seconds) return new Date(d.seconds * 1000).toISOString();
-        if (d?.toDate) return d.toDate().toISOString();
-        return new Date(d).toISOString();
+        const ts = d as { seconds?: number; toDate?: () => Date };
+        if (ts?.seconds) return new Date(ts.seconds * 1000).toISOString();
+        if (ts?.toDate) return ts.toDate().toISOString();
+        return new Date(d as string | number | Date).toISOString();
     } catch {
         return new Date().toISOString();
     }
 }
 
 // Safe redirect URL
-function safeRedirect(url) {
-    if (!url || url === '#' || url === 'undefined') return null;
+function safeRedirect(url?: string | null): string | undefined {
+    if (!url || url === '#' || url === 'undefined') return undefined;
     if (url.startsWith('http')) {
         return `/redirect?url=${encodeURIComponent(url)}`;
     }
@@ -66,7 +80,7 @@ function safeRedirect(url) {
 // =========================================================
 // 🎨 INTERNAL ICON
 // =========================================================
-const FileSearch = ({ className, size = 24 }) => (
+const FileSearch = ({ className, size = 24 }: { className?: string; size?: number }) => (
     <svg
         aria-hidden="true"
         xmlns="http://www.w3.org/2000/svg"
@@ -82,7 +96,7 @@ const FileSearch = ({ className, size = 24 }) => (
     </svg>
 );
 
-function getDefaultSettings() {
+function getDefaultSettings(): GlobalSettings {
     return {
         jobUpdates: [],
         relatedBlogs: [],
@@ -95,6 +109,21 @@ function getDefaultSettings() {
     };
 }
 
+function normalizeSettings(data: Record<string, unknown> | undefined): GlobalSettings {
+    const defaults = getDefaultSettings();
+    if (!data) return defaults;
+    return {
+        jobUpdates: Array.isArray(data.jobUpdates) ? (data.jobUpdates as SiteContentDoc[]) : [],
+        relatedBlogs: Array.isArray(data.relatedBlogs) ? (data.relatedBlogs as SiteContentDoc[]) : [],
+        premiumBoxTitle: typeof data.premiumBoxTitle === 'string' ? data.premiumBoxTitle : defaults.premiumBoxTitle,
+        premiumBoxDesc: typeof data.premiumBoxDesc === 'string' ? data.premiumBoxDesc : defaults.premiumBoxDesc,
+        bottomBarText: typeof data.bottomBarText === 'string' ? data.bottomBarText : defaults.bottomBarText,
+        premiumPrice: typeof data.premiumPrice === 'string' ? data.premiumPrice : defaults.premiumPrice,
+        mrpPrice: typeof data.mrpPrice === 'string' ? data.mrpPrice : defaults.mrpPrice,
+        discountPercent: typeof data.discountPercent === 'string' ? data.discountPercent : defaults.discountPercent
+    };
+}
+
 // =========================================================
 // 🚀 MAIN COMPONENT
 // =========================================================
@@ -102,41 +131,27 @@ const JobDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
 
-    const [job, setJob] = useState(null);
-    const [globalSettings, setGlobalSettings] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [notFound, setNotFound] = useState(false);
-    const [docId, setDocId] = useState(null);
+    const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
     const [copied, setCopied] = useState(false);
 
-    const { job: loadedJob, loading: jobLoading, error: jobError } = useJob(id);
+    const { job, loading, error: jobError } = useJob(id);
+    // Derived — no state syncing effects needed.
+    const docId = job?.id ?? null;
+    const notFound = Boolean(jobError) || !id;
 
     useEffect(() => {
-        if (!loadedJob?.id) return;
+        if (!job?.id) return;
 
-        setJob(loadedJob);
-        setDocId(loadedJob.id);
-
-        jobRepository.incrementViews(loadedJob.id).catch(() => { /* Silent fail */ });
+        jobRepository.incrementViews(job.id).catch(() => { /* Silent fail */ });
 
         getDoc(doc(db, "site_settings", "global")).then((settingsSnap) => {
-            setGlobalSettings(
-                settingsSnap.exists()
-                    ? settingsSnap.data()
-                    : getDefaultSettings()
-            );
+            setGlobalSettings(normalizeSettings(settingsSnap.exists() ? settingsSnap.data() : undefined));
         }).catch(() => setGlobalSettings(getDefaultSettings()));
-    }, [loadedJob]);
+    }, [job]);
 
     useEffect(() => {
-        if (jobError) setNotFound(true);
-    }, [jobError]);
-
-    useEffect(() => {
-        setLoading(jobLoading);
-        if (!id) setNotFound(true);
         window.scrollTo(0, 0);
-    }, [id, jobLoading]);
+    }, [id]);
 
     // =========================================================
     // 📤 SHARE
@@ -285,13 +300,30 @@ const JobDetails = () => {
                 ogType="article"
                 publishedDate={publishedIso}
                 modifiedDate={publishedIso}
-                author={job.author || "Rahul Sir"}
+                author={job.authorName || job.author || "StudyGyaan Editorial Team"}
                 category={job.category || "Govt Jobs"}
             />
             <script
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPostingSchema) }}
             />
+            {/* FAQ schema — only when AI-reviewed article FAQs exist (all answers source-verified) */}
+            {Array.isArray(job.faqs) && job.faqs.length > 0 && (
+                <script
+                    type="application/ld+json"
+                    dangerouslySetInnerHTML={{
+                        __html: JSON.stringify({
+                            "@context": "https://schema.org",
+                            "@type": "FAQPage",
+                            "mainEntity": job.faqs.map((faq) => ({
+                                "@type": "Question",
+                                "name": faq.question,
+                                "acceptedAnswer": { "@type": "Answer", "text": faq.answer }
+                            }))
+                        })
+                    }}
+                />
+            )}
 
             <div className="max-w-7xl mx-auto px-2 md:px-6">
 
@@ -550,6 +582,40 @@ const JobDetails = () => {
                                                 itemProp="description"
                                             >
                                                 {job.description}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* ✅ AI-reviewed full article (only when published from the source-grounded AI pipeline) */}
+                                    {job.articleHtml && (
+                                        <div className="bg-white border border-slate-100 rounded-3xl p-6 md:p-10 shadow-sm">
+                                            <div className="flex items-center gap-2 mb-5 border-b border-slate-100 pb-4">
+                                                <ShieldCheck size={18} className="text-emerald-500" aria-hidden="true" />
+                                                <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest">
+                                                    Fact-checked by {job.authorName || "StudyGyaan Editorial Team"}
+                                                </p>
+                                            </div>
+                                            <div
+                                                className="prose prose-sm md:prose-lg max-w-none text-slate-700 ai-article-content [&_.table-responsive]:overflow-x-auto [&_table]:w-full [&_table]:text-sm"
+                                                dangerouslySetInnerHTML={{ __html: job.articleHtml }}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* ✅ Verified FAQs from the reviewed article */}
+                                    {Array.isArray(job.faqs) && job.faqs.length > 0 && (
+                                        <div className="bg-white border border-slate-100 rounded-3xl p-6 md:p-10 shadow-sm">
+                                            <h2 className="text-sm md:text-2xl font-black text-slate-800 mb-6 uppercase tracking-tight flex items-center gap-2">
+                                                <FileSearch size={22} className="text-blue-600" aria-hidden="true" />
+                                                अक्सर पूछे जाने वाले प्रश्न (FAQs)
+                                            </h2>
+                                            <div className="space-y-4">
+                                                {job.faqs.map((faq, index) => (
+                                                    <div key={index} className="bg-slate-50 border border-slate-100 rounded-2xl p-5">
+                                                        <h3 className="font-black text-slate-800 text-xs md:text-base leading-snug">{faq.question}</h3>
+                                                        <p className="text-slate-600 text-xs md:text-sm font-medium mt-2 leading-relaxed">{faq.answer}</p>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     )}

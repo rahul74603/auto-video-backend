@@ -1,5 +1,4 @@
-// @ts-nocheck
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { Mail, MessageCircle, MapPin, Smartphone, Clock, ShieldCheck, Send, HelpCircle, Users, CheckCircle } from 'lucide-react';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 

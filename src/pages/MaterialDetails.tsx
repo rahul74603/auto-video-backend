@@ -1,21 +1,44 @@
-// @ts-nocheck
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useMaterial } from '@/features/materials/hooks/useMaterial';
-import { 
-  FileText, Download, ArrowLeft, Info, Sparkles, 
-  Tag, ExternalLink, ShoppingCart, Flame, ArrowRight, User, Calendar, BookOpen, CheckCircle
+import {
+  FileText, Download, ArrowLeft, Info, Sparkles,
+  Tag, ExternalLink, ShoppingCart, Flame, User, BookOpen
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 
+type MaterialView = {
+  title?: string;
+  description?: string;
+  subject?: string;
+  applyLink?: string;
+};
+
+type RelatedBlogLink = {
+  title?: string;
+  url?: string;
+};
+
+type SidebarLinkItem = {
+  name?: string;
+  url?: string;
+};
+
+type MaterialGlobalSettings = {
+  mrpPrice?: string | number;
+  discountPercent?: string | number;
+  relatedBlogs?: RelatedBlogLink[];
+  sidebarLinks?: SidebarLinkItem[];
+};
+
 const MaterialDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { material: loadedMaterial, loading: materialLoading } = useMaterial(id);
-  const item = loadedMaterial;
-  const [globalSettings, setGlobalSettings] = useState<any>(null);
+  const item = loadedMaterial as unknown as MaterialView | null;
+  const [globalSettings, setGlobalSettings] = useState<MaterialGlobalSettings | null>(null);
   const loading = materialLoading;
 
   useEffect(() => {
@@ -89,7 +112,7 @@ const MaterialDetails = () => {
                       {item.title}
                     </h1>
                     <div className="flex items-center gap-1.5 md:gap-3 text-slate-400 text-[8.5px] md:text-base font-bold">
-                        <User size={14} className="text-blue-500" /> Rahul Sir 
+                        <User size={14} className="text-blue-500" /> StudyGyaan Editorial Team 
                         <span className="opacity-30">•</span>
                         <Tag size={14} className="text-blue-500" /> {item.subject || "General Study"}
                     </div>
@@ -157,7 +180,7 @@ const MaterialDetails = () => {
                     <Sparkles size={14} className="text-purple-600 animate-pulse" /> ट्रेंडिंग टॉपिक्स 🔥
                   </h3>
                   <ul className="space-y-2 md:space-y-3 relative z-10 font-black">
-                      {globalSettings.relatedBlogs.map((b: any, i: number) => (
+                      {globalSettings.relatedBlogs.map((b, i: number) => (
                           <li key={i} onClick={() => window.open(b.url, '_blank')} className={`bg-gradient-to-r ${loopColors[i % loopColors.length]} p-[0.8px] rounded-lg cursor-pointer active:scale-95 shadow-sm`}>
                               <div className="bg-white p-1.5 md:p-3 rounded-[7px] text-[8.5px] md:text-[11.5px] text-slate-800 line-clamp-2 leading-tight">
                                   {b.title}
@@ -186,9 +209,9 @@ const MaterialDetails = () => {
                 <Tag size={12} className="text-blue-600" /> महत्वपूर्ण लिंक्स
               </h3>
               <ul className="space-y-2">
-                {globalSettings?.sidebarLinks?.map((item: any, index: number) => (
-                  <li key={index} onClick={() => item.url && window.open(item.url, '_blank')} className="flex items-center justify-between p-2 md:p-3 bg-slate-50 rounded-xl hover:bg-blue-50 transition-all cursor-pointer border border-transparent hover:border-blue-100">
-                    <span className="text-slate-600 font-black text-[9px] md:text-[11px] truncate pr-1">{item.name}</span>
+                {globalSettings?.sidebarLinks?.map((linkItem, index: number) => (
+                  <li key={index} onClick={() => linkItem.url && window.open(linkItem.url, '_blank')} className="flex items-center justify-between p-2 md:p-3 bg-slate-50 rounded-xl hover:bg-blue-50 transition-all cursor-pointer border border-transparent hover:border-blue-100">
+                    <span className="text-slate-600 font-black text-[9px] md:text-[11px] truncate pr-1">{linkItem.name}</span>
                     <ExternalLink size={10} className="text-slate-300" />
                   </li>
                 ))}

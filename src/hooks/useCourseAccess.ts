@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useEffect } from 'react';
 import { auth } from '../firebase/config';
 import { userRepository } from '@/features/users/data/userRepository';

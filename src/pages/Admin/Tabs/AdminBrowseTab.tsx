@@ -1,19 +1,31 @@
-// @ts-nocheck
-import React, {
+import {
     useState, useEffect, useRef,
     useCallback, useMemo
 } from 'react';
+import type { FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-    Briefcase, Banknote, ExternalLink,
+    Banknote,
     Edit, Trash2, Plus, X, Save,
     UploadCloud, ShieldCheck, AlertTriangle,
-    CheckCircle, Loader2, Eye, EyeOff
+    CheckCircle, Loader2, Eye
 } from 'lucide-react';
 import { storage } from '../../../firebase/config';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { jobDraftRepository } from '@/features/job-drafts/data/jobDraftRepository';
+import type { JobPost } from '@/types/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+
+type JobFormState = typeof INITIAL_FORM;
+
+interface ToastMsg {
+    message: string;
+    type: string;
+}
+
+function errMsg(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
+}
 
 // =========================================================
 // 🛠️ CONSTANTS
@@ -44,7 +56,7 @@ const INITIAL_FORM = {
 // =========================================================
 // 🛠️ HELPERS
 // =========================================================
-function createSlug(title) {
+function createSlug(title: string): string {
     return title
         .toLowerCase()
         .trim()
@@ -54,10 +66,10 @@ function createSlug(title) {
         .substring(0, 80);
 }
 
-function formatDateForInput(dateStr) {
+function formatDateForInput(dateStr?: string | null): string {
     if (!dateStr) return '';
     try {
-        const ddmmyyyy = dateStr.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
+        const ddmmyyyy = dateStr.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
         if (ddmmyyyy) {
             return `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
         }
@@ -74,7 +86,7 @@ function formatDateForInput(dateStr) {
 // =========================================================
 // 🗑️ DELETE CONFIRMATION MODAL
 // =========================================================
-const DeleteModal = ({ jobTitle, onConfirm, onCancel, loading }) => (
+const DeleteModal = ({ jobTitle, onConfirm, onCancel, loading }: { jobTitle: string; onConfirm: () => void; onCancel: () => void; loading: boolean }) => (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
         <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
@@ -117,6 +129,15 @@ const FormField = ({
     label, value, onChange, type = 'text',
     placeholder = '', required = false,
     className = '', disabled = false
+}: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    type?: string;
+    placeholder?: string;
+    required?: boolean;
+    className?: string;
+    disabled?: boolean;
 }) => (
     <div className={className}>
         <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-1 block">
@@ -134,36 +155,87 @@ const FormField = ({
     </div>
 );
 
+function asStr(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    return '';
+}
+
+/** Map a Firestore job/draft document into the form shape. */
+function mapPostToForm(post: Record<string, unknown>): JobFormState {
+    return {
+        ...INITIAL_FORM,
+        title: asStr(post.title),
+        organization: asStr(post.organization),
+        vacancies: asStr(post.vacancies),
+        location: asStr(post.location) || 'All India',
+        advtNo: asStr(post.advtNo),
+        startDate: formatDateForInput(asStr(post.startDate)),
+        lastDate: formatDateForInput(asStr(post.lastDate)),
+        qualification: asStr(post.qualification),
+        ageLimit: asStr(post.ageLimit),
+        minAge: asStr(post.minAge) || '18',
+        salary: asStr(post.salary),
+        applyLink: asStr(post.applyLink),
+        category: asStr(post.category) || 'ssc',
+        description: asStr(post.description),
+        officialSiteLink: asStr(post.officialSiteLink),
+        applicationFee: asStr(post.applicationFee),
+        selectionProcess: asStr(post.selectionProcess),
+        eligibility: asStr(post.eligibility),
+        notificationLink: asStr(post.notificationLink),
+        feeGen: asStr(post.feeGen),
+        feeOBC: asStr(post.feeOBC),
+        feeSCST: asStr(post.feeSCST),
+        feeFemale: asStr(post.feeFemale),
+        price: asStr(post.price),
+        imageUrl: asStr(post.imageUrl),
+        isLive: true
+    };
+}
+
 // =========================================================
 // 🚀 MAIN COMPONENT
 // =========================================================
 const AdminBrowseTab = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const draftData = location.state?.draftData;
+
+    // Draft data passed through router state is used ONLY to initialize state.
+    const initialDraft = (() => {
+        const raw: unknown = location.state?.draftData;
+        if (!raw) return null;
+        const data = Array.isArray(raw) ? raw[0] : raw;
+        return data && typeof data === 'object' ? (data as Record<string, unknown>) : null;
+    })();
+    const initialDraftId = location.state?.draftId
+        || asStr(initialDraft?.id)
+        || asStr(initialDraft?.docId)
+        || null;
 
     // State
-    const [posts, setPosts] = useState([]);
+    const [posts, setPosts] = useState<JobPost[]>([]);
     const [loading, setLoading] = useState(false);
     const [fetchLoading, setFetchLoading] = useState(false);
-    const [showForm, setShowForm] = useState(false);
-    const [postType, setPostType] = useState('JOB');
-    const [editingId, setEditingId] = useState(null);
-    const [currentDraftId, setCurrentDraftId] = useState(null);
-    const [pdfFile, setPdfFile] = useState(null);
-    const [imageFile, setImageFile] = useState(null);
-    const [deleteModal, setDeleteModal] = useState(null);
+    const [showForm, setShowForm] = useState(() => Boolean(initialDraft));
+    const [postType, setPostType] = useState(() => asStr(initialDraft?.type) || 'JOB');
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [currentDraftId, setCurrentDraftId] = useState<string | null>(initialDraftId);
+    const [pdfFile, setPdfFile] = useState<File | null>(null);
+    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [deleteModal, setDeleteModal] = useState<JobPost | null>(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
-    const [toast, setToast] = useState(null);
+    const [toast, setToast] = useState<ToastMsg | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
 
-    const [formData, setFormData] = useState(INITIAL_FORM);
+    const [formData, setFormData] = useState<JobFormState>(() => (initialDraft ? mapPostToForm(initialDraft) : INITIAL_FORM));
     const isSubmitting = useRef(false);
 
     // =========================================================
     // 🍞 TOAST NOTIFICATION
     // =========================================================
-    const showToast = useCallback((message, type = 'success') => {
+    const showToast = useCallback((message: string, type = 'success') => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 4000);
     }, []);
@@ -171,7 +243,7 @@ const AdminBrowseTab = () => {
     // =========================================================
     // 📝 FORM FIELD UPDATER
     // =========================================================
-    const updateField = useCallback((field, value) => {
+    const updateField = useCallback((field: keyof JobFormState | string, value: string | boolean) => {
         setFormData(prev => ({ ...prev, [field]: value }));
     }, []);
 
@@ -189,60 +261,31 @@ const AdminBrowseTab = () => {
             setPosts(data);
         } catch (err) {
             console.error("Fetch error:", err);
-            showToast("Jobs load नहीं हो सकी: " + err.message, 'error');
+            showToast("Jobs load नहीं हो सकी: " + errMsg(err), 'error');
         } finally {
             setFetchLoading(false);
         }
     }, [showToast]);
 
-    useEffect(() => { fetchContent(); }, [fetchContent]);
-
-    // =========================================================
-    // 📋 DRAFT DATA LOAD
-    // =========================================================
     useEffect(() => {
-        if (!draftData) return;
-
-        const data = draftData[0] || draftData;
-        setFormData({
-            ...INITIAL_FORM,
-            title: data.title || '',
-            organization: data.organization || '',
-            vacancies: data.vacancies || '',
-            location: data.location || 'All India',
-            advtNo: data.advtNo || '',
-            startDate: formatDateForInput(data.startDate),
-            lastDate: formatDateForInput(data.lastDate),
-            qualification: data.qualification || '',
-            ageLimit: data.ageLimit || '',
-            minAge: data.minAge || '18',
-            salary: data.salary || '',
-            applyLink: data.applyLink || '',
-            category: data.category || 'ssc',
-            description: data.description || '',
-            officialSiteLink: data.officialSiteLink || '',
-            applicationFee: data.applicationFee || '',
-            selectionProcess: data.selectionProcess || '',
-            eligibility: data.eligibility || '',
-            notificationLink: data.notificationLink || '',
-            feeGen: data.feeGen || '',
-            feeOBC: data.feeOBC || '',
-            feeSCST: data.feeSCST || '',
-            feeFemale: data.feeFemale || '',
-            price: data.price || '',
-            imageUrl: data.imageUrl || '',
-            isLive: true
-        });
-
-        setPostType(data.type || 'JOB');
-        setCurrentDraftId(location.state?.draftId || data.id || data.docId);
-        setShowForm(true);
-    }, [draftData]);
+        let cancelled = false;
+        jobRepository
+            .list({ typeIn: ["JOB", "AFFILIATE"], orderField: "updatedAt", limitCount: 100 })
+            .then((data) => {
+                if (!cancelled) setPosts(data);
+            })
+            .catch((err) => {
+                if (!cancelled) showToast("Jobs load नहीं हो सकी: " + errMsg(err), 'error');
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [showToast]);
 
     // =========================================================
     // 📤 FILE UPLOAD HELPER
     // =========================================================
-    async function uploadFile(file, folder) {
+    async function uploadFile(file: File | null, folder: string): Promise<string | null> {
         if (!file) return null;
         const ext = file.name.split('.').pop();
         const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${ext}`;
@@ -263,12 +306,12 @@ const AdminBrowseTab = () => {
 
         setLoading(true);
         try {
-            let notificationLink = formData.notificationLink;
+            let notificationLink: string | null = formData.notificationLink;
             if (pdfFile) {
                 notificationLink = await uploadFile(pdfFile, 'job_notifications');
             }
 
-            let imageUrl = formData.imageUrl;
+            let imageUrl: string | null = formData.imageUrl;
             if (imageFile) {
                 imageUrl = await uploadFile(imageFile, 'job_images');
             }
@@ -294,7 +337,7 @@ const AdminBrowseTab = () => {
             navigate('/sg-admin', { replace: true, state: { activeTab: 'JOBS AI' } });
 
         } catch (err) {
-            showToast("Save Failed: " + err.message, 'error');
+            showToast("Save Failed: " + errMsg(err), 'error');
         } finally {
             setLoading(false);
         }
@@ -303,7 +346,7 @@ const AdminBrowseTab = () => {
     // =========================================================
     // 🚀 PUBLISH / UPDATE
     // =========================================================
-    const handleSubmit = async (e) => {
+    const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         if (isSubmitting.current) return;
 
@@ -316,12 +359,12 @@ const AdminBrowseTab = () => {
         setLoading(true);
 
         try {
-            let notificationLink = formData.notificationLink;
+            let notificationLink: string | null = formData.notificationLink;
             if (pdfFile) {
                 notificationLink = await uploadFile(pdfFile, 'job_notifications');
             }
 
-            let imageUrl = formData.imageUrl;
+            let imageUrl: string | null = formData.imageUrl;
             if (imageFile) {
                 imageUrl = await uploadFile(imageFile, 'job_images');
             }
@@ -378,7 +421,7 @@ const AdminBrowseTab = () => {
             navigate(location.pathname, { replace: true, state: {} });
 
         } catch (err) {
-            showToast("Error: " + err.message, 'error');
+            showToast("Error: " + errMsg(err), 'error');
         } finally {
             setLoading(false);
             isSubmitting.current = false;
@@ -388,15 +431,10 @@ const AdminBrowseTab = () => {
     // =========================================================
     // ✏️ EDIT
     // =========================================================
-    const handleEdit = useCallback((post) => {
+    const handleEdit = useCallback((post: JobPost) => {
         setEditingId(post.id);
         setPostType(post.type || 'JOB');
-        setFormData({
-            ...INITIAL_FORM,
-            ...post,
-            startDate: formatDateForInput(post.startDate),
-            lastDate: formatDateForInput(post.lastDate)
-        });
+        setFormData(mapPostToForm(post));
         setPdfFile(null);
         setImageFile(null);
         setCurrentDraftId(null);
@@ -415,7 +453,7 @@ const AdminBrowseTab = () => {
             setPosts(prev => prev.filter(p => p.id !== deleteModal.id));
             showToast("✅ Job Delete हो गई!");
         } catch (err) {
-            showToast("Delete Failed: " + err.message, 'error');
+            showToast("Delete Failed: " + errMsg(err), 'error');
         } finally {
             setDeleteLoading(false);
             setDeleteModal(null);
@@ -425,7 +463,7 @@ const AdminBrowseTab = () => {
     // =========================================================
     // 🏷️ CHECK IF JOB IS EXPIRED
     // =========================================================
-    const isJobExpired = useCallback((lastDate) => {
+    const isJobExpired = useCallback((lastDate?: string | null) => {
         if (!lastDate) return false;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -470,7 +508,7 @@ const AdminBrowseTab = () => {
             // Same group में original order (updatedAt desc already from firestore)
             return 0;
         });
-    }, [posts, searchQuery, isJobExpired]);
+    }, [posts, searchQuery]);
 
     // =========================================================
     // 🔄 FORM RESET & CLOSE
@@ -508,7 +546,7 @@ const AdminBrowseTab = () => {
             {/* ✅ Delete Modal */}
             {deleteModal && (
                 <DeleteModal
-                    jobTitle={deleteModal.title}
+                    jobTitle={deleteModal.title || 'इस Job को'}
                     onConfirm={handleDeleteConfirm}
                     onCancel={() => setDeleteModal(null)}
                     loading={deleteLoading}
@@ -886,7 +924,7 @@ const AdminBrowseTab = () => {
                                             <input
                                                 type="file"
                                                 accept="application/pdf,image/*"
-                                                onChange={e => setPdfFile(e.target.files[0])}
+                                                onChange={e => setPdfFile(e.target.files?.[0] ?? null)}
                                                 className="w-full p-2 text-xs border-2 border-red-200 rounded-xl bg-white font-bold cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-black file:bg-red-100 file:text-red-700"
                                             />
                                             <p className="text-[9px] text-gray-400 mt-1">
@@ -910,7 +948,7 @@ const AdminBrowseTab = () => {
                                             <input
                                                 type="file"
                                                 accept="image/*"
-                                                onChange={e => setImageFile(e.target.files[0])}
+                                                onChange={e => setImageFile(e.target.files?.[0] ?? null)}
                                                 className="w-full p-2 text-xs border-2 border-blue-200 rounded-xl bg-white font-bold cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-black file:bg-blue-100 file:text-blue-700"
                                             />
                                             <p className="text-[9px] text-gray-400 mt-1">

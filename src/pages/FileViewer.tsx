@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collectionGroup, getDocs, query, collection, limit } from 'firebase/firestore'; // limit और collection जोड़ा
@@ -9,14 +8,12 @@ const FileViewer = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [error, setError] = useState('');
-  const [articleData, setArticleData] = useState(null);
-  const [relatedBlogs, setRelatedBlogs] = useState([]); // 🚀 रैंडम ब्लॉग्स के लिए
-  const [loading, setLoading] = useState(true);
+  const [articleData, setArticleData] = useState<{ content?: string } | null>(null);
+  const [relatedBlogs, setRelatedBlogs] = useState<{ id: string; title?: string }[]>([]); // 🚀 रैंडम ब्लॉग्स के लिए
 
   useEffect(() => {
     const fetchAndProcess = async () => {
       if (!id) return;
-      setLoading(true);
       try {
         // 1. मुख्य नोट्स/आर्टिकल लाना
         let docRef = doc(db, "jobs", id);
@@ -40,25 +37,20 @@ const FileViewer = () => {
             setArticleData(data);
             
             // 🚀 2. रैंडम ब्लॉग्स लाना (जब नोट्स मिल जाएँ)
-            fetchRandomBlogs(); 
-
-            setLoading(false);
+            fetchRandomBlogs();
           } else {
             const fileUrl = data.applyLink || data.downloadUrl || data.link;
-            if (fileUrl) {
+            if (typeof fileUrl === 'string' && fileUrl) {
               window.location.href = fileUrl;
             } else {
               setError("File link is missing in database.");
-              setLoading(false);
             }
           }
         } else {
           setError("Material not found (ID: " + id + ")");
-          setLoading(false);
         }
       } catch (err) {
-        setError("Firebase Error: " + err.message);
-        setLoading(false);
+        setError("Firebase Error: " + (err instanceof Error ? err.message : String(err)));
       }
     };
 

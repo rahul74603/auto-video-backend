@@ -1,8 +1,8 @@
-// @ts-nocheck
 import React, {
     useState, useEffect, useCallback,
     useRef, useMemo
 } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import { db } from '@/firebase/config';
 import {
     collection, addDoc, updateDoc, deleteDoc,
@@ -12,13 +12,14 @@ import {
 import {
     Save, Trash2, Edit2, Database, Plus, X,
     CheckCircle, RefreshCw, Loader2, Filter,
-    AlertTriangle, ExternalLink, Eye
+    AlertTriangle, Eye
 } from 'lucide-react';
+import type { FastTrackItem } from '@/types/firestore';
 
 // =========================================================
 // 🛠️ HELPERS
 // =========================================================
-function createSlug(title) {
+function createSlug(title: string): string {
     if (!title) return `update-${Date.now()}`;
     return title
         .toLowerCase()
@@ -29,7 +30,27 @@ function createSlug(title) {
         .substring(0, 80);
 }
 
-const INITIAL_FORM = {
+function errMsg(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
+}
+
+interface FastTrackFormState {
+    title: string;
+    category: string;
+    org: string;
+    updateDate: string;
+    shortInfo: string;
+    directLink: string;
+    status: string;
+}
+
+interface ToastItem {
+    id: number;
+    message: string;
+    type: 'success' | 'error' | 'warning';
+}
+
+const INITIAL_FORM: FastTrackFormState = {
     title: '',
     category: 'Result',
     org: '',
@@ -42,7 +63,7 @@ const INITIAL_FORM = {
 // =========================================================
 // 🍞 TOAST COMPONENT
 // =========================================================
-const Toast = ({ toasts, removeToast }) => (
+const Toast = ({ toasts, removeToast }: { toasts: ToastItem[]; removeToast: (id: number) => void }) => (
     <div className="fixed top-4 right-4 z-50 space-y-2">
         {toasts.map(toast => (
             <div
@@ -71,7 +92,12 @@ const Toast = ({ toasts, removeToast }) => (
 // =========================================================
 // 🗑️ DELETE CONFIRM MODAL
 // =========================================================
-const DeleteModal = ({ item, onConfirm, onCancel, loading }) => (
+const DeleteModal = ({ item, onConfirm, onCancel, loading }: {
+    item: FastTrackItem;
+    onConfirm: () => void;
+    onCancel: () => void;
+    loading: boolean;
+}) => (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
         <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
@@ -107,7 +133,12 @@ const DeleteModal = ({ item, onConfirm, onCancel, loading }) => (
 // =========================================================
 // ✅ APPROVE CONFIRM MODAL
 // =========================================================
-const ApproveModal = ({ item, onConfirm, onCancel, loading }) => (
+const ApproveModal = ({ item, onConfirm, onCancel, loading }: {
+    item: FastTrackItem;
+    onConfirm: () => void;
+    onCancel: () => void;
+    loading: boolean;
+}) => (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
         <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
@@ -146,32 +177,17 @@ const ApproveModal = ({ item, onConfirm, onCancel, loading }) => (
 
 
 // =========================================================
-// 📋 FORM FIELD COMPONENT
-// =========================================================
-const FormField = ({ label, name, value, onChange, type = 'text', placeholder = '', required = false, className = '' }) => (
-    <div className={className}>
-        <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1 block">
-            {label} {required && <span className="text-red-500">*</span>}
-        </label>
-        <input
-            type={type}
-            name={name}
-            value={value}
-            onChange={onChange}
-            placeholder={placeholder}
-            required={required}
-            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-        />
-    </div>
-);
-
-// =========================================================
 // 🃏 UPDATE CARD COMPONENT
 // =========================================================
-const UpdateCard = React.memo(({ item, onEdit, onDelete, onApprove }) => {
+const UpdateCard = React.memo(({ item, onEdit, onDelete, onApprove }: {
+    item: FastTrackItem;
+    onEdit: (item: FastTrackItem) => void;
+    onDelete: (item: FastTrackItem) => void;
+    onApprove: (item: FastTrackItem) => void;
+}) => {
     const isDraft = item.status === 'draft';
 
-    const categoryConfig = {
+    const categoryConfig: Record<string, string> = {
         'Result': 'bg-green-100 text-green-700',
         'Admit Card': 'bg-red-100 text-red-700',
         'Answer Key': 'bg-blue-100 text-blue-700',
@@ -194,8 +210,8 @@ const UpdateCard = React.memo(({ item, onEdit, onDelete, onApprove }) => {
                     </span>
 
                     {/* Category Badge */}
-                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${categoryConfig[item.category] || 'bg-gray-100 text-gray-700'}`}>
-                        {item.category}
+                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${categoryConfig[item.category ?? ''] || 'bg-gray-100 text-gray-700'}`}>
+                        {item.category ?? ''}
                     </span>
 
                     {/* PDF Badge */}
@@ -211,7 +227,7 @@ const UpdateCard = React.memo(({ item, onEdit, onDelete, onApprove }) => {
                     )}
 
                     {/* Video Badge */}
-                    {item.videoSent && (
+                    {Boolean(item.videoSent) && (
                         <span className="bg-blue-100 text-blue-700 text-[9px] font-black uppercase px-2 py-0.5 rounded-md">
                             🎬 Video
                         </span>
@@ -290,28 +306,28 @@ UpdateCard.displayName = 'UpdateCard';
 // 🚀 MAIN COMPONENT
 // =========================================================
 const FastTrackManager = () => {
-    const [updates, setUpdates] = useState([]);
+    const [updates, setUpdates] = useState<FastTrackItem[]>([]);
     const [loading, setLoading] = useState(false);
-    const [fetchLoading, setFetchLoading] = useState(false);
+    const [fetchLoading, setFetchLoading] = useState(true);
     const [isFetching, setIsFetching] = useState(false);
-    const [activeTab, setActiveTab] = useState('draft');
-    const [editingId, setEditingId] = useState(null);
-    const [deleteModal, setDeleteModal] = useState(null);
+    const [activeTab, setActiveTab] = useState<'draft' | 'published' | 'all'>('draft');
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [deleteModal, setDeleteModal] = useState<FastTrackItem | null>(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
-    const [approveModal, setApproveModal] = useState(null);
+    const [approveModal, setApproveModal] = useState<FastTrackItem | null>(null);
     const [approveLoading, setApproveLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
     // Toast system
-    const [toasts, setToasts] = useState([]);
+    const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-    const [formData, setFormData] = useState(INITIAL_FORM);
+    const [formData, setFormData] = useState<FastTrackFormState>(INITIAL_FORM);
     const isSubmitting = useRef(false);
 
     // =========================================================
     // 🍞 TOAST FUNCTIONS
     // =========================================================
-    const showToast = useCallback((message, type = 'success') => {
+    const showToast = useCallback((message: string, type: ToastItem['type'] = 'success') => {
         const id = Date.now();
         setToasts(prev => [...prev, { id, message, type }]);
         setTimeout(() => {
@@ -319,40 +335,51 @@ const FastTrackManager = () => {
         }, 4000);
     }, []);
 
-    const removeToast = useCallback((id) => {
+    const removeToast = useCallback((id: number) => {
         setToasts(prev => prev.filter(t => t.id !== id));
     }, []);
 
     // =========================================================
     // 📡 FETCH DATA (One-time, not real-time)
     // =========================================================
+    const loadUpdates = useCallback(async (): Promise<FastTrackItem[]> => {
+        const q = query(
+            collection(db, "fast_track"),
+            orderBy("createdAt", "desc"),
+            limit(200)
+        );
+        const snap = await getDocs(q);
+        return snap.docs.map(d => ({ id: d.id, ...d.data() }) as FastTrackItem);
+    }, []);
+
     const fetchUpdates = useCallback(async () => {
         setFetchLoading(true);
         try {
-            const q = query(
-                collection(db, "fast_track"),
-                orderBy("createdAt", "desc"),
-                limit(200)
-            );
-            const snap = await getDocs(q);
-            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setUpdates(data);
+            setUpdates(await loadUpdates());
         } catch (err) {
             console.error("Fetch error:", err);
-            showToast("Data load failed: " + err.message, 'error');
+            showToast("Data load failed: " + errMsg(err), 'error');
         } finally {
             setFetchLoading(false);
         }
-    }, [showToast]);
+    }, [loadUpdates, showToast]);
 
     useEffect(() => {
-        fetchUpdates();
-    }, [fetchUpdates]);
+        let cancelled = false;
+        loadUpdates()
+            .then(data => { if (!cancelled) setUpdates(data); })
+            .catch((err: unknown) => {
+                console.error("Fetch error:", err);
+                if (!cancelled) showToast("Data load failed: " + errMsg(err), 'error');
+            })
+            .finally(() => { if (!cancelled) setFetchLoading(false); });
+        return () => { cancelled = true; };
+    }, [loadUpdates, showToast]);
 
     // =========================================================
     // 📝 FORM FIELD UPDATER
     // =========================================================
-    const handleChange = useCallback((e) => {
+    const handleChange = useCallback((e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     }, []);
@@ -360,7 +387,7 @@ const FastTrackManager = () => {
     // =========================================================
     // 💾 SAVE / UPDATE
     // =========================================================
-    const handleSubmit = async (e) => {
+    const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         if (isSubmitting.current) return;
 
@@ -400,7 +427,7 @@ const FastTrackManager = () => {
                 }).toLowerCase().replace(' ', '-');
                 const finalSlug = `${slug}-${dateSuffix}`;
 
-                const docRef = await addDoc(collection(db, "fast_track"), {
+                await addDoc(collection(db, "fast_track"), {
                     ...formData,
                     slug: finalSlug,
                     createdAt: serverTimestamp()
@@ -408,22 +435,10 @@ const FastTrackManager = () => {
 
                 showToast("✅ New update added!");
 
-                // ✅ Trigger notifications if published
+                // ✅ Backend Firestore trigger (onFastTrackApprovedSendTelegram)
+                // auto-sends Telegram alert + generates video on publish.
                 if (formData.status === 'published') {
-                    const payload = {
-                        ...formData,
-                        id: docRef.id,
-                        slug: finalSlug
-                    };
-                    await triggerGitHubAction('send_telegram_alert', {
-                        jobData: payload,
-                        docId: docRef.id,
-                        type: 'FAST_TRACK'
-                    });
-                    await triggerGitHubAction('generate_video', {
-                        jobData: payload
-                    });
-                    showToast("📢 Telegram & Video triggered!", 'success');
+                    showToast("📢 Published! Telegram alert & video backend se auto-generate honge.", 'success');
                 }
 
                 // Refresh list
@@ -436,7 +451,7 @@ const FastTrackManager = () => {
 
         } catch (err) {
             console.error("Save error:", err);
-            showToast("Error: " + err.message, 'error');
+            showToast("Error: " + errMsg(err), 'error');
         } finally {
             setLoading(false);
             isSubmitting.current = false;
@@ -446,7 +461,7 @@ const FastTrackManager = () => {
     // =========================================================
     // ✏️ EDIT
     // =========================================================
-    const handleEdit = useCallback((item) => {
+    const handleEdit = useCallback((item: FastTrackItem) => {
         setFormData({
             title: item.title || '',
             category: item.category || 'Result',
@@ -471,7 +486,7 @@ const FastTrackManager = () => {
             setUpdates(prev => prev.filter(u => u.id !== deleteModal.id));
             showToast("✅ Deleted successfully!");
         } catch (err) {
-            showToast("Delete failed: " + err.message, 'error');
+            showToast("Delete failed: " + errMsg(err), 'error');
         } finally {
             setDeleteLoading(false);
             setDeleteModal(null);
@@ -499,10 +514,11 @@ const FastTrackManager = () => {
 
             showToast("✅ Published successfully!");
 
-           
+            // Backend Firestore trigger auto-sends Telegram alert + video
+            // jab status draft → published hota hai.
 
         } catch (err) {
-            showToast("Approve failed: " + err.message, 'error');
+            showToast("Approve failed: " + errMsg(err), 'error');
         } finally {
             setApproveLoading(false);
             setApproveModal(null);
@@ -538,7 +554,7 @@ const FastTrackManager = () => {
                 showToast("⚠️ " + (data.error || "Something went wrong"), 'warning');
             }
         } catch (err) {
-            showToast("Fetch error: " + err.message, 'error');
+            showToast("Fetch error: " + errMsg(err), 'error');
         } finally {
             setIsFetching(false);
         }
@@ -825,11 +841,11 @@ const FastTrackManager = () => {
 
                             {/* Tab Buttons */}
                             <div className="flex bg-slate-100 p-1 rounded-xl">
-                                {[
+                                {([
                                     { id: 'draft', label: '🟡 Drafts' },
                                     { id: 'published', label: '🟢 Live' },
                                     { id: 'all', label: 'All' }
-                                ].map(tab => (
+                                ] as { id: 'draft' | 'published' | 'all'; label: string }[]).map(tab => (
                                     <button
                                         key={tab.id}
                                         onClick={() => setActiveTab(tab.id)}

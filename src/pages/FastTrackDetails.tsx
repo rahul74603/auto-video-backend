@@ -1,8 +1,8 @@
-// @ts-nocheck
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useFastTrack } from '@/features/fast-track/hooks/useFastTrack';
 import { fastTrackRepository } from '@/features/fast-track/data/fastTrackRepository';
+import type { FastTrackItem, TimestampLike } from '@/types/firestore';
 import {
     Calendar, Building2, ArrowLeft,
     Download, FileText, ChevronRight, Loader2
@@ -12,19 +12,29 @@ import SEO from '../components/SEO';
 // =========================================================
 // 🛠️ HELPERS
 // =========================================================
-function getIsoDate(dateField) {
+function getIsoDate(dateField: TimestampLike): string {
     if (!dateField) return new Date().toISOString();
     try {
-        if (dateField?.seconds) return new Date(dateField.seconds * 1000).toISOString();
-        if (dateField?.toDate) return dateField.toDate().toISOString();
-        return new Date(dateField).toISOString();
+        const ts = dateField as { seconds?: number; toDate?: () => Date };
+        if (ts?.seconds) return new Date(ts.seconds * 1000).toISOString();
+        if (ts?.toDate) return ts.toDate().toISOString();
+        return new Date(dateField as string | number | Date).toISOString();
     } catch {
         return new Date().toISOString();
     }
 }
 
-function getCategoryColors(category) {
-    const map = {
+interface CategoryColors {
+    bg: string;
+    text: string;
+    card: string;
+    border: string;
+    heading: string;
+    icon: string;
+}
+
+function getCategoryColors(category?: string): CategoryColors {
+    const map: Record<string, CategoryColors> = {
         'Result': {
             bg: 'bg-green-600',
             text: 'text-green-700',
@@ -58,7 +68,7 @@ function getCategoryColors(category) {
             icon: '📚'
         }
     };
-    return map[category] || {
+    return (category && map[category]) || {
         bg: 'bg-purple-600',
         text: 'text-purple-700',
         card: 'bg-purple-50 border-purple-200',
@@ -71,7 +81,7 @@ function getCategoryColors(category) {
 // =========================================================
 // 🃏 LIST CARD COMPONENT
 // =========================================================
-const ListCard = ({ item, currentId }) => {
+const ListCard = ({ item, currentId }: { item: FastTrackItem; currentId?: string | null }) => {
     const isActive = item.id === currentId;
     const colors = getCategoryColors(item.category);
 
@@ -105,7 +115,7 @@ const ListCard = ({ item, currentId }) => {
 // =========================================================
 // 📋 CATEGORY SECTION
 // =========================================================
-const CategorySection = ({ title, items, currentId, colors }) => {
+const CategorySection = ({ title, items, currentId, colors }: { title: string; items: FastTrackItem[]; currentId?: string | null; colors: CategoryColors }) => {
     if (!items || items.length === 0) return null;
 
     return (
@@ -133,33 +143,28 @@ const FastTrackDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
 
-    const [data, setData] = useState(null);
-    const [updatesList, setUpdatesList] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [notFound, setNotFound] = useState(false);
-    const [docId, setDocId] = useState(null);
+    const [updatesList, setUpdatesList] = useState<FastTrackItem[]>([]);
 
     // =========================================================
-    const { update: loadedUpdate, loading: updateLoading, error: updateError } = useFastTrack(id);
+    const { update: data, loading, error: updateError } = useFastTrack(id);
+    // Derived values — no syncing effects needed.
+    const docId = data?.id ?? null;
+    const notFound = Boolean(updateError) || !id;
 
     useEffect(() => {
-        setLoading(updateLoading);
-        if (!id || updateError) {
-            setNotFound(true);
-            return;
-        }
-        if (!loadedUpdate?.id) return;
-
-        setNotFound(false);
-        setData(loadedUpdate);
-        setDocId(loadedUpdate.id);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, [id, loadedUpdate, updateLoading, updateError]);
+        if (data?.id) window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, [data?.id]);
 
     useEffect(() => {
+        let cancelled = false;
         fastTrackRepository.listLatest(50)
-            .then((items) => setUpdatesList(items.filter(item => item.status !== 'draft')))
+            .then((items) => {
+                if (!cancelled) setUpdatesList(items.filter(item => item.status !== 'draft'));
+            })
             .catch((err) => console.error("List fetch error:", err));
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
     // =========================================================
@@ -239,9 +244,27 @@ const FastTrackDetails = () => {
                 ogType="article"
                 publishedDate={publishedIso}
                 modifiedDate={publishedIso}
-                author="StudyGyaan"
+                author={data.authorName || "StudyGyaan Editorial Team"}
                 category={data.category}
             />
+
+            {/* FAQ schema — only when AI-reviewed article FAQs exist */}
+            {Array.isArray(data.faqs) && data.faqs.length > 0 && (
+                <script
+                    type="application/ld+json"
+                    dangerouslySetInnerHTML={{
+                        __html: JSON.stringify({
+                            "@context": "https://schema.org",
+                            "@type": "FAQPage",
+                            "mainEntity": data.faqs.map((faq) => ({
+                                "@type": "Question",
+                                "name": faq.question,
+                                "acceptedAnswer": { "@type": "Answer", "text": faq.answer }
+                            }))
+                        })
+                    }}
+                />
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
 
@@ -352,6 +375,37 @@ const FastTrackDetails = () => {
                                 )}
                             </div>
                         </div>
+
+                        {/* ✅ AI-reviewed full article (source-grounded pipeline only) */}
+                        {data.articleHtml && (
+                            <div className="bg-white border border-slate-100 rounded-2xl p-5 md:p-8 shadow-sm mt-4">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-1.5">
+                                    <FileText size={13} className="text-emerald-500" aria-hidden="true" />
+                                    Fact-checked by {data.authorName || "StudyGyaan Editorial Team"}
+                                </p>
+                                <div
+                                    className="prose prose-sm md:prose max-w-none text-slate-700 ai-article-content [&_.table-responsive]:overflow-x-auto [&_table]:w-full [&_table]:text-sm"
+                                    dangerouslySetInnerHTML={{ __html: data.articleHtml }}
+                                />
+                            </div>
+                        )}
+
+                        {/* ✅ Verified FAQs from the reviewed article */}
+                        {Array.isArray(data.faqs) && data.faqs.length > 0 && (
+                            <div className="bg-white border border-slate-100 rounded-2xl p-5 md:p-8 shadow-sm mt-4">
+                                <h2 className="text-sm md:text-lg font-black text-slate-800 mb-4 uppercase tracking-tight">
+                                    अक्सर पूछे जाने वाले प्रश्न (FAQs)
+                                </h2>
+                                <div className="space-y-3">
+                                    {data.faqs.map((faq, index) => (
+                                        <div key={index} className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                                            <h3 className="font-black text-slate-800 text-xs md:text-sm leading-snug">{faq.question}</h3>
+                                            <p className="text-slate-600 text-xs md:text-sm font-medium mt-1.5 leading-relaxed">{faq.answer}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </article>
 
                     {/* ✅ Internal Links - Fixed /mock-tests → /test */}

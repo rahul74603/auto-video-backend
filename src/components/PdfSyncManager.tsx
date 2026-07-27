@@ -45,9 +45,9 @@ const PdfSyncManager = () => {
 
       setStatus(newAdded > 0 ? `Sync Complete! 🎉 Added ${newAdded} new files.` : 'Everything is already up to date! ✅');
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      setStatus(`Error: ${error.message}`);
+      setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setLoading(false);
     }

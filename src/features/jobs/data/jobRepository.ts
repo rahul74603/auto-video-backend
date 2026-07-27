@@ -15,10 +15,9 @@ import {
   type QueryConstraint,
 } from 'firebase/firestore';
 
-export type JobRecord = {
-  id: string;
-  [key: string]: unknown;
-};
+import type { JobPost } from '@/types/firestore';
+
+export type JobRecord = JobPost;
 
 export type JobListOptions = {
   limitCount?: number;

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import SEO from '../components/SEO';
 import { useEffect, useState } from 'react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
@@ -8,13 +7,29 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { courseRepository } from '@/features/courses/data/courseRepository';
 import { userRepository } from '@/features/users/data/userRepository';
 import { useNavigate } from 'react-router-dom';
-import { 
-  BookOpen, ArrowRight, Loader2, ShoppingBag, Sparkles, 
-  Tag, ExternalLink, Flame, ShoppingCart, Zap, CheckCircle2, GraduationCap, ArrowLeft
+import {
+  BookOpen, ArrowRight, Loader2, ShoppingBag, Sparkles,
+  Flame, ShoppingCart, Zap, CheckCircle2, GraduationCap
 } from 'lucide-react';
+type MyCourseView = {
+  id: string;
+  title?: string;
+};
+
+type MyCourseLink = {
+  title?: string;
+  url?: string;
+};
+
+type MyCoursesSettings = {
+  mrpPrice?: string | number;
+  discountPercent?: string | number;
+  relatedBlogs?: MyCourseLink[];
+};
+
 const MyCourses = () => {
-  const [myCourses, setMyCourses] = useState<any[]>([]);
-  const [globalSettings, setGlobalSettings] = useState<any>(null);
+  const [myCourses, setMyCourses] = useState<MyCourseView[]>([]);
+  const [globalSettings, setGlobalSettings] = useState<MyCoursesSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -44,14 +59,14 @@ const MyCourses = () => {
                 });
 
                 const coursesResults = await Promise.all(coursePromises);
-                setMyCourses(coursesResults.filter(c => c !== null));
+                setMyCourses(coursesResults.filter(c => c !== null) as MyCourseView[]);
               }
             }
 
             // 4. Fetch Global Settings for Sidebar
             const settingsSnap = await siteSettingsRepository.getGlobal();
             if (settingsSnap) {
-              setGlobalSettings(settingsSnap);
+              setGlobalSettings(settingsSnap as MyCoursesSettings);
             }
           } catch (error) {
             console.error("Dashboard Error:", error);
@@ -164,8 +179,8 @@ const MyCourses = () => {
                     <Sparkles size={16} className="text-blue-600 animate-pulse" /> नए अपडेट्स 🔥
                   </h3>
                   <ul className="space-y-3 md:space-y-4 relative z-10 font-black">
-                      {globalSettings.relatedBlogs.map((b: any, i: number) => (
-                          <li key={i} onClick={() => window.open(b.url, '_blank')} className={`bg-gradient-to-r ${loopColors[i % loopColors.length]} p-[0.8px] rounded-lg cursor-pointer active:scale-95 shadow-sm`}>
+                      {globalSettings.relatedBlogs.map((b, i: number) => (
+                          <li key={i} onClick={() => { if (b.url) window.open(b.url, '_blank'); }} className={`bg-gradient-to-r ${loopColors[i % loopColors.length]} p-[0.8px] rounded-lg cursor-pointer active:scale-95 shadow-sm`}>
                               <div className="bg-white p-2 md:p-3 rounded-[7px] text-[9px] md:text-[11.5px] text-slate-800 line-clamp-2 leading-tight">
                                   {b.title}
                               </div>

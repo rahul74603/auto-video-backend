@@ -1,10 +1,8 @@
-// @ts-nocheck
 import { useEffect, useRef } from 'react';
 
 // ✅ 1. GLOBAL CONSTANTS (जरूरी हैं, इन्हें रहने दें)
 const SITE_URL = 'https://studygyaan.in';
 const SITE_NAME = 'StudyGyaan';
-const DEFAULT_IMAGE = `${SITE_URL}/images/og-default.jpg`;
 
 // --- TYPES (इन्हें रखा गया है ताकि आपकी कोडिंग में रेड लाइन्स न आएं) ---
 interface SEOProps {
@@ -83,7 +81,7 @@ export const useSEO = ({
             document.head.removeChild(scriptRef.current);
             scriptRef.current = null;
           }
-        } catch (e) {
+        } catch {
           // Element might be already removed by React
         }
       }

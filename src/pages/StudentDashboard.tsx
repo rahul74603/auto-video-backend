@@ -1,42 +1,43 @@
-// @ts-nocheck
 import { useEffect, useState } from 'react';
 import { auth } from '../firebase/config';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { orderRepository } from '@/features/orders/data/orderRepository';
 import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
 import { BookOpen, LogOut, Download, PlayCircle, Lock, ChevronRight, Crown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 
-const StudentDashboard = () => {
-  const [user, setUser] = useState<any>(null);
-  const [purchasedCourses, setPurchasedCourses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedCourse, setSelectedCourse] = useState<any>(null);
-  const [courseContent, setCourseContent] = useState<any[]>([]);
+type PurchasedCourse = {
+  id?: string;
+  title?: string;
+  description?: string;
+};
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        fetchMyCourses(currentUser.email);
-      } else {
-        setLoading(false);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
+type CourseContentItem = {
+  id: string;
+  type?: string;
+  title?: string;
+  link?: string;
+};
+
+const StudentDashboard = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [purchasedCourses, setPurchasedCourses] = useState<PurchasedCourse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedCourse, setSelectedCourse] = useState<PurchasedCourse | null>(null);
+  const [courseContent, setCourseContent] = useState<CourseContentItem[]>([]);
 
   const fetchMyCourses = async (email: string | null) => {
     if (!email) return;
     try {
       const orders = await orderRepository.listByCustomerEmail(email, 'completed');
       
-      const courses: any[] = [];
+      const courses: PurchasedCourse[] = [];
       orders.forEach(orderData => {
-        if(orderData.items) {
-            orderData.items.forEach((item: any) => {
-                if(item.product) courses.push(item.product);
+        const items = orderData.items as Array<{ product?: PurchasedCourse } & PurchasedCourse> | undefined;
+        if (items) {
+            items.forEach((item) => {
+                if (item.product) courses.push(item.product);
                 else courses.push(item);
             });
         }
@@ -51,12 +52,26 @@ const StudentDashboard = () => {
     }
   };
 
-  const openCourse = async (course: any) => {
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        fetchMyCourses(currentUser.email);
+      } else {
+        setLoading(false);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+
+  const openCourse = async (course: PurchasedCourse) => {
     setSelectedCourse(course);
     // document.title यहाँ से हटा दिया गया है क्योंकि SEO कम्पोनेंट इसे संभालेगा
-    
+    if (!course.id) return;
+
     const content = await courseContentRepository.listContent(course.id);
-    setCourseContent(content);
+    setCourseContent(content as CourseContentItem[]);
   };
 
   const closeCourse = () => {
@@ -112,7 +127,7 @@ const StudentDashboard = () => {
                     </div>
                 ) : (
                     <div className="grid gap-2 md:gap-4">
-                        {courseContent.map((item: any) => (
+                        {courseContent.map((item) => (
                             <div key={item.id} className="flex justify-between items-center p-2.5 md:p-4 border border-slate-100 rounded-lg md:rounded-xl hover:border-blue-400 hover:bg-blue-50 transition group bg-white shadow-sm gap-2">
                                 <div className="flex items-center gap-2.5 md:gap-4 flex-1 min-w-0">
                                     <div className={`p-2 md:p-3 rounded-md md:rounded-lg shrink-0 ${item.type === 'VIDEO' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-500'}`}>
@@ -143,7 +158,7 @@ const StudentDashboard = () => {
                         <Link to="/" className="bg-blue-600 text-white px-5 md:px-10 py-2 md:py-4 rounded-lg md:rounded-xl font-black hover:bg-slate-900 shadow-xl transition text-[10px] md:text-base uppercase tracking-widest">Browse Store</Link>
                     </div>
                 ) : (
-                    purchasedCourses.map((course: any, index: number) => (
+                    purchasedCourses.map((course, index: number) => (
                         <div key={index} className="bg-white border border-slate-100 p-3.5 md:p-6 rounded-xl md:rounded-[2rem] shadow-sm hover:shadow-xl transition-all group relative overflow-hidden flex flex-col hover:-translate-y-1">
                             <div className="absolute top-0 right-0 bg-yellow-400 text-yellow-900 text-[8px] md:text-[10px] font-black px-2 md:px-4 py-1 rounded-bl-xl shadow-sm">PREMIUM</div>
                             <div className="h-8 w-8 md:h-14 md:w-14 bg-gradient-to-br from-blue-100 to-blue-50 rounded-lg md:rounded-2xl flex items-center justify-center text-blue-600 mb-2.5 md:mb-4 shadow-inner border border-blue-100">
@@ -165,7 +180,7 @@ const StudentDashboard = () => {
 };
 
 // Internal utility to keep Lucide imports clean
-const ArrowLeft = ({className, size}) => (
+const ArrowLeft = ({ className, size }: { className?: string; size?: number }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width={size || "24"} height={size || "24"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
 );
 

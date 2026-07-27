@@ -1,7 +1,6 @@
-// @ts-nocheck
-import React, {
+import {
     lazy, Suspense, useEffect,
-    useRef, useState, useCallback
+    useRef, useState, type ReactNode
 } from 'react';
 import SEO from '@/components/SEO';
 
@@ -64,7 +63,7 @@ const GridSkeleton = () => (
 // (Section सिर्फ तब load हो जब viewport में आए)
 // =========================================================
 function useLazySection(options = {}) {
-    const ref = useRef(null);
+    const ref = useRef<HTMLElement | null>(null);
     const [isVisible, setIsVisible] = useState(false);
 
     useEffect(() => {
@@ -99,6 +98,12 @@ const LazySection = ({
     fallback,
     className = "",
     minHeight = "200px"
+}: {
+    id?: string;
+    children: ReactNode;
+    fallback?: ReactNode;
+    className?: string;
+    minHeight?: string;
 }) => {
     const { ref, isVisible } = useLazySection();
 

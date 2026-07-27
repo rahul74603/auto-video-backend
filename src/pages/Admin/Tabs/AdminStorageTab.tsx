@@ -1,23 +1,43 @@
-// @ts-nocheck
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { db, storage } from '../../../firebase/config';
-import { collectionGroup, query, getDocs, doc, deleteDoc, collection } from 'firebase/firestore';
+import { collectionGroup, query, getDocs, doc, deleteDoc } from 'firebase/firestore';
 import { ref, listAll, getMetadata, deleteObject } from 'firebase/storage';
-import { 
-    Trash2, HardDrive, Search, Activity, ExternalLink, 
-    Gem, FileText, Briefcase, Filter, Layers, 
-    Share2, MousePointer2, PieChart, AlertTriangle, Gauge 
+import type { StorageReference } from 'firebase/storage';
+import {
+    Trash2, HardDrive, ExternalLink,
+    Gem, FileText, Briefcase,
+    Share2, MousePointer2, PieChart, AlertTriangle, Gauge
 } from 'lucide-react';
 
+// =========================================================
+// 🧾 VIEW TYPES
+// =========================================================
+interface StorageFileItem {
+    id: string;
+    title: string;
+    size: string;
+    sizeBytes: number;
+    url: string;
+    path: string;
+    source: 'STORAGE' | 'DATABASE';
+    hits: number;
+    shares: number;
+    category: string;
+}
+
+function errMsg(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
+}
+
 const AdminStorageTab = () => {
-    const [allFiles, setAllFiles] = useState([]);
+    const [allFiles, setAllFiles] = useState<StorageFileItem[]>([]);
     const [loading, setLoading] = useState(false);
-    const [activeFilter, setActiveFilter] = useState('ALL'); 
+    const [activeFilter, setActiveFilter] = useState('ALL');
     const [status, setStatus] = useState("");
 
     // 🚀 STORAGE SCANNER
-    const scanStorage = async (folderRef) => {
-        let files = [];
+    const scanStorage = async (folderRef: StorageReference): Promise<StorageFileItem[]> => {
+        let files: StorageFileItem[] = [];
         try {
             const res = await listAll(folderRef);
             const metas = await Promise.all(res.items.map(async (item) => {
@@ -29,7 +49,7 @@ const AdminStorageTab = () => {
                     sizeBytes: m.size,
                     url: `https://firebasestorage.googleapis.com/v0/b/${storage.app.options.storageBucket}/o/${encodeURIComponent(item.fullPath)}?alt=media`,
                     path: item.fullPath,
-                    source: 'STORAGE',
+                    source: 'STORAGE' as const,
                     hits: 0,
                     shares: 0,
                     category: item.fullPath.toLowerCase().includes('premium') ? 'PREMIUM' : 
@@ -48,7 +68,7 @@ const AdminStorageTab = () => {
     const runUltimateScan = async () => {
         setLoading(true);
         setStatus("System Scanning... डेटा का विश्लेषण हो रहा है।");
-        const masterList = [];
+        const masterList: StorageFileItem[] = [];
 
         try {
             const dbTargets = [
@@ -81,7 +101,7 @@ const AdminStorageTab = () => {
                             sizeBytes: (parseFloat(data.fileSize) || 0) * 1024 * 1024,
                             path: d.ref.path,
                             url: link,
-                            source: 'DATABASE',
+                            source: 'DATABASE' as const,
                             hits: data.downloadCount || 0,
                             shares: data.shareCount || 0,
                             category: target.cat
@@ -103,7 +123,7 @@ const AdminStorageTab = () => {
             masterList.sort((a, b) => b.hits - a.hits);
             setAllFiles(masterList);
             setStatus("Scan Complete! डेटा हाज़िर है। ✅");
-        } catch (err) { setStatus("Error: " + err.message); }
+        } catch (err) { setStatus("Error: " + errMsg(err)); }
         finally { setLoading(false); }
     };
 
@@ -237,6 +257,7 @@ const AdminStorageTab = () => {
                                                 else {
                                                     const pathParts = file.path.split('/');
                                                     const docId = pathParts.pop();
+                                                    if (!docId) return;
                                                     const colPath = pathParts.join('/');
                                                     await deleteDoc(doc(db, colPath, docId));
                                                 }

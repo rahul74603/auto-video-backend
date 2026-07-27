@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { useState } from 'react';
 import { Share2, MessageCircle, Copy, Check } from 'lucide-react';
 
@@ -24,7 +23,7 @@ const ShareButtons: React.FC<ShareProps> = ({ title, url }) => {
           text: title,
           url: shareUrl,
         });
-      } catch (err) {
+      } catch {
         console.log("Share cancelled");
       }
     } else {

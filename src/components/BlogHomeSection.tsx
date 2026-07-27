@@ -1,6 +1,6 @@
-// @ts-nocheck
 
 import { useBlogs } from '@/features/blogs/hooks/useBlogs';
+import { asText, toDateSafe, type TimestampLike } from '@/types/firestore';
 import { useNavigate, Link } from 'react-router-dom';
 import { Calendar, ChevronRight } from 'lucide-react';
 
@@ -10,7 +10,7 @@ const BlogHomeSection = () => {
 
 
 
-  const formatDate = (d) => d?.seconds ? new Date(d.seconds * 1000).toLocaleDateString('hi-IN') : "Update";
+  const formatDate = (d: TimestampLike) => toDateSafe(d)?.toLocaleDateString('hi-IN') ?? "Update";
 
   if (loading && blogs.length === 0) return null;
 
@@ -36,11 +36,11 @@ const BlogHomeSection = () => {
             >
               {/* छोटी इमेज */}
               <div className="w-16 h-16 md:w-20 md:h-20 rounded-xl overflow-hidden shrink-0 bg-slate-100">
-                <img 
-                  src={blog.imageUrl || blog.image || '/logo.png'} 
-                  alt={blog.title || 'StudyGyaan Blog Headline'} 
-                  className="w-full h-full object-cover group-hover:scale-110 transition-all duration-500" 
-                  onError={(e) => { e.target.src = '/logo.png'; }} // ✅ कनेक्शन फेल होने पर बैकअप इमेज
+                <img
+                  src={asText(blog.imageUrl) || asText(blog.image) || '/logo.png'}
+                  alt={asText(blog.title) || 'StudyGyaan Blog Headline'}
+                  className="w-full h-full object-cover group-hover:scale-110 transition-all duration-500"
+                  onError={(e) => { e.currentTarget.src = '/logo.png'; }} // ✅ कनेक्शन फेल होने पर बैकअप इमेज
                 />
               </div>
 
@@ -48,11 +48,11 @@ const BlogHomeSection = () => {
                 <div className="flex items-center gap-2 mb-1">
                   {index < 2 && <span className="text-[8px] bg-orange-500 text-white px-2 py-0.5 rounded-full font-black animate-pulse uppercase">HOT</span>}
                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight flex items-center gap-1">
-                    <Calendar size={10}/> {formatDate(blog.createdAt)}
+                    <Calendar size={10}/> {formatDate(blog.createdAt as TimestampLike)}
                   </span>
                 </div>
                 <h3 className="text-sm md:text-base font-black text-slate-800 line-clamp-2 leading-tight group-hover:text-blue-600">
-                  {blog.title}
+                  {asText(blog.title)}
                 </h3>
               </div>
             </div>

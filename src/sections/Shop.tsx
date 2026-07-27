@@ -1,9 +1,7 @@
-// @ts-nocheck
 import React, { useEffect, useState } from 'react';
 // ✅ यहाँ doc और getDoc को ऐड कर दिया है (यही असली एरर था)
-import { collection, getDocs, query, where, orderBy, limit, } from 'firebase/firestore';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
-import { db, auth } from '../firebase/config';
+import { auth } from '../firebase/config';
 import { useNavigate } from 'react-router-dom';
 import { Crown, ArrowRight, Loader2, Sparkles, Tag, Zap, ExternalLink, FileText, Lock, BookOpen, ShoppingCart } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -11,16 +9,40 @@ import { orderRepository } from '@/features/orders/data/orderRepository';
 import { courseRepository } from '@/features/courses/data/courseRepository';
 import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
 
+type CourseFileView = {
+  id: string;
+  title?: string;
+};
+
+type ShopCourse = {
+  id: string;
+  orderIndex?: number;
+  title?: string;
+  description?: string;
+};
+
+type ShopLink = {
+  title?: string;
+  url?: string;
+};
+
+type ShopGlobalSettings = {
+  mrpPrice?: string;
+  discountPercent?: string;
+  relatedBlogs?: ShopLink[];
+  shopUpdates?: ShopLink[];
+};
+
 // 🔥 Included Files List (PC पर डिटेल दिखाने के लिए)
 const CourseFilesList = ({ courseId }: { courseId: string }) => {
-  const [files, setFiles] = useState<any[]>([]);
+  const [files, setFiles] = useState<CourseFileView[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchFiles = async () => {
       try {
         const content = await courseContentRepository.listContent(courseId, { orderByCreatedAt: true, limitCount: 5 });
-        setFiles(content);
+        setFiles(content as CourseFileView[]);
       } catch (err) { 
         console.error("Files Fetch Error:", err); 
       } finally { 
@@ -54,8 +76,8 @@ const CourseFilesList = ({ courseId }: { courseId: string }) => {
 
 const Shop: React.FC = () => {
   const navigate = useNavigate();
-  const [courses, setCourses] = useState<any[]>([]);
-  const [globalSettings, setGlobalSettings] = useState<any>(null); 
+  const [courses, setCourses] = useState<ShopCourse[]>([]);
+  const [globalSettings, setGlobalSettings] = useState<ShopGlobalSettings | null>(null);
   const [purchasedCourseIds, setPurchasedCourseIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -63,7 +85,7 @@ const Shop: React.FC = () => {
     const fetchData = async () => {
       try {
         // Courses लाना
-        const fetched = await courseRepository.listCourses();
+        const fetched = (await courseRepository.listCourses()) as ShopCourse[];
         fetched.sort((a, b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999));
         setCourses(fetched);
 
@@ -71,7 +93,7 @@ const Shop: React.FC = () => {
         const settings = await siteSettingsRepository.getGlobal();
 
 if (settings) {
-  setGlobalSettings(settings);
+  setGlobalSettings(settings as ShopGlobalSettings);
 }
       } catch (err) { 
         console.error("Data Fetch Error:", err); 
@@ -85,7 +107,11 @@ if (settings) {
       if (user) {
         try {
           const orders = await orderRepository.listByUser(user.uid);
-          setPurchasedCourseIds(orders.map(order => order.courseId));
+          setPurchasedCourseIds(
+            orders
+              .map(order => order.courseId)
+              .filter((courseId): courseId is string => typeof courseId === 'string')
+          );
         } catch (err) {
           console.error("Orders Fetch Error:", err);
         }
@@ -184,8 +210,8 @@ if (settings) {
                 <Sparkles size={20} className="text-purple-600" /> Trending Updates
              </h3>
              <div className="space-y-3">
-                {(globalSettings?.relatedBlogs || []).slice(0, 3).map((item: any, i: number) => (
-                  <div key={i} onClick={() => window.open(item.url, '_blank')} className="cursor-pointer p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between group">
+                {(globalSettings?.relatedBlogs || []).slice(0, 3).map((item, i: number) => (
+                  <div key={i} onClick={() => { if (item.url) window.open(item.url, '_blank'); }} className="cursor-pointer p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between group">
                     <span className="text-[12px] md:text-base font-bold text-slate-700 line-clamp-1">{item.title}</span>
                     <ArrowRight size={16} className="text-slate-400 group-hover:translate-x-1 transition-transform" />
                   </div>
@@ -199,8 +225,8 @@ if (settings) {
                 <Tag size={20} className="text-blue-600" /> Quick Access
              </h3>
              <div className="grid grid-cols-1 gap-3">
-                {(globalSettings?.shopUpdates || []).slice(0, 3).map((item: any, i: number) => (
-                  <div key={i} onClick={() => window.open(item.url, '_blank')} className="cursor-pointer p-4 bg-blue-600 text-white rounded-2xl flex items-center justify-between font-black text-xs md:text-base italic tracking-tight">
+                {(globalSettings?.shopUpdates || []).slice(0, 3).map((item, i: number) => (
+                  <div key={i} onClick={() => { if (item.url) window.open(item.url, '_blank'); }} className="cursor-pointer p-4 bg-blue-600 text-white rounded-2xl flex items-center justify-between font-black text-xs md:text-base italic tracking-tight">
                     <span className="truncate pr-4">{item.title}</span>
                     <ExternalLink size={16} />
                   </div>

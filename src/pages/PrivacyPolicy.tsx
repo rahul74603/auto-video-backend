@@ -1,8 +1,6 @@
-// @ts-nocheck
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { 
-  ShieldCheck, Lock, Eye, Database, UserPlus, Globe, 
-  Info, ShieldAlert, FileText, Smartphone, Mail, CheckCircle 
+  ShieldCheck, Lock, Database, UserPlus, Globe, ShieldAlert, FileText, Smartphone, Mail, CheckCircle 
 } from 'lucide-react';
 import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 
