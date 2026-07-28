@@ -30,6 +30,9 @@ interface ArticleApiResult {
   reviewPassed?: boolean;
   collection?: string;
   docId?: string;
+  autoSearched?: boolean;
+  searchQuery?: string;
+  resolvedSourceUrl?: string;
 }
 
 const apiErrorStatus = (err: unknown): number | undefined =>
@@ -109,12 +112,16 @@ const AdminAIArticleStudio = () => {
 
   // ================= GENERATE =================
   const handleGenerate = async () => {
-    if (!sourceUrl.trim()) {
-      toast.error('पहले official notification / page की URL डालें');
+    if (!sourceUrl.trim() && !instructions.trim()) {
+      toast.error('Source URL daalo YA niche instructions me bharti ka naam likho — AI khud dhoondh lega');
       return;
     }
     setBusy('generate');
-    const toastId = toast.loading(`${genType === 'job' ? 'Job' : 'Fast Track'} Writer source पढ़ रहा है...`);
+    const toastId = toast.loading(
+      sourceUrl.trim()
+        ? `${genType === 'job' ? 'Job' : 'Fast Track'} Writer source पढ़ रहा है...`
+        : '🔍 AI khud internet se notification ढूंढ रहा है...'
+    );
     try {
       const result = await callArticleApi<ArticleApiResult>('/articles/generate', {
         type: genType,
@@ -123,6 +130,9 @@ const AdminAIArticleStudio = () => {
         mode: 'manual', // draft-first: कभी भी direct publish नहीं
       });
 
+      if (result.autoSearched && result.resolvedSourceUrl) {
+        toast.success(`🔍 AI ne khud notification ढूंढी: ${result.resolvedSourceUrl.slice(0, 70)}`, { duration: 8000 });
+      }
       if (result.review?.verdict === 'pass') {
         toast.success(`Draft तैयार! Review पास (score ${result.review.score ?? '-'})`, { id: toastId, duration: 5000 });
       } else {
@@ -394,7 +404,7 @@ const AdminAIArticleStudio = () => {
                 type="url"
                 value={sourceUrl}
                 onChange={(e) => setSourceUrl(e.target.value)}
-                placeholder="https://ssc.gov.in/... (official page या notification URL)"
+                placeholder="https://ssc.gov.in/... (khaali chhodo + niche naam likho → AI khud ढूंढेगा 🔍)"
                 className="mt-1.5 w-full p-3 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-blue-500 transition-all"
               />
             </div>

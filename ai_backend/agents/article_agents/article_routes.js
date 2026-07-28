@@ -28,6 +28,7 @@ const {
   buildPublishPayload
 } = require("./article_pipeline");
 const { fetchAndExtractSource } = require("./source_fetcher");
+const { searchAndFetchSource, buildSearchQuery } = require("./web_searcher");
 const { EDITORIAL_AUTHOR, ARTICLE_TYPES, isBlockedDomain } = require("./constants");
 const { plainText } = require("./article_html_utils");
 
@@ -153,16 +154,48 @@ function registerArticleAgentRoutes(app, db) {
     try {
       const type = cleanType(req.body?.type);
       const sourceUrl = String(req.body?.sourceUrl || req.body?.url || "").trim();
-      if (!sourceUrl) return fail(res, 400, "sourceUrl (official notification/page URL) is required");
 
       const mode = req.body?.mode === "auto" ? "auto" : "manual";
       const instructions = String(req.body?.instructions || "").slice(0, 1500);
 
+      // ⭐ SOURCE RESOLUTION — 3 step smart fallback:
+      //   1. diya hua link theek hai → use hi karo
+      //   2. link galat/patli/form-portal ho → agent KHUD internet search kare
+      //   3. link diya hi na ho → instructions se search karke notification dhoondhe
+      let source = null;
+      let autoSearched = false;
+      let searchQuery = "";
+      let directError = null;
+
+      if (sourceUrl) {
+        try {
+          source = await fetchAndExtractSource(sourceUrl);
+        } catch (e) {
+          directError = e;
+          console.warn(`generate: direct source fail (${e.code || e.message}) — web search fallback try ho raha hai`);
+        }
+      }
+
+      if (!source) {
+        searchQuery = buildSearchQuery(instructions, sourceUrl);
+        if (!searchQuery) {
+          // Na link chala, na search ke liye naam hai
+          const message = directError
+            ? directError.message
+            : "Source URL daalo YA instructions me bharti ka naam likho — phir main khud internet se notification dhoondhunga";
+          return fail(res, 400, message);
+        }
+        autoSearched = true;
+        source = await searchAndFetchSource(searchQuery);
+      }
+
       const existing = await collectExistingContent(db, type);
       const draft = await runGeneratePipeline(
-        { type, sourceUrl, instructions, mode, existing },
+        { type, sourceUrl: source.url, instructions, mode, source, existing },
         {}
       );
+      draft.autoSearched = autoSearched;
+      draft.searchQuery = searchQuery;
 
       const docPayload = {
         ...draft,
@@ -177,6 +210,9 @@ function registerArticleAgentRoutes(app, db) {
         review: draft.reviewReport,
         // automatic mode: article stops here as a draft — nothing is published
         autoModeDraftOnly: mode === "auto",
+        autoSearched,
+        searchQuery,
+        resolvedSourceUrl: source.url,
         authorName: EDITORIAL_AUTHOR
       });
     } catch (error) {

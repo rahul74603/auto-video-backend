@@ -29,8 +29,15 @@ const {
 const {
   reviewArticle,
   extractClaims,
-  numberSetOf
+  numberSetOf,
+  parseDateFlexible
 } = require("../agents/article_agents/fact_quality_reviewer");
+const {
+  searchAndFetchSource,
+  buildSearchQuery,
+  scoreCandidate,
+  unwrapDuckDuckGo
+} = require("../agents/article_agents/web_searcher");
 const {
   runGeneratePipeline,
   buildDraftRecord,
@@ -796,4 +803,118 @@ test("patla noticeboard page: andar ka Notification PDF link khud follow ho jata
   assert.equal(source.via, "link-follow");
   assert.ok(source.text.includes("CERT-In Scientist B Recruitment 2026"), source.text.slice(0, 120));
   assert.ok(source.text.length >= 120);
+});
+
+/* ------------------------------------------------------------------ */
+/* 9. Web searcher + freshness + name recheck (nayi powers)            */
+/* ------------------------------------------------------------------ */
+
+test("parseDateFlexible Hindi, English aur numeric dates samajhta hai", () => {
+  const d1 = parseDateFlexible("25/08/2026");
+  assert.equal(d1.getUTCFullYear(), 2026);
+  assert.equal(d1.getUTCMonth(), 7);
+  assert.equal(d1.getUTCDate(), 25);
+  const d2 = parseDateFlexible("25 अगस्त 2026");
+  assert.equal(d2.getUTCMonth(), 7);
+  assert.equal(d2.getUTCDate(), 25);
+  const d3 = parseDateFlexible("August 25, 2026");
+  assert.equal(d3.getUTCMonth(), 7);
+  assert.equal(parseDateFlexible("koi date nahi"), null);
+  assert.equal(parseDateFlexible(""), null);
+});
+
+test("freshness check: beet chuki last date wali purani notification BLOCK hoti hai", () => {
+  const source = makeJobSource();
+  const article = makeGroundedJobArticle();
+  const old = new Date(Date.now() - 60 * 86400000); // 60 din pehle
+  const dd = String(old.getUTCDate()).padStart(2, "0");
+  const mm = String(old.getUTCMonth() + 1).padStart(2, "0");
+  const yy = old.getUTCFullYear();
+  article.facts = { ...article.facts, lastDate: `${dd}/${mm}/${yy}` };
+  const review = reviewArticle({ type: "JOB", article, source, existing: {} });
+  assert.ok(
+    review.issues.some((i) => i.startsWith("freshness:expired")),
+    `expired issue expected: ${review.issues.join("|")}`
+  );
+});
+
+test("freshness check: aane wali (future) last date pass hoti hai", () => {
+  const source = makeJobSource();
+  const article = makeGroundedJobArticle();
+  const future = new Date(Date.now() + 30 * 86400000);
+  const dd = String(future.getUTCDate()).padStart(2, "0");
+  const mm = String(future.getUTCMonth() + 1).padStart(2, "0");
+  article.facts = { ...article.facts, lastDate: `${dd}/${mm}/${future.getUTCFullYear()}` };
+  const review = reviewArticle({ type: "JOB", article, source, existing: {} });
+  assert.ok(
+    !review.issues.some((i) => i.startsWith("freshness")),
+    `future date must not be flagged: ${review.issues.join("|")}`
+  );
+});
+
+test("name recheck: organization naam source me na ho to BLOCK (galat naam pakda jaata hai)", () => {
+  const source = makeJobSource();
+  const article = makeGroundedJobArticle();
+  article.facts = { ...article.facts, organization: "Ministry of Imaginary Affairs Atlantis" };
+  const review = reviewArticle({ type: "JOB", article, source, existing: {} });
+  assert.ok(
+    review.issues.some((i) => i.startsWith("hallucination:organization")),
+    `org hallucination expected: ${review.issues.join("|")}`
+  );
+});
+
+test("name recheck: sahi organization naam (source wala) pass hota hai", () => {
+  const source = makeJobSource();
+  const article = makeGroundedJobArticle(); // fixture ka org source me grounded hai
+  const review = reviewArticle({ type: "JOB", article, source, existing: {} });
+  assert.ok(
+    !review.issues.some((i) => i.startsWith("hallucination:organization")),
+    `sahi naam flag nahi hona chahiye: ${review.issues.join("|")}`
+  );
+});
+
+test("buildSearchQuery instructions se saaf query banata hai", () => {
+  const q = buildSearchQuery("Job: SSC CGL 2026 | Staff Selection Commission | ssc", "");
+  assert.match(q, /SSC CGL 2026/);
+  assert.match(q, /Staff Selection Commission/);
+  assert.match(q, /notification/);
+  assert.ok(!/^Job:/i.test(q), "Job: prefix hatna chahiye");
+  assert.equal(buildSearchQuery("", ""), "");
+});
+
+test("unwrapDuckDuckGo redirect se asli URL nikaalta hai", () => {
+  const real = "https://ssc.gov.in/portal/cgl-notification-2026";
+  const wrapped = `//duckduckgo.com/l/?uddg=${encodeURIComponent(real)}&rut=abc`;
+  assert.equal(unwrapDuckDuckGo(wrapped), real);
+});
+
+test("candidate scoring official domain + notification word ko upar rakhti hai", () => {
+  const official = scoreCandidate({ title: "CGL Notification 2026", url: "https://ssc.gov.in/cgl", via: "duckduckgo" });
+  const random = scoreCandidate({ title: "Some blog post", url: "https://random-example-xyz.com/post", via: "google-news" });
+  assert.ok(official > random, `official (${official}) should beat random (${random})`);
+});
+
+test("web searcher: link na ho to query se official source khud dhoondh laata hai", async () => {
+  const realNotificationUrl = "https://ssc.gov.in/portal assistant notification".replace(" ", "-");
+  const ddgHtml =
+    `<a class="result__a" href="//duckduckgo.com/l/?uddg=${encodeURIComponent(realNotificationUrl)}">` +
+    "SSC Assistant Notification 2026</a>";
+  const richHtml = `<html><body><main><p>${"SSC Assistant Recruitment 2026 official notification details with dates fees and vacancies. ".repeat(
+    60
+  )}</p></main></body></html>`;
+
+  class FakeRssParser {
+    async parseURL() {
+      return { items: [] };
+    }
+  }
+  const httpGet = async (url) => ({ data: url.includes("duckduckgo") ? ddgHtml : richHtml, headers: {} });
+  const source = await searchAndFetchSource("SSC Assistant notification 2026", {
+    httpGet,
+    sourceHttpGet: httpGet,
+    RssParser: FakeRssParser
+  });
+  assert.equal(source.via, "search");
+  assert.equal(source.searchedQuery, "SSC Assistant notification 2026");
+  assert.ok(source.text.length >= 600);
 });

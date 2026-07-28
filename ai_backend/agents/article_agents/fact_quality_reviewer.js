@@ -309,7 +309,104 @@ function shingleSet(text, size = 8) {
   return shingles;
 }
 
+/**
+ * DATE PARSER (freshness check ke liye) — Hindi + English + numeric formats:
+ *   "25 अगस्त 2026", "25 August 2026", "25/08/2026", "August 25, 2026"
+ * Samajh na aaye to null (aise case me check skip — false alarm nahi).
+ */
+const EN_MONTH_INDEX = {
+  january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
+  july: 6, august: 7, september: 8, october: 9, november: 10, december: 11
+};
+
+function parseDateFlexible(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const text = normalizeDigits(raw).toLowerCase();
+
+  // dd/mm/yyyy | dd-mm-yyyy | dd.mm.yyyy
+  let m = text.match(/\b(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})\b/);
+  if (m) {
+    const d = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    let y = Number(m[3]);
+    if (y < 100) y += 2000;
+    if (d >= 1 && d <= 31 && mo >= 0 && mo <= 11) return new Date(Date.UTC(y, mo, d));
+    return null;
+  }
+
+  // "25 अगस्त 2026" ya "25 august 2026"
+  m = text.match(/\b(\d{1,2})\s+([^\s,]+)\s*,?\s*(\d{4})\b/);
+  if (m) {
+    let monthName = m[2];
+    if (HINDI_MONTHS[monthName]) monthName = HINDI_MONTHS[monthName];
+    const mo = EN_MONTH_INDEX[monthName];
+    if (mo !== undefined) return new Date(Date.UTC(Number(m[3]), mo, Number(m[1])));
+  }
+
+  // "august 25, 2026"
+  m = text.match(/\b([^\s,]+)\s+(\d{1,2}),?\s*(\d{4})\b/);
+  if (m) {
+    let monthName = m[1];
+    if (HINDI_MONTHS[monthName]) monthName = HINDI_MONTHS[monthName];
+    const mo = EN_MONTH_INDEX[monthName];
+    if (mo !== undefined) return new Date(Date.UTC(Number(m[3]), mo, Number(m[2])));
+  }
+  return null;
+}
+
+/**
+ * FRESHNESS CHECK (user requirement: "koi old data to nahi hai").
+ * Article ki last date clearly beet chuki ho (30+ din purani) → issue (purani
+ * notification publish nahi karni). 1-30 din purani → warning.
+ */
+function checkFreshness({ article, issues, warnings, metrics }) {
+  const facts = article.facts || {};
+  const lastDateStr = facts.lastDate || facts.updateDate || "";
+  const parsed = parseDateFlexible(lastDateStr);
+  metrics.freshnessChecked = Boolean(lastDateStr);
+  if (!parsed) return; // parse nahi hua → chhodo, writer ka rule hi enough hai
+
+  const today = new Date();
+  const diffDays = Math.floor((parsed.getTime() - today.getTime()) / 86400000);
+  metrics.lastDateInDays = diffDays;
+
+  if (diffDays < -30) {
+    issues.push(
+      `freshness:expired:"${lastDateStr}" — last date ${Math.abs(diffDays)} din pehle nikal chuki hai; purani/expired notification publish mat karo`
+    );
+  } else if (diffDays < 0) {
+    warnings.push(`freshness:recently-expired:"${lastDateStr}" — last date abhi-abhi nikli hai, confirm kar lo`);
+  }
+}
+
+/**
+ * NAME RECHECK (user requirement: "koi date ya NAME galat to nahi").
+ * Organization ka naam source text me zaroor milna chahiye — warna writer ne
+ * naam ghad diya (jaise galat vibhag likhna). Token overlap se naapta hai.
+ */
+function checkOrgName({ type, article, source, issues, warnings, metrics }) {
+  const facts = article.facts || {};
+  const org = String((type === "JOB" ? facts.organization : facts.org) || "").trim();
+  if (!org) return;
+
+  const orgTokens = tokenize(org);
+  if (!orgTokens.length) return;
+  const hayTokens = new Set(tokenize(source.text || ""));
+  if (!hayTokens.size) return;
+  const matched = orgTokens.filter((t) => hayTokens.has(t)).length;
+  const overlap = matched / orgTokens.length;
+  metrics.orgOverlap = Number(overlap.toFixed(3));
+
+  if (overlap < 0.6) {
+    issues.push(`hallucination:organization:"${org.slice(0, 60)}" — ye naam source me nahi mila; galat naam mat likho`);
+  } else if (overlap < 0.85) {
+    warnings.push(`organization:partial-match:"${org.slice(0, 50)}" — naam source se thoda alag hai, check karo`);
+  }
+}
+
 function checkSourceOriginality({ article, source, issues, warnings, metrics }) {
+
   const htmlNoTables = String(article.contentHtml || "").replace(/<table[\s\S]*?<\/table>/gi, " <table-removed> ");
   const faqText = (article.faqs || []).map((f) => `${f.question} ${f.answer}`).join(" ");
   const articleProse = `${plainText(htmlNoTables)} ${faqText}`;
@@ -442,6 +539,8 @@ function reviewArticle({ type, article, source, existing }) {
   checkFactsAgainstSource(ctx);
   checkDuplicates(ctx);
   checkSourceOriginality(ctx);
+  checkFreshness(ctx);
+  checkOrgName(ctx);
   checkKeywordStuffing(ctx);
   checkOfficialLinks(ctx);
 
@@ -465,5 +564,6 @@ module.exports = {
   numberSetOf,
   tokenize,
   jaccard,
-  shingleSet
+  shingleSet,
+  parseDateFlexible
 };

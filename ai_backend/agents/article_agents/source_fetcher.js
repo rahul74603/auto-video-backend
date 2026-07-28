@@ -487,5 +487,6 @@ module.exports = {
   fetchAndExtractSource,
   extractFromHtml,
   isPrivateHostname,
-  MAX_TEXT_CHARS
+  MAX_TEXT_CHARS,
+  BROWSER_HEADERS
 };
