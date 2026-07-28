@@ -3,6 +3,7 @@ import React, {
     useRef, useMemo
 } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { db } from '@/firebase/config';
 import {
     collection, addDoc, updateDoc, deleteDoc,
@@ -12,9 +13,10 @@ import {
 import {
     Save, Trash2, Edit2, Database, Plus, X,
     CheckCircle, RefreshCw, Loader2, Filter,
-    AlertTriangle, Eye
+    AlertTriangle, Eye, Wand2
 } from 'lucide-react';
 import type { FastTrackItem } from '@/types/firestore';
+import { AI_ARTICLE_PREFILL_STORAGE_KEY } from './AdminAIArticleStudio';
 
 // =========================================================
 // 🛠️ HELPERS
@@ -179,11 +181,12 @@ const ApproveModal = ({ item, onConfirm, onCancel, loading }: {
 // =========================================================
 // 🃏 UPDATE CARD COMPONENT
 // =========================================================
-const UpdateCard = React.memo(({ item, onEdit, onDelete, onApprove }: {
+const UpdateCard = React.memo(({ item, onEdit, onDelete, onApprove, onSendToAI }: {
     item: FastTrackItem;
     onEdit: (item: FastTrackItem) => void;
     onDelete: (item: FastTrackItem) => void;
     onApprove: (item: FastTrackItem) => void;
+    onSendToAI: (item: FastTrackItem) => void;
 }) => {
     const isDraft = item.status === 'draft';
 
@@ -278,6 +281,16 @@ const UpdateCard = React.memo(({ item, onEdit, onDelete, onApprove }: {
                     </button>
                 )}
 
+                {/* ✨ AI Article — इसी update से AI Studio में article बनवाओ */}
+                <button
+                    onClick={() => onSendToAI(item)}
+                    className="p-2 bg-purple-50 text-purple-600 hover:bg-purple-600 hover:text-white rounded-xl transition-colors flex items-center gap-1 text-xs font-black"
+                    title="AI Studio से इस update का article बनाओ"
+                >
+                    <Wand2 size={14} />
+                    <span className="hidden sm:inline">AI</span>
+                </button>
+
                 {/* Edit */}
                 <button
                     onClick={() => onEdit(item)}
@@ -306,6 +319,7 @@ UpdateCard.displayName = 'UpdateCard';
 // 🚀 MAIN COMPONENT
 // =========================================================
 const FastTrackManager = () => {
+    const navigate = useNavigate();
     const [updates, setUpdates] = useState<FastTrackItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [fetchLoading, setFetchLoading] = useState(true);
@@ -334,6 +348,19 @@ const FastTrackManager = () => {
             setToasts(prev => prev.filter(t => t.id !== id));
         }, 4000);
     }, []);
+
+    // ✨ AI Article: update की details studio में prefill करके JOBS AI tab पर ले जाओ.
+    // Link न हो तब भी ठीक — studio खुद internet से notification ढूंढ लेगा.
+    const handleSendToAI = useCallback((item: FastTrackItem) => {
+        sessionStorage.setItem(AI_ARTICLE_PREFILL_STORAGE_KEY, JSON.stringify({
+            type: 'fast-track',
+            sourceUrl: item.directLink || undefined,
+            title: item.title || '',
+            organization: item.org || item.organization || '',
+            category: item.category || '',
+        }));
+        navigate('/secret-admin', { state: { activeTab: 'JOBS AI' } });
+    }, [navigate]);
 
     const removeToast = useCallback((id: number) => {
         setToasts(prev => prev.filter(t => t.id !== id));
@@ -891,6 +918,7 @@ const FastTrackManager = () => {
                                             onEdit={handleEdit}
                                             onDelete={setDeleteModal}
                                             onApprove={setApproveModal}
+                                            onSendToAI={handleSendToAI}
                                         />
                                     ))
                                 )}

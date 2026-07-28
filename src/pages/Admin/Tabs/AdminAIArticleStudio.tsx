@@ -15,6 +15,41 @@ import type { AIArticleDraftRecord } from '@/features/ai-articles/data/aiArticle
 /** JOBS AI tab की draft row से generate form prefill करने का custom event. */
 export const AI_ARTICLE_PREFILL_EVENT = 'sg-ai-article-prefill';
 
+/**
+ * Cross-tab prefill handoff (जैसे FastTrackManager → JOBS AI tab):
+ * item भेजने वाला इस key में JSON डालकर navigate करता है; studio mount होते ही
+ * consume (पढ़कर हटा) देता है — timing/race की दिक्कत नहीं रहती.
+ */
+export const AI_ARTICLE_PREFILL_STORAGE_KEY = 'sg-ai-article-prefill-storage';
+
+/** Generate form को prefill करने वाला data (event या sessionStorage से). */
+interface PrefillDetail {
+  type?: 'job' | 'fast-track';
+  sourceUrl?: string;
+  title?: string;
+  organization?: string;
+  category?: string;
+}
+
+/** sessionStorage में पड़ा cross-tab prefill पढ़ो + हटा दो (unknown JSON → typed). */
+const consumeStoredPrefill = (): PrefillDetail | null => {
+  try {
+    const raw: unknown = JSON.parse(sessionStorage.getItem(AI_ARTICLE_PREFILL_STORAGE_KEY) || 'null');
+    sessionStorage.removeItem(AI_ARTICLE_PREFILL_STORAGE_KEY);
+    if (!raw || typeof raw !== 'object') return null;
+    const o = raw as Record<string, unknown>;
+    return {
+      type: o.type === 'fast-track' ? 'fast-track' : 'job',
+      sourceUrl: typeof o.sourceUrl === 'string' ? o.sourceUrl : undefined,
+      title: typeof o.title === 'string' ? o.title : undefined,
+      organization: typeof o.organization === 'string' ? o.organization : undefined,
+      category: typeof o.category === 'string' ? o.category : undefined,
+    };
+  } catch {
+    return null;
+  }
+};
+
 const EMPTY_EDIT_FORM = {
   title: '',
   seoTitle: '',
@@ -26,7 +61,7 @@ const EMPTY_EDIT_FORM = {
 interface ArticleApiResult {
   draftId?: string;
   draft?: AIArticleDraftRecord;
-  review?: { verdict?: 'pass' | 'fail'; score?: number } | null;
+  review?: { verdict?: 'pass' | 'fail'; score?: number; issues?: string[] } | null;
   reviewPassed?: boolean;
   collection?: string;
   docId?: string;
@@ -58,21 +93,22 @@ const AdminAIArticleStudio = () => {
 
   // 📩 JOBS AI draft row का '✨ AI Article' बटन — generate form auto-prefill
   useEffect(() => {
-    const handlePrefill = (event: Event) => {
-      const detail = (event as CustomEvent<{
-        sourceUrl?: string;
-        title?: string;
-        organization?: string;
-        category?: string;
-      }>).detail || {};
-      setGenType('job');
+    const applyPrefill = (detail: PrefillDetail) => {
+      const isFastTrack = detail.type === 'fast-track';
+      setGenType(isFastTrack ? 'fast-track' : 'job');
       if (detail.sourceUrl) setSourceUrl(detail.sourceUrl);
       const contextBits = [detail.title, detail.organization, detail.category].filter(Boolean).join(' | ');
-      if (contextBits) setInstructions(`Job: ${contextBits}`);
+      if (contextBits) setInstructions(`${isFastTrack ? 'Fast Track' : 'Job'}: ${contextBits}`);
       window.scrollTo({ top: 0, behavior: 'smooth' });
       toast.success('Draft भरी गई — अब GENERATE दबाओ ✨', { duration: 3000 });
     };
+    const handlePrefill = (event: Event) => {
+      applyPrefill((event as CustomEvent<PrefillDetail>).detail || {});
+    };
     window.addEventListener(AI_ARTICLE_PREFILL_EVENT, handlePrefill);
+    // दूसरे tab (जैसे FAST TRACK manager) से भेजा गया prefill — mount होते ही consume
+    const stored = consumeStoredPrefill();
+    if (stored) applyPrefill(stored);
     return () => window.removeEventListener(AI_ARTICLE_PREFILL_EVENT, handlePrefill);
   }, []);
 
@@ -136,7 +172,10 @@ const AdminAIArticleStudio = () => {
       if (result.review?.verdict === 'pass') {
         toast.success(`Draft तैयार! Review पास (score ${result.review.score ?? '-'})`, { id: toastId, duration: 5000 });
       } else {
-        toast.error(`Draft बना, लेकिन review FAIL — publish blocked`, { id: toastId, duration: 6000 });
+        toast.error(
+          `Draft बना, लेकिन review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}`,
+          { id: toastId, duration: 9000 }
+        );
       }
       await refresh();
       if (result.draftId) {
@@ -192,7 +231,10 @@ const AdminAIArticleStudio = () => {
       if (result.review?.verdict === 'pass') {
         toast.success('Regenerated — review पास', { id: toastId });
       } else {
-        toast.error('Regenerated, पर review FAIL — publish blocked', { id: toastId, duration: 6000 });
+        toast.error(
+          `Regenerated, पर review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}`,
+          { id: toastId, duration: 9000 }
+        );
       }
     } catch (err) {
       handleApiError(err, 'Regenerate नहीं हो पाया');
@@ -226,7 +268,10 @@ const AdminAIArticleStudio = () => {
       if (result.reviewPassed) {
         toast.success('Edits applied — review फिर से पास', { id: toastId });
       } else {
-        toast.error('Edits saved, पर review FAIL — publish blocked', { id: toastId, duration: 6000 });
+        toast.error(
+          `Edits saved, पर review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}`,
+          { id: toastId, duration: 9000 }
+        );
       }
     } catch (err) {
       toast.dismiss(toastId);
