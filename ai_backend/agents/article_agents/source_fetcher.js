@@ -341,7 +341,9 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
     const err = new Error(
       "Ye link APPLY/LOGIN FORM page ka hai (jaise Digialm EForms) — yahan vacancy/fee/dates padhi nahi hoti, " +
         "isliye article nahi ban sakta. Source URL me official NOTIFICATION page ya PDF ka DIRECT link daalo " +
-        "(jisme bharti ki poori jaankari likhi ho). Apply-form ka link article ke andar 'Apply Online' me lagta hai."
+        "(jisme bharti ki poori jaankari likhi ho). Apply-form ka link article ke andar 'Apply Online' me lagta hai. " +
+        "💡 Army/Navy/Air Force ke portals pe notification login ke ANDAR hoti hai (public nahi) — unke liye " +
+        "pib.gov.in ya official site ke 'What's New / Notifications' section ka PUBLIC page dhoondh kar daalo."
     );
     err.code = "INVALID_SOURCE_URL";
     throw err;
