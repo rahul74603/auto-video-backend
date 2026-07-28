@@ -242,25 +242,38 @@ const AdminAIArticleStudio = () => {
   // ================= PUBLISH (guarded) =================
   const handlePublish = async () => {
     if (!selected) return;
-    const gate = canPublishDraft(selected);
+    // ⭐ Pehle Firestore se LATEST draft lao — warna purani failed state (stale)
+    // ke basis pe galat "Publish blocked" dikh sakta hai jabki server pe PASS hai.
+    const latest = await aiArticleRepository.getDraft(selected.id).catch(() => null);
+    if (latest) loadIntoEditor(latest);
+    const current = latest || selected;
+
+    const gate = canPublishDraft(current);
     if (!gate.ok) {
       toast.error(`Publish blocked: ${gate.reason}`, { duration: 6000 });
       return;
     }
-    if (!window.confirm(`"${selected.title}" publish करें?`)) return;
+    if (!window.confirm(`"${current.title}" publish करें?`)) return;
 
     setBusy('publish');
     const toastId = toast.loading('Publishing...');
     try {
       let resultInfo = '';
       try {
-        const result = await callArticleApi<ArticleApiResult>('/articles/publish', { draftId: selected.id });
+        const result = await callArticleApi<ArticleApiResult>('/articles/publish', { draftId: current.id });
         resultInfo = `${result.collection}/${result.docId}`;
       } catch (apiErr) {
         const status = apiErrorStatus(apiErr);
-        if (status === 401 || status === 409) throw apiErr;
+        if (status === 401) throw apiErr;
+        if (status === 409) {
+          // Server ne block kiya → latest state sync karke reason dikhao
+          await refresh().catch(() => {});
+          const synced = await aiArticleRepository.getDraft(current.id).catch(() => null);
+          if (synced) loadIntoEditor(synced);
+          throw apiErr;
+        }
         // Fallback: client-side publish with the same review gate
-        const fallback = await aiArticleRepository.publishDraftClientSide(selected);
+        const fallback = await aiArticleRepository.publishDraftClientSide(current);
         resultInfo = `${fallback.collection}/${fallback.docId}`;
       }
       toast.success(`Published → ${resultInfo} ✓ (draft auto-delete ho gayi — duplicate nahi)`, { id: toastId, duration: 7000 });
