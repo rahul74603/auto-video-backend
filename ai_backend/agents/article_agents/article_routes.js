@@ -46,6 +46,7 @@ const EXPECTED_CODES = new Set([
   "SOURCE_TOO_THIN",
   "UNKNOWN_ARTICLE_TYPE",
   "AI_NOT_CONFIGURED",
+  "AI_RATE_LIMITED",
   "WRITER_BAD_JSON",
   "PUBLISH_BLOCKED",
   "ALREADY_PUBLISHED",
@@ -67,6 +68,9 @@ function handleRouteError(res, error, context) {
     case "UNKNOWN_ARTICLE_TYPE":
       return fail(res, 400, error.message);
     case "AI_NOT_CONFIGURED":
+      return fail(res, 503, error.message);
+    case "AI_RATE_LIMITED":
+      // Gemini rate-limit/overload — admin ko "bas thodi der baad dabao" hint
       return fail(res, 503, error.message);
     case "WRITER_BAD_JSON":
       return fail(res, 502, error.message);

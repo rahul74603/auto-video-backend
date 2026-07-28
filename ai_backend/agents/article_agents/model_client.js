@@ -4,11 +4,34 @@
  * Tiny shared wrapper around Gemini for the article agents.
  * Writers receive an injectable `generateJson(prompt)` so the whole pipeline
  * stays unit-testable without hitting the network.
+ *
+ * HARDENING (adv-fallback):
+ *  - Transient Gemini errors (429 rate-limit / 503 overloaded / 5xx / network
+ *    reset) automatic backoff ke saath retry hote hain — ek chhoti busy-window
+ *    ki wajah se pura generate fail nahi hota.
+ *  - Sab retries ke baad bhi rate-limit rahe to AI_RATE_LIMITED code milta hai
+ *    (route 503 deta hai, frontend saaf Hinglish hint dikhata hai).
+ *  - WRITER_BAD_JSON pe ek strict retry (jaisa pehle tha).
+ *  - maxOutputTokens default 32768 taaki lambe articles truncate na hon.
  */
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 let client;
+
+const TRANSIENT_PATTERN =
+  /(429|500|502|503|504|RESOURCE_EXHAUSTED|UNAVAILABLE|DEADLINE_EXCEEDED|ETIMEDOUT|ECONNRESET|ECONNABORTED|overloaded|too many requests|rate.?limit|fetch failed|socket hang up)/i;
+const RATE_LIMIT_PATTERN = /(429|RESOURCE_EXHAUSTED|rate.?limit|quota|too many requests)/i;
+
+/** Kya ye Gemini error chhoti (retry-worthy) hai? */
+function isTransientGeminiError(message) {
+  return TRANSIENT_PATTERN.test(String(message || ""));
+}
+
+/** Kya ye rate-limit / quota wali chhoti hai? */
+function isRateLimitError(message) {
+  return RATE_LIMIT_PATTERN.test(String(message || ""));
+}
 
 function getClient() {
   if (!process.env.GEMINI_API_KEY) {
@@ -43,7 +66,7 @@ async function generateJsonOnce(prompt, options = {}) {
     model: modelName,
     generationConfig: {
       temperature: options.temperature ?? 0.3,
-      maxOutputTokens: Number(options.maxOutputTokens || process.env.AI_AGENT_MAX_OUTPUT_TOKENS || 16384),
+      maxOutputTokens: Number(options.maxOutputTokens || process.env.AI_AGENT_MAX_OUTPUT_TOKENS || 32768),
       responseMimeType: "application/json"
     }
   });
@@ -68,22 +91,73 @@ async function generateJsonOnce(prompt, options = {}) {
   return parsed;
 }
 
+const realSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
- * Default JSON generator with one strict retry: agar Gemini pehli baar me
- * non-JSON de (kabhi-kabhi hota hai), ek baar aur strict instruction ke saath
- * poochte hain. Doosri baar bhi fail ho to WRITER_BAD_JSON throw hota hai.
+ * Default JSON generator with smart retries:
+ *  1. WRITER_BAD_JSON → ek baar strict instruction ke saath dobara.
+ *  2. Transient errors (rate-limit/overloaded/5xx/network) → backoff
+ *     (2.5s → 5s) ke saath max 3 koshishen.
+ *  3. Sab koshish fail → AI_RATE_LIMITED / GEMINI_CALL_FAILED friendly error.
+ *
+ * deps (tests ke liye injectable): callOnce, sleep, maxAttempts.
  */
-async function generateJson(prompt, options = {}) {
-  try {
-    return await generateJsonOnce(prompt, options);
-  } catch (firstError) {
-    if (firstError.code !== "WRITER_BAD_JSON") throw firstError;
-    const strictPrompt =
-      `${prompt}\n\nSTRICT RETRY: pichhla jawab valid JSON nahi tha. ` +
-      `Is baar SIRF ek valid JSON object return karo — koi markdown fences, ` +
-      `explanation ya extra text bilkul nahi.`;
-    return generateJsonOnce(strictPrompt, options);
+async function generateJson(prompt, options = {}, deps = {}) {
+  const callOnce = deps.callOnce || generateJsonOnce;
+  const sleep = deps.sleep || realSleep;
+  const maxAttempts = Math.max(1, Number(deps.maxAttempts || 3));
+  const strictPrompt =
+    `${prompt}\n\nSTRICT RETRY: pichhla jawab valid JSON nahi tha. ` +
+    `Is baar SIRF ek valid JSON object return karo — koi markdown fences, ` +
+    `explanation ya extra text bilkul nahi.`;
+
+  let currentPrompt = prompt;
+  let strictUsed = false;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await callOnce(currentPrompt, options);
+    } catch (err) {
+      const msg = String(err?.message || err);
+
+      // Non-JSON → ek strict retry (immediate, bina sleep ke)
+      if (err.code === "WRITER_BAD_JSON" && !strictUsed) {
+        strictUsed = true;
+        currentPrompt = strictPrompt;
+        continue;
+      }
+
+      // Transient chhoti → backoff ke saath retry
+      if (isTransientGeminiError(msg)) {
+        if (attempt < maxAttempts - 1) {
+          const waitMs = 2500 * (attempt + 1);
+          console.warn(
+            `Gemini transient error (koshish ${attempt + 1}/${maxAttempts}) — ${waitMs}ms baad retry:`,
+            msg.slice(0, 140)
+          );
+          await sleep(waitMs);
+          continue;
+        }
+        // Aakhri koshish bhi transient → friendly, actionable error
+        const rateLimited = isRateLimitError(msg);
+        const friendly = new Error(
+          rateLimited
+            ? "Gemini AI server abhi zyada busy hai (rate-limit). 1-2 minute ruk kar phir GENERATE dabao — kuch toota nahi hai."
+            : "Gemini AI se abhi jawab nahi aa pa raha (server/network busy). Thodi der baad dobara GENERATE try karo."
+        );
+        friendly.code = rateLimited ? "AI_RATE_LIMITED" : "GEMINI_CALL_FAILED";
+        friendly.originalMessage = msg.slice(0, 200);
+        throw friendly;
+      }
+
+      throw err; // AI_NOT_CONFIGURED / final WRITER_BAD_JSON / any non-transient error
+    }
   }
+
+  // Loop se bina return ke bahar (sirf defensive; normally yahan nahi pahunchte)
+  const err = new Error("Writer returned an unparseable JSON response");
+  err.code = "WRITER_BAD_JSON";
+  throw err;
 }
 
-module.exports = { generateJson, parseJsonObject };
+module.exports = { generateJson, parseJsonObject, isTransientGeminiError, isRateLimitError };

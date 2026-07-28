@@ -918,3 +918,73 @@ test("web searcher: link na ho to query se official source khud dhoondh laata ha
   assert.equal(source.searchedQuery, "SSC Assistant notification 2026");
   assert.ok(source.text.length >= 600);
 });
+
+// =========================================================
+//  MODEL CLIENT — transient retry + rate-limit fallback
+// =========================================================
+const { generateJson, isTransientGeminiError, isRateLimitError } = require("../agents/article_agents/model_client");
+
+const noSleep = async () => {};
+
+test("model client: transient 503 pe backoff-retry karke success laata hai", async () => {
+  let calls = 0;
+  const waits = [];
+  const flaky = async () => {
+    calls += 1;
+    if (calls < 3) {
+      const e = new Error("Gemini call failed — [503 UNAVAILABLE] model overloaded");
+      e.code = "GEMINI_CALL_FAILED";
+      throw e;
+    }
+    return { title: "ok" };
+  };
+  const out = await generateJson("prompt", {}, {
+    callOnce: flaky,
+    sleep: async (ms) => { waits.push(ms); }
+  });
+  assert.equal(out.title, "ok");
+  assert.equal(calls, 3);
+  assert.deepEqual(waits, [2500, 5000]);
+});
+
+test("model client: har baar 429 aaye to AI_RATE_LIMITED friendly error (3 koshishen)", async () => {
+  let calls = 0;
+  const limited = async () => {
+    calls += 1;
+    throw new Error("Gemini call failed — [429] Resource exhausted (quota)");
+  };
+  await assert.rejects(
+    () => generateJson("prompt", {}, { callOnce: limited, sleep: noSleep }),
+    (err) => {
+      assert.equal(err.code, "AI_RATE_LIMITED");
+      assert.match(err.message, /1-2 minute/);
+      return true;
+    }
+  );
+  assert.equal(calls, 3);
+});
+
+test("model client: non-JSON pe ek strict retry phir success (bina sleep ke)", async () => {
+  let calls = 0;
+  const badThenGood = async (prompt) => {
+    calls += 1;
+    if (calls === 1) {
+      const e = new Error("Writer returned an unparseable JSON response");
+      e.code = "WRITER_BAD_JSON";
+      throw e;
+    }
+    assert.match(prompt, /STRICT RETRY/);
+    return { a: 1 };
+  };
+  const out = await generateJson("p", {}, { callOnce: badThenGood, sleep: noSleep });
+  assert.equal(out.a, 1);
+  assert.equal(calls, 2);
+});
+
+test("model client: transient/rate-limit error classification sahi hai", () => {
+  assert.ok(isTransientGeminiError("503 UNAVAILABLE model overloaded"));
+  assert.ok(isTransientGeminiError("socket hang up"));
+  assert.ok(!isTransientGeminiError("Writer returned an unparseable JSON response"));
+  assert.ok(isRateLimitError("429 too many requests"));
+  assert.ok(!isRateLimitError("503 UNAVAILABLE"));
+});

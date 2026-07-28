@@ -132,7 +132,16 @@ const AdminAIArticleStudio = () => {
     const msg = err instanceof Error ? err.message : fallback;
     if (status === 401) toast.error('Unauthorized — admin Gmail se dubara login karke dekho');
     else if (status === 409) toast.error(msg);
-    else if (status === 404) toast.error('Backend functions पुराने हैं — ai_backend डिप्लॉय करें');
+    else if (status === 404) {
+      // Do cases: route hi nahi mila (functions पुराने) YA draft delete ho chuki.
+      // Backend JSON error me asli wajah hoti hai — wahi dikhao.
+      toast.error(
+        msg && !/^Backend error 404/.test(msg)
+          ? `${msg} — list refresh karke dobara dekho`
+          : 'Backend functions पुराने हैं — ai_backend डिप्लॉय करें',
+        { duration: 8000 }
+      );
+    }
     else if (status === 502) {
       // Source fetch/extract fail — backend message + actionable tip
       toast.error(
@@ -140,9 +149,13 @@ const AdminAIArticleStudio = () => {
         { duration: 9000 }
       );
     } else if (status === 503) {
-      toast.error('GEMINI_API_KEY backend में set नहीं है — ai_backend/.env में key डालकर functions redeploy करें', {
-        duration: 9000,
-      });
+      // 503 = key missing YA Gemini rate-limit/busy — backend ka asli message hi best hint hai
+      toast.error(
+        /GEMINI_API_KEY/i.test(msg)
+          ? 'GEMINI_API_KEY backend में set नहीं है — ai_backend/.env में key डालकर functions redeploy करें'
+          : msg || 'AI service abhi busy hai — 1-2 minute baad dobara try karo',
+        { duration: 9000 }
+      );
     } else toast.error(msg);
   };
 
