@@ -737,3 +737,21 @@ test("source snapshot tables Firestore-safe hain (no nested arrays) aur lossless
   assert.equal(hasNestedArray, false, "packed shape me array-in-array nahi hona chahiye");
   assert.deepEqual(unpackTables(packed), tables, "round-trip lossless hona chahiye");
 });
+
+test("source fetcher rejects apply/login form portal URLs with clear guidance", async () => {
+  await assert.rejects(
+    () => fetchAndExtractSource("https://cdn.digialm.com/EForms/configuredHtml/1258/101431/login.html"),
+    (err) => {
+      assert.equal(err.code, "INVALID_SOURCE_URL");
+      assert.match(err.message, /NOTIFICATION page ya PDF/);
+      return true;
+    }
+  );
+  await assert.rejects(
+    () => fetchAndExtractSource("https://example.gov.in/candidate-login.html"),
+    (err) => {
+      assert.equal(err.code, "INVALID_SOURCE_URL");
+      return true;
+    }
+  );
+});

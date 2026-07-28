@@ -60,17 +60,34 @@ const AdminJobDrafts = () => {
     }
   };
 
-  // 1.5 ✨ इस fetched job draft से AI Article बनाना (ऊपर studio में prefill)
-  const handleGenerateArticle = (job: JobDraftRecord) => {
-    const sourceUrl = asText(job.sourceUrl) || asText(job.applyLink) || asText(job.officialLink) || asText(job.link);
-    window.dispatchEvent(new CustomEvent(AI_ARTICLE_PREFILL_EVENT, {
-      detail: {
-        sourceUrl,
-        title: asText(job.title),
-        organization: asText(job.organization),
-        category: asText(job.category),
-      }
-    }));
+// APPLY/LOGIN form portals (Digialm EForms wagera) — inhe source URL ki tarah
+// prefill mat karo, backend bhi inhe reject karta hai (article inse nahi ban sakta).
+const FORM_PORTAL_HINTS = [
+  /cdn\.digialm\.com\/EForms/i,
+  /\/EForms\//i,
+  /\/(login|signin|candidate-login)(\.html?|\.jsp|\.php)?(\?|$)/i,
+  /applyonline/i,
+  /onlineregistration/i,
+];
+
+const isFormPortalUrl = (url: string) => FORM_PORTAL_HINTS.some((re) => re.test(url));
+
+// 1.5 ✨ इस fetched job draft से AI Article बनाना (ऊपर studio में prefill)
+const handleGenerateArticle = (job: JobDraftRecord) => {
+  // Pehle non-form candidates try karo; sab form portals hon to pehla wala (backend guide karega).
+  const candidates = [asText(job.sourceUrl), asText(job.officialLink), asText(job.notificationLink), asText(job.applyLink), asText(job.link)].filter(Boolean);
+  const sourceUrl = candidates.find((u) => !isFormPortalUrl(u)) || candidates[0] || '';
+  if (sourceUrl !== candidates[0] && candidates.length) {
+    toast.success('Apply-form wala link chhoda — notification/official wala link liya 👍', { duration: 4000 });
+  }
+  window.dispatchEvent(new CustomEvent(AI_ARTICLE_PREFILL_EVENT, {
+    detail: {
+      sourceUrl,
+      title: asText(job.title),
+      organization: asText(job.organization),
+      category: asText(job.category),
+    }
+  }));
   };
 
   // 2. किसी ड्राफ्ट को डिलीट करना

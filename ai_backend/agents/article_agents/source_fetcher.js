@@ -159,9 +159,26 @@ function extractFromHtml(html, baseUrl) {
   };
 }
 
-/* ------------------------------------------------------------------ *
- *  Production fetch helpers
- * ------------------------------------------------------------------ */
+/**
+ * APPLY/LOGIN FORM portals (Digialm EForms, TCS iON, applyonline pages...).
+ * Ye candidate-login wale pages hote hain — yahan se article nahi ban sakta
+ * (koi vacancy/fee/dates hoti hi nahi + bina session ke 400/403 dete hain).
+ * Source URL me notification page/PDF chahiye hota hai.
+ */
+const FORM_PORTAL_HINTS = [
+  /cdn\.digialm\.com\/EForms/i,
+  /digialm\.com.*\/(login|registration|apply)/i,
+  /\/EForms\//i,
+  /\/(login|signin|candidate-login)(\.html?|\.jsp|\.php)?(\?|$)/i,
+  /applyonline/i,
+  /onlineregistration/i,
+  /tcsion.*\/(login|form)/i
+];
+
+function looksLikeFormPortal(url) {
+  const s = String(url || "");
+  return FORM_PORTAL_HINTS.some((re) => re.test(s));
+}
 
 // Real browser headers — bahut si govt/news sites obvious bot User-Agent ko
 // turant 403 kar deti hain, isliye normal Chrome jaisa request bhejte hain.
@@ -276,6 +293,17 @@ async function renderWithChromium(url, timeoutMs) {
 async function fetchAndExtractSource(rawUrl, deps = {}) {
   const parsed = assertSafeSourceUrl(rawUrl);
 
+  // APPLY/LOGIN form portals ko turant reject karo — yahan se article nahi ban sakta.
+  if (looksLikeFormPortal(parsed.toString())) {
+    const err = new Error(
+      "Ye link APPLY/LOGIN FORM page ka hai (jaise Digialm EForms) — yahan vacancy/fee/dates padhi nahi hoti, " +
+        "isliye article nahi ban sakta. Source URL me official NOTIFICATION page ya PDF ka DIRECT link daalo " +
+        "(jisme bharti ki poori jaankari likhi ho). Apply-form ka link article ke andar 'Apply Online' me lagta hai."
+    );
+    err.code = "INVALID_SOURCE_URL";
+    throw err;
+  }
+
   const httpGet =
     deps.httpGet ||
     ((url) =>
@@ -292,12 +320,26 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
   try {
     response = await httpGet(parsed.toString());
   } catch (err) {
-    const status = err?.response?.status;
-    const wrapped = new Error(
-      `Source page fetch nahi ho paya${status ? ` (site ne status ${status} diya — shayad block kiya)` : ""}: ${err.message}`
-    );
-    wrapped.code = "SOURCE_FETCH_FAILED";
-    throw wrapped;
+    // HTTP error (403 bot-block wagera) pe EK baar headless Chrome se try karo —
+    // kuch sites real browser ko allow kar deti hain. (Sirf production path pe.)
+    if (!deps.httpGet) {
+      try {
+        const renderedHtml = await renderWithChromium(parsed.toString(), deps.timeoutMs || 30000);
+        if (typeof renderedHtml === "string" && renderedHtml.length >= 80) {
+          response = { data: renderedHtml, headers: {}, viaRender: true };
+        }
+      } catch (renderErr) {
+        console.warn(`render retry failed for ${parsed.toString()}:`, renderErr.message);
+      }
+    }
+    if (!response) {
+      const status = err?.response?.status;
+      const wrapped = new Error(
+        `Source page fetch nahi ho paya${status ? ` (site ne status ${status} diya — shayad block kiya)` : ""}: ${err.message}`
+      );
+      wrapped.code = "SOURCE_FETCH_FAILED";
+      throw wrapped;
+    }
   }
 
   const buffer = toBuffer(response.data);
@@ -318,8 +360,9 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
   let extracted = rawHtml.length >= 80 ? extractFromHtml(rawHtml, parsed.toString()) : null;
 
   // JS-render fallback: plain HTML me text na mile to ek baar headless Chrome se
-  // render karke dobara try karo (sirf jab test-injected fetcher na ho).
-  if ((!extracted || !extracted.text || extracted.text.length < 120) && !deps.httpGet) {
+  // render karke dobara try karo (sirf jab test-injected fetcher na ho, aur abhi-abhi
+  // render se hi aaya ho to dobara nahi).
+  if ((!extracted || !extracted.text || extracted.text.length < 120) && !deps.httpGet && !response.viaRender) {
     try {
       const renderedHtml = await renderWithChromium(parsed.toString(), deps.timeoutMs || 30000);
       if (typeof renderedHtml === "string" && renderedHtml.length >= 80) {
