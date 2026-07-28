@@ -13,6 +13,7 @@
 
 const axios = require("axios");
 const cheerio = require("cheerio");
+const { isBlockedDomain } = require("./constants");
 
 const MAX_TEXT_CHARS = 24000;
 const MAX_TABLES = 25;
@@ -178,6 +179,48 @@ const FORM_PORTAL_HINTS = [
 function looksLikeFormPortal(url) {
   const s = String(url || "");
   return FORM_PORTAL_HINTS.some((re) => re.test(s));
+}
+
+/**
+ * Noticeboard/dashboard pages (NIC RecSys, UPSC/SSC home pages...) patle hote
+ * hain par unpe "Notification / Advt / PDF" jaisa link zaroor hota hai.
+ * Usme se sabse sahi link chunta hai — ek hi hop follow hoga.
+ */
+const NOTIFICATIONISH = /(notification|notif|advt|advertisement|recruit|vacanc|corrigendum|detailed|pdf)/i;
+
+function pickFollowLink(links, currentUrl) {
+  if (!Array.isArray(links) || !links.length) return null;
+  let host = "";
+  try {
+    host = new URL(currentUrl).hostname.toLowerCase();
+  } catch {
+    host = "";
+  }
+  const scored = [];
+  for (const link of links) {
+    const url = String(link?.url || "");
+    if (!/^https?:/i.test(url)) continue;
+    if (url === currentUrl) continue;
+    if (looksLikeFormPortal(url)) continue;
+    if (isBlockedDomain(url)) continue;
+    const linkText = `${link.text || ""} ${link.url || ""}`;
+    const isPdf = /\.pdf(\?|#|$)/i.test(url);
+    const notif = NOTIFICATIONISH.test(linkText);
+    if (!isPdf && !notif) continue;
+    let score = 0;
+    if (isPdf) score += 5;
+    if (notif) score += 3;
+    try {
+      const h = new URL(url).hostname.toLowerCase();
+      if (h === host) score += 2;
+      if (h.endsWith(".gov.in") || h.endsWith(".nic.in")) score += 1;
+    } catch {
+      /* ignore */
+    }
+    scored.push({ url, score });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0]?.url || null;
 }
 
 // Real browser headers — bahut si govt/news sites obvious bot User-Agent ko
@@ -359,15 +402,51 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
   const rawHtml = buffer.toString("utf-8");
   let extracted = rawHtml.length >= 80 ? extractFromHtml(rawHtml, parsed.toString()) : null;
 
-  // JS-render fallback: plain HTML me text na mile to ek baar headless Chrome se
+  const THIN_MIN = 120;
+  const needsMoreText = () => !extracted || !extracted.text || extracted.text.length < THIN_MIN;
+
+  // 1) Noticeboard link-follow: patle dashboard/portal page (NIC RecSys, UPSC/SSC home)
+  // pe "Notification / Advt / PDF" jaisa link dikhe to EK hop follow karke asli
+  // content (page ya PDF) wahan se nikaalo.
+  if (needsMoreText() && extracted && Array.isArray(extracted.links) && extracted.links.length) {
+    const followCandidate = pickFollowLink(extracted.links, parsed.toString());
+    let followUrl = null;
+    if (followCandidate) {
+      try {
+        followUrl = assertSafeSourceUrl(followCandidate).toString();
+      } catch {
+        followUrl = null;
+      }
+    }
+    if (followUrl) {
+      try {
+        const followResp = await httpGet(followUrl);
+        const fbuf = toBuffer(followResp.data);
+        if (looksLikePdf(followUrl, followResp.headers, fbuf)) {
+          const pdfOut = await extractFromPdf(fbuf, followUrl);
+          extracted = { ...pdfOut, viaLink: followUrl };
+        } else {
+          const fhtml = fbuf.toString("utf-8");
+          if (fhtml.length >= 80) {
+            const out = extractFromHtml(fhtml, followUrl);
+            if (out.text && out.text.length >= THIN_MIN) extracted = { ...out, viaLink: followUrl };
+          }
+        }
+      } catch (followErr) {
+        console.warn(`link-follow failed for ${followUrl}:`, followErr.message);
+      }
+    }
+  }
+
+  // 2) JS-render fallback: plain HTML me text na mile to ek baar headless Chrome se
   // render karke dobara try karo (sirf jab test-injected fetcher na ho, aur abhi-abhi
   // render se hi aaya ho to dobara nahi).
-  if ((!extracted || !extracted.text || extracted.text.length < 120) && !deps.httpGet && !response.viaRender) {
+  if (needsMoreText() && !deps.httpGet && !response.viaRender) {
     try {
       const renderedHtml = await renderWithChromium(parsed.toString(), deps.timeoutMs || 30000);
       if (typeof renderedHtml === "string" && renderedHtml.length >= 80) {
         const rendered = extractFromHtml(renderedHtml, parsed.toString());
-        if (rendered.text && rendered.text.length >= 120) {
+        if (rendered.text && rendered.text.length >= THIN_MIN) {
           extracted = { ...rendered, viaRender: true };
         }
       }
@@ -381,7 +460,7 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
     err.code = "SOURCE_TOO_THIN";
     throw err;
   }
-  if (!extracted.text || extracted.text.length < 120) {
+  if (!extracted.text || extracted.text.length < THIN_MIN) {
     const err = new Error(
       "Source page has too little readable text to ground an article — page JavaScript se banta hai ya text bahut kam hai; notification ka direct page/PDF link daalo"
     );
@@ -389,8 +468,9 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
     throw err;
   }
 
-  const via = extracted.viaRender ? "render" : "http";
+  const via = extracted.viaLink ? "link-follow" : extracted.viaRender ? "render" : "http";
   delete extracted.viaRender;
+  delete extracted.viaLink;
   return {
     ok: true,
     url: parsed.toString(),

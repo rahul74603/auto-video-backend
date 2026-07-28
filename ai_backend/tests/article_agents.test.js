@@ -755,3 +755,45 @@ test("source fetcher rejects apply/login form portal URLs with clear guidance", 
     }
   );
 });
+
+test("patla noticeboard page: andar ka Notification PDF link khud follow ho jata hai", async () => {
+  const esc = (s) => s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  const lines = [
+    "CERT-In Scientist B Recruitment 2026 Official Notification",
+    "Total 100 Vacancies Last Date 30 August 2026 Group A Posts",
+    "Qualification B Tech M Tech Salary Level 10 Apply Online Mode"
+  ];
+  const stream = lines.map((l, i) => `BT /F1 12 Tf 50 ${750 - i * 20} Td (${esc(l)}) Tj ET`).join("\n");
+  const objs = [
+    "<</Type/Catalog/Pages 2 0 R>>",
+    "<</Type/Pages/Kids[3 0 R]/Count 1>>",
+    "<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>",
+    `<</Length ${stream.length}>>stream\n${stream}\nendstream`,
+    "<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>"
+  ];
+  let out = "%PDF-1.4\n";
+  const offsets = [0];
+  objs.forEach((b, i) => { offsets.push(out.length); out += `${i + 1} 0 obj\n${b}\nendobj\n`; });
+  const xref = out.length;
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i <= objs.length; i++) out += String(offsets[i]).padStart(10, "0") + " 00000 n \n";
+  out += `trailer\n<</Size ${objs.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF`;
+  const pdfBuf = Buffer.from(out, "latin1");
+
+  const boardHtml =
+    '<html><body><div class="notice-board">' +
+    '<a href="https://www.cert-in.org.in/PDF/ScientistB-Notification.pdf">Notification</a>' +
+    "</div><p>CERT-In Recruitment Home 2026</p></body></html>";
+  const httpGet = async (url) =>
+    /\.pdf/i.test(url)
+      ? { data: pdfBuf, headers: { "content-type": "application/pdf" } }
+      : { data: boardHtml, headers: {} };
+
+  const source = await fetchAndExtractSource(
+    "https://examinationservices.nic.in/RecSys2026/Root/Home.aspx?enc=XYZ123",
+    { httpGet }
+  );
+  assert.equal(source.via, "link-follow");
+  assert.ok(source.text.includes("CERT-In Scientist B Recruitment 2026"), source.text.slice(0, 120));
+  assert.ok(source.text.length >= 120);
+});
