@@ -80,8 +80,11 @@ function handleRouteError(res, error, context) {
   }
 }
 
-/** Collect titles/slugs/content snippets for the duplicate & stuffing guard. */
-async function collectExistingContent(db, articleType) {
+/** Collect titles/slugs/content snippets for the duplicate & stuffing guard.
+ *  excludeDraftId: khud wali draft ko comparison se bahar rakhta hai —
+ *  warna Apply/Regenerate pe draft apne aap se 1.00 match karke
+ *  duplicate-content fail ho jaati hai (self-duplicate bug). */
+async function collectExistingContent(db, articleType, { excludeDraftId = "" } = {}) {
   const existing = { titles: [], slugs: [], snippets: [] };
   const target = articleType === ARTICLE_TYPES.JOB ? "jobs" : "fast_track";
   try {
@@ -99,6 +102,7 @@ async function collectExistingContent(db, articleType) {
   try {
     const drafts = await db.collection(DRAFT_COLLECTION).orderBy("createdAt", "desc").limit(60).get().catch(() => null);
     (drafts?.docs || []).forEach((doc) => {
+      if (doc.id === excludeDraftId) return; // khud ke saath compare mat karo
       const data = doc.data() || {};
       if (data.status === "rejected") return;
       if (data.title) existing.titles.push(data.title);
@@ -238,7 +242,7 @@ function registerArticleAgentRoutes(app, db) {
       if (!source || !source.text) return fail(res, 502, "No source material available for regeneration");
 
       const instructions = String(req.body?.instructions ?? current.instructions ?? "").slice(0, 1500);
-      const existing = await collectExistingContent(db, type);
+      const existing = await collectExistingContent(db, type, { excludeDraftId: draftId });
       const fresh = await runGeneratePipeline({
         type,
         sourceUrl: current.sourceUrl,
@@ -302,7 +306,7 @@ function registerArticleAgentRoutes(app, db) {
       const source = { url: current.sourceUrl, ...(current.sourceSnapshot || {}) };
       if (!source.text) return fail(res, 500, "Stored source snapshot missing — regenerate instead");
 
-      const existing = await collectExistingContent(db, type);
+      const existing = await collectExistingContent(db, type, { excludeDraftId: draftId });
       const { article, review } = reReview({ type, article: merged, sourceSnapshot: source, existing });
 
       const update = {

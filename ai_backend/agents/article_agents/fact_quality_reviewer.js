@@ -25,6 +25,7 @@ const {
   EDITORIAL_AUTHOR,
   WORD_TARGET_MIN,
   WORD_TARGET_MAX,
+  OUR_SOCIAL_LINKS,
   isBlockedDomain
 } = require("./constants");
 const {
@@ -167,7 +168,7 @@ function isClaimGrounded(claim, haystackNorm, sourceNumbers) {
 
 // ---------- individual checks ----------
 
-function checkStructure({ type, article, issues, warnings, metrics }) {
+function checkStructure({ type, article, source, issues, warnings, metrics }) {
   const html = article.contentHtml || "";
   metrics.wordCount = article.wordCount ?? countWords(html);
   metrics.h1Count = countTags(html, "h1");
@@ -207,7 +208,11 @@ function checkStructure({ type, article, issues, warnings, metrics }) {
   }
 
   const anchors = listAnchorHrefs(html);
-  const blockedHit = anchors.find((href) => isBlockedDomain(href));
+  const sourceNorm = String(source?.url || "").replace(/\/+$/, "").toLowerCase();
+  const anchorsToCheck = anchors.filter(
+    (href) => href.replace(/\/+$/, "").toLowerCase() !== sourceNorm // declared source page itself allowed
+  );
+  const blockedHit = anchorsToCheck.find((href) => isBlockedDomain(href));
   if (blockedHit) issues.push(`links:blocked-domain:${blockedHit}`);
   const badHref = anchors.find((href) => !/^https?:\/\//i.test(href) && !href.startsWith("#") && !href.startsWith("/"));
   if (badHref) warnings.push(`links:non-absolute:${badHref}`);
@@ -263,9 +268,15 @@ function checkFactsAgainstSource({ article, source, issues, warnings, metrics })
   if (ungrounded.length > 10) warnings.push(`hallucination:more:${ungrounded.length - 10}`);
 
   // Links inside the article body must exist in the collected source links (or
-  // be the source URL itself) — this blocks fabricated official URLs.
+  // be the source URL itself, or hamare apne official social channels) — this
+  // blocks fabricated ya third-party promo URLs.
   const allowed = new Set(
-    [source.url, ...(source.links || []).map((l) => l.url), ...(article.officialLinks || []).map((l) => l.url)]
+    [
+      source.url,
+      ...(source.links || []).map((l) => l.url),
+      ...(article.officialLinks || []).map((l) => l.url),
+      ...OUR_SOCIAL_LINKS.map((l) => l.url)
+    ]
       .filter(Boolean)
       .map((u) => u.replace(/\/+$/, "").toLowerCase())
   );
@@ -279,6 +290,44 @@ function checkFactsAgainstSource({ article, source, issues, warnings, metrics })
 function toComparableText(value) {
   const str = String(value || "");
   return str.includes("<") ? plainText(str) : str;
+}
+
+/**
+ * SOURCE-ORIGINALITY CHECK (Google duplicate content se bachna).
+ * Article ka prose source page ki exact copy nahi hona chahiye — facts/numbers
+ * same rahenge (wohi grounding hai), par wording apni honi chahiye.
+ * Tables (dates/fees/vacancy data) facts hote hain — unhe check se bahar rakhte hain.
+ * 8-word shingles se overlap naapta hai; zyada overlap = source ka copy.
+ */
+function shingleSet(text, size = 8) {
+  const tokens = normalizeForCompare(text).split(/\s+/).filter(Boolean);
+  const shingles = new Set();
+  for (let i = 0; i + size <= tokens.length; i += 1) {
+    shingles.add(tokens.slice(i, i + size).join(" "));
+  }
+  return shingles;
+}
+
+function checkSourceOriginality({ article, source, issues, warnings, metrics }) {
+  const htmlNoTables = String(article.contentHtml || "").replace(/<table[\s\S]*?<\/table>/gi, " <table-removed> ");
+  const faqText = (article.faqs || []).map((f) => `${f.question} ${f.answer}`).join(" ");
+  const articleProse = `${plainText(htmlNoTables)} ${faqText}`;
+  const articleShingles = shingleSet(articleProse);
+  const sourceShingles = shingleSet(source.text || "");
+  if (!articleShingles.size || !sourceShingles.size) return;
+
+  let hits = 0;
+  for (const shingle of articleShingles) if (sourceShingles.has(shingle)) hits += 1;
+  const ratio = hits / articleShingles.size;
+  metrics.sourceOverlap = Number(ratio.toFixed(3));
+
+  if (ratio >= 0.3) {
+    issues.push(
+      `duplicate:source-copy:${ratio.toFixed(2)} — article source page se bahut match karta hai; Google duplicate content samjhega. Apne alag shabdon me likho (Regenerate karo).`
+    );
+  } else if (ratio >= 0.12) {
+    warnings.push(`duplicate:source-similar:${ratio.toFixed(2)} — kuch lines source se milti hain, wording aur alag karo`);
+  }
 }
 
 function checkDuplicates({ article, existing = {}, issues, warnings, metrics }) {
@@ -351,14 +400,18 @@ function checkKeywordStuffing({ article, issues, warnings, metrics }) {
   }
 }
 
-function checkOfficialLinks({ type, article, issues, warnings }) {
+function checkOfficialLinks({ type, article, source, issues, warnings }) {
   const links = Array.isArray(article.officialLinks) ? article.officialLinks : [];
   if (!links.length) {
     issues.push("official-links:missing");
     return;
   }
+  // Declared source page (fallback "Official Source") ko blocked-flag se bahar
+  // rakho — wo hamara disclosed source hai, third-party promo nahi.
+  const sourceNorm = String(source?.url || "").replace(/\/+$/, "").toLowerCase();
   for (const link of links) {
     if (!/^https?:\/\//i.test(link.url || "")) issues.push(`official-links:invalid:${link.url || "empty"}`);
+    else if (link.url.replace(/\/+$/, "").toLowerCase() === sourceNorm) continue;
     else if (isBlockedDomain(link.url)) issues.push(`official-links:blocked:${link.url}`);
   }
   if (type === "JOB") {
@@ -387,6 +440,7 @@ function reviewArticle({ type, article, source, existing }) {
   checkRequiredSections(ctx);
   checkFactsAgainstSource(ctx);
   checkDuplicates(ctx);
+  checkSourceOriginality(ctx);
   checkKeywordStuffing(ctx);
   checkOfficialLinks(ctx);
 
@@ -409,5 +463,6 @@ module.exports = {
   normalizeForCompare,
   numberSetOf,
   tokenize,
-  jaccard
+  jaccard,
+  shingleSet
 };

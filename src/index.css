@@ -200,6 +200,23 @@
     @apply text-blue-600 font-bold;
   }
 
+  /* ✅ AI Article — hamare apne social links (join-us section buttons) */
+  .prose .ai-social-links {
+    @apply list-none pl-0 flex flex-wrap gap-3 mb-6;
+  }
+
+  .prose .ai-social-links li {
+    @apply m-0;
+  }
+
+  .prose .ai-social-links li::marker {
+    content: none;
+  }
+
+  .prose .ai-social-links a {
+    @apply inline-flex items-center no-underline font-bold text-white bg-blue-600 rounded-xl px-4 py-2.5 shadow-sm transition-all duration-200 hover:bg-blue-700 hover:shadow-md hover:-translate-y-0.5;
+  }
+
   .prose img {
     @apply rounded-xl shadow-md;
   }

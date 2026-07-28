@@ -11,7 +11,7 @@
  */
 
 const cheerio = require("cheerio");
-const { isBlockedDomain } = require("./constants");
+const { isBlockedDomain, OUR_SOCIAL_LINKS } = require("./constants");
 
 function loadHtml(html) {
   return cheerio.load(`<div id="__root">${html || ""}</div>`, { decodeEntities: false });
@@ -124,6 +124,47 @@ function listAnchorHrefs(html) {
   return hrefs;
 }
 
+/**
+ * Deterministic "हमसे जुड़ें" section — har article ke end me EXACTLY hamare
+ * apne channels lagte hain (YouTube/Telegram/WhatsApp/Facebook). Model se karwaya
+ * nahi jaata taaki kabhi galat ya third-party link na aa jaye.
+ */
+const JOIN_US_MARKER = "ai-join-us-section";
+
+function buildJoinUsHtml() {
+  const items = OUR_SOCIAL_LINKS.map(
+    (link) => `<li><a href="${escapeHtml(link.url)}" target="_blank" rel="noopener nofollow">${escapeHtml(link.label)}</a></li>`
+  ).join("");
+  return (
+    `<h2>StudyGyaan से जुड़ें — सबसे तेज़ Updates पाएं</h2>` +
+    `<div class="${JOIN_US_MARKER}">` +
+    `<p>Sarkari Job, Result, Admit Card और Fast Track की सबसे तेज़ updates सीधे अपने फ़ोन पर पाने के लिए ` +
+    `StudyGyaan के official channels को अभी join करें:</p>` +
+    `<ul class="ai-social-links">${items}</ul>` +
+    `</div>`
+  );
+}
+
+/** Purana join-us section hata kar naya lagata hai (idempotent — kabhi duplicate nahi). */
+function appendJoinUsSection(html) {
+  const $ = loadHtml(html || "");
+  $("#__root").find(`h2`).each((_, el) => {
+    const heading = ($(el).text() || "").toLowerCase();
+    if (heading.includes("जुड़ें") || heading.includes("join studygyaan") || heading.includes("join us")) {
+      const next = $(el).next();
+      if (next.is(`.${JOIN_US_MARKER}`) || next.is("p,ul,div")) {
+        const after = next.next();
+        next.remove();
+        if (after.is(`.${JOIN_US_MARKER}`) || after.is("ul")) after.remove();
+      }
+      $(el).remove();
+    }
+  });
+  $("#__root").find(`.${JOIN_US_MARKER}`).remove();
+  $("#__root").append(buildJoinUsHtml());
+  return ($("#__root").html() || "").trim();
+}
+
 module.exports = {
   sanitizeArticleHtml,
   ensureSingleH1,
@@ -134,5 +175,8 @@ module.exports = {
   plainText,
   countWords,
   countTags,
-  listAnchorHrefs
+  listAnchorHrefs,
+  buildJoinUsHtml,
+  appendJoinUsSection,
+  JOIN_US_MARKER
 };

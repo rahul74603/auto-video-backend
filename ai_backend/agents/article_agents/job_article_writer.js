@@ -14,6 +14,7 @@
 const { EDITORIAL_AUTHOR, WORD_TARGET_MIN, WORD_TARGET_MAX, isBlockedDomain } = require("./constants");
 const {
   normalizeArticleHtml,
+  appendJoinUsSection,
   escapeHtml,
   countWords,
   plainText
@@ -92,28 +93,39 @@ function buildJobWriterPrompt({ source, instructions }) {
     "   salary, qualification, advt number, selection steps or links.",
     "3. If a fact is missing in the source, keep that JSON field EMPTY (\"\") and, in prose,",
     "   write a line like 'Official Notification में देखें' — without adding any number of your own.",
-    "4. Do not copy long source paragraphs verbatim; explain in your own simple words.",
+    "4. ⭐ ORIGINAL WRITING (Google duplicate content se bachna hai): source page ke sentences/",
+    "   paragraphs WORD-BY-WORD copy KARNA MANA HAI — chahe facts kitne bhi same kyun na hon.",
+    "   Har line APNE alag shabdon me, alag sentence structure me likho (jaise StudyGyaan ka",
+    "   apna editorial style hai). Sirf numbers/dates/names same rahenge, wording BILKUL alag.",
     "5. Do not name any individual person as author. Author is always:",
     `   "${EDITORIAL_AUTHOR}".`,
     "",
     "================ ARTICLE REQUIREMENTS ================",
-    `- Length: ${WORD_TARGET_MIN}-${WORD_TARGET_MAX} meaningful words (no filler repetition, no keyword stuffing).`,
+    `- Length: ${WORD_TARGET_MIN}-${WORD_TARGET_MAX} meaningful words — lekin 2400 words se zyada KABHI nahi.`,
+    "  Filler repetition ya keyword stuffing bilkul nahi.",
     "- Exactly ONE <h1>. Use multiple <h2> and <h3> sections.",
-    "- Must include these sections (Hindi H2s), in a sensible order:",
-    "  * संक्षिप्त जानकारी (short overview + responsive overview table)",
-    "  * महत्वपूर्ण तिथियाँ (Important Dates — table)",
-    "  * आवेदन शुल्क (Application Fee — table)",
-    "  * पात्रता / Eligibility (qualification + age, only what source says)",
-    "  * वेतन / Salary",
-    "  * चयन प्रक्रिया (Selection Process — source steps only)",
-    "  * आवेदन कैसे करें (step-by-step Apply Process, generic safe steps)",
-    "  * जरूरी दस्तावेज़ (Documents — list typical documents as a checklist)",
-    "  * Important Links (official links from source only)",
+    "- ⭐ SECTION ORDER FIXED hai — isi order me likho taaki reader ko dekhte hi sab samajh aaye:",
+    "  1. Chhota intro paragraph (2-3 lines, apne shabdon me — post ka naam, organization, total posts, last date)",
+    "  2. <h2> संक्षिप्त विवरण — एक नज़र में पूरी जानकारी (table: Post Name | Organization | Advt No |",
+    "     Total Vacancies | Last Date | Application Mode | Official Website)",
+    "  3. <h2> महत्वपूर्ण तिथियाँ (Important Dates — table: Event | Date)",
+    "  4. <h2> आवेदन शुल्क (Application Fee — table: Category | Fee)",
+    "  5. <h2> पद का विवरण / Vacancy Details (table: Post Name | No. of Posts | Pay Scale — jo source me ho)",
+    "  6. <h2> आयु सीमा (Age Limit — sirf source wali)",
+    "  7. <h2> शैक्षणिक योग्यता / पात्रता (Eligibility — sirf source wali)",
+    "  8. <h2> वेतन / Salary",
+    "  9. <h2> चयन प्रक्रिया (Selection Process — source ke steps)",
+    "  10. <h2> आवेदन कैसे करें (numbered <ol> steps — step 1, 2, 3... systematic)",
+    "  11. <h2> जरूरी दस्तावेज़ (Documents checklist)",
+    "  12. <h2> Important Links (table: Link | URL — sirf OFFICIAL sarkari links)",
+    "  13. <h2> अक्सर पूछे जाने वाले प्रश्न (FAQs)",
     "- Tables must be wrapped exactly like:",
     '  <div class="table-responsive"><table class="ai-data-table"><thead>...</thead><tbody>...</tbody></table></div>',
-    "- Add 5-8 FAQs (<h3> question + <p> answer) inside an 'अक्सर पूछे जाने वाले प्रश्न (FAQs)' H2.",
-    "  Every FAQ answer must be grounded in the source too.",
-    "- Links: use only official URLs found in the source links.",
+    "- 5-8 FAQs (<h3> question + <p> answer). Har FAQ answer bhi source se grounded ho.",
+    "- ⭐ LINK RULES: article body me SIRF official sarkari website ke links lagao (source links list me se).",
+    "  Kisi bhi third-party job blog/aggregator (freejobalert, sarkariresult, indgovtjobs, jagranjosh,",
+    "  adda247, testbook...) ya kisi aur website ka link KABHI mat lagao.",
+    "  Social media / YouTube / Telegram / WhatsApp links MAT lagao — wo system apne aap end me jodta hai.",
     "",
     "================ SEO REQUIREMENTS ================",
     "- seoTitle: max 70 chars, primary keyword first, natural.",
@@ -250,7 +262,8 @@ function normalizeJobArticle(raw, { source }) {
   if (!facts.category) facts.category = "other";
 
   const h1 = text(data.h1 || facts.title, 220) || facts.title;
-  const contentHtml = normalizeArticleHtml(String(data.contentHtml || ""), { h1 });
+  // Join-us section (hamare apne social links) har article ke end me deterministic lagta hai.
+  const contentHtml = appendJoinUsSection(normalizeArticleHtml(String(data.contentHtml || ""), { h1 }));
 
   const faqs = (Array.isArray(data.faqs) ? data.faqs : [])
     .map((faq) => ({ question: text(faq?.question, 300), answer: text(faq?.answer, 1200) }))
@@ -293,15 +306,55 @@ function normalizeJobArticle(raw, { source }) {
   return article;
 }
 
+/**
+ * Ek baar me model lamba likh de to deterministic compress pass — SAME facts,
+ * tables, sections rakhte hue prose ~2000 words tak chhota karwata hai.
+ * (Max ek extra call; phir se normalize hota hai.)
+ */
+function buildCompressPrompt(article) {
+  return [
+    "Neeche diya gaya job article bahut lamba ho gaya hai. Ise SHORT karo —",
+    `target ~2000 words (range 1700-2300, hard limit 2400).`,
+    "",
+    "STRICT RULES:",
+    "- SABHI facts, dates, numbers, tables, official links BILKUL same rakho (kuch remove/ghatao mat).",
+    "- Section order aur headings (ek hi h1, sab h2) same rakho — sirf paragraphs concise karo.",
+    "- FAQs 5-6 rakho, answers chhote kar sakte ho.",
+    "- Koi naya fact/link add mat karo; koi bhi existing fact delete mat karo.",
+    '',
+    'Return STRICT JSON: {"contentHtml": "shortened full HTML", "faqs": [{"question":"","answer":""}]}',
+    "",
+    "=== CURRENT ARTICLE !==",
+    JSON.stringify({ contentHtml: article.contentHtml, faqs: article.faqs }).slice(0, 60000)
+  ].join("\n");
+}
+
 async function generateJobArticle({ source, instructions }, deps = {}) {
   if (!source || !source.text) {
     const err = new Error("Fetched source is required for the Job Article Writer");
     err.code = "SOURCE_REQUIRED";
     throw err;
   }
+  const gen = deps.generateJson || generateJson;
   const prompt = buildJobWriterPrompt({ source, instructions });
-  const raw = await (deps.generateJson || generateJson)(prompt, { temperature: 0.35 });
-  return normalizeJobArticle(raw, { source });
+  const raw = await gen(prompt, { temperature: 0.35 });
+  let article = normalizeJobArticle(raw, { source });
+
+  // Word limit overshoot → ek compress retry.
+  if (article.wordCount > WORD_TARGET_MAX + 100) {
+    try {
+      const compressed = await gen(buildCompressPrompt(article), { temperature: 0.2 });
+      const merged = normalizeJobArticle(
+        { ...raw, contentHtml: compressed.contentHtml || raw.contentHtml, faqs: compressed.faqs || raw.faqs },
+        { source }
+      );
+      // Sirf tab accept karo jab sach me chhota hua ho.
+      if (merged.wordCount < article.wordCount) article = merged;
+    } catch (err) {
+      console.warn("job writer: compress pass failed, keeping original:", err.message);
+    }
+  }
+  return article;
 }
 
 module.exports = {

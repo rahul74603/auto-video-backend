@@ -17,7 +17,7 @@ const {
   FAST_TRACK_CATEGORIES,
   isBlockedDomain
 } = require("./constants");
-const { normalizeArticleHtml, plainText, countWords } = require("./article_html_utils");
+const { normalizeArticleHtml, appendJoinUsSection, plainText, countWords } = require("./article_html_utils");
 const { generateJson } = require("./model_client");
 
 function text(value, max = 500) {
@@ -57,21 +57,29 @@ function buildFastTrackWriterPrompt({ source, instructions }) {
     "3. Missing fact => empty JSON field; in prose write 'official website पर देखें' with no numbers.",
     "4. The direct official link (result/admit-card/answer-key page or PDF) must come from the",
     "   source links list. If not found there, keep directLink EMPTY.",
-    "5. Never attribute authorship to a person; author is always",
+    "5. ⭐ ORIGINAL WRITING (Google duplicate content se bachna hai): source page ki lines",
+    "   word-by-word copy KARNA MANA HAI — har baat APNE alag shabdon me likho.",
+    "   Sirf facts/dates/names same rahenge, wording BILKUL alag.",
+    "6. Never attribute authorship to a person; author is always",
     `   "${EDITORIAL_AUTHOR}".`,
     "",
     "================ ARTICLE REQUIREMENTS ================",
-    `- ${WORD_TARGET_MIN}-${WORD_TARGET_MAX} meaningful words, simple natural Hindi/Hinglish, no filler.`,
+    `- ${WORD_TARGET_MIN}-${WORD_TARGET_MAX} meaningful words — lekin 2400 se zyada KABHI nahi. No filler.`,
     "- Exactly ONE <h1>; proper <h2>/<h3> hierarchy.",
-    "- Must include:",
-    "  * अपडेट का सार (Overview table: organization, update type, date, status)",
-    "  * महत्वपूर्ण तिथियाँ / प्रक्रिया की timeline (from source only)",
-    "  * Result/Admit card/Answer key कैसे चेक या डाउनलोड करें (step-by-step)",
-    "  * डाउनलोड में क्या-क्या details मिलेंगी",
-    "  * आगे की प्रक्रिया क्या है (only if source says; otherwise general guidance, clearly marked)",
-    "  * Important Links (official source links only)",
+    "- ⭐ SECTION ORDER FIXED — isi order me, taaki reader ko turant samajh aaye:",
+    "  1. Chhota intro paragraph (2-3 lines — kya update aayi hai, kis organization ki, kab)",
+    "  2. <h2> अपडेट एक नज़र में (Overview table: Organization | Update Type | Date | Status | Direct Link)",
+    "  3. <h2> महत्वपूर्ण तिथियाँ (table: Event | Date — sirf source wali)",
+    "  4. <h2> Result/Admit Card/Answer Key कैसे चेक/डाउनलोड करें (numbered <ol> steps — step by step systematic)",
+    "  5. <h2> क्या-क्या details मिलेंगी (roll number, marks, cut-off — jo source me ho)",
+    "  6. <h2> आगे की प्रक्रिया (sirf agar source me ho, warna general guidance clearly marked)",
+    "  7. <h2> Important Links (table — sirf OFFICIAL sarkari links)",
+    "  8. <h2> अक्सर पूछे जाने वाले प्रश्न (FAQs)",
     "- Tables wrapped as: <div class=\"table-responsive\"><table class=\"ai-data-table\">...</table></div>",
-    "- 4-6 FAQs (source-grounded answers) inside an 'अक्सर पूछे जाने वाले प्रश्न (FAQs)' H2.",
+    "- 4-6 FAQs (source-grounded answers).",
+    "- ⭐ LINK RULES: body me SIRF official sarkari links. Kisi third-party blog/aggregator",
+    "  (freejobalert, sarkariresult, indgovtjobs, jagranjosh, adda247, testbook...) ka link KABHI nahi.",
+    "  Social media / Telegram / WhatsApp links MAT lagao — wo system end me apne aap jodta hai.",
     "",
     "================ SEO REQUIREMENTS ================",
     "- seoTitle max 70 chars, metaDescription 140-160 chars, english kebab slug <= 70 chars.",
@@ -183,7 +191,7 @@ function normalizeFastTrackArticle(raw, { source }) {
   if (!facts.updateDate) facts.updateDate = "Latest Update";
 
   const h1 = text(data.h1 || facts.title, 220) || facts.title;
-  const contentHtml = normalizeArticleHtml(String(data.contentHtml || ""), { h1 });
+  const contentHtml = appendJoinUsSection(normalizeArticleHtml(String(data.contentHtml || ""), { h1 }));
 
   const faqs = (Array.isArray(data.faqs) ? data.faqs : [])
     .map((faq) => ({ question: text(faq?.question, 300), answer: text(faq?.answer, 1200) }))
@@ -226,15 +234,48 @@ function normalizeFastTrackArticle(raw, { source }) {
   return article;
 }
 
+/** Word-limit overshoot par deterministic compress retry (job writer jaisa hi). */
+function buildCompressPrompt(article) {
+  return [
+    "Neeche diya gaya fast-track article bahut lamba ho gaya hai. Ise SHORT karo —",
+    "target ~2000 words (range 1700-2300, hard limit 2400).",
+    "",
+    "STRICT RULES:",
+    "- SABHI facts, dates, tables, direct/official links BILKUL same rakho.",
+    "- Section order aur headings (ek hi h1, sab h2) same rakho — sirf paragraphs concise karo.",
+    "- FAQs 4-6 rakho. Koi naya fact/link add mat karo, koi fact delete mat karo.",
+    '',
+    'Return STRICT JSON: {"contentHtml": "shortened full HTML", "faqs": [{"question":"","answer":""}]}',
+    "",
+    "=== CURRENT ARTICLE !==",
+    JSON.stringify({ contentHtml: article.contentHtml, faqs: article.faqs }).slice(0, 60000)
+  ].join("\n");
+}
+
 async function generateFastTrackArticle({ source, instructions }, deps = {}) {
   if (!source || !source.text) {
     const err = new Error("Fetched source is required for the Fast Track Article Writer");
     err.code = "SOURCE_REQUIRED";
     throw err;
   }
+  const gen = deps.generateJson || generateJson;
   const prompt = buildFastTrackWriterPrompt({ source, instructions });
-  const raw = await (deps.generateJson || generateJson)(prompt, { temperature: 0.35 });
-  return normalizeFastTrackArticle(raw, { source });
+  const raw = await gen(prompt, { temperature: 0.35 });
+  let article = normalizeFastTrackArticle(raw, { source });
+
+  if (article.wordCount > WORD_TARGET_MAX + 100) {
+    try {
+      const compressed = await gen(buildCompressPrompt(article), { temperature: 0.2 });
+      const merged = normalizeFastTrackArticle(
+        { ...raw, contentHtml: compressed.contentHtml || raw.contentHtml, faqs: compressed.faqs || raw.faqs },
+        { source }
+      );
+      if (merged.wordCount < article.wordCount) article = merged;
+    } catch (err) {
+      console.warn("fast-track writer: compress pass failed, keeping original:", err.message);
+    }
+  }
+  return article;
 }
 
 module.exports = {

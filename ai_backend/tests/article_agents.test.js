@@ -37,7 +37,9 @@ const {
   assertPublishable,
   buildJobPublishPayload,
   buildFastTrackPublishPayload,
-  reReview
+  reReview,
+  packTables,
+  unpackTables
 } = require("../agents/article_agents/article_pipeline");
 const { EDITORIAL_AUTHOR } = require("../agents/article_agents/constants");
 
@@ -638,4 +640,100 @@ test("Apply flow: reReview re-verifies edits against the stored snapshot", async
   });
   assert.equal(review.verdict, "fail", "admin-invented date must fail verification");
   assert.ok(review.issues.some((i) => i.includes("30/11/2026")), review.issues.join("|"));
+});
+
+/* ------------------------------------------------------------------ */
+/* 8. Originality, own-links & word-limit hardening                    */
+/* ------------------------------------------------------------------ */
+
+test("job article ends with hamare apne join-us section (4 official channels, idempotent)", () => {
+  const source = makeJobSource();
+  const raw = groundedWriterPayload({ contentHtml: groundedContentHtml(), faqs: groundedFaqs() });
+  const article = normalizeJobArticle(raw, { source });
+
+  assert.match(article.contentHtml, /youtube\.com\/@studygyaan_official/);
+  assert.match(article.contentHtml, /t\.me\/studygyaan_official/);
+  assert.match(article.contentHtml, /whatsapp\.com\/channel\//);
+  assert.match(article.contentHtml, /facebook\.com\/StudyGyaan\.in/);
+  assert.match(article.contentHtml, /ai-join-us-section/);
+
+  // Apply-flow simulation: dubara normalize karne par section duplicate nahi hona chahiye.
+  const again = normalizeJobArticle({ ...raw, contentHtml: article.contentHtml }, { source });
+  const count = (again.contentHtml.match(/ai-join-us-section/g) || []).length;
+  assert.equal(count, 1, "join-us section must be idempotent");
+});
+
+test("fast track article bhi hamare apne social links ke saath end hota hai", () => {
+  const source = makeJobSource();
+  const raw = {
+    seoTitle: "SSC CGL Result 2026",
+    metaDescription: "x".repeat(140),
+    slug: "ssc-cgl-result-2026",
+    h1: "SSC CGL Result 2026",
+    shortDescription: "short",
+    contentHtml: "<h1>SSC CGL Result 2026</h1><p>content</p>",
+    faqs: [],
+    facts: { title: "SSC CGL Result", category: "Result", org: "SSC" },
+    officialLinks: [{ label: "Result", url: "https://ssc.gov.in/result" }],
+    keywords: []
+  };
+  const article = normalizeFastTrackArticle(raw, { source });
+  assert.match(article.contentHtml, /t\.me\/studygyaan_official/);
+  assert.match(article.contentHtml, /youtube\.com\/@studygyaan_official/);
+});
+
+test("reviewer flags prose copied verbatim from the source page (Google duplicate content risk)", () => {
+  const source = makeJobSource();
+  // ~900 unique words ka unique prose — pura ka pura article me copy kiya gaya hai
+  const copiedProse = Array.from({ length: 900 }, (_, i) => `uniquecopyword${i}`).join(" ");
+  source.text = `${source.text} ${copiedProse}`;
+
+  const article = makeGroundedJobArticle();
+  article.contentHtml += `<p>${copiedProse}</p>`;
+
+  const review = reviewArticle({ type: "JOB", article, source, existing: {} });
+  assert.ok(
+    review.issues.some((i) => i.startsWith("duplicate:source-copy")),
+    `source-copy issue expected, got: ${review.issues.join("|")}`
+  );
+});
+
+test("reviewer passes original wording even when all facts are the same", () => {
+  const source = makeJobSource();
+  const article = makeGroundedJobArticle(); // alag wording, same facts (fixtures ka base case)
+  const review = reviewArticle({ type: "JOB", article, source, existing: {} });
+  assert.ok(
+    !review.issues.some((i) => i.startsWith("duplicate:source-copy")),
+    `original prose must not be flagged: ${review.issues.join("|")}`
+  );
+});
+
+test("generateJobArticle auto-compresses when writer overshoots the word limit", async () => {
+  const source = makeJobSource();
+  const longRaw = groundedWriterPayload({
+    contentHtml: `${groundedContentHtml()}<p>${"और अतिरिक्त विस्तृत जानकारी बहुत लंबी पंक्ति ".repeat(900)}</p>`,
+    faqs: groundedFaqs()
+  });
+  let calls = 0;
+  const fakeGen = async () => {
+    calls += 1;
+    if (calls === 1) return JSON.parse(JSON.stringify(longRaw));
+    return { contentHtml: groundedContentHtml(), faqs: groundedFaqs() }; // compress response
+  };
+  const article = await generateJobArticle({ source, instructions: "" }, { generateJson: fakeGen });
+  assert.equal(calls, 2, "compress retry ek baar fire hona chahiye");
+  assert.ok(article.wordCount <= 2700, `wordCount=${article.wordCount} should be back in range`);
+});
+
+test("source snapshot tables Firestore-safe hain (no nested arrays) aur losslessly restore hote hain", () => {
+  const tables = [
+    [
+      ["Post Name", "Vacancies"],
+      ["Social Worker", "12"]
+    ]
+  ];
+  const packed = packTables(tables);
+  const hasNestedArray = JSON.stringify(packed).includes("[[");
+  assert.equal(hasNestedArray, false, "packed shape me array-in-array nahi hona chahiye");
+  assert.deepEqual(unpackTables(packed), tables, "round-trip lossless hona chahiye");
 });
