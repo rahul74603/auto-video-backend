@@ -111,13 +111,9 @@ export const aiArticleRepository = {
       { ...payload, createdAt: serverTimestamp(), publishedAt: serverTimestamp() },
       { merge: true }
     );
-    await updateDoc(doc(db, AI_ARTICLE_DRAFTS, draft.id), {
-      status: 'published',
-      publishedDocId: docId,
-      publishedCollection: target,
-      publishedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    // ⭐ Publish ke baad draft DELETE — duplicate record nahi rehta
+    // (published jobs/fast_track doc hi ab duplicate-guard ka source hai).
+    await deleteDoc(doc(db, AI_ARTICLE_DRAFTS, draft.id));
     return { collection: target, docId };
   },
 

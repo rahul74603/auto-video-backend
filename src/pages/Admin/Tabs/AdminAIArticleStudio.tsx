@@ -263,7 +263,7 @@ const AdminAIArticleStudio = () => {
         const fallback = await aiArticleRepository.publishDraftClientSide(selected);
         resultInfo = `${fallback.collection}/${fallback.docId}`;
       }
-      toast.success(`Published → ${resultInfo}`, { id: toastId, duration: 6000 });
+      toast.success(`Published → ${resultInfo} ✓ (draft auto-delete ho gayi — duplicate nahi)`, { id: toastId, duration: 7000 });
       await refresh();
       loadIntoEditor(null);
     } catch (err) {

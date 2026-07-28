@@ -229,14 +229,16 @@ describe('AI Article Workflow — publish payloads', () => {
     expect(buildPublishPayloadFromDraft(passedDraft({ type: 'FAST_TRACK' })).collection).toBe('fast_track');
   });
 
-  it('client-side publish writes with merged setDoc and marks the draft published', async () => {
+  it('client-side publish writes with merged setDoc and deletes the draft (no duplicate record)', async () => {
     const result = await aiArticleRepository.publishDraftClientSide(passedDraft());
     expect(result.collection).toBe('jobs');
     expect(result.docId).toBe('job-ssc-cgl-2026-recruitment');
     expect(mockSetDoc).toHaveBeenCalledTimes(1);
     const setDocArgs = mockSetDoc.mock.calls[0];
     expect(setDocArgs[1]).toEqual(expect.objectContaining({ type: 'JOB', status: 'published', authorName: EDITORIAL_AUTHOR }));
-    expect(mockUpdateDoc).toHaveBeenCalledTimes(1);
+    // ⭐ publish ke baad draft DELETE hoti hai — status update nahi
+    expect(mockDeleteDoc).toHaveBeenCalledTimes(1);
+    expect(mockUpdateDoc).not.toHaveBeenCalled();
   });
 
   it('client-side publish refuses failed reviews (same gate as backend)', async () => {

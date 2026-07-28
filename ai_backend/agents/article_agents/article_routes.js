@@ -372,20 +372,20 @@ function registerArticleAgentRoutes(app, db) {
           { merge: true }
         );
 
-      await db.collection(DRAFT_COLLECTION).doc(draftId).set(
-        {
-          status: "published",
-          publishedDocId: targetId,
-          publishedCollection: collection,
-          publishedAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        },
-        { merge: true }
-      );
+      // ⭐ Publish ke turant baad draft DELETE kar do — duplicate records nahi
+      // rehte. Ab duplicate-guard ka source published jobs/fast_track doc hi hai
+      // (title + slug se same-event dubara generate hone pe bhi block laga rehta hai).
+      // Delete fail ho to publish phir bhi successful hai — sirf log karte hain.
+      await db
+        .collection(DRAFT_COLLECTION)
+        .doc(draftId)
+        .delete()
+        .catch((e) => console.warn(`publish: draft ${draftId} auto-delete failed:`, e.message));
 
       return ok(res, {
         draftId,
         published: true,
+        draftDeleted: true,
         collection,
         docId: targetId,
         slug: payload.slug,
