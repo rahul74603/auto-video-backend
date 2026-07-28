@@ -517,6 +517,9 @@ const AdminAIArticleStudio = () => {
                     <div>
                       <p className="text-[11px] font-black text-red-600 uppercase tracking-wider">Publish Blocked</p>
                       <p className="text-[10px] font-bold text-red-400 mt-0.5">{publishGate.reason}</p>
+                      <p className="text-[10px] font-bold text-slate-500 mt-1.5 leading-relaxed">
+                        💡 Apply sirf tumhare edits save karta hai — naye rules/word-limit ke liye <span className="text-amber-600">🔄 REGENERATE</span> dabao, article fresh banegi (facts source se hi, wording apni).
+                      </p>
                     </div>
                   </div>
                 )}

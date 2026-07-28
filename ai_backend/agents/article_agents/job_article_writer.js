@@ -340,18 +340,27 @@ async function generateJobArticle({ source, instructions }, deps = {}) {
   const raw = await gen(prompt, { temperature: 0.35 });
   let article = normalizeJobArticle(raw, { source });
 
-  // Word limit overshoot → ek compress retry.
-  if (article.wordCount > WORD_TARGET_MAX + 100) {
+  // Word limit overshoot → max 2 compress retries, har baar BEST chhota version rakhte hue.
+  for (
+    let attempt = 0;
+    attempt < 2 && article.wordCount > WORD_TARGET_MAX + 100;
+    attempt += 1
+  ) {
     try {
       const compressed = await gen(buildCompressPrompt(article), { temperature: 0.2 });
       const merged = normalizeJobArticle(
-        { ...raw, contentHtml: compressed.contentHtml || raw.contentHtml, faqs: compressed.faqs || raw.faqs },
+        {
+          ...article,
+          contentHtml: compressed.contentHtml || article.contentHtml,
+          faqs: compressed.faqs || article.faqs
+        },
         { source }
       );
-      // Sirf tab accept karo jab sach me chhota hua ho.
-      if (merged.wordCount < article.wordCount) article = merged;
+      if (merged.wordCount >= article.wordCount) break; // aur chhota nahi hua → stop
+      article = merged;
     } catch (err) {
       console.warn("job writer: compress pass failed, keeping original:", err.message);
+      break;
     }
   }
   return article;

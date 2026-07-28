@@ -263,16 +263,26 @@ async function generateFastTrackArticle({ source, instructions }, deps = {}) {
   const raw = await gen(prompt, { temperature: 0.35 });
   let article = normalizeFastTrackArticle(raw, { source });
 
-  if (article.wordCount > WORD_TARGET_MAX + 100) {
+  for (
+    let attempt = 0;
+    attempt < 2 && article.wordCount > WORD_TARGET_MAX + 100;
+    attempt += 1
+  ) {
     try {
       const compressed = await gen(buildCompressPrompt(article), { temperature: 0.2 });
       const merged = normalizeFastTrackArticle(
-        { ...raw, contentHtml: compressed.contentHtml || raw.contentHtml, faqs: compressed.faqs || raw.faqs },
+        {
+          ...article,
+          contentHtml: compressed.contentHtml || article.contentHtml,
+          faqs: compressed.faqs || article.faqs
+        },
         { source }
       );
-      if (merged.wordCount < article.wordCount) article = merged;
+      if (merged.wordCount >= article.wordCount) break;
+      article = merged;
     } catch (err) {
       console.warn("fast-track writer: compress pass failed, keeping original:", err.message);
+      break;
     }
   }
   return article;
