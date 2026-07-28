@@ -44,6 +44,8 @@ const {
   assertPublishable,
   buildJobPublishPayload,
   buildFastTrackPublishPayload,
+  sanitizeJobDate,
+  sanitizeJobFee,
   reReview,
   packTables,
   unpackTables
@@ -603,7 +605,7 @@ test("publish payload builders map to existing jobs / fast_track shapes", async 
   assert.equal(jobPayload.authorName, EDITORIAL_AUTHOR);
   assert.equal(jobPayload.organization, "Staff Selection Commission (SSC)");
   assert.equal(jobPayload.vacancies, "5432");
-  assert.equal(jobPayload.lastDate, "31/07/2026");
+  assert.equal(jobPayload.lastDate, "2026-07-31"); // panel ke liye ISO normalize hota hai
   assert.equal(jobPayload.applyLink, "https://ssc.gov.in/apply-cgl-2026");
   assert.equal(jobPayload.publishedFromDraftId, "draft-123");
   assert.ok(Array.isArray(jobPayload.faqs) && jobPayload.faqs.length >= 4);
@@ -987,4 +989,107 @@ test("model client: transient/rate-limit error classification sahi hai", () => {
   assert.ok(!isTransientGeminiError("Writer returned an unparseable JSON response"));
   assert.ok(isRateLimitError("429 too many requests"));
   assert.ok(!isRateLimitError("503 UNAVAILABLE"));
+});
+
+// =========================================================
+//  DATE/FEE PANEL CLEANUP + dates coverage (user complaint:
+//  "publish hua par dates/box sahi nahi aaya")
+// =========================================================
+
+test("sanitizeJobDate: parseable → ISO, junk placeholder → drop, partial digit-text → keep", () => {
+  assert.equal(sanitizeJobDate("31 July 2026"), "2026-07-31");
+  assert.equal(sanitizeJobDate("31/07/2026"), "2026-07-31");
+  assert.equal(sanitizeJobDate("नियमों के अनुसार"), "");
+  assert.equal(sanitizeJobDate(""), "");
+  assert.equal(sanitizeJobDate("1st week of Sept 2026"), "1st week of Sept 2026");
+});
+
+test("sanitizeJobFee: ₹ hatao, nil → 0, text-junk → drop", () => {
+  assert.equal(sanitizeJobFee("₹1000/-"), "1000");
+  assert.equal(sanitizeJobFee("₹Nil"), "0");
+  assert.equal(sanitizeJobFee("Free"), "0");
+  assert.equal(sanitizeJobFee("As per category"), "");
+  assert.equal(sanitizeJobFee("100"), "100");
+  assert.equal(sanitizeJobFee(""), "");
+});
+
+test("publish payload: info-box fields clean jaate hain (ISO dates, no ₹₹, no junk)", () => {
+  const draft = {
+    title: "Test Bharti 2026",
+    slug: "test-bharti-2026",
+    metaDescription: "meta",
+    shortDescription: "short",
+    articleHtml: "<h1>Test</h1>",
+    facts: {
+      organization: "Test Org",
+      startDate: "01 July 2026",
+      lastDate: "31/07/2026",
+      examDate: "नियमों के अनुसार",
+      feeGen: "₹1000/-",
+      feeOBC: "₹ 250",
+      feeSCST: "₹Nil",
+      feeFemale: "Free"
+    }
+  };
+  const payload = buildJobPublishPayload(draft, "draft-1");
+  assert.equal(payload.startDate, "2026-07-01");
+  assert.equal(payload.lastDate, "2026-07-31");
+  assert.equal(payload.examDate, undefined, "junk examDate drop hona chahiye");
+  assert.equal(payload.feeGen, "1000");
+  assert.equal(payload.feeOBC, "250");
+  assert.equal(payload.feeSCST, "0");
+  assert.equal(payload.feeFemale, "0");
+  assert.equal(payload.type, "JOB");
+});
+
+const DATE_STRIP_RE = /\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{1,2}\s+[A-Za-z\u0900-\u097F]{3,12}\s+\d{4}/g;
+
+test("dates check: source me dates thi par article se gayab → BLOCK (dates:missed)", () => {
+  const source = makeJobSource();
+  const article = makeGroundedJobArticle();
+  article.contentHtml = article.contentHtml.replace(DATE_STRIP_RE, "—");
+  article.facts = { ...article.facts, startDate: "", lastDate: "", examDate: "" };
+  const review = reviewArticle({ type: "JOB", article, source, existing: {} });
+  assert.ok(
+    review.issues.some((i) => i.startsWith("dates:missed")),
+    `dates:missed expected: ${review.issues.join("|")}`
+  );
+});
+
+test("dates check: article me dates hain par JOB facts box khaali → BLOCK (dates:box-missing)", () => {
+  const source = makeJobSource();
+  const article = makeGroundedJobArticle();
+  article.facts = { ...article.facts, startDate: "", lastDate: "", examDate: "" };
+  const review = reviewArticle({ type: "JOB", article, source, existing: {} });
+  assert.ok(
+    review.issues.some((i) => i.startsWith("dates:box-missing")),
+    `dates:box-missing expected: ${review.issues.join("|")}`
+  );
+});
+
+test("dates check: source me bhi date nahi to sirf warning, block nahi", () => {
+  const source = makeJobSource();
+  source.text = source.text.replace(DATE_STRIP_RE, "—");
+  source.tables = (source.tables || []).map((rows) => rows.map((cells) => cells.map((c) => c.replace(DATE_STRIP_RE, "—"))));
+  const article = makeGroundedJobArticle();
+  article.contentHtml = article.contentHtml.replace(DATE_STRIP_RE, "—");
+  const review = reviewArticle({ type: "JOB", article, source, existing: {} });
+  assert.ok(
+    review.warnings.some((w) => w.startsWith("dates:none")),
+    `dates:none warning expected: ${review.warnings.join("|")}`
+  );
+  assert.ok(
+    !review.issues.some((i) => i.startsWith("dates:")),
+    `date se related koi issue nahi hona chahiye: ${review.issues.join("|")}`
+  );
+});
+
+test("dates check: normal grounded article par koi dates issue nahi aata", () => {
+  const source = makeJobSource();
+  const article = makeGroundedJobArticle();
+  const review = reviewArticle({ type: "JOB", article, source, existing: {} });
+  assert.ok(
+    !review.issues.some((i) => i.startsWith("dates:")),
+    `sahi article par dates issue nahi chahiye: ${review.issues.join("|")}`
+  );
 });

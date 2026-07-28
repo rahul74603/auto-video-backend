@@ -98,6 +98,8 @@ function buildFastTrackWriterPrompt({ source, instructions }) {
     '    "org": "", "updateDate": "", "directLink": "",',
     '    "totalCandidates": "", "details": ""',
     "  },",
+    '  FACTS FORMAT RULE: updateDate me SIRF asli date likho — "31 July 2026" ya "2026-07-31" jaisi.',
+    '  Koi extra shabd NAHI. Source me na mile to "" khaali chhodo (junk mat bharna).',
     '  "officialLinks": [{"label": "string", "url": "https://..."}],',
     '  "keywords": ["natural search phrases"]',
     "}",

@@ -22,7 +22,7 @@ const crypto = require("crypto");
 const { ARTICLE_TYPES, EDITORIAL_AUTHOR } = require("./constants");
 const { generateJobArticle, normalizeJobArticle } = require("./job_article_writer");
 const { generateFastTrackArticle, normalizeFastTrackArticle } = require("./fast_track_article_writer");
-const { reviewArticle } = require("./fact_quality_reviewer");
+const { reviewArticle, parseDateFlexible } = require("./fact_quality_reviewer");
 const { fetchAndExtractSource } = require("./source_fetcher");
 const { normalizeArticleHtml } = require("./article_html_utils");
 
@@ -233,6 +233,35 @@ function stripEmpty(obj) {
   return out;
 }
 
+/**
+ * Job panel ke date fields sanitize karo:
+ *  - parseable date → ISO yyyy-mm-dd (site ka countdown/format kabhi na toote)
+ *  - digit-wala partial text ("Sept 2026 expected") → waise ka waisa rakho
+ *  - junk placeholder ("as per rules", "नियमों के अनुसार", "-") → DROP (field chhup jayega)
+ */
+function sanitizeJobDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const parsed = parseDateFlexible(raw);
+  if (parsed) return parsed.toISOString().slice(0, 10);
+  return /\d/.test(raw) ? raw.slice(0, 40) : "";
+}
+
+/**
+ * Fee fields sanitize karo — site ka template khud ₹ lagata hai, isliye
+ * AI wali ₹/Rs hatao: "₹1000/-" → "1000", "₹Nil"/"Free" → "0",
+ * digit hi na ho (text junk) → DROP.
+ */
+function sanitizeJobFee(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (!/\d/.test(raw)) {
+    return /(nil|free|no\s*fee|n\/a|na\b)/i.test(raw) ? "0" : "";
+  }
+  const num = raw.replace(/,/g, "").match(/\d+/);
+  return num ? num[0] : "";
+}
+
 /** Map a passed JOB draft to the existing `jobs` document shape (back-compatible). */
 function buildJobPublishPayload(draft, draftId) {
   const facts = draft.facts || {};
@@ -255,6 +284,16 @@ function buildJobPublishPayload(draft, draftId) {
     publishedFromDraftId: draftId
   };
   for (const [from, to] of JOB_FIELD_MAP) mapped[to] = facts[from];
+  // Site ke info-box ke liye dates/fees sanitize (galat format/junk panel me na jaye)
+  mapped.startDate = sanitizeJobDate(mapped.startDate);
+  mapped.lastDate = sanitizeJobDate(mapped.lastDate);
+  mapped.examDate = sanitizeJobDate(mapped.examDate);
+  for (const feeField of ["feeGen", "feeOBC", "feeSCST", "feeFemale"]) {
+    mapped[feeField] = sanitizeJobFee(mapped[feeField]);
+  }
+  if (typeof mapped.applicationFee === "string") {
+    mapped.applicationFee = mapped.applicationFee.replace(/₹\s*₹+/g, "₹").trim();
+  }
   return stripEmpty(mapped);
 }
 
@@ -303,6 +342,8 @@ module.exports = {
   buildFastTrackPublishPayload,
   buildPublishPayload,
   normalizeArticleHtml,
+  sanitizeJobDate,
+  sanitizeJobFee,
   packTables,
   unpackTables
 };

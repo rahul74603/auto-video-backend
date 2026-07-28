@@ -405,6 +405,56 @@ function checkOrgName({ type, article, source, issues, warnings, metrics }) {
   }
 }
 
+/**
+ * DATE COVERAGE CHECK (user complaint: "publish hua par dates nahi aayi").
+ * Teen layers naapte hain:
+ *  1. Article body me parseable date tokens hain?
+ *  2. Facts (site ke upar wale info-box: startDate/lastDate) me date hai?
+ *  3. Source (text + tables — official "box") me dates maujood thi?
+ * Logic:
+ *  - source me dates THI par article me nahi        → ISSUE  (pipeline ne miss ki → REGENERATE)
+ *  - article me hain par JOB facts box khaali hai   → ISSUE  (published page ka box khaali dikhega)
+ *  - source me bhi bilkul nahi                      → warning (notification me hi na bhi ho sakti hai)
+ */
+const DATE_CANDIDATE_RE = /\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{1,2}\s+[A-Za-z\u0900-\u097F]{3,12}\s+\d{4}/g;
+
+function containsParseableDate(text) {
+  const candidates = String(text || "").match(DATE_CANDIDATE_RE) || [];
+  return candidates.some((c) => Boolean(parseDateFlexible(c)));
+}
+
+function checkDatesCoverage({ type, article, source, issues, warnings, metrics }) {
+  const facts = article.facts || {};
+  const articleHasDates = containsParseableDate(article.contentHtml || "");
+  const sourceScan = [
+    source.text || "",
+    ...(source.tables || []).flat(3).map(String)
+  ].join(" ");
+  const sourceHasDates = containsParseableDate(sourceScan);
+  const factsHaveDate = Boolean(
+    parseDateFlexible(facts.lastDate) || parseDateFlexible(facts.startDate) || parseDateFlexible(facts.updateDate)
+  );
+  metrics.datesArticle = articleHasDates;
+  metrics.datesSource = sourceHasDates;
+  metrics.datesFacts = factsHaveDate;
+
+  if (sourceHasDates && !articleHasDates) {
+    issues.push(
+      "dates:missed — source notification me dates maujood hain par article me nahi aayi. 🔄 REGENERATE dabao; phir bhi na aaye to dates wala DIRECT notification page/PDF ka link do."
+    );
+    return;
+  }
+  if (type === "JOB" && articleHasDates && !factsHaveDate) {
+    issues.push(
+      "dates:box-missing — article me dates hain par site ke info-box (facts startDate/lastDate) me nahi aayi; published page ka box khaali dikhega. 🔄 REGENERATE dabao."
+    );
+    return;
+  }
+  if (!sourceHasDates && !articleHasDates) {
+    warnings.push("dates:none — na source me na article me koi date mili; publish se pehle notification me khud confirm kar lena.");
+  }
+}
+
 function checkSourceOriginality({ article, source, issues, warnings, metrics }) {
 
   const htmlNoTables = String(article.contentHtml || "").replace(/<table[\s\S]*?<\/table>/gi, " <table-removed> ");
@@ -541,6 +591,7 @@ function reviewArticle({ type, article, source, existing }) {
   checkSourceOriginality(ctx);
   checkFreshness(ctx);
   checkOrgName(ctx);
+  checkDatesCoverage(ctx);
   checkKeywordStuffing(ctx);
   checkOfficialLinks(ctx);
 
@@ -565,5 +616,6 @@ module.exports = {
   tokenize,
   jaccard,
   shingleSet,
-  parseDateFlexible
+  parseDateFlexible,
+  containsParseableDate
 };
