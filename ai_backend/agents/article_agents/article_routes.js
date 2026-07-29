@@ -160,8 +160,19 @@ function registerArticleAgentRoutes(app, db) {
       const sourceUrl = String(req.body?.sourceUrl || req.body?.url || "").trim();
 
       const mode = req.body?.mode === "auto" ? "auto" : "manual";
-      const instructions = String(req.body?.instructions || "").slice(0, 1500);
-      const pastedText = String(req.body?.sourceText || "").trim();
+      let instructions = String(req.body?.instructions || "").slice(0, 1500);
+      let pastedText = String(req.body?.sourceText || "").trim();
+
+      // ZERO-UI paste-mode: purane admin UI me bhi instructions me
+      // "PASTE: <copied text>" likhne par wahi pasted source maano.
+      // (New UI ka amber box sourceText bhejta hai; ye sirf extra raasta hai.)
+      if (!pastedText) {
+        const m = instructions.match(/^([\s\S]*?)\s*PASTE\s*:\s*([\s\S]+)$/i);
+        if (m && m[2].trim().length >= 400) {
+          pastedText = m[2].trim();
+          instructions = m[1].trim();
+        }
+      }
 
       // ⭐ SOURCE RESOLUTION — 4 level smart fallback:
       //   0. admin ne TEXT paste kiya ho (blocked/slow site ka manual raasta) → wahi use
