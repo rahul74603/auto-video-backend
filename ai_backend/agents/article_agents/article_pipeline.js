@@ -90,14 +90,14 @@ function snapshotOf(source) {
  * Run the full generate→review chain. Always returns a draft record;
  * review failure is recorded (`reviewStatus:'failed'`) and publishing stays blocked.
  */
-async function runGeneratePipeline({ type, sourceUrl, instructions, mode, source, existing }, deps = {}) {
+async function runGeneratePipeline({ type, sourceUrl, instructions, mode, source, existing, feedbackIssues }, deps = {}) {
   const cleanArticleType = cleanType(type);
   const fetchedSource = source || (await fetchAndExtractSource(sourceUrl, deps.fetchDeps));
   // Snapshot se aaya source ho to packed tables ko normal shape me lao.
   fetchedSource.tables = unpackTables(fetchedSource.tables);
   const generate = writerFor(cleanArticleType);
   const article = await generate(
-    { source: fetchedSource, instructions },
+    { source: fetchedSource, instructions, feedbackIssues },
     deps.writerDeps || {}
   );
   // Writer ne article body me dates likh kar facts ke date-box khaali chhod diye

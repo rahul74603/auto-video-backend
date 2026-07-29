@@ -342,13 +342,16 @@ function registerArticleAgentRoutes(app, db) {
 
       const instructions = String(req.body?.instructions ?? current.instructions ?? "").slice(0, 1500);
       const existing = await collectExistingContent(db, type, { excludeDraftId: draftId });
+      // ⭐ REGENERATE feedback loop: pichli failed review ke issues writer tak pahunchao,
+      // warna writer andher me wahi ungrounded claims dobara likhta hai (death-loop).
       const fresh = await runGeneratePipeline({
         type,
         sourceUrl: current.sourceUrl,
         instructions,
         mode: current.mode || "manual",
         source,
-        existing
+        existing,
+        feedbackIssues: current.reviewReport?.issues
       });
 
       await db.collection(DRAFT_COLLECTION).doc(draftId).set(

@@ -1395,3 +1395,70 @@ test("harvester: pipeline pre-review hook — dates wale article ka box-missing 
   assert.equal(boxIssue, undefined);
   assert.equal(a.facts.lastDate, "11 August 2026");
 });
+
+/* ================================================================== */
+/* REGENERATE FEEDBACK LOOP — pichli failed review ke issues writer tak */
+/* ================================================================== */
+const { formatReviewFeedbackPrompt } = require("../agents/article_agents/fact_quality_reviewer");
+const { buildFastTrackWriterPrompt } = require("../agents/article_agents/fast_track_article_writer");
+
+test("formatReviewFeedbackPrompt: issues ho to hard-guard block banta hai", () => {
+  const block = formatReviewFeedbackPrompt(['hallucination:money:"₹1,60,000"', "dates:box-missing — article me dates hain"]);
+  assert.ok(block.includes("PICHLE REVIEW KI FEEDBACK"));
+  assert.ok(block.includes('₹1,60,000'), "issue ka asli figure block me hona chahiye");
+  assert.ok(block.includes("MAT likho"), "hard rule line honi chahiye");
+});
+
+test("formatReviewFeedbackPrompt: issues nahi to khaali string (prompt clean rahe)", () => {
+  assert.equal(formatReviewFeedbackPrompt([]), "");
+  assert.equal(formatReviewFeedbackPrompt(undefined), "");
+  assert.equal(formatReviewFeedbackPrompt("galat type"), "");
+});
+
+test("buildJobWriterPrompt: feedbackIssues prompt me ghus jaate hain", () => {
+  const prompt = buildJobWriterPrompt({
+    source: makeJobSource(),
+    instructions: "",
+    feedbackIssues: ['hallucination:money:"₹1,40,000"']
+  });
+  assert.ok(prompt.includes("PICHLE REVIEW KI FEEDBACK"));
+  assert.ok(prompt.includes("₹1,40,000"));
+  // feedback validation se pehle aana chahiye (LLM ko aakhir me yaad rahe)
+  assert.ok(prompt.indexOf("PICHLE REVIEW") < prompt.indexOf("VALIDATION BEFORE YOU ANSWER"));
+});
+
+test("buildJobWriterPrompt: feedbackIssues ke bina prompt pehle jaisa hi (no feedback block)", () => {
+  const prompt = buildJobWriterPrompt({ source: makeJobSource(), instructions: "" });
+  assert.ok(!prompt.includes("PICHLE REVIEW KI FEEDBACK"));
+});
+
+test("buildFastTrackWriterPrompt: feedbackIssues fast-track prompt me bhi jaate hain", () => {
+  const prompt = buildFastTrackWriterPrompt({
+    source: {
+      url: "https://example.com/result.pdf",
+      pageTitle: "Result 2026",
+      metaDescription: "",
+      text: "Result declared on 28 July 2026 for BCA 6th semester. ".repeat(40),
+      tables: [],
+      links: []
+    },
+    instructions: "",
+    feedbackIssues: ['hallucination:percent:"94.5%"']
+  });
+  assert.ok(prompt.includes("PICHLE REVIEW KI FEEDBACK"));
+  assert.ok(prompt.includes("94.5%"));
+});
+
+test("generateJobArticle: feedbackIssues writer ke prompt tak pahunchte hain", async () => {
+  const source = makeJobSource();
+  let seenPrompt = "";
+  const fakeGen = async (prompt) => {
+    seenPrompt = prompt;
+    return JSON.parse(JSON.stringify(groundedWriterPayload({})));
+  };
+  await generateJobArticle(
+    { source, instructions: "", feedbackIssues: ['hallucination:money:"₹9,99,999"'] },
+    { generateJson: fakeGen }
+  );
+  assert.ok(seenPrompt.includes("₹9,99,999"), "writer ko pichla flagged figure dikhna chahiye");
+});

@@ -617,5 +617,33 @@ module.exports = {
   jaccard,
   shingleSet,
   parseDateFlexible,
-  containsParseableDate
+  containsParseableDate,
+  formatReviewFeedbackPrompt
 };
+
+/**
+ * REGENERATE feedback loop: pichli failed draft ke review issues ko writer ke
+ * liye prompt text me badlo. (Pehle writer ko pichli failings pata hi nahi
+ * chalti thi — isliye wahi ungrounded claims dobara likh deta tha.)
+ * @param {string[]} issues review.issues (pichli draft se)
+ * @returns {string} prompt block (blank string agar issues nahi)
+ */
+function formatReviewFeedbackPrompt(issues) {
+  const list = (Array.isArray(issues) ? issues : [])
+    .map((i) => String(i || "").trim())
+    .filter(Boolean)
+    .slice(0, 10);
+  if (!list.length) return "";
+  return [
+    "",
+    "================ PICHLE REVIEW KI FEEDBACK (isse repeat mat karo) ================",
+    "Pichli draft Fact & Quality review me FAIL hui thi. Usme ye issues mile the:",
+    ...list.map((i) => `- ${i}`),
+    "",
+    "HARD RULE (ye baaki saari writing-instructions se upar hai): jis bhi claim/",
+    "number/amount/date ko upar review ne source me 'nahi mila' bataya hai, use NAI",
+    "article me bilkul MAT likho jab tak SOURCE EXTRACT me wo saaf na dikhe.",
+    "Ungrounded figures (salary/vacancy/dates/fee) likhne ke bajaye SKIP karo —",
+    "uda ke mat likho. Baaki saare output rules waise ke waise."
+  ].join("\n");
+}

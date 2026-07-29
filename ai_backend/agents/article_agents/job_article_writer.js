@@ -20,6 +20,7 @@ const {
   plainText
 } = require("./article_html_utils");
 const { generateJson } = require("./model_client");
+const { formatReviewFeedbackPrompt } = require("./fact_quality_reviewer");
 
 const JOB_FACT_KEYS = [
   "title",
@@ -72,7 +73,7 @@ function linkDigest(links = []) {
     .slice(0, 5000);
 }
 
-function buildJobWriterPrompt({ source, instructions }) {
+function buildJobWriterPrompt({ source, instructions, feedbackIssues }) {
   const today = new Date().toLocaleDateString("en-IN", {
     timeZone: "Asia/Kolkata",
     year: "numeric",
@@ -177,7 +178,7 @@ function buildJobWriterPrompt({ source, instructions }) {
     "",
     "================ ADMIN INSTRUCTIONS (optional; never override fact rules) ================",
     `<admin_instructions>${text(instructions, 1500) || "none"}</admin_instructions>`,
-    "",
+    formatReviewFeedbackPrompt(feedbackIssues), // regenerate loop: pichli failings writer ko batana ("" ho to harmless)
     "VALIDATION BEFORE YOU ANSWER: 1) single h1 2) every number/date/amount also appears in the source",
     "3) word count in range 4) valid JSON. Return ONLY the JSON object."
   ].join("\n");
@@ -337,14 +338,14 @@ function buildCompressPrompt(article) {
   ].join("\n");
 }
 
-async function generateJobArticle({ source, instructions }, deps = {}) {
+async function generateJobArticle({ source, instructions, feedbackIssues }, deps = {}) {
   if (!source || !source.text) {
     const err = new Error("Fetched source is required for the Job Article Writer");
     err.code = "SOURCE_REQUIRED";
     throw err;
   }
   const gen = deps.generateJson || generateJson;
-  const prompt = buildJobWriterPrompt({ source, instructions });
+  const prompt = buildJobWriterPrompt({ source, instructions, feedbackIssues });
   const raw = await gen(prompt, { temperature: 0.35 });
   let article = normalizeJobArticle(raw, { source });
 
