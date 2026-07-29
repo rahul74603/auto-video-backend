@@ -15,8 +15,12 @@ const {
     pickJobDraftUrl,
     pickAutoDraftCandidates,
     processCandidate,
+    pickRepairCandidates,
+    processRepair,
+    lastTryTooRecent,
     runAutoDrafts,
-    MAX_TRIES
+    MAX_TRIES,
+    REPAIR_MAX_TRIES
 } = require("../auto_drafts");
 
 // ---------------------------------------------------------------------
@@ -335,4 +339,126 @@ test("runAutoDrafts — published twins ko pehle saaf karta hai, phir draft bana
     assert.ok(report.cleaned.includes("job_drafts/twin"));
     assert.equal(db.dump()["job_drafts/twin"], undefined);
     assert.equal(report.created.length, 1); // sirf fresh se
+});
+
+// ---------------------------------------------------------------------
+// 🔁 RETRY MACHINE — jab tak ready for publish na ho
+// ---------------------------------------------------------------------
+test("lastTryTooRecent — 10 min ke andar true, purana false, missing false", () => {
+    assert.equal(lastTryTooRecent({ aiDraftLastTryAt: new Date().toISOString() }), true);
+    assert.equal(lastTryTooRecent({ aiDraftLastTryAt: new Date(Date.now() - 5 * 60 * 1000).toISOString() }), true);
+    assert.equal(lastTryTooRecent({ aiDraftLastTryAt: new Date(Date.now() - 11 * 60 * 1000).toISOString() }), false);
+    assert.equal(lastTryTooRecent({}), false);
+    // Firestore timestamp shape bhi
+    assert.equal(lastTryTooRecent({ aiDraftLastTryAt: { seconds: Math.floor(Date.now() / 1000) } }), true);
+});
+
+test("pickAutoDraftCandidates — abhi-abhi try hua item skip (10 min cooldown)", async () => {
+    const db = makeMockDb({
+        "job_drafts/hot": { title: "Just Tried Recruitment 2026 Apply Now", status: "pending", aiDraftLastTryAt: new Date().toISOString() },
+        "job_drafts/cold": { title: "Tried Long Ago Recruitment 2026 Exam", status: "pending", aiDraftLastTryAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(), aiDraftTries: 1 }
+    });
+    const report = await pickAutoDraftCandidates(db, { limit: 5 });
+    assert.equal(report.candidates.length, 1);
+    assert.equal(report.candidates[0].id, "cold");
+});
+
+// 🔧 Repair helpers
+const failedDraft = () => ({
+    type: "JOB",
+    articleType: "job",
+    status: "draft",
+    reviewStatus: "failed",
+    publishBlocked: true,
+    title: "Failed Draft Article Title Here",
+    sourceUrl: "https://official.gov/notice",
+    sourceSnapshot: { text: "snapshot source text body", url: "https://official.gov/notice" },
+    reviewReport: { verdict: "fail", issues: ["word-count-low:120"] },
+    version: 1
+});
+
+test("pickRepairCandidates — ready/published/cooldown/maxy-tries skip, failed pick hota hai", async () => {
+    const db = makeMockDb({
+        "ai_article_drafts/ready": { ...failedDraft(), reviewStatus: "passed", publishBlocked: false },
+        "ai_article_drafts/pub": { ...failedDraft(), status: "published" },
+        "ai_article_drafts/hot": { ...failedDraft(), aiDraftLastTryAt: new Date().toISOString() },
+        "ai_article_drafts/maxy": { ...failedDraft(), autoRepairTries: REPAIR_MAX_TRIES },
+        "ai_article_drafts/nosrc": { ...failedDraft(), sourceUrl: "", sourceSnapshot: null },
+        "ai_article_drafts/fixme": { ...failedDraft(), aiDraftLastTryAt: new Date(Date.now() - 30 * 60 * 1000).toISOString() }
+    });
+    const { deps } = makeDeps();
+    const report = await pickRepairCandidates(db, deps, { limit: 3 });
+    assert.deepEqual(report.errors, []);
+    assert.equal(report.repairs.length, 1);
+    assert.equal(report.repairs[0].id, "fixme");
+});
+
+test("processRepair — regenerate karke update; PASS ho to telegram card", async () => {
+    const db = makeMockDb({ "ai_article_drafts/fixme": failedDraft() });
+    const { deps, calls } = makeDeps({
+        runGeneratePipeline: async (input) => {
+            calls.generated.push(input);
+            return {
+                title: "Repaired Article Title",
+                type: "JOB",
+                articleType: "job",
+                reviewStatus: "passed",
+                reviewReport: { verdict: "pass", issues: [] },
+                articleHtml: "<p>fixed</p>"
+            };
+        }
+    });
+    const snap = await db.collection("ai_article_drafts").doc("fixme").get();
+    const docSnap = { id: "fixme", data: () => snap.data() };
+    const result = await processRepair(db, FieldValue, docSnap, deps);
+
+    assert.equal(result.ready, true);
+    const updated = db.dump()["ai_article_drafts/fixme"];
+    assert.equal(updated.reviewStatus, "passed");
+    assert.equal(updated.autoRepaired, true);
+    assert.equal(updated.autoRepairTries, 1);
+    assert.equal(updated.version, 2);
+    // feedback issues writer tak gaye (death-loop ka ilaaj)
+    assert.deepEqual(calls.generated[0].feedbackIssues, ["word-count-low:120"]);
+    // ready card gaya
+    assert.equal(calls.notified.length, 1);
+    assert.equal(calls.notified[0].opts.label, "🔧 AUTO-REPAIR READY");
+});
+
+test("processRepair — refetch fail ho to snapshot source se chale (koi telegram nahi jab tak PASS na ho)", async () => {
+    const db = makeMockDb({ "ai_article_drafts/fixme": failedDraft() });
+    const { deps, calls } = makeDeps({
+        fetchAndExtractSource: async () => { throw new Error("blocked"); },
+        runGeneratePipeline: async () => ({
+            title: "Still Broken",
+            type: "JOB",
+            reviewStatus: "failed",
+            reviewReport: { verdict: "fail", issues: ["seo:missing-title"] }
+        })
+    });
+    const snap = await db.collection("ai_article_drafts").doc("fixme").get();
+    const docSnap = { id: "fixme", data: () => snap.data() };
+    const result = await processRepair(db, FieldValue, docSnap, deps);
+    assert.equal(result.resolvedVia, "snapshot");
+    assert.equal(result.ready, false);
+    assert.equal(calls.notified.length, 0); // PASS nahi — koi card nahi
+});
+
+test("runAutoDrafts — REPAIR pehle chalti hai, phir fresh creations", async () => {
+    const db = makeMockDb({
+        "ai_article_drafts/fixme": { ...failedDraft(), aiDraftLastTryAt: new Date(Date.now() - 30 * 60 * 1000).toISOString() },
+        "job_drafts/fresh": { title: "Fresh Rail Apprentice Recruitment 2026", status: "pending" }
+    });
+    const { deps } = makeDeps({
+        runGeneratePipeline: async () => ({
+            title: "Repaired And Ready",
+            type: "JOB",
+            reviewStatus: "passed",
+            reviewReport: { verdict: "pass", issues: [] }
+        })
+    });
+    const report = await runAutoDrafts(db, FieldValue, deps);
+    assert.equal(report.repaired.length, 1);
+    assert.ok(report.repaired[0].includes("READY"));
+    assert.deepEqual(report.ready, ["fixme"]);
 });

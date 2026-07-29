@@ -495,6 +495,13 @@ exports.renderWebStory = onRequest({ cors: true }, (req, res) => {
 });
 exports.generateStoriesSitemap = onRequest({ memory: "256MiB" }, (req, res) => require("./web_stories").generateStoriesSitemap(req, res));
 
+// 🖼️ DYNAMIC OG IMAGES (WebP — halki) — share-preview har job/update/blog ke liye
+// GET /jobOgImage?c=job|update|blog&s=<slug>
+exports.jobOgImage = onRequest(
+    { memory: "512MiB", timeoutSeconds: 60, maxInstances: 10 },
+    require("./og_image").createOgImageHandler(db)
+);
+
 // 📱 4B. AUTO WEB STORIES — article publish hote hi Discover-ready AMP story
 // (jobs/fast_track/blogs; sirf publish-transition pe chalti hai, views/edits pe nahi)
 const autoStoryTrigger = (collectionName, idParam) => (event) =>
@@ -515,7 +522,19 @@ exports.scheduledAutoDrafts = onSchedule({
     timeoutSeconds: 540,
     memory: "1GiB",
     maxInstances: 1
-}, () => require("./auto_drafts").runAutoDraftsJob(db, admin.firestore.FieldValue));
+}, () => require("./auto_drafts").runAutoDraftsJob(db, admin.firestore.FieldValue, { limit: 2, repairLimit: 2 }));
+
+// 🔁 4D. RETRY MACHINE — har 10 minute: jo draft "ready for publish" (review
+// PASS) nahi hua, use dobara regenerate karo (pichli review issues ke saath);
+// + 1 fresh candidate bhi. Khali queue pe kuch nahi hota (AI call zero).
+exports.scheduledAutoDraftRetry = onSchedule({
+    schedule: "every 10 minutes",
+    timeZone: "Asia/Kolkata",
+    secrets: ["GEMINI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_ADMIN_CHAT_ID"],
+    timeoutSeconds: 300,
+    memory: "1GiB",
+    maxInstances: 1
+}, () => require("./auto_drafts").runAutoDraftsJob(db, admin.firestore.FieldValue, { limit: 1, repairLimit: 1 }));
 
 // Manual run (admin/GitHub Actions ke liye) — GET/POST dono chalega
 exports.triggerAutoDrafts = onRequest({
@@ -525,7 +544,8 @@ exports.triggerAutoDrafts = onRequest({
 }, async (req, res) => {
     try {
         const limit = Number(req.query.limit || req.body?.limit || 2);
-        const report = await require("./auto_drafts").runAutoDraftsJob(db, admin.firestore.FieldValue, { limit });
+        const repairLimit = Number(req.query.repairLimit || req.body?.repairLimit || 1);
+        const report = await require("./auto_drafts").runAutoDraftsJob(db, admin.firestore.FieldValue, { limit, repairLimit });
         return res.json({ success: true, ...report });
     } catch (error) {
         console.error("❌ triggerAutoDrafts:", error);

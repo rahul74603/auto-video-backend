@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { buildOgImageUrl } = require("./og_image");
 
 const SITE_URL = "https://studygyaan.in";
 
@@ -236,6 +237,11 @@ function injectSeo(template, meta, data, type) {
     `<meta property="og:title" content="${escapeHtml(meta.title)}">`,
     `<meta property="og:description" content="${escapeHtml(meta.description)}">`,
     `<meta property="og:image" content="${escapeHtml(meta.image)}">`,
+    ...(meta.imageType ? [
+      `<meta property="og:image:type" content="${escapeHtml(meta.imageType)}">`,
+      '<meta property="og:image:width" content="1200">',
+      '<meta property="og:image:height" content="630">'
+    ] : []),
     `<meta property="og:url" content="${escapeHtml(meta.canonical)}">`,
     `<script type="application/ld+json">${JSON.stringify(schema).replace(/</g, "\\u003c")}</script>`
   ].join("\n");
@@ -297,12 +303,16 @@ function createMeta(route, result) {
   const data = result.data;
   const slug = route.idOnly ? result.id : (data.slug || result.id);
   const canonical = `${SITE_URL}/${route.canonical}/${encodeURIComponent(slug)}`;
+  // Own image ho to wahi; nahi to DYNAMIC WebP OG image (halki + branded)
+  const ownImage = data.imageUrl || data.image || data.coverImage || data.subject_img || "";
+  const dynamicOg = route.canonical === "job" || route.canonical === "update" || route.canonical === "blog";
   return {
     canonical,
     slug,
     title: stripHtml(data.seoTitle || data.title || data.post_name || "StudyGyaan Update").slice(0, 180),
     description: buildDescription(data, route.type),
-    image: data.imageUrl || data.image || data.coverImage || data.subject_img || `${SITE_URL}/og-image.jpg`
+    image: ownImage || (dynamicOg ? buildOgImageUrl(route.canonical, slug) : `${SITE_URL}/og-image.jpg`),
+    imageType: ownImage || !dynamicOg ? null : "image/webp"
   };
 }
 

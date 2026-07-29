@@ -22,7 +22,24 @@ const { plainText } = require("./agents/article_agents/article_html_utils");
 const JOBS_DRAFTS = "job_drafts";
 const FAST_TRACK = "fast_track";
 const DEFAULT_MAX_PER_RUN = 2;
-const MAX_TRIES = 3;
+const MAX_TRIES = 5;                 // create-side tries (cooldown ke beech)
+const RETRY_COOLDOWN_MS = 10 * 60 * 1000; // ⏱️ ek item pe retry se pehle 10 min gap
+const REPAIR_MAX_TRIES = 5;          // not-ready draft ko kitni baar repair kare
+const REPAIR_SCAN_LIMIT = 40;
+
+/**
+ * ⏱️ Kya ye item ABHI-ABHI try hua hai? (har 5-10 min me hi retry — user rule)
+ * aiDraftLastTryAt ISO string ya Firestore timestamp dono chalta hai.
+ */
+function lastTryTooRecent(data) {
+    const raw = data && data.aiDraftLastTryAt;
+    if (!raw) return false;
+    let ms = NaN;
+    if (typeof raw === "object" && typeof raw.toDate === "function") ms = raw.toDate().getTime();
+    else if (typeof raw === "object" && typeof raw.seconds === "number") ms = raw.seconds * 1000;
+    else ms = new Date(raw).getTime();
+    return Number.isFinite(ms) && (Date.now() - ms) < RETRY_COOLDOWN_MS;
+}
 
 // Apply-form portals — inhe source URL mat banao (digialm/eforms wagera)
 const FORM_PORTAL_HINTS = [
@@ -87,6 +104,7 @@ async function pickAutoDraftCandidates(db, options) {
             const data = docSnap.data();
             if (data.aiDrafted === true) continue;
             if (Number(data.aiDraftTries || 0) >= MAX_TRIES) continue;
+            if (lastTryTooRecent(data)) continue; // ⏱️ 10 min cooldown
             const title = plainText(String(data.title || "")).trim();
             if (title.length < 10) continue;
             if (await maybeCleanup(JOBS_DRAFTS, docSnap.id, title)) continue;
@@ -113,6 +131,7 @@ async function pickAutoDraftCandidates(db, options) {
             if (String(data.status || "draft").toLowerCase() !== "draft") continue;
             if (data.aiDrafted === true) continue;
             if (Number(data.aiDraftTries || 0) >= MAX_TRIES) continue;
+            if (lastTryTooRecent(data)) continue; // ⏱️ 10 min cooldown
             const title = plainText(String(data.title || "")).trim();
             if (title.length < 10) continue;
             if (await maybeCleanup(FAST_TRACK, docSnap.id, title)) continue;
@@ -170,17 +189,19 @@ async function processCandidate(db, FieldValue, candidate, deps) {
     });
 
     // 4) Draft save + origin mark
+    const nowIso = new Date().toISOString();
     const payload = {
         ...draft,
         autoDraft: true,
         originRef: { collection: candidate.collection, id: candidate.id },
         autoResolvedVia: resolvedVia,
+        aiDraftLastTryAt: nowIso, // ⏱️ repair cooldown yahin se shuru
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp()
     };
     const ref = await db.collection(deps.DRAFT_COLLECTION).add(payload);
     await db.collection(candidate.collection).doc(candidate.id).set(
-        { aiDrafted: true, aiDraftId: ref.id },
+        { aiDrafted: true, aiDraftId: ref.id, aiDraftLastTryAt: nowIso },
         { merge: true }
     );
 
@@ -195,21 +216,151 @@ async function processCandidate(db, FieldValue, candidate, deps) {
     return { draftId: ref.id, resolvedVia, title: draft.title || candidate.title };
 }
 
-/** Mark failed try (3 ke baad item chhod diya jayega). */
+/** Mark failed try (MAX_TRIES ke baad item chhod diya jayega) + retry cooldown. */
 async function markTryFailed(db, candidate, message) {
     try {
         await db.collection(candidate.collection).doc(candidate.id).set(
-            { aiDraftTries: (Number(candidate.aiDraftTries) || 0) + 1, aiDraftLastError: String(message || "").slice(0, 200) },
+            {
+                aiDraftTries: (Number(candidate.aiDraftTries) || 0) + 1,
+                aiDraftLastError: String(message || "").slice(0, 200),
+                aiDraftLastTryAt: new Date().toISOString()
+            },
+            { merge: true }
+        );
+    } catch {/* best-effort */}
+}
+
+/** Not-ready draft ki repair-fail mark (tries + cooldown). */
+async function markRepairFailed(db, deps, draftId, current, message) {
+    try {
+        await db.collection(deps.DRAFT_COLLECTION).doc(draftId).set(
+            {
+                autoRepairTries: Number(current && current.autoRepairTries || 0) + 1,
+                aiDraftLastError: String(message || "").slice(0, 200),
+                aiDraftLastTryAt: new Date().toISOString()
+            },
             { merge: true }
         );
     } catch {/* best-effort */}
 }
 
 // ---------------------------------------------------------------------------
-// 🏃 Main runner
+// 🔧 REPAIR LOOP — jo draft "ready for publish" (reviewStatus:"passed") nahi
+//    hua, use har retry-cycle me regenerate karo (pichli review issues ke saath)
+// ---------------------------------------------------------------------------
+async function pickRepairCandidates(db, deps, options) {
+    const maxItems = Math.max(1, Number(options && options.limit) || 1);
+    const report = { repairs: [], errors: [] };
+    let snap;
+    try {
+        snap = await db.collection(deps.DRAFT_COLLECTION)
+            .orderBy("createdAt", "desc")
+            .limit(REPAIR_SCAN_LIMIT)
+            .get();
+    } catch (error) {
+        report.errors.push(`repair-scan: ${error.message}`);
+        return report;
+    }
+    for (const docSnap of snap.docs) {
+        if (report.repairs.length >= maxItems) break;
+        const data = docSnap.data();
+        if (data.status === "published") continue;
+        const ready = data.reviewStatus === "passed" && data.reviewStale !== true;
+        if (ready) continue;                                        // ✅ ready — admin ka ✅ pending
+        if (Number(data.autoRepairTries || 0) >= REPAIR_MAX_TRIES) continue;
+        if (lastTryTooRecent(data)) continue;                       // ⏱️ 10 min gap
+        if (!data.sourceUrl) continue;                              // regenerate ke liye source zaroori
+        report.repairs.push(docSnap);
+    }
+    return report;
+}
+
+async function processRepair(db, FieldValue, docSnap, deps) {
+    const current = docSnap.data();
+    const draftId = docSnap.id;
+    const type = deps.cleanType(current.articleType || (current.type === "JOB" ? "job" : "fast-track"));
+
+    // Source: fresh fetch → snapshot → search (teen darwaze)
+    let source = null;
+    let resolvedVia = "";
+    try {
+        source = await deps.fetchAndExtractSource(current.sourceUrl);
+        resolvedVia = "direct";
+    } catch (fetchErr) {
+        console.warn(`auto-repair ${draftId}: refetch fail (${fetchErr.code || ""}): ${fetchErr.message}`);
+        if (current.sourceSnapshot) {
+            source = { url: current.sourceUrl, ...current.sourceSnapshot };
+            resolvedVia = "snapshot";
+        }
+        if (!source) {
+            source = await deps.searchAndFetchSource(String(current.title || "").trim());
+            resolvedVia = "search";
+        }
+    }
+    if (!source || !source.text) {
+        throw new Error("repair ke liye source material nahi mila");
+    }
+
+    const existing = await deps.collectExistingContent(db, type, { excludeDraftId: draftId });
+    // ⭐ REGENERATE feedback loop — pichli failed review ke issues writer tak
+    const feedbackIssues = current.reviewReport && Array.isArray(current.reviewReport.issues)
+        ? current.reviewReport.issues
+        : undefined;
+    const fresh = await deps.runGeneratePipeline({
+        type,
+        sourceUrl: current.sourceUrl,
+        instructions: current.instructions || "",
+        mode: "auto",
+        source,
+        existing,
+        feedbackIssues
+    });
+
+    await db.collection(deps.DRAFT_COLLECTION).doc(draftId).set(
+        {
+            ...fresh,
+            autoRepaired: true,
+            autoRepairTries: Number(current.autoRepairTries || 0) + 1,
+            aiDraftLastTryAt: new Date().toISOString(),
+            version: Number(current.version || 1) + 1,
+            updatedAt: FieldValue.serverTimestamp()
+        },
+        { merge: true }
+    );
+
+    const ready = fresh.reviewStatus === "passed";
+    if (ready && deps.notifyDraft && deps.creds) {
+        await deps.notifyDraft(null, deps.creds, fresh, draftId, {
+            label: "🔧 AUTO-REPAIR READY",
+            withButtons: deps.withButtons !== false
+        }).catch(e => console.warn("auto-repair telegram:", e.message));
+    }
+    return { draftId, ready, resolvedVia, title: fresh.title || current.title };
+}
+
+// ---------------------------------------------------------------------------
+// 🏃 Main runner — 🔧 repairs pehle, 🌅 naye drafts baad me
 // ---------------------------------------------------------------------------
 async function runAutoDrafts(db, FieldValue, deps) {
-    const report = { created: [], skipped: [], cleaned: [], errors: [] };
+    const report = { repaired: [], ready: [], created: [], skipped: [], cleaned: [], errors: [] };
+
+    // 🔧 Phase 1: not-ready drafts ko retry karo (jab tak ready for publish na ho)
+    const repairs = await pickRepairCandidates(db, deps, { limit: deps.repairLimit || 1 });
+    report.errors.push(...repairs.errors);
+    for (const docSnap of repairs.repairs) {
+        try {
+            const result = await processRepair(db, FieldValue, docSnap, deps);
+            report.repaired.push(
+                `${docSnap.id.slice(0, 14)}… → ${String(result.title).slice(0, 55)} (${result.ready ? "✅ READY" : "retry pending"}, ${result.resolvedVia})`
+            );
+            if (result.ready) report.ready.push(docSnap.id);
+        } catch (error) {
+            await markRepairFailed(db, deps, docSnap.id, docSnap.data(), error.message);
+            report.skipped.push(`repair ${docSnap.id.slice(0, 12)}… — ${String(error.message || error).slice(0, 120)}`);
+        }
+    }
+
+    // 🌅 Phase 2: fresh candidates se naye drafts banao
     const picked = await pickAutoDraftCandidates(db, { limit: deps.limit || DEFAULT_MAX_PER_RUN });
     report.cleaned.push(...picked.cleaned);
     report.errors.push(...picked.errors);
@@ -244,7 +395,8 @@ async function runAutoDraftsJob(db, FieldValue, options) {
         notifyDraft: bot.notifyDraft,
         creds: bot.adminCredsFromEnv(),
         withButtons: Boolean(process.env.TELEGRAM_ADMIN_CHAT_ID),
-        limit: (options && options.limit) || DEFAULT_MAX_PER_RUN
+        limit: (options && options.limit) || DEFAULT_MAX_PER_RUN,
+        repairLimit: (options && options.repairLimit) || 1
     };
     return runAutoDrafts(db, FieldValue, deps);
 }
@@ -254,8 +406,13 @@ module.exports = {
     pickJobDraftUrl,
     pickAutoDraftCandidates,
     processCandidate,
+    pickRepairCandidates,
+    processRepair,
+    lastTryTooRecent,
     runAutoDrafts,
     runAutoDraftsJob,
     DEFAULT_MAX_PER_RUN,
-    MAX_TRIES
+    MAX_TRIES,
+    REPAIR_MAX_TRIES,
+    RETRY_COOLDOWN_MS
 };

@@ -132,6 +132,7 @@ const JobDetails = () => {
     const navigate = useNavigate();
 
     const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
+    const [relatedJobs, setRelatedJobs] = useState<JobPost[]>([]);
     const [copied, setCopied] = useState(false);
 
     const { job, loading, error: jobError } = useJob(id);
@@ -147,7 +148,22 @@ const JobDetails = () => {
         getDoc(doc(db, "site_settings", "global")).then((settingsSnap) => {
             setGlobalSettings(normalizeSettings(settingsSnap.exists() ? settingsSnap.data() : undefined));
         }).catch(() => setGlobalSettings(getDefaultSettings()));
-    }, [job]);
+
+        // 📌 Related jobs — same category pehle, current job hata kar (sirf published)
+        jobRepository.listLatest({ limitCount: 14 })
+            .then((all) => {
+                const others = all.filter(other =>
+                    other.id !== job.id && other.id !== id && other.slug !== id
+                    && (!other.status || String(other.status).toLowerCase() === 'published')
+                );
+                const sameCategory = job.category
+                    ? others.filter(other => other.category === job.category)
+                    : [];
+                const rest = others.filter(other => !sameCategory.includes(other));
+                setRelatedJobs([...sameCategory, ...rest].slice(0, 6));
+            })
+            .catch(() => setRelatedJobs([]));
+    }, [job, id]);
 
     useEffect(() => {
         window.scrollTo(0, 0);
@@ -720,6 +736,43 @@ const JobDetails = () => {
                                         )}
                                     </div>
                                 </div>
+
+                                {/* 📌 Related Jobs — isi jaise, content flow me 2-3 ek saath */}
+                                {relatedJobs.length > 0 && (
+                                    <div className="bg-white border border-slate-100 rounded-2xl p-5 md:p-6 shadow-sm mt-6">
+                                        <div className="flex items-center justify-between gap-2 mb-4">
+                                            <h2 className="text-sm md:text-lg font-black text-slate-800 uppercase tracking-tight flex items-center gap-1.5">
+                                                📌 Isi Jaisi Aur Bhartiyan
+                                            </h2>
+                                            <a
+                                                href="/govt-jobs"
+                                                className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-[9px] md:text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full shadow transition-all active:scale-95"
+                                            >
+                                                Click for More →
+                                            </a>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            {relatedJobs.map(related => (
+                                                <a
+                                                    key={related.id}
+                                                    href={`/job/${related.slug || related.id}`}
+                                                    className="group block bg-slate-50 hover:bg-blue-50 border border-slate-100 hover:border-blue-200 rounded-xl p-3.5 transition-all"
+                                                >
+                                                    <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">
+                                                        {related.organization || 'Govt Dept.'}
+                                                    </p>
+                                                    <p className="font-bold text-sm text-slate-800 group-hover:text-blue-700 leading-snug line-clamp-2">
+                                                        {related.title}
+                                                    </p>
+                                                    <div className="flex justify-between items-center mt-2 text-[10px] text-slate-500 font-bold">
+                                                        <span>{related.vacancies ? `👥 ${related.vacancies} Posts` : '🏛️ Govt Job'}</span>
+                                                        <span className="text-red-500">{related.lastDate ? `⏳ ${related.lastDate}` : ''}</span>
+                                                    </div>
+                                                </a>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* ✅ Internal Links - /mock-tests FIX */}
                                 <div className="bg-blue-50/50 p-6 md:p-8 rounded-[2rem] border border-blue-100 mt-4">
