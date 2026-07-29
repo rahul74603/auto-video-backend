@@ -499,4 +499,4 @@ function registerArticleAgentRoutes(app, db) {
   });
 }
 
-module.exports = { registerArticleAgentRoutes };
+module.exports = { registerArticleAgentRoutes, collectExistingContent };

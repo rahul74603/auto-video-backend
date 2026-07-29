@@ -32,6 +32,7 @@ if (!admin.apps.length) {
 }
 
 const db     = admin.firestore();
+const { overlapsAny } = require("./agents/article_agents/title_utils");
 const parser = new Parser();
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
@@ -356,6 +357,19 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
 
     logger(`🔍 Scanning ${allItems.length} items (max ${MAX_ITEMS} to save)...`);
 
+    // ✅ Duplicate shield: site pe pehle se maujood recent titles (draft+live dono)
+    const recentTitles = [];
+    try {
+        const recentSnap = await db.collection("fast_track")
+            .orderBy("createdAt", "desc")
+            .limit(100)
+            .get();
+        recentSnap.forEach(d => recentTitles.push(d.data().title || ""));
+        logger(`🛡️ Duplicate shield: ${recentTitles.length} recent titles loaded`);
+    } catch (shieldErr) {
+        logger(`⚠️ Title shield load failed (continue anyway): ${shieldErr.message}`);
+    }
+
     for (const item of allItems) {
         if (results.length >= MAX_ITEMS) break;
 
@@ -403,6 +417,14 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
                 logger(`⏭️ Slug exists: ${finalSlug}`);
                 continue;
             }
+
+            // ✅ Same/near title guard — re-fetch pe duplicate drafts kabhi na bane
+            const titleDup = overlapsAny(finalTitle, recentTitles);
+            if (titleDup.dup) {
+                logger(`⏭️ Title already on site: "${finalTitle}" (≈ "${titleDup.with}")`);
+                continue;
+            }
+            recentTitles.push(finalTitle); // same run me do baar insert bhi roko
 
             // ✅ Blocked links clean karo
             const cleanDirectLink = isBlockedLink(extracted.directLink)

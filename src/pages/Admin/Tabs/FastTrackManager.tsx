@@ -13,7 +13,7 @@ import {
 import {
     Save, Trash2, Edit2, Database, Plus, X,
     CheckCircle, RefreshCw, Loader2, Filter,
-    AlertTriangle, Eye, Wand2
+    AlertTriangle, Eye, Wand2, Link2, Zap, Layers, Home
 } from 'lucide-react';
 import type { FastTrackItem } from '@/types/firestore';
 import { AI_ARTICLE_PREFILL_STORAGE_KEY } from './AdminAIArticleStudio';
@@ -326,6 +326,7 @@ const FastTrackManager = () => {
     const [isFetching, setIsFetching] = useState(false);
     const [activeTab, setActiveTab] = useState<'draft' | 'published' | 'all'>('draft');
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [formOpen, setFormOpen] = useState(false);
     const [deleteModal, setDeleteModal] = useState<FastTrackItem | null>(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
     const [approveModal, setApproveModal] = useState<FastTrackItem | null>(null);
@@ -478,6 +479,7 @@ const FastTrackManager = () => {
             // Reset form
             setFormData(INITIAL_FORM);
             setEditingId(null);
+            setFormOpen(false);
 
         } catch (err) {
             console.error("Save error:", err);
@@ -502,6 +504,7 @@ const FastTrackManager = () => {
             status: item.status || 'draft'
         });
         setEditingId(item.id);
+        setFormOpen(true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, []);
 
@@ -676,26 +679,92 @@ const FastTrackManager = () => {
                     </div>
                 </div>
 
-                <button
-                    onClick={handleManualFetch}
-                    disabled={isFetching}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-2xl font-black text-sm uppercase tracking-widest flex items-center gap-2 shadow-lg active:scale-95 transition-all disabled:opacity-60"
-                >
-                    {isFetching
-                        ? <Loader2 className="animate-spin w-4 h-4" />
-                        : <RefreshCw className="w-4 h-4" />
-                    }
-                    {isFetching ? "Fetching..." : "Auto Fetch"}
-                </button>
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => {
+                            setEditingId(null);
+                            setFormData(INITIAL_FORM);
+                            setFormOpen(true);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-2xl font-black text-sm uppercase tracking-widest flex items-center gap-2 shadow-lg active:scale-95 transition-all"
+                    >
+                        <Plus className="w-4 h-4" />
+                        Add New
+                    </button>
+                    <button
+                        onClick={handleManualFetch}
+                        disabled={isFetching}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-2xl font-black text-sm uppercase tracking-widest flex items-center gap-2 shadow-lg active:scale-95 transition-all disabled:opacity-60"
+                    >
+                        {isFetching
+                            ? <Loader2 className="animate-spin w-4 h-4" />
+                            : <RefreshCw className="w-4 h-4" />
+                        }
+                        {isFetching ? "Fetching..." : "Auto Fetch"}
+                    </button>
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="flex flex-col lg:flex-row gap-6 items-start">
 
                 {/* =========================================
-                    FORM
+                    🧭 SIDEBAR — quick links (form ab yahin se khulta hai)
                 ========================================= */}
-                <div className="lg:col-span-1">
-                    <div className="bg-white p-5 rounded-[2rem] shadow-lg border border-blue-50 sticky top-4">
+                <aside className="w-full lg:w-64 shrink-0 space-y-4 lg:sticky lg:top-4">
+                    <div className="bg-white p-5 rounded-[2rem] shadow-lg border border-blue-50">
+                        <h3 className="font-black text-blue-700 mb-4 text-sm uppercase flex items-center gap-2">
+                            <Link2 size={16} /> Quick Links
+                        </h3>
+                        <div className="space-y-2">
+                            <button
+                                onClick={() => {
+                                    setEditingId(null);
+                                    setFormData(INITIAL_FORM);
+                                    setFormOpen(true);
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-xl font-black text-xs uppercase flex items-center gap-2 justify-center transition-all"
+                            >
+                                <Plus size={14} /> Add New Update
+                            </button>
+                            <a href="/fasttrack" target="_blank" rel="noreferrer"
+                                className="w-full flex items-center gap-2 p-3 rounded-xl text-xs font-black uppercase text-slate-600 bg-slate-50 hover:bg-blue-50 hover:text-blue-700 border border-slate-100 transition-all">
+                                <Zap size={14} className="text-yellow-500" /> Live Fast Track Page
+                            </a>
+                            <a href="/web-stories" target="_blank" rel="noreferrer"
+                                className="w-full flex items-center gap-2 p-3 rounded-xl text-xs font-black uppercase text-slate-600 bg-slate-50 hover:bg-purple-50 hover:text-purple-700 border border-slate-100 transition-all">
+                                <Layers size={14} className="text-purple-500" /> Web Stories
+                            </a>
+                            <a href="/govt-jobs" target="_blank" rel="noreferrer"
+                                className="w-full flex items-center gap-2 p-3 rounded-xl text-xs font-black uppercase text-slate-600 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 border border-slate-100 transition-all">
+                                <Database size={14} className="text-emerald-500" /> Govt Jobs Page
+                            </a>
+                            <a href="/" target="_blank" rel="noreferrer"
+                                className="w-full flex items-center gap-2 p-3 rounded-xl text-xs font-black uppercase text-slate-600 bg-slate-50 hover:bg-slate-200 border border-slate-100 transition-all">
+                                <Home size={14} className="text-slate-500" /> Home Page
+                            </a>
+                        </div>
+                    </div>
+                    <div className="bg-blue-600 text-white p-4 rounded-[2rem] shadow-lg">
+                        <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Workflow</p>
+                        <p className="text-xs font-bold mt-1 leading-relaxed">
+                            Draft pe ✨ AI dabao → article banao → publish. Publish hote hi draft auto-delete + story ban jayegi.
+                        </p>
+                    </div>
+                </aside>
+
+                {/* =========================================
+                    MAIN CONTENT (form + full-width list)
+                ========================================= */}
+                <div className="flex-1 min-w-0 space-y-6 w-full">
+
+                {/* =========================================
+                    FORM (sidebar ke buttons se khulta hai)
+                ========================================= */}
+                {formOpen && (
+                <div>
+                    <div className="bg-white p-5 rounded-[2rem] shadow-lg border border-blue-50">
                         <h3 className="font-black text-blue-700 mb-5 text-lg uppercase flex items-center gap-2">
                             {editingId
                                 ? <><Edit2 size={18} /> Edit Update</>
@@ -841,6 +910,7 @@ const FastTrackManager = () => {
                                         onClick={() => {
                                             setEditingId(null);
                                             setFormData(INITIAL_FORM);
+                                            setFormOpen(false);
                                         }}
                                         className="p-3.5 bg-slate-100 text-slate-600 rounded-2xl hover:bg-slate-200 transition-all"
                                         aria-label="Cancel Edit"
@@ -852,11 +922,12 @@ const FastTrackManager = () => {
                         </form>
                     </div>
                 </div>
+                )}
 
                 {/* =========================================
-                    LIST
+                    LIST (full width)
                 ========================================= */}
-                <div className="lg:col-span-2">
+                <div>
                     <div className="bg-white p-5 rounded-[2rem] shadow-lg border border-slate-100">
 
                         {/* List Header */}
@@ -928,6 +999,7 @@ const FastTrackManager = () => {
                             </div>
                         )}
                     </div>
+                </div>
                 </div>
             </div>
 

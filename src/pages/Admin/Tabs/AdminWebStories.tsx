@@ -203,6 +203,7 @@ const AdminWebStories = () => {
                 junkArchived?: number;
                 coversRefreshed?: number;
                 skippedExisting?: number;
+                draftsCleaned?: number;
                 errors?: string[];
             };
             if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
@@ -212,6 +213,7 @@ const AdminWebStories = () => {
                 `✅ Nayi stories: ${createdCount}\n` +
                 `🖼️ Covers refresh (unique pics): ${data.coversRefreshed || 0}\n` +
                 `🧹 Purani junk stories safai (noIndex): ${data.junkArchived || 0}\n` +
+                `🧽 Duplicate drafts delete (published twins): ${data.draftsCleaned || 0}\n` +
                 `⏭️ Pehle se bani hui: ${data.skippedExisting || 0}\n` +
                 ((data.errors || []).length ? `⚠️ Errors: ${(data.errors || []).length}\n` : '') +
                 `\nGoogle Discover auto-ready! 🚀`

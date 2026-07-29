@@ -506,6 +506,33 @@ exports.onFastTrackPublishedAutoStory = onDocumentWritten({ document: "fast_trac
 exports.onBlogPublishedAutoStory = onDocumentWritten({ document: "blogs/{docId}", maxInstances: 5 },
     autoStoryTrigger("blogs", "docId"));
 
+// 🌅 4C. AUTO-DRAFTS MACHINE — roz subah 8 baje (IST) fresh items se AI drafts
+// bante hain + Telegram approve-card (publish kabhi khud nahi karta)
+exports.scheduledAutoDrafts = onSchedule({
+    schedule: "every day 08:00",
+    timeZone: "Asia/Kolkata",
+    secrets: ["GEMINI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_ADMIN_CHAT_ID"],
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    maxInstances: 1
+}, () => require("./auto_drafts").runAutoDraftsJob(db, admin.firestore.FieldValue));
+
+// Manual run (admin/GitHub Actions ke liye) — GET/POST dono chalega
+exports.triggerAutoDrafts = onRequest({
+    secrets: ["GEMINI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_ADMIN_CHAT_ID"],
+    timeoutSeconds: 540,
+    memory: "1GiB"
+}, async (req, res) => {
+    try {
+        const limit = Number(req.query.limit || req.body?.limit || 2);
+        const report = await require("./auto_drafts").runAutoDraftsJob(db, admin.firestore.FieldValue, { limit });
+        return res.json({ success: true, ...report });
+    } catch (error) {
+        console.error("❌ triggerAutoDrafts:", error);
+        return res.status(500).json({ success: false, error: error.message || "auto-drafts failed" });
+    }
+});
+
 // 5. Auto Stories (Triggered via GitHub Actions API)
 exports.triggerBlogStoryNoon = onRequest({ timeoutSeconds: 300, memory: "512MiB" }, (req, res) => require("./auto_stories").triggerBlogStoryNoon(req, res));
 

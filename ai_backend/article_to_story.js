@@ -13,6 +13,7 @@
  */
 
 const { plainText, escapeHtml } = require("./agents/article_agents/article_html_utils");
+const { overlapsAny } = require("./agents/article_agents/title_utils");
 
 // ---------------------------------------------------------------------------
 // Static branded assets (repo `public/story-assets/` — dist ke saath site root pe)
@@ -512,12 +513,83 @@ function handleDocumentWritten(db, FieldValue, collectionName, idParam) {
 }
 
 // ---------------------------------------------------------------------------
+// 🧹 Draft cleanup — jo item PUBLISHED ho chuka, uska draft/source row delete.
+//    (re-fetch loop me wahi item dubara "naya draft" banke nahi aayega)
+// ---------------------------------------------------------------------------
+async function cleanupSourceDrafts(db) {
+    const report = { removed: [], errors: [] };
+
+    // Published titles dono collections se
+    const pools = { jobs: [], fast_track: [] };
+    try {
+        const jobsSnap = await db.collection("jobs").orderBy("createdAt", "desc").limit(120).get();
+        for (const d of jobsSnap.docs) pools.jobs.push(d.data().title || "");
+        const ftSnap = await db.collection("fast_track").orderBy("createdAt", "desc").limit(150).get();
+        for (const d of ftSnap.docs) {
+            const data = d.data();
+            if (String(data.status || "").toLowerCase() !== "draft") {
+                pools.fast_track.push(data.title || "");
+            }
+        }
+    } catch (error) {
+        report.errors.push(`published-scan: ${error.message}`);
+        return report;
+    }
+
+    // fast_track DRAFT rows jinki published twin hai
+    try {
+        const ftAll = await db.collection("fast_track").orderBy("createdAt", "desc").limit(150).get();
+        for (const d of ftAll.docs) {
+            const data = d.data();
+            if (String(data.status || "draft").toLowerCase() !== "draft") continue;
+            if (overlapsAny(data.title || "", pools.fast_track).dup) {
+                await db.collection("fast_track").doc(d.id).delete()
+                    .then(() => report.removed.push(`fast_track/${d.id}`))
+                    .catch(e => report.errors.push(`fast_track/${d.id}: ${e.message}`));
+            }
+        }
+    } catch (error) {
+        report.errors.push(`ft-scan: ${error.message}`);
+    }
+
+    // job_drafts rows jinki published jobs twin hai
+    try {
+        const jdAll = await db.collection("job_drafts").orderBy("createdAt", "desc").limit(80).get();
+        for (const d of jdAll.docs) {
+            const data = d.data();
+            if (overlapsAny(data.title || "", pools.jobs).dup) {
+                await db.collection("job_drafts").doc(d.id).delete()
+                    .then(() => report.removed.push(`job_drafts/${d.id}`))
+                    .catch(e => report.errors.push(`job_drafts/${d.id}: ${e.message}`));
+            }
+        }
+    } catch (error) {
+        // job_drafts me orderBy field na ho to unordered fallback
+        try {
+            const jdFallback = await db.collection("job_drafts").limit(80).get();
+            for (const d of jdFallback.docs) {
+                const data = d.data();
+                if (overlapsAny(data.title || "", pools.jobs).dup) {
+                    await db.collection("job_drafts").doc(d.id).delete()
+                        .then(() => report.removed.push(`job_drafts/${d.id}`))
+                        .catch(e => report.errors.push(`job_drafts/${d.id}: ${e.message}`));
+                }
+            }
+        } catch (e2) {
+            report.errors.push(`job_drafts-scan: ${e2.message}`);
+        }
+    }
+    return report;
+}
+
+// ---------------------------------------------------------------------------
 // ♻️ BACKFILL — purane published articles ki stories ek saath
 // ---------------------------------------------------------------------------
 async function backfillStories(db, FieldValue, options) {
     const perCollection = Math.min(Math.max(Number(options && options.limit) || 40, 1), 80);
     const archiveJunk = !options || options.archiveJunk !== false;
-    const report = { created: [], skippedExisting: 0, ineligible: 0, junkArchived: 0, coversRefreshed: 0, errors: [] };
+    const cleanupDrafts = !options || options.cleanupDrafts !== false;
+    const report = { created: [], skippedExisting: 0, ineligible: 0, junkArchived: 0, coversRefreshed: 0, draftsCleaned: 0, errors: [] };
 
     for (const collectionName of BACKFILL_COLLECTIONS) {
         let snap;
@@ -601,6 +673,14 @@ async function backfillStories(db, FieldValue, options) {
             report.errors.push(`junkArchive: ${error.message}`);
         }
     }
+
+    // Published items ke stale drafts delete (re-fetch duplicate loop rokne ke liye)
+    if (cleanupDrafts) {
+        const clean = await cleanupSourceDrafts(db);
+        report.draftsCleaned = clean.removed.length;
+        report.cleanedDrafts = clean.removed;
+        report.errors.push(...clean.errors);
+    }
     return report;
 }
 
@@ -611,7 +691,8 @@ function backfillHttpHandler(db, FieldValue) {
             const body = req.body || {};
             const report = await backfillStories(db, FieldValue, {
                 limit: body.limit,
-                archiveJunk: body.archiveJunk
+                archiveJunk: body.archiveJunk,
+                cleanupDrafts: body.cleanupDrafts
             });
             return res.json({ success: true, ...report });
         } catch (error) {
@@ -644,6 +725,7 @@ module.exports = {
     shouldCreateOnWrite,
     createStoryForArticle,
     handleDocumentWritten,
+    cleanupSourceDrafts,
     backfillStories,
     backfillHttpHandler,
     registerStoryRoutes
