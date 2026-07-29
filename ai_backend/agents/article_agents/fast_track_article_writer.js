@@ -12,8 +12,8 @@
 
 const {
   EDITORIAL_AUTHOR,
-  WORD_TARGET_MIN,
-  WORD_TARGET_MAX,
+  WORD_TARGET_MIN_FAST_TRACK,
+  WORD_COMPRESS_TRIGGER,
   FAST_TRACK_CATEGORIES,
   isBlockedDomain
 } = require("./constants");
@@ -65,7 +65,7 @@ function buildFastTrackWriterPrompt({ source, instructions, feedbackIssues }) {
     `   "${EDITORIAL_AUTHOR}".`,
     "",
     "================ ARTICLE REQUIREMENTS ================",
-    `- ${WORD_TARGET_MIN}-${WORD_TARGET_MAX} meaningful words — lekin 2400 se zyada KABHI nahi. No filler.`,
+    `- KAM SE KAM ${WORD_TARGET_MIN_FAST_TRACK} meaningful words (isse kam FAIL ho jayegi; patle result-source me bhi detail likho — imp points, process, next steps); upar ki koi hard limit NAHI. No filler/repetition.`,
     "- Exactly ONE <h1>; proper <h2>/<h3> hierarchy.",
     "- ⭐ SECTION ORDER FIXED — isi order me, taaki reader ko turant samajh aaye:",
     "  1. Chhota intro paragraph (2-3 lines — kya update aayi hai, kis organization ki, kab)",
@@ -240,8 +240,8 @@ function normalizeFastTrackArticle(raw, { source }) {
 /** Word-limit overshoot par deterministic compress retry (job writer jaisa hi). */
 function buildCompressPrompt(article) {
   return [
-    "Neeche diya gaya fast-track article bahut lamba ho gaya hai. Ise SHORT karo —",
-    "target ~2000 words (range 1700-2300, hard limit 2400).",
+    "Neeche diya gaya fast-track article bahut zyada lamba ho gaya hai (runaway output). Ise SHORT karo —",
+    `target ~1800 words (minimum ${WORD_TARGET_MIN_FAST_TRACK} words rehna chahiye).`,
     "",
     "STRICT RULES:",
     "- SABHI facts, dates, tables, direct/official links BILKUL same rakho.",
@@ -268,7 +268,7 @@ async function generateFastTrackArticle({ source, instructions, feedbackIssues }
 
   for (
     let attempt = 0;
-    attempt < 2 && article.wordCount > WORD_TARGET_MAX + 100;
+    attempt < 2 && article.wordCount > WORD_COMPRESS_TRIGGER; // runaway-safety — upper hard limit admin rule se N/A
     attempt += 1
   ) {
     try {

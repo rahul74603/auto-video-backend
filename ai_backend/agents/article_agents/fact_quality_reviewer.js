@@ -22,9 +22,11 @@
  */
 
 const {
+  ARTICLE_TYPES,
   EDITORIAL_AUTHOR,
   WORD_TARGET_MIN,
-  WORD_TARGET_MAX,
+  WORD_TARGET_MIN_FAST_TRACK,
+  WORD_WARN_HIGH,
   OUR_SOCIAL_LINKS,
   isBlockedDomain
 } = require("./constants");
@@ -182,12 +184,17 @@ function checkStructure({ type, article, source, issues, warnings, metrics }) {
   const responsiveWrapped =
     tables === 0 || /table-responsive/.test(html);
 
-  if (metrics.wordCount < WORD_TARGET_MIN) {
-    issues.push(`word-count-low:${metrics.wordCount} (<${WORD_TARGET_MIN})`);
-  } else if (metrics.wordCount > WORD_TARGET_MAX + 300) {
-    issues.push(`word-count-high:${metrics.wordCount} (>${WORD_TARGET_MAX})`);
-  } else if (metrics.wordCount > WORD_TARGET_MAX) {
-    warnings.push(`word-count-slightly-high:${metrics.wordCount}`);
+  // Word policy: sirf MINIMUM enforce hota hai (type ke hisaab se — JOB 1600,
+  // FAST_TRACK 1200). Upar ki taraf hard limit nahi (admin rule): bahut lambi
+  // ho to sirf warning, publish kabhi block nahi.
+  // NOTE: yahan type ARTICLE ka type hai ("JOB"/"FAST_TRACK"), routing ka
+  // lowercase nahi — casing pe mat tikna.
+  const isFastTrack = String(type || "").toLowerCase().replace(/_/g, "-") === ARTICLE_TYPES.FAST_TRACK;
+  const minWords = isFastTrack ? WORD_TARGET_MIN_FAST_TRACK : WORD_TARGET_MIN;
+  if (metrics.wordCount < minWords) {
+    issues.push(`word-count-low:${metrics.wordCount} (<${minWords})`);
+  } else if (metrics.wordCount > WORD_WARN_HIGH) {
+    warnings.push(`word-count-very-high:${metrics.wordCount} (sirf soft warning — publish block nahi)`);
   }
 
   if (metrics.h1Count === 0) issues.push("structure:missing-h1");

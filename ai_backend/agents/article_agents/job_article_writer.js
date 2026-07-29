@@ -11,7 +11,7 @@
  * stays empty or points the reader to the official notification.
  */
 
-const { EDITORIAL_AUTHOR, WORD_TARGET_MIN, WORD_TARGET_MAX, isBlockedDomain } = require("./constants");
+const { EDITORIAL_AUTHOR, WORD_TARGET_MIN, WORD_COMPRESS_TRIGGER, isBlockedDomain } = require("./constants");
 const {
   normalizeArticleHtml,
   appendJoinUsSection,
@@ -102,7 +102,7 @@ function buildJobWriterPrompt({ source, instructions, feedbackIssues }) {
     `   "${EDITORIAL_AUTHOR}".`,
     "",
     "================ ARTICLE REQUIREMENTS ================",
-    `- Length: ${WORD_TARGET_MIN}-${WORD_TARGET_MAX} meaningful words — lekin 2400 words se zyada KABHI nahi.`,
+    `- Length: KAM SE KAM ${WORD_TARGET_MIN} meaningful words (isse kam FAIL ho jayegi); upar ki koi hard limit NAHI — content grounded ho to jitna detailed chaho likho. No filler/repetition.`,
     "  Filler repetition ya keyword stuffing bilkul nahi.",
     "- Exactly ONE <h1>. Use multiple <h2> and <h3> sections.",
     "- ⭐ SECTION ORDER FIXED hai — isi order me likho taaki reader ko dekhte hi sab samajh aaye:",
@@ -322,8 +322,8 @@ function normalizeJobArticle(raw, { source }) {
  */
 function buildCompressPrompt(article) {
   return [
-    "Neeche diya gaya job article bahut lamba ho gaya hai. Ise SHORT karo —",
-    `target ~2000 words (range 1700-2300, hard limit 2400).`,
+    "Neeche diya gaya job article bahut zyada lamba ho gaya hai (runaway output). Ise SHORT karo —",
+    `target ~2000 words (minimum ${WORD_TARGET_MIN} words rehna chahiye).`,
     "",
     "STRICT RULES:",
     "- SABHI facts, dates, numbers, tables, official links BILKUL same rakho (kuch remove/ghatao mat).",
@@ -352,7 +352,7 @@ async function generateJobArticle({ source, instructions, feedbackIssues }, deps
   // Word limit overshoot → max 2 compress retries, har baar BEST chhota version rakhte hue.
   for (
     let attempt = 0;
-    attempt < 2 && article.wordCount > WORD_TARGET_MAX + 100;
+    attempt < 2 && article.wordCount > WORD_COMPRESS_TRIGGER; // runaway-safety — upper hard limit admin rule se N/A
     attempt += 1
   ) {
     try {

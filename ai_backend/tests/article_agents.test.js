@@ -291,7 +291,7 @@ test("source fetcher fails when page has too little text", async () => {
 test("job writer prompt is source-grounded and demands the required structure", () => {
   const prompt = buildJobWriterPrompt({ source: makeJobSource(), instructions: "focus on dates" });
   assert.match(prompt, /NEVER invent or guess dates/);
-  assert.match(prompt, /1600-2500/);
+  assert.match(prompt, /KAM SE KAM 1600 meaningful words/); // word policy: min-only, upar ki hard limit nahi
   assert.match(prompt, /table-responsive/);
   assert.match(prompt, new RegExp(EDITORIAL_AUTHOR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(prompt, /01\/07\/2026/); // grounded table data present
@@ -1461,4 +1461,63 @@ test("generateJobArticle: feedbackIssues writer ke prompt tak pahunchte hain", a
     { generateJson: fakeGen }
   );
   assert.ok(seenPrompt.includes("₹9,99,999"), "writer ko pichla flagged figure dikhna chahiye");
+});
+
+/* ================================================================== */
+/* WORD POLICY (admin rule): min-only — JOB 1600 / FAST_TRACK 1200, max N/A */
+/* ================================================================== */
+
+function tinyArticle(type, wordCount) {
+  return {
+    type,
+    h1: "Test",
+    seoTitle: "Test",
+    metaDescription: "Test meta",
+    shortDescription: "Test",
+    contentHtml: "<h1>Test</h1><h2>A</h2><h2>B</h2><h2>C</h2><h2>D</h2><p>x</p>",
+    faqs: [{ question: "q1", answer: "a1" }, { question: "q2", answer: "a2" }, { question: "q3", answer: "a3" }, { question: "q4", answer: "a4" }],
+    facts: { title: "Test" },
+    officialLinks: [{ label: "Notification PDF", url: "https://example.com/x.pdf" }],
+    keywords: ["test"],
+    wordCount // reviewer article.wordCount ko hi maanta hai (html count nahi)
+  };
+}
+
+test("word policy: JOB me 3000 words pe koi 'high' issue NAHI (upar ki koi hard limit nahi)", () => {
+  const review = reviewArticle({
+    type: "JOB",
+    article: tinyArticle("JOB", 3000),
+    source: { url: "https://example.com/x.pdf", text: "x".repeat(500), tables: [], links: [] },
+    existing: { titles: [], urls: [] }
+  });
+  const wordIssues = (review.issues || []).filter((i) => i.startsWith("word-count"));
+  assert.deepEqual(wordIssues, [], `unexpected: ${wordIssues.join("|")}`);
+});
+
+test("word policy: JOB me 1500 words → low issue (<1600 min)", () => {
+  const review = reviewArticle({
+    type: "JOB",
+    article: tinyArticle("JOB", 1500),
+    source: { url: "https://example.com/x.pdf", text: "x".repeat(500), tables: [], links: [] },
+    existing: { titles: [], urls: [] }
+  });
+  assert.ok(review.issues.some((i) => i.startsWith("word-count-low")));
+});
+
+test("word policy: FAST_TRACK min 1200 — 1300 pe koi low issue nahi, 1000 pe aata hai", () => {
+  const src = { url: "https://example.com/r.pdf", text: "r".repeat(500), tables: [], links: [] };
+  const ok1300 = reviewArticle({
+    type: "FAST_TRACK",
+    article: tinyArticle("FAST_TRACK", 1300),
+    source: src,
+    existing: { titles: [], urls: [] }
+  });
+  assert.ok(!(ok1300.issues || []).some((i) => i.startsWith("word-count-low")), "1300 words FT pe block nahi hona chahiye");
+  const low1000 = reviewArticle({
+    type: "FAST_TRACK",
+    article: tinyArticle("FAST_TRACK", 1000),
+    source: src,
+    existing: { titles: [], urls: [] }
+  });
+  assert.ok(low1000.issues.some((i) => i.startsWith("word-count-low")));
 });

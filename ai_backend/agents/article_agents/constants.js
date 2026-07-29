@@ -20,8 +20,15 @@ const ARTICLE_TYPES = Object.freeze({
 });
 
 // Requirement: 1600-2500 meaningful words per article.
-const WORD_TARGET_MIN = 1600;
-const WORD_TARGET_MAX = 2500;
+// ===== Word policy (ADMIN ne final ki hai) =====
+// Minimum type ke hisaab se; upar ki taraf koi HARD limit NAHI — grounded
+// content jitna detailed ho, publish ho sakta hai.
+const WORD_TARGET_MIN_JOB = 1600;
+const WORD_TARGET_MIN_FAST_TRACK = 1200;
+const WORD_TARGET_MIN = WORD_TARGET_MIN_JOB; // legacy alias (JOB references)
+const WORD_TARGET_MAX = 2500; // sirf prompt me guidance-target ke liye (review ISSUE nahi banta)
+const WORD_WARN_HIGH = 4500; // iske upar sirf soft WARNING (publish block nahi)
+const WORD_COMPRESS_TRIGGER = 5500; // runaway/truncation safety valve — practice me kabhi nahi chalta
 
 // Third-party aggregator domains that must never leak into saved links.
 // (Inke pages hum SOURCE ki tarah padh sakte hain, par apne article me
@@ -79,6 +86,10 @@ module.exports = {
   ARTICLE_TYPES,
   WORD_TARGET_MIN,
   WORD_TARGET_MAX,
+  WORD_TARGET_MIN_JOB,
+  WORD_TARGET_MIN_FAST_TRACK,
+  WORD_WARN_HIGH,
+  WORD_COMPRESS_TRIGGER,
   BLOCKED_DOMAINS,
   OUR_SOCIAL_LINKS,
   FAST_TRACK_CATEGORIES,
