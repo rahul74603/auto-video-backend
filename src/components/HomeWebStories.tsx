@@ -1,6 +1,7 @@
 
 import { asText } from '@/types/firestore';
 import { useStories } from '@/features/stories/hooks/useStories';
+import { storyRelativeLabel } from '@/features/stories/storyUi';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 
@@ -52,11 +53,17 @@ const HomeWebStories = () => {
                         
                         <div className="absolute bottom-0 p-3 w-full">
                             <span className={`text-[7px] font-black text-white px-2 py-0.5 rounded uppercase mb-1.5 inline-block shadow-sm ${story.storyType === 'blog' ? 'bg-emerald-600' : 'bg-blue-600'}`}>
-                                {story.storyType === 'blog' ? '📝 Blog' : '🎯 Mock Test'}
+                                {story.storyType === 'blog' ? '📝 Blog' : story.storyType === 'job' ? '🏛️ Job' : story.storyType === 'fasttrack' ? '⚡ Update' : '🎯 Mock Test'}
                             </span>
                             <h4 className="text-white font-bold text-[11px] md:text-xs leading-tight line-clamp-3 drop-shadow-md">
                                 {asText(story.title)}
                             </h4>
+                            {(() => {
+                                const rel = storyRelativeLabel(story.createdAt);
+                                return rel ? (
+                                    <span className="text-[8px] font-bold text-yellow-300/90 uppercase tracking-wide mt-1 inline-block">🕒 {rel}</span>
+                                ) : null;
+                            })()}
                         </div>
                     </div>
                 ))}

@@ -5,9 +5,11 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   limit,
   orderBy,
   query,
+  updateDoc,
   where,
 } from 'firebase/firestore';
 
@@ -49,6 +51,15 @@ export const storyRepository = {
   async getById(id: string): Promise<StoryRecord | null> {
     const snapshot = await getDoc(doc(db, 'web_stories', id));
     return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
+  },
+
+  /** 👁️ Views counter — fail ho to chupchaap ignore (UX kabhi nahi tootega) */
+  async incrementViews(id: string): Promise<void> {
+    try {
+      await updateDoc(doc(db, 'web_stories', id), { views: increment(1) });
+    } catch (err) {
+      console.warn('story views increment skipped:', err);
+    }
   },
 
   async getBySlugOrId(value: string): Promise<StoryRecord | null> {

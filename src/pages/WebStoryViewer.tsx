@@ -1,6 +1,7 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStory } from '@/features/stories/hooks/useStory';
+import { storyRepository } from '@/features/stories/data/storyRepository';
 import {
     X, Loader2,
     ExternalLink, Share2, Check
@@ -520,6 +521,12 @@ const WebStoryViewer = () => {
         () => (storyData && docId ? buildMultiPageStory(storyData, docId) : null),
         [storyData, docId]
     );
+
+    // 👁️ View count — story khulne pe 1 baar (fail ho to silent)
+    useEffect(() => {
+        if (!docId) return;
+        void storyRepository.incrementViews(docId);
+    }, [docId]);
 
     // =========================================================
     // 📤 SHARE

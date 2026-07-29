@@ -23,7 +23,17 @@ const STORY_ASSETS = {
     result: `${SITE}/story-assets/bg-result.jpg`,
     admit: `${SITE}/story-assets/bg-admit.jpg`,
     notice: `${SITE}/story-assets/bg-notice.jpg`,
-    study: `${SITE}/story-assets/bg-study.jpg`
+    study: `${SITE}/story-assets/bg-study.jpg`,
+    railway: `${SITE}/story-assets/bg-railway.jpg`,
+    defence: `${SITE}/story-assets/bg-defence.jpg`,
+    banking: `${SITE}/story-assets/bg-banking.jpg`,
+    teaching: `${SITE}/story-assets/bg-teaching.jpg`,
+    medical: `${SITE}/story-assets/bg-medical.jpg`,
+    engineering: `${SITE}/story-assets/bg-engineering.jpg`,
+    ssc: `${SITE}/story-assets/bg-ssc.jpg`,
+    clerk: `${SITE}/story-assets/bg-clerk.jpg`,
+    news: `${SITE}/story-assets/bg-news.jpg`,
+    upsc: `${SITE}/story-assets/bg-upsc.jpg`
 };
 const PUBLISHER_LOGO = `${SITE}/story-assets/publisher-logo.png`;
 const ASSET_WIDTH = 1080;
@@ -101,13 +111,63 @@ function yearFrom(data) {
 // 🎨 Theme + badge (cover image & discover badge ka decision)
 // ---------------------------------------------------------------------------
 function pickTheme(collectionName, data) {
-    const text = `${(data && data.title) || ""} ${(data && data.category) || ""}`.toLowerCase();
+    const text = `${(data && data.title) || ""} ${(data && data.category) || ""} ${(data && data.organization) || ""} ${(data && data.org) || ""}`.toLowerCase();
     if (/admit|hall[\s-]?ticket|एडमिट|प्रवेश[\s-]?पत्र/.test(text)) return "admit";
     if (/answer[\s-]?key|आंसर|उत्तर[\s-]?कुंजी|cut[\s-]?off|कट[\s-]?ऑफ|merit|counsell/.test(text)) return "notice";
     if (/result|रिजल्ट|परिणाम|scorecard|स्कोरकार्ड/.test(text)) return "result";
+    if (/railway|rrb|ntpc|group[\s-]?d|alp|rpf/.test(text)) return "railway";
+    if (/army|navy|air[\s-]?force|agniveer|police|constable|cisf|bsf|crpf|capf|defence|रक्षा|पुलिस/.test(text)) return "defence";
+    if (/bank|ibps|sbi|rbi|po[\s\/]|probationary|credit[\s-]?officer/.test(text)) return "banking";
+    if (/teacher|professor|tet|ctet|ugc|net$|lecturer|शिक्षक|adhyapak|TGT|PGT|PRT/i.test(text)) return "teaching";
+    if (/nurse|nursing|medical|doctor|aiims|norcet|pharmacist|anm|gnm|health|स्वास्थ्य/.test(text)) return "medical";
+    if (/engineer|technical|technician|\bje\b|\bme\b|\bee\b|iit|nit|polytechnic|iti/.test(text)) return "engineering";
+    if (/ssc|cgl|chsl|mts|gd[\s-]?constable|stenographer/.test(text)) return "ssc";
+    if (/upsc|ias|ips|irs|psc|civil[\s-]?services/.test(text)) return "upsc";
+    if (/clerk|record[\s-]?keeper|secretariat|court|office[\s-]?assistant|\bldc\b|\budc\b/.test(text)) return "clerk";
+    if (/apprentice|trainee|intern/.test(text)) return "engineering";
+    if (/current[\s-]?affairs|news|editorial/.test(text)) return "news";
     if (collectionName === "jobs") return "job";
     if (collectionName === "blogs") return "study";
     return "notice";
+}
+
+// ---------------------------------------------------------------------------
+// 🖼️ Uniqueness: source article ki ASLI photo → cover, nahi to theme asset.
+// Sirf hamare khud ke (trusted) domains ki photos chalengi.
+// ---------------------------------------------------------------------------
+const OWN_IMAGE_HOST = /^(studygyaan\.in|firebasestorage\.googleapis\.com|storage\.googleapis\.com)$/;
+
+function safeSourceImage(data) {
+    const url = String(
+        (data && (data.imageUrl || data.coverImage || data.featuredImage || data.image)) || ""
+    ).trim();
+    if (!/^https:\/\//i.test(url)) return null;
+    try {
+        const host = new URL(url).hostname;
+        if (!OWN_IMAGE_HOST.test(host)) return null;
+    } catch {
+        return null;
+    }
+    const w = Number(data.imageWidth || data.coverImageWidth);
+    const h = Number(data.imageHeight || data.coverImageHeight);
+    return {
+        url,
+        width: (w >= 100 && w <= 5000) ? w : ASSET_WIDTH,
+        height: (h >= 100 && h <= 5000) ? h : ASSET_HEIGHT,
+        sourceImage: true
+    };
+}
+
+/** Final cover decide karo: { url, width, height, type, sourceImage } */
+function pickCoverImage(collectionName, data, theme) {
+    const own = safeSourceImage(data);
+    if (own) return { url: own.url, width: own.width, height: own.height, type: data.coverImageType || "image/jpeg", sourceImage: true };
+    return { url: STORY_ASSETS[theme] || STORY_ASSETS.job, width: ASSET_WIDTH, height: ASSET_HEIGHT, type: ASSET_TYPE, sourceImage: false };
+}
+
+/** Ye URL hamara generated theme asset hai ya nahi (refresh-swap sirf inhi pe karenge) */
+function isOurThemeCover(url) {
+    return typeof url === "string" && url.includes("story-assets/bg-");
 }
 
 function badgeFor(storyType, theme, data, year) {
@@ -345,6 +405,8 @@ function buildStoryDoc(collectionName, docId, data) {
     const description = firstNonEmpty(160, data.metaDescription, data.shortInfo, data.description)
         || `${built.title} — StudyGyaan.in पर पूरी जानकारी हिंदी में।`;
 
+    const cover = pickCoverImage(collectionName, data, theme);
+
     const doc = {
         title: built.title,
         slug: buildStoryId(data.slug, docId),
@@ -353,10 +415,11 @@ function buildStoryDoc(collectionName, docId, data) {
         theme,
         category: cleanOne(data.category, 60) || (storyType === "job" ? "Govt Job" : "Education"),
         slides: padSlides(built.slides),
-        coverImage: STORY_ASSETS[theme],
-        coverImageWidth: ASSET_WIDTH,
-        coverImageHeight: ASSET_HEIGHT,
-        coverImageType: ASSET_TYPE,
+        coverImage: cover.url,
+        coverImageWidth: cover.width,
+        coverImageHeight: cover.height,
+        coverImageType: cover.type,
+        coverFromSource: cover.sourceImage,
         applyLink: articleUrlFor(collectionName, data, docId),
         // Official key links bhi saath (CTA targets future ke liye)
         officialLink: firstNonEmpty(200, data.directLink, data.applyLink) || "",
@@ -454,7 +517,7 @@ function handleDocumentWritten(db, FieldValue, collectionName, idParam) {
 async function backfillStories(db, FieldValue, options) {
     const perCollection = Math.min(Math.max(Number(options && options.limit) || 40, 1), 80);
     const archiveJunk = !options || options.archiveJunk !== false;
-    const report = { created: [], skippedExisting: 0, ineligible: 0, junkArchived: 0, errors: [] };
+    const report = { created: [], skippedExisting: 0, ineligible: 0, junkArchived: 0, coversRefreshed: 0, errors: [] };
 
     for (const collectionName of BACKFILL_COLLECTIONS) {
         let snap;
@@ -482,6 +545,37 @@ async function backfillStories(db, FieldValue, options) {
             } catch (error) {
                 report.errors.push(`${collectionName}/${docSnap.id}: ${error.message}`);
             }
+        }
+    }
+
+    // 🖼️ Covers refresh: purani auto-stories (theme covers) ko source ki ASLI photo do
+    if (options && options.refreshCovers) {
+        try {
+            const storiesSnap = await db.collection("web_stories").limit(250).get();
+            for (const storySnap of storiesSnap.docs) {
+                const story = storySnap.data();
+                if (!story.autoGenerated || !story.sourceRef || !isOurThemeCover(story.coverImage)) continue;
+                try {
+                    const srcSnap = await db.collection(story.sourceRef.collection).doc(story.sourceRef.docId).get();
+                    if (!srcSnap.exists) continue;
+                    const theme = pickTheme(story.sourceRef.collection, srcSnap.data());
+                    const fresh = pickCoverImage(story.sourceRef.collection, srcSnap.data(), theme);
+                    if (fresh.url !== story.coverImage) {
+                        await storySnap.ref.set({
+                            coverImage: fresh.url,
+                            coverImageWidth: fresh.width,
+                            coverImageHeight: fresh.height,
+                            coverImageType: fresh.type,
+                            coverFromSource: fresh.sourceImage
+                        }, { merge: true });
+                        report.coversRefreshed += 1;
+                    }
+                } catch (error) {
+                    report.errors.push(`coverRefresh/${storySnap.id}: ${error.message}`);
+                }
+            }
+        } catch (error) {
+            report.errors.push(`refreshCovers: ${error.message}`);
         }
     }
 
@@ -540,6 +634,9 @@ module.exports = {
     shortenTitle,
     buildStoryId,
     pickTheme,
+    pickCoverImage,
+    safeSourceImage,
+    isOurThemeCover,
     badgeFor,
     extractHighlights,
     buildStoryDoc,

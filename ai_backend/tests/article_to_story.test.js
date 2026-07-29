@@ -13,6 +13,9 @@ const {
     buildStoryId,
     shortenTitle,
     pickTheme,
+    pickCoverImage,
+    safeSourceImage,
+    isOurThemeCover,
     badgeFor,
     extractHighlights,
     isStoryEligible,
@@ -86,8 +89,8 @@ test("pickTheme — result/admit/notice/job/study detection", () => {
     assert.equal(pickTheme("fast_track", { title: "HPSC Assistant Professor Result 2026" }), "result");
     assert.equal(pickTheme("fast_track", { title: "UP Police Admit Card जारी" }), "admit");
     assert.equal(pickTheme("fast_track", { title: "SSC CGL Answer Key 2026" }), "notice");
-    assert.equal(pickTheme("jobs", { title: "RITES Engineer Recruitment" }), "job");
     assert.equal(pickTheme("jobs", { title: "RITES Result Declared" }), "result");
+    assert.equal(pickTheme("jobs", { title: "SPMCIL General Manager Recruitment" }), "job");
     assert.equal(pickTheme("blogs", { title: "रामायण notes" }), "study");
 });
 
@@ -105,6 +108,54 @@ test("extractHighlights — HTML हटाए, dedupe, factual lines पहल�
     assert.ok(lines.every(l => l.startsWith("• ")));
     assert.ok(/\d|₹/.test(lines[0]), "digit वाली line पहले आनी चाहिए");
     assert.ok(!lines.join(" ").includes("<p>"));
+});
+
+test("pickTheme — naye category keywords (railway/defence/bank/medical/teaching...)", () => {
+    assert.equal(pickTheme("jobs", { title: "RRB NTPC Graduate Recruitment 2026" }), "railway");
+    assert.equal(pickTheme("jobs", { title: "Indian Army Agniveer Rally 2026" }), "defence");
+    assert.equal(pickTheme("jobs", { title: "SBI Probationary Officer Recruitment" }), "banking");
+    assert.equal(pickTheme("jobs", { title: "AIIMS Nursing Officer NORCET 2026" }), "medical");
+    assert.equal(pickTheme("jobs", { title: "UP TGT PGT Teacher Bharti 2026" }), "teaching");
+    assert.equal(pickTheme("jobs", { title: "ONGC Junior Engineer Vacancy" }), "engineering");
+    assert.equal(pickTheme("jobs", { title: "SSC CGL 2026 Notification" }), "ssc");
+    assert.equal(pickTheme("jobs", { title: "High Court Clerk Recruitment" }), "clerk");
+});
+
+test("pickCoverImage — khud ke domain ki photo cover, bahar wali REJECT", () => {
+    const own = pickCoverImage("blogs", {
+        imageUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/a.webp?alt=media",
+        imageWidth: 1200, imageHeight: 675
+    }, "study");
+    assert.equal(own.sourceImage, true);
+    assert.equal(own.width, 1200);
+    assert.equal(own.height, 675);
+
+    const external = pickCoverImage("jobs", { imageUrl: "https://evil.example.com/pic.jpg" }, "job");
+    assert.equal(external.sourceImage, false);
+    assert.equal(external.url, STORY_ASSETS.job);
+
+    // http (non-https) bhi reject
+    const insecure = pickCoverImage("jobs", { imageUrl: "http://storage.googleapis.com/x.jpg" }, "defence");
+    assert.equal(insecure.sourceImage, false);
+    assert.equal(insecure.url, STORY_ASSETS.defence);
+});
+
+test("safeSourceImage dims — invalid dims pe default 1080x1440", () => {
+    const img = safeSourceImage({ imageUrl: "https://storage.googleapis.com/b/a.jpg", imageWidth: 50, imageHeight: -5 });
+    assert.equal(img.width, 1080);
+    assert.equal(img.height, 1440);
+    assert.equal(isOurThemeCover("https://studygyaan.in/story-assets/bg-job.jpg"), true);
+    assert.equal(isOurThemeCover("https://storage.googleapis.com/x.webp"), false);
+});
+
+test("buildStoryDoc — source image cover pe priority", () => {
+    const { doc } = buildStoryDoc("blogs", "b9", {
+        title: "Railway Preparation Strategy 2026 Complete Guide",
+        imageUrl: "https://storage.googleapis.com/x/blog_123.webp",
+        articleHtml: "<p>Railway की तैयारी के लिए 90 दिन की planning जरूरी है।</p>"
+    });
+    assert.equal(doc.coverFromSource, true);
+    assert.equal(doc.coverImage, "https://storage.googleapis.com/x/blog_123.webp");
 });
 
 // ---------------------------------------------------------------------
@@ -176,7 +227,7 @@ test("BLOG → study theme + real highlights", () => {
         articleHtml: "<p>Daily 2 घंटे GK पढ़ने से score 40+ जा सकता है। Previous year papers जरूर हल करें।</p>"
     });
     assert.equal(doc.storyType, "blog");
-    assert.equal(doc.theme, "study");
+    assert.equal(doc.theme, "ssc"); // SSC keyword → study-desk cover
     assert.ok(JSON.stringify(doc.slides).includes("2 घंटे"));
 });
 
@@ -260,4 +311,35 @@ test("backfillStories — नई stories बनाता है, junk stories no
     const dump = db.dump();
     assert.equal(dump["web_stories/junk1"].noIndex, true);
     assert.equal(dump["web_stories/good1"].noIndex, undefined);
+});
+
+test("backfill refreshCovers — theme cover wali story ko source ki photo milti hai", async () => {
+    const db = makeMockDb({
+        "blogs/blogpic": {
+            title: "MPPEB Group 2 Complete Preparation Guide 2026 Hindi",
+            imageUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/real_blog.webp?alt=media",
+            status: "published"
+        },
+        "web_stories/story-old-blog": {
+            title: "Old Auto Story", autoGenerated: true,
+            sourceRef: { collection: "blogs", docId: "blogpic" },
+            coverImage: "https://studygyaan.in/story-assets/bg-study.jpg",
+            slides: [{}, {}, {}, {}]
+        },
+        "web_stories/story-no-source": {
+            title: "Story Without Source", autoGenerated: true,
+            sourceRef: { collection: "blogs", docId: "missing" },
+            coverImage: "https://studygyaan.in/story-assets/bg-job.jpg",
+            slides: [{}, {}, {}, {}]
+        }
+    });
+    const report = await backfillStories(db, FieldValue, { limit: 10, refreshCovers: true });
+    const dump = db.dump();
+    // theme-cover wali purani story → source ki asli photo
+    assert.equal(dump["web_stories/story-old-blog"].coverImage,
+        "https://firebasestorage.googleapis.com/v0/b/x/o/real_blog.webp?alt=media");
+    assert.equal(dump["web_stories/story-old-blog"].coverFromSource, true);
+    // source missing wali → theme cover hi rahega
+    assert.equal(dump["web_stories/story-no-source"].coverImage, "https://studygyaan.in/story-assets/bg-job.jpg");
+    assert.ok(report.coversRefreshed >= 1);
 });

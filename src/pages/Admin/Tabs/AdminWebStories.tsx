@@ -194,13 +194,14 @@ const AdminWebStories = () => {
             const res = await fetch(`${ARTICLE_API_BASE}/stories/backfill`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ limit: 40 })
+                body: JSON.stringify({ limit: 80, refreshCovers: true })
             });
             const data = (await res.json()) as {
                 success?: boolean;
                 error?: string;
                 created?: string[];
                 junkArchived?: number;
+                coversRefreshed?: number;
                 skippedExisting?: number;
                 errors?: string[];
             };
@@ -209,6 +210,7 @@ const AdminWebStories = () => {
             alert(
                 `📱 AUTO-STORY RESULT\n\n` +
                 `✅ Nayi stories: ${createdCount}\n` +
+                `🖼️ Covers refresh (unique pics): ${data.coversRefreshed || 0}\n` +
                 `🧹 Purani junk stories safai (noIndex): ${data.junkArchived || 0}\n` +
                 `⏭️ Pehle se bani hui: ${data.skippedExisting || 0}\n` +
                 ((data.errors || []).length ? `⚠️ Errors: ${(data.errors || []).length}\n` : '') +
