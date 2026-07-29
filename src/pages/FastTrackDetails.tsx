@@ -119,11 +119,43 @@ const CategorySection = ({ title, items, currentId, colors }: { title: string; i
     if (!items || items.length === 0) return null;
 
     return (
-        <section className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-            <h2 className={`text-base font-black ${colors.text} uppercase tracking-tight mb-4 flex items-center border-b-2 ${colors.heading} pb-2`}>
+        <section className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
+            <h2 className={`text-xs font-black ${colors.text} uppercase tracking-tight mb-3 flex items-center border-b-2 ${colors.heading} pb-2`}>
                 {colors.icon} {title}
             </h2>
             <div className="space-y-2">
+                {items.map(item => (
+                    <ListCard
+                        key={item.id}
+                        item={item}
+                        currentId={currentId}
+                    />
+                ))}
+            </div>
+        </section>
+    );
+};
+
+// =========================================================
+// 👇 INLINE RELATED STRIP — content ke bich/baad 2-3 cards + "Click for More"
+// =========================================================
+const InlineRelatedStrip = ({ title, items, currentId, moreLink }: { title: string; items: FastTrackItem[]; currentId?: string | null; moreLink: string }) => {
+    if (!items || items.length === 0) return null;
+
+    return (
+        <section className="bg-white border border-slate-100 rounded-2xl p-4 md:p-5 shadow-sm mt-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
+                <h2 className="text-xs md:text-sm font-black text-slate-700 uppercase tracking-tight flex items-center gap-1.5">
+                    👇 {title}
+                </h2>
+                <Link
+                    to={moreLink}
+                    className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-[9px] md:text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full shadow transition-all active:scale-95"
+                >
+                    Click for More →
+                </Link>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 {items.map(item => (
                     <ListCard
                         key={item.id}
@@ -168,14 +200,26 @@ const FastTrackDetails = () => {
     }, []);
 
     // =========================================================
-    // 📊 CATEGORIZED LISTS (Memoized)
+    // 📊 CATEGORIZED LISTS (Memoized) — slim sidebar (4 each)
     // =========================================================
     const { results, admitCards, answerKeys, syllabuses } = useMemo(() => ({
-        results: updatesList.filter(u => u.category === 'Result').slice(0, 6),
-        admitCards: updatesList.filter(u => u.category === 'Admit Card').slice(0, 6),
-        answerKeys: updatesList.filter(u => u.category === 'Answer Key').slice(0, 6),
-        syllabuses: updatesList.filter(u => u.category === 'Syllabus').slice(0, 6)
+        results: updatesList.filter(u => u.category === 'Result').slice(0, 4),
+        admitCards: updatesList.filter(u => u.category === 'Admit Card').slice(0, 4),
+        answerKeys: updatesList.filter(u => u.category === 'Answer Key').slice(0, 4),
+        syllabuses: updatesList.filter(u => u.category === 'Syllabus').slice(0, 4)
     }), [updatesList]);
+
+    // 👇 Inline strips — current item hata kar, 2-3 cards ek saath
+    const { inlineFresh, inlineSameCat } = useMemo(() => {
+        const isCurrent = (u: FastTrackItem) => u.id === docId || (id && (u.slug === id || u.id === id));
+        const others = updatesList.filter(u => !isCurrent(u));
+        return {
+            inlineFresh: others.slice(0, 3),
+            inlineSameCat: (data
+                ? others.filter(u => u.category === data.category).slice(0, 3)
+                : others.slice(0, 3))
+        };
+    }, [updatesList, docId, id, data]);
 
     // =========================================================
     // 🔄 LOADING
@@ -268,8 +312,8 @@ const FastTrackDetails = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
 
-                {/* Left Column */}
-                <div className="lg:col-span-4 lg:sticky lg:top-8 h-fit space-y-4">
+                {/* 📰 MAIN COLUMN — article full wide (pehle yahi kone me daba tha) */}
+                <div className="lg:col-span-8 min-w-0 space-y-4 order-1">
 
                     {/* Back Button */}
                     <button
@@ -285,12 +329,12 @@ const FastTrackDetails = () => {
                     <article itemScope itemType="https://schema.org/NewsArticle">
 
                         {/* Header */}
-                        <div className={`${colors.bg} text-white p-5 md:p-6 rounded-t-3xl shadow-lg`}>
+                        <div className={`${colors.bg} text-white p-5 md:p-6 lg:p-8 rounded-t-3xl shadow-lg`}>
                             <span className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/30">
                                 {colors.icon} {data.category}
                             </span>
                             <h1
-                                className="text-lg md:text-2xl font-black mt-4 leading-tight"
+                                className="text-xl md:text-3xl font-black mt-4 leading-tight"
                                 itemProp="headline"
                             >
                                 {data.title}
@@ -376,6 +420,17 @@ const FastTrackDetails = () => {
                             </div>
                         </div>
 
+                    </article>
+
+                    {/* 👇 Inline strip 1 — quick card ke baad, full article se pehle */}
+                    <InlineRelatedStrip
+                        title="Aur Fresh Updates"
+                        items={inlineFresh}
+                        currentId={docId || id}
+                        moreLink="/fasttrack"
+                    />
+
+                    <article itemScope itemType="https://schema.org/NewsArticle">
                         {/* ✅ AI-reviewed full article (source-grounded pipeline only) */}
                         {data.articleHtml && (
                             <div className="bg-white border border-slate-100 rounded-2xl p-5 md:p-8 shadow-sm mt-4">
@@ -388,6 +443,16 @@ const FastTrackDetails = () => {
                                     dangerouslySetInnerHTML={{ __html: data.articleHtml }}
                                 />
                             </div>
+                        )}
+
+                        {/* 👇 Inline strip 2 — article ke beech content flow me break */}
+                        {data.articleHtml && (
+                            <InlineRelatedStrip
+                                title="Isi Category Ke Aur Updates"
+                                items={inlineSameCat}
+                                currentId={docId || id}
+                                moreLink="/fasttrack"
+                            />
                         )}
 
                         {/* ✅ Verified FAQs from the reviewed article */}
@@ -434,15 +499,15 @@ const FastTrackDetails = () => {
                     </div>
                 </div>
 
-                {/* Right Sidebar */}
-                <aside className="lg:col-span-8">
+                {/* 🧭 SLIM SIDEBAR — chhote clickable cards, hamesha side me chipke */}
+                <aside className="lg:col-span-4 lg:sticky lg:top-6 h-fit space-y-4 order-2">
                     {updatesList.length === 0 ? (
-                        <div className="text-center text-slate-400 font-bold p-16 bg-white rounded-3xl border border-slate-100">
+                        <div className="text-center text-slate-400 font-bold p-10 bg-white rounded-3xl border border-slate-100">
                             <Loader2 size={24} className="animate-spin mx-auto mb-3 text-blue-400" />
                             Loading updates...
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <>
                             <CategorySection
                                 title="Latest Results"
                                 items={results}
@@ -467,7 +532,14 @@ const FastTrackDetails = () => {
                                 currentId={docId || id}
                                 colors={getCategoryColors('Syllabus')}
                             />
-                        </div>
+                            {/* Sab kuch ek jagah */}
+                            <Link
+                                to="/fasttrack"
+                                className="block text-center bg-slate-800 hover:bg-black text-white font-black text-xs uppercase tracking-widest py-3.5 rounded-2xl shadow-lg transition-all active:scale-95"
+                            >
+                                👉 Sabhi Updates Ek Saath — Click for More
+                            </Link>
+                        </>
                     )}
                 </aside>
             </div>
