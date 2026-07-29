@@ -39,6 +39,16 @@ function draftTypeLabel(draft) {
     return type === "JOB" ? "🏛️ JOB" : "⚡ FAST TRACK";
 }
 
+/** Env se ADMIN notification creds — PUBLIC channel alerts se alag.
+ *  TELEGRAM_ADMIN_CHAT_ID (private channel/group) > TELEGRAM_CHAT_ID (fallback).
+ *  Bot token wahi rehta hai — ek hi bot dono channels me ho sakta hai. */
+function adminCredsFromEnv() {
+    return {
+        token: process.env.TELEGRAM_BOT_TOKEN || "",
+        chatId: process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || ""
+    };
+}
+
 /** Draft se Telegram card (text + keyboard) banao. */
 function buildDraftCard(draft, opts) {
     const label = (opts && opts.label) || "AI DRAFT READY";
@@ -215,6 +225,7 @@ function handleWebhook(db, FieldValue, http, creds) {
 }
 
 module.exports = {
+    adminCredsFromEnv,
     buildDraftCard,
     buildDraftMessage,
     notifyDraft,

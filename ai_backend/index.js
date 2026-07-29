@@ -451,7 +451,7 @@ exports.telegramDraftWebhook = onRequest({
     db,
     admin.firestore.FieldValue,
     null,
-    { token: process.env.TELEGRAM_BOT_TOKEN, chatId: process.env.TELEGRAM_CHAT_ID }
+    require("./telegram_draft_bot").adminCredsFromEnv()
 )(req, res));
 
 // 1. Govt Jobs

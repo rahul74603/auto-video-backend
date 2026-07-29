@@ -9,11 +9,33 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+    adminCredsFromEnv,
     buildDraftMessage,
     notifyDraft,
     handleWebhook,
     validDraftId
 } = require("../telegram_draft_bot");
+
+// ---------------------------------------------------------------------
+// adminCredsFromEnv — PUBLIC vs PRIVATE channel separation
+// ---------------------------------------------------------------------
+test("adminCredsFromEnv — ADMIN id pe priority, fallback public id", () => {
+    const backup = { ...process.env };
+    try {
+        process.env.TELEGRAM_BOT_TOKEN = "TOK";
+        process.env.TELEGRAM_ADMIN_CHAT_ID = "-100999";
+        process.env.TELEGRAM_CHAT_ID = "-100111";
+        assert.deepEqual(adminCredsFromEnv(), { token: "TOK", chatId: "-100999" });
+
+        delete process.env.TELEGRAM_ADMIN_CHAT_ID;
+        assert.deepEqual(adminCredsFromEnv(), { token: "TOK", chatId: "-100111" });
+    } finally {
+        for (const k of ["TELEGRAM_BOT_TOKEN", "TELEGRAM_ADMIN_CHAT_ID", "TELEGRAM_CHAT_ID"]) {
+            if (backup[k] === undefined) delete process.env[k];
+            else process.env[k] = backup[k];
+        }
+    }
+});
 const { publishDraftRecord } = require("../agents/article_agents/article_pipeline");
 
 // ---------------------------------------------------------------------
