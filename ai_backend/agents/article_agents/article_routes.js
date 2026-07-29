@@ -44,6 +44,7 @@ const EXPECTED_CODES = new Set([
   "INVALID_SOURCE_URL",
   "SOURCE_FETCH_FAILED",
   "SOURCE_TOO_THIN",
+  "SOURCE_NOT_ARTICLE_WORTHY",
   "UNKNOWN_ARTICLE_TYPE",
   "AI_NOT_CONFIGURED",
   "AI_RATE_LIMITED",
@@ -64,6 +65,7 @@ function handleRouteError(res, error, context) {
       return fail(res, 400, error.message);
     case "SOURCE_FETCH_FAILED":
     case "SOURCE_TOO_THIN":
+    case "SOURCE_NOT_ARTICLE_WORTHY":
       return fail(res, 502, error.message);
     case "UNKNOWN_ARTICLE_TYPE":
       return fail(res, 400, error.message);

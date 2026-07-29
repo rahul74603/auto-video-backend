@@ -1521,3 +1521,66 @@ test("word policy: FAST_TRACK min 1200 — 1300 pe koi low issue nahi, 1000 pe a
   });
   assert.ok(low1000.issues.some((i) => i.startsWith("word-count-low")));
 });
+
+/* ================================================================== */
+/* SOURCE ADEQUACY GATE — "मना कर दे" guard (speculative nonsense रोक) */
+/* ================================================================== */
+const { assertSourceArticleWorthy } = require("../agents/article_agents/source_adequacy_gate");
+
+test("adequacy gate: Cloudflare/block-page text ko REFUSE karta hai (article kabhi na bane)", () => {
+  assert.throws(
+    () =>
+      assertSourceArticleWorthy({
+        url: "https://results.example.ac.in/results.php",
+        text: "Just a moment... Checking your browser. Cloudflare Ray ID: abc123. This check is automatic. " + "Please wait. ".repeat(60),
+        tables: []
+      }),
+    (e) => {
+      assert.equal(e.code, "SOURCE_NOT_ARTICLE_WORTHY");
+      assert.ok(e.message.includes("Source Text box"), "raasta bhi batana chahiye");
+      return true;
+    }
+  );
+});
+
+test("adequacy gate: patla shell text bina dates/keywords ke REFUSE", () => {
+  assert.throws(
+    () =>
+      assertSourceArticleWorthy({
+        url: "https://x.ac.in/r.php",
+        text: "Welcome to our portal. This page is under maintenance. Please check back later. ",
+        tables: []
+      }),
+    (e) => e.code === "SOURCE_NOT_ARTICLE_WORTHY"
+  );
+});
+
+test("adequacy gate: asli result text (date + declared) PASS hota hai", () => {
+  const goodText =
+    "OSMANIA UNIVERSITY Result Name: BCA (CBCS) 6th Semester June-2026 Results. Date of Release: 28-Jul-2026. " +
+    "Enter 12 digit hall ticket number to view marksheet. ".repeat(8);
+  assert.doesNotThrow(() => assertSourceArticleWorthy({ url: "https://ou.ac.in/r.jsp", text: goodText, tables: [] }));
+});
+
+test("adequacy gate: bada valid advt text (keyword + table) PASS", () => {
+  assert.doesNotThrow(() =>
+    assertSourceArticleWorthy({
+      url: "https://ssc.gov.in/notif.pdf",
+      text: "Combined Graduate Level Recruitment notification. Apply online. ".repeat(60),
+      tables: [[["Post", "Vacancies"], ["ASO", "100"]]]
+    })
+  );
+});
+
+test("reviewer backstop: source me declared date nahi + 'संभावित' title → issue", () => {
+  const t = tinyArticle("FAST_TRACK", 1500);
+  t.h1 = "pupexamination.ac.in पर संभावित परिणाम अपडेट";
+  t.seoTitle = "संभावित रिजल्ट अपडेट 2026";
+  const review = reviewArticle({
+    type: "FAST_TRACK",
+    article: t,
+    source: { url: "https://r.ac.in/x.php", text: "shell text with no real dates at all ".repeat(30), tables: [], links: [] },
+    existing: { titles: [], urls: [] }
+  });
+  assert.ok(review.issues.some((i) => i.startsWith("speculative:no-declared-date")), "speculation pakdi jaani chahiye");
+});

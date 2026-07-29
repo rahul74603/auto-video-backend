@@ -423,7 +423,7 @@ function checkOrgName({ type, article, source, issues, warnings, metrics }) {
  *  - article me hain par JOB facts box khaali hai   → ISSUE  (published page ka box khaali dikhega)
  *  - source me bhi bilkul nahi                      → warning (notification me hi na bhi ho sakti hai)
  */
-const DATE_CANDIDATE_RE = /\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{1,2}\s+[A-Za-z\u0900-\u097F]{3,12}\s+\d{4}/g;
+const DATE_CANDIDATE_RE = /\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{1,2}[\s\/\-.][A-Za-z\u0900-\u097F]{3,12}[\s\/\-.]\d{4}/g;
 
 function containsParseableDate(text) {
   const candidates = String(text || "").match(DATE_CANDIDATE_RE) || [];
@@ -444,6 +444,17 @@ function checkDatesCoverage({ type, article, source, issues, warnings, metrics }
   metrics.datesArticle = articleHasDates;
   metrics.datesSource = sourceHasDates;
   metrics.datesFacts = factsHaveDate;
+
+  // ⭐ Backstop: source me koi GHOSHIT date hi nahi aur article 'संभावित/expected' type
+  // speculation ho — aisi content banani hi nahi chahiye thi (adequacy gate ka net).
+  const speculativeTitle = /(संभावित|संभावना|expected|anticipated|likely|tentative|aane\s*waala|aane\s*wala|kab\s*aa?yega)/i;
+  const titleBlob = `${article.h1 || ""} ${article.seoTitle || ""} ${article.facts?.title || ""}`;
+  if (!sourceHasDates && speculativeTitle.test(titleBlob)) {
+    issues.push(
+      "speculative:no-declared-date — source me koi ghoshit date hi nahi, phir bhi 'संभावित/expected' likh raha hai; aisi article publish mat karo — asli notification ka text/link do."
+    );
+    return;
+  }
 
   if (sourceHasDates && !articleHasDates) {
     issues.push(

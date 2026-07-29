@@ -24,6 +24,7 @@ const { generateJobArticle, normalizeJobArticle } = require("./job_article_write
 const { generateFastTrackArticle, normalizeFastTrackArticle } = require("./fast_track_article_writer");
 const { reviewArticle, parseDateFlexible } = require("./fact_quality_reviewer");
 const { harvestFactsDates } = require("./facts_date_harvester");
+const { assertSourceArticleWorthy } = require("./source_adequacy_gate");
 const { fetchAndExtractSource } = require("./source_fetcher");
 const { normalizeArticleHtml } = require("./article_html_utils");
 
@@ -95,6 +96,9 @@ async function runGeneratePipeline({ type, sourceUrl, instructions, mode, source
   const fetchedSource = source || (await fetchAndExtractSource(sourceUrl, deps.fetchDeps));
   // Snapshot se aaya source ho to packed tables ko normal shape me lao.
   fetchedSource.tables = unpackTables(fetchedSource.tables);
+  // ⭐ "मना कर देना" GATE — source me real notification content nahi (block-page /
+  // shell text) to writer tak jaane hi mat do; warna 'संभावित' nonsense article banti hai.
+  assertSourceArticleWorthy(fetchedSource);
   const generate = writerFor(cleanArticleType);
   const article = await generate(
     { source: fetchedSource, instructions, feedbackIssues },
