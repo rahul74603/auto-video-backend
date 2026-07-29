@@ -502,3 +502,18 @@ exports.autoImageJobDrafts = onDocumentWritten("job_drafts/{docId}", (event) => 
 exports.autoImageFastTrack = onDocumentWritten("fast_track_drafts/{docId}", (event) => {
     return require('./autoImage').autoImageFastTrack(event);
 });
+
+/* ============ AUTO SEO INDEXING (naya public page bante hi Google/Bing ping) ============ */
+const { onDocumentCreated: __onIndexDocCreated } = require("firebase-functions/v2/firestore");
+const autoIndexer = require("./auto_indexer");
+
+// jobs / fast_track / blogs / web_stories / mock_tests — har naye public doc pe:
+//   IndexNow (Bing family) turant + Google Indexing API (SERVICE_ACCOUNT_JSON secret
+//   se, jo api function pe pehle se configured hai). Draft/archived skip.
+// NOTE: indexing sirf best-effort hai — publish kabhi iske fail se nahi rukta.
+autoIndexer.AUTO_INDEX_COLLECTIONS.forEach((coll) => {
+  exports[`onIndexPing_${coll}`] = __onIndexDocCreated(
+    { document: `${coll}/{docId}`, secrets: ["SERVICE_ACCOUNT_JSON"], maxInstances: 5 },
+    autoIndexer.buildCreatedHandler(coll, { fieldValue: admin.firestore.FieldValue })
+  );
+});
