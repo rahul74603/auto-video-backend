@@ -86,6 +86,8 @@ const handleGenerateArticle = (job: JobDraftRecord) => {
       title: asText(job.title),
       organization: asText(job.organization),
       category: asText(job.category),
+      // ⭐ publish hone par ye JOBS AI draft row bhi auto-delete hogi (duplicate nahi rahega)
+      originRef: job.id ? { collection: 'job_drafts', id: job.id } : undefined,
     }
   }));
   };

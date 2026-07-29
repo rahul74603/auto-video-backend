@@ -1584,3 +1584,29 @@ test("reviewer backstop: source me declared date nahi + 'संभावित' 
   });
   assert.ok(review.issues.some((i) => i.startsWith("speculative:no-declared-date")), "speculation pakdi jaani chahiye");
 });
+
+/* ================================================================== */
+/* ORIGIN REF — publish pe source-record delete (whitelist guard) */
+/* ================================================================== */
+const { sanitizeOriginRef } = require("../agents/article_agents/article_pipeline");
+
+test("sanitizeOriginRef: sirf job_drafts/fast_track accept hote hain", () => {
+  assert.deepEqual(sanitizeOriginRef({ collection: "job_drafts", id: "abc123" }), { collection: "job_drafts", id: "abc123" });
+  assert.deepEqual(sanitizeOriginRef({ collection: "fast_track", id: "ft-9" }), { collection: "fast_track", id: "ft-9" });
+});
+
+test("sanitizeOriginRef: koi AUR collection kabhi accept nahi (delete-abuse block)", () => {
+  assert.equal(sanitizeOriginRef({ collection: "jobs", id: "x" }), null);
+  assert.equal(sanitizeOriginRef({ collection: "ai_article_drafts", id: "x" }), null);
+  assert.equal(sanitizeOriginRef({ collection: "users", id: "admin-doc" }), null);
+  assert.equal(sanitizeOriginRef({ collection: "premiumNotes", id: "y" }), null);
+});
+
+test("sanitizeOriginRef: malformed input safely reject hota hai", () => {
+  assert.equal(sanitizeOriginRef(null), null);
+  assert.equal(sanitizeOriginRef("job_drafts"), null);
+  assert.equal(sanitizeOriginRef({ collection: "job_drafts" }), null);
+  assert.equal(sanitizeOriginRef({ collection: "job_drafts", id: "" }), null);
+  assert.equal(sanitizeOriginRef({ collection: "job_drafts", id: "a/b" }), null); // path injection
+  assert.equal(sanitizeOriginRef({ collection: "job_drafts", id: "x".repeat(200) }), null);
+});

@@ -56,6 +56,7 @@ import aiArticleRepository, {
   buildFastTrackPublishPayload,
   buildPublishPayloadFromDraft,
   callArticleApi,
+  sanitizeOriginRef,
   EDITORIAL_AUTHOR,
   type AIArticleDraftRecord,
 } from '@/features/ai-articles/data/aiArticleRepository';
@@ -278,5 +279,41 @@ describe('AI Article Workflow — backend API client', () => {
     await expect(callArticleApi('/articles/publish', { draftId: 'd1' }, { token: 't', baseUrl: 'https://api.example.com' }))
       .rejects.toMatchObject({ status: 409, message: expect.stringContaining('Publish blocked') });
     vi.unstubAllGlobals();
+  });
+});
+
+describe('AI Article Workflow — originRef (publish pe source-record delete)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('sanitizeOriginRef sirf job_drafts/fast_track accept karta hai', () => {
+    expect(sanitizeOriginRef({ collection: 'job_drafts', id: 'a1' })).toEqual({ collection: 'job_drafts', id: 'a1' });
+    expect(sanitizeOriginRef({ collection: 'fast_track', id: 'f2' })).toEqual({ collection: 'fast_track', id: 'f2' });
+  });
+
+  it('sanitizeOriginRef arbitrary collection/path-injection reject karta hai', () => {
+    expect(sanitizeOriginRef({ collection: 'users', id: 'x' })).toBeNull();
+    expect(sanitizeOriginRef({ collection: 'ai_article_drafts', id: 'x' })).toBeNull();
+    expect(sanitizeOriginRef({ collection: 'jobs', id: 'x' })).toBeNull();
+    expect(sanitizeOriginRef({ collection: 'job_drafts', id: 'a/b' })).toBeNull();
+    expect(sanitizeOriginRef({ collection: 'job_drafts' })).toBeNull();
+    expect(sanitizeOriginRef(null)).toBeNull();
+    expect(sanitizeOriginRef('job_drafts')).toBeNull();
+  });
+
+  it('publishDraftClientSide: valid originRef ho to origin bhi delete hota hai', async () => {
+    const draft = passedDraft({ originRef: { collection: 'job_drafts', id: 'j1' } });
+    const result = await aiArticleRepository.publishDraftClientSide(draft);
+    expect(result.originDeleted).toBe(true);
+    // 2 deletes: ai draft + origin record
+    expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
+  });
+
+  it('publishDraftClientSide: malicious originRef ko ignore karta hai (sirf draft delete)', async () => {
+    const draft = passedDraft({ originRef: { collection: 'users', id: 'admin' } });
+    const result = await aiArticleRepository.publishDraftClientSide(draft);
+    expect(result.originDeleted).toBe(false);
+    expect(mockDeleteDoc).toHaveBeenCalledTimes(1); // sirf ai draft
   });
 });

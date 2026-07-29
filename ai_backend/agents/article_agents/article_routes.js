@@ -25,7 +25,8 @@ const {
   runGeneratePipeline,
   reReview,
   assertPublishable,
-  buildPublishPayload
+  buildPublishPayload,
+  sanitizeOriginRef
 } = require("./article_pipeline");
 const { fetchAndExtractSource, assertSafeSourceUrl } = require("./source_fetcher");
 const { searchAndFetchSource, buildSearchQuery } = require("./web_searcher");
@@ -261,6 +262,10 @@ function registerArticleAgentRoutes(app, db) {
       );
       draft.autoSearched = autoSearched;
       draft.searchQuery = searchQuery;
+      // ⭐ Origin pointer (JOBS AI draft row / Fast Track item) — publish hone par
+      // ye source-record bhi auto-delete hoga (whitelist sirf job_drafts/fast_track).
+      const originRef = sanitizeOriginRef(req.body?.originRef);
+      if (originRef) draft.originRef = originRef;
 
       const docPayload = {
         ...draft,
@@ -486,10 +491,28 @@ function registerArticleAgentRoutes(app, db) {
         .delete()
         .catch((e) => console.warn(`publish: draft ${draftId} auto-delete failed:`, e.message));
 
+      // ⭐ Origin source-record bhi saaf karo (JOBS AI draft row / Fast Track raw item) —
+      // ab uska kaam khatam. Whitelist sanitizeOriginRef pehle se guarantee karta hai
+      // ki sirf job_drafts/fast_track hi aaye. Delete fail ho to publish phir bhi done.
+      const originRef = sanitizeOriginRef(draft.originRef);
+      let originDeleted = false;
+      if (originRef) {
+        originDeleted = await db
+          .collection(originRef.collection)
+          .doc(originRef.id)
+          .delete()
+          .then(() => true)
+          .catch((e) => {
+            console.warn(`publish: origin ${originRef.collection}/${originRef.id} delete failed:`, e.message);
+            return false;
+          });
+      }
+
       return ok(res, {
         draftId,
         published: true,
         draftDeleted: true,
+        originDeleted,
         collection,
         docId: targetId,
         slug: payload.slug,

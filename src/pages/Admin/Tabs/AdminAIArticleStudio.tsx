@@ -9,6 +9,7 @@ import aiArticleRepository, {
   callArticleApi,
   canPublishDraft,
   EDITORIAL_AUTHOR,
+  sanitizeOriginRef,
 } from '@/features/ai-articles/data/aiArticleRepository';
 import type { AIArticleDraftRecord } from '@/features/ai-articles/data/aiArticleRepository';
 import { extractTextFromFile } from '@/features/ai-articles/data/pdfTextExtractor';
@@ -30,6 +31,8 @@ interface PrefillDetail {
   title?: string;
   organization?: string;
   category?: string;
+  /** JOBS AI draft row / Fast Track item ka pointer — publish hote hi wo bhi auto-delete. */
+  originRef?: { collection: string; id: string } | null;
 }
 
 /** sessionStorage में पड़ा cross-tab prefill पढ़ो + हटा दो (unknown JSON → typed). */
@@ -45,6 +48,7 @@ const consumeStoredPrefill = (): PrefillDetail | null => {
       title: typeof o.title === 'string' ? o.title : undefined,
       organization: typeof o.organization === 'string' ? o.organization : undefined,
       category: typeof o.category === 'string' ? o.category : undefined,
+      originRef: sanitizeOriginRef(o.originRef),
     };
   } catch {
     return null;
@@ -69,6 +73,9 @@ interface ArticleApiResult {
   autoSearched?: boolean;
   searchQuery?: string;
   resolvedSourceUrl?: string;
+  published?: boolean;
+  draftDeleted?: boolean;
+  originDeleted?: boolean;
 }
 
 const apiErrorStatus = (err: unknown): number | undefined =>
@@ -84,6 +91,7 @@ const AdminAIArticleStudio = () => {
   const [pastedText, setPastedText] = useState(''); // blocked/slow site ka manual source text
   const [extractStatus, setExtractStatus] = useState(''); // PDF/Image se text nikalne ka progress message
   const extractInputRef = useRef<HTMLInputElement | null>(null); // hidden file input (PDF/Image upload)
+  const [originRef, setOriginRef] = useState<{ collection: string; id: string } | null>(null); // prefill ka source-pointer (publish pe delete hoga)
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(''); // '', 'generate', 'preview', 'regenerate', 'apply', 'publish', 'delete', 'extract'
@@ -101,6 +109,7 @@ const AdminAIArticleStudio = () => {
       const isFastTrack = detail.type === 'fast-track';
       setGenType(isFastTrack ? 'fast-track' : 'job');
       if (detail.sourceUrl) setSourceUrl(detail.sourceUrl);
+      setOriginRef(detail.originRef || null); // publish ke baad source-record bhi delete hoga
       const contextBits = [detail.title, detail.organization, detail.category].filter(Boolean).join(' | ');
       if (contextBits) setInstructions(`${isFastTrack ? 'Fast Track' : 'Job'}: ${contextBits}`);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -232,6 +241,7 @@ const AdminAIArticleStudio = () => {
         sourceUrl: sourceUrl.trim(),
         instructions: instructions.trim(),
         ...(pasteMode ? { sourceText: pastedText.trim() } : {}),
+        ...(originRef ? { originRef } : {}), // publish hone par JOBS AI/FT source-record bhi delete hoga
         mode: 'manual', // draft-first: कभी भी direct publish नहीं
       });
 
@@ -248,6 +258,7 @@ const AdminAIArticleStudio = () => {
       }
       await refresh();
       setPastedText(''); // paste-mode text ka kaam khatam — box saaf
+      setOriginRef(null); // origin pointer draft record me save ho gaya — form ab saaf
       if (result.draftId) {
         const fresh = await aiArticleRepository.getDraft(result.draftId);
         if (fresh) loadIntoEditor(fresh);
@@ -384,9 +395,11 @@ const AdminAIArticleStudio = () => {
     const toastId = toast.loading('Publishing...');
     try {
       let resultInfo = '';
+      let originDeleted = false;
       try {
         const result = await callArticleApi<ArticleApiResult>('/articles/publish', { draftId: current.id });
         resultInfo = `${result.collection}/${result.docId}`;
+        originDeleted = Boolean(result.originDeleted);
       } catch (apiErr) {
         const status = apiErrorStatus(apiErr);
         if (status === 401) throw apiErr;
@@ -400,8 +413,12 @@ const AdminAIArticleStudio = () => {
         // Fallback: client-side publish with the same review gate
         const fallback = await aiArticleRepository.publishDraftClientSide(current);
         resultInfo = `${fallback.collection}/${fallback.docId}`;
+        originDeleted = fallback.originDeleted;
       }
-      toast.success(`Published → ${resultInfo} ✓ (draft auto-delete ho gayi — duplicate nahi)`, { id: toastId, duration: 7000 });
+      toast.success(
+        `Published → ${resultInfo} ✓ (draft auto-delete — duplicate nahi${originDeleted ? ' + source-record bhi saaf 🧹' : ''})`,
+        { id: toastId, duration: 7000 }
+      );
       await refresh();
       loadIntoEditor(null);
     } catch (err) {

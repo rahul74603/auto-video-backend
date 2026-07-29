@@ -65,11 +65,30 @@ export type AIArticleDraftRecord = {
   sourceUrl?: string;
   publishedDocId?: string | null;
   publishedCollection?: string | null;
+  /** Kis source se bana tha (JOBS AI draft row / Fast Track item) — publish pe auto-delete hota hai. */
+  originRef?: { collection: string; id: string } | null;
   createdAt?: { seconds?: number; toDate?: () => Date } | null;
   [key: string]: unknown;
 };
 
 const draftsCollection = collection(db, AI_ARTICLE_DRAFTS);
+
+/** Publish pe origin-delete sirf INHI do collections ka ho sakta hai — koi arbitrary collection kabhi nahi. */
+export const AI_ARTICLE_ORIGIN_COLLECTIONS = ['job_drafts', 'fast_track'] as const;
+
+/**
+ * Prefill/draft se aaya originRef validate karo (unknown input → typed|null).
+ * Whitelist + id shape — warna koi bhi kisi bhi collection ka delete nahi kara sakta.
+ */
+export const sanitizeOriginRef = (raw: unknown): { collection: string; id: string } | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const collection = typeof o.collection === 'string' ? o.collection : '';
+  const id = typeof o.id === 'string' ? o.id : '';
+  if (!AI_ARTICLE_ORIGIN_COLLECTIONS.includes(collection as (typeof AI_ARTICLE_ORIGIN_COLLECTIONS)[number])) return null;
+  if (!id || id.length > 150 || /[/\\]/.test(id)) return null;
+  return { collection, id };
+};
 
 export const aiArticleRepository = {
   async listDrafts(limitCount = 100): Promise<AIArticleDraftRecord[]> {
@@ -100,7 +119,7 @@ export const aiArticleRepository = {
    * endpoint is unreachable. The same review gate is enforced here, so a
    * failed review still blocks publication.
    */
-  async publishDraftClientSide(draft: AIArticleDraftRecord): Promise<{ collection: string; docId: string }> {
+  async publishDraftClientSide(draft: AIArticleDraftRecord): Promise<{ collection: string; docId: string; originDeleted: boolean }> {
     assertDraftPublishable(draft);
     const { collection: target, payload } = buildPublishPayloadFromDraft(draft);
     const docId = draft.publishedDocId
@@ -114,7 +133,20 @@ export const aiArticleRepository = {
     // ⭐ Publish ke baad draft DELETE — duplicate record nahi rehta
     // (published jobs/fast_track doc hi ab duplicate-guard ka source hai).
     await deleteDoc(doc(db, AI_ARTICLE_DRAFTS, draft.id));
-    return { collection: target, docId };
+    // ⭐ Origin source-record bhi delete (JOBS AI draft row / Fast Track raw item) —
+    // whitelist sanitizeOriginRef guarantee karta hai sirf job_drafts/fast_track jaye.
+    // Fail ho jaye to publish kaam phir bhi poora — sirf false report karte hain.
+    let originDeleted = false;
+    const originRef = sanitizeOriginRef(draft.originRef);
+    if (originRef) {
+      try {
+        await deleteDoc(doc(db, originRef.collection, originRef.id));
+        originDeleted = true;
+      } catch (e) {
+        console.warn(`publish: origin ${originRef.collection}/${originRef.id} delete failed:`, e);
+      }
+    }
+    return { collection: target, docId, originDeleted };
   },
 
   async saveFallbackGeneration(draft: Record<string, unknown>): Promise<string> {

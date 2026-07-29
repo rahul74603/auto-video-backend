@@ -18,6 +18,23 @@
  *    'pass' (`reviewStatus === 'passed'`).
  */
 
+/**
+ * Sanitize the draft ka "origin" pointer (kis source se banaya gaya — JOBS AI
+ * draft row ya Fast Track manager item). Publish ke baad origin doc bhi delete
+ * hone wala hai — isliye yahan STRICT whitelist: sirf in do collections ko hi
+ * delete kar paayega, koi arbitrary collection kabhi nahi.
+ */
+const ORIGIN_DELETE_COLLECTIONS = new Set(["job_drafts", "fast_track"]);
+
+function sanitizeOriginRef(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const collection = String(raw.collection || "").trim();
+  const id = String(raw.id || "").trim();
+  if (!ORIGIN_DELETE_COLLECTIONS.has(collection)) return null;
+  if (!id || id.length > 150 || /[/\\]/.test(id)) return null;
+  return { collection, id };
+}
+
 const crypto = require("crypto");
 const { ARTICLE_TYPES, EDITORIAL_AUTHOR } = require("./constants");
 const { generateJobArticle, normalizeJobArticle } = require("./job_article_writer");
@@ -358,5 +375,6 @@ module.exports = {
   sanitizeJobDate,
   sanitizeJobFee,
   packTables,
-  unpackTables
+  unpackTables,
+  sanitizeOriginRef
 };

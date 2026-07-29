@@ -358,6 +358,9 @@ const FastTrackManager = () => {
             title: item.title || '',
             organization: item.org || item.organization || '',
             category: item.category || '',
+            // ⭐ publish hone par ye raw Fast Track item bhi auto-delete hoga —
+            // AI wali full article hi uski jagah fast_track me rahegi (duplicate nahi)
+            originRef: item.id ? { collection: 'fast_track', id: item.id } : undefined,
         }));
         navigate('/secret-admin', { state: { activeTab: 'JOBS AI' } });
     }, [navigate]);
