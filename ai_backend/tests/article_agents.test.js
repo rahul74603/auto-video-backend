@@ -34,9 +34,13 @@ const {
 } = require("../agents/article_agents/fact_quality_reviewer");
 const {
   searchAndFetchSource,
+  searchWeb,
   buildSearchQuery,
   scoreCandidate,
-  unwrapDuckDuckGo
+  unwrapDuckDuckGo,
+  unwrapBing,
+  decodeGoogleNewsUrl,
+  dedupeQueryWords
 } = require("../agents/article_agents/web_searcher");
 const {
   runGeneratePipeline,
@@ -1092,4 +1096,85 @@ test("dates check: normal grounded article par koi dates issue nahi aata", () =>
     !review.issues.some((i) => i.startsWith("dates:")),
     `sahi article par dates issue nahi chahiye: ${review.issues.join("|")}`
   );
+});
+
+// =========================================================
+//  WEB SEARCHER v2 — multi-engine fallback + redirect decode
+//  (user case: "fast track aa hi nahi raha" — sirf google-news
+//  redirect candidates try ho rahe the, DDG empty pada tha)
+// =========================================================
+
+test("unwrapBing ck/a redirect se asli URL nikaalta hai", () => {
+  const real = "https://hpsc.gov.in/results-page";
+  const wrapped = `https://www.bing.com/ck/a?u=a1${Buffer.from(real).toString("base64url")}&p=xyz`;
+  assert.equal(unwrapBing(wrapped), real);
+  assert.equal(unwrapBing(real), real); // direct URL waise ka waisa
+});
+
+test("decodeGoogleNewsUrl purane base64 format se publisher URL nikaalta hai", () => {
+  const real = "https://hpsc.gov.in/WriteReadData/lKm0BcQsr95uADID9RWl6Q==/AP_Marks.pdf";
+  const payload = Buffer.concat([
+    Buffer.from([0x08, 0x13, 0x22, real.length]),
+    Buffer.from(real, "latin1"),
+    Buffer.from([0xd2, 0x01, 0x00])
+  ]);
+  const newsUrl = `https://news.google.com/rss/articles/${payload.toString("base64url")}?oc=5`;
+  assert.equal(decodeGoogleNewsUrl(newsUrl), real);
+  // Naya encrypted format (andhar koi http nahi) → URL waise ka waisa
+  const nonsense = `https://news.google.com/rss/articles/${Buffer.from("random-encrypted-bytes-no-link").toString("base64url")}?oc=5`;
+  assert.equal(decodeGoogleNewsUrl(nonsense), nonsense);
+});
+
+test("dedupeQueryWords duplicate shabd hata deta hai, order same rakhta hai", () => {
+  assert.equal(
+    dedupeQueryWords("HPSC Assistant Professor Result 2026 HPSC Result notification 2026"),
+    "HPSC Assistant Professor Result 2026 notification"
+  );
+});
+
+test("buildSearchQuery wand prefill me duplicate words nahi aane deta", () => {
+  const q = buildSearchQuery("Fast Track: HPSC Assistant Professor Result 2026 | HPSC | Result", "");
+  const hpscCount = q.toLowerCase().split(/\s+/).filter((w) => w === "hpsc").length;
+  assert.equal(hpscCount, 1, `query me HPSC sirf ek baar hona chahiye: ${q}`);
+  assert.ok(q.startsWith("HPSC Assistant Professor Result 2026"));
+  assert.ok(q.includes("notification"));
+});
+
+test("searchWeb: DDG down ho to Bing se DIRECT URLs aa jaate hain (fault isolation)", async () => {
+  const direct = "https://hpsc.gov.in/results/ap-marks.pdf";
+  const wrappedReal = "https://hpsc.gov.in/results-page";
+  const wrapped = `https://www.bing.com/ck/a?u=a1${Buffer.from(wrappedReal).toString("base64url")}&p=z`;
+  const bingHtml =
+    `<ul><li class="b_algo"><h2><a href="${direct}">HPSC AP Marks PDF</a></h2></li>` +
+    `<li class="b_algo"><h2><a href="${wrapped}">HPSC Results Page</a></h2></li></ul>`;
+  class FakeRssParser {
+    async parseURL() {
+      throw new Error("news bhi down");
+    }
+  }
+  const httpGet = async (url) => {
+    if (url.startsWith("https://www.bing.com/search")) return { data: bingHtml, headers: {} };
+    throw new Error("blocked"); // DDG html + lite dono down
+  };
+  const results = await searchWeb("HPSC Assistant Professor Result 2026 notification 2026", {
+    httpGet,
+    RssParser: FakeRssParser
+  });
+  const urls = results.map((r) => r.url);
+  assert.ok(urls.includes(direct), `bing direct candidate chahiye: ${urls.join(",")}`);
+  assert.ok(urls.includes(wrappedReal), `bing wrapped decode hoke chahiye: ${urls.join(",")}`);
+});
+
+test("scoreCandidate unresolved google-news redirect ko niche rakhta hai", () => {
+  const newsRedirect = scoreCandidate({
+    title: "Some Result",
+    url: "https://news.google.com/rss/articles/CBMiabcdefghijklmnop1234",
+    via: "google-news"
+  });
+  const official = scoreCandidate({
+    title: "Some Result notification",
+    url: "https://hpsc.gov.in/results",
+    via: "bing"
+  });
+  assert.ok(official > newsRedirect, `official (${official}) should beat news-redirect (${newsRedirect})`);
 });

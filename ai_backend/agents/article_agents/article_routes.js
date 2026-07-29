@@ -190,7 +190,21 @@ function registerArticleAgentRoutes(app, db) {
           return fail(res, 400, message);
         }
         autoSearched = true;
-        source = await searchAndFetchSource(searchQuery);
+        try {
+          source = await searchAndFetchSource(searchQuery);
+        } catch (searchErr) {
+          if (directError) {
+            // Direct link BHI nahi khula + search bhi fail — dono wajah saaf batao
+            const err = new Error(
+              `Diya hua link bhi nahi khula aur internet search se bhi "${searchQuery}" ke liye kuch kaam ka nahi mila. ` +
+              `💡 Browser me link khud kholke confirm karo ki wahi DIRECT notification page/PDF hai (scanned/photo PDF nahi chalegi), phir dobara daalo. ` +
+              `(link wala error: ${String(directError.message || directError).slice(0, 120)})`
+            );
+            err.code = searchErr.code || "SOURCE_FETCH_FAILED";
+            throw err;
+          }
+          throw searchErr;
+        }
       }
 
       const existing = await collectExistingContent(db, type);

@@ -75,6 +75,60 @@ function unwrapDuckDuckGo(href) {
   }
 }
 
+/** Bing redirect links (bing.com/ck/a?...&u=a1<base64url>...) → asli URL. */
+function unwrapBing(href) {
+  if (!href) return "";
+  try {
+    const u = new URL(href);
+    const inner = u.searchParams.get("u");
+    if (inner && inner.startsWith("a1")) {
+      const b64 = inner.slice(2).replace(/-/g, "+").replace(/_/g, "/");
+      const decoded = Buffer.from(b64, "base64").toString("utf-8");
+      if (/^https?:\/\//i.test(decoded)) return decoded;
+    }
+    return href;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Google News redirect URLs (news.google.com/rss/articles/<b64>) ka purana
+ * format base64 decode hone par asli publisher URL nikalta hai. Naya (CBMi)
+ * encrypted format decode nahi hota → URL waise ka waisa (fetch try hoga).
+ */
+function decodeGoogleNewsUrl(url) {
+  try {
+    const m = String(url || "").match(/news\.google\.com\/(?:rss\/)?articles\/([A-Za-z0-9_-]{20,})/);
+    if (!m) return String(url || "");
+    const b64 = m[1].replace(/-/g, "+").replace(/_/g, "/");
+    const buf = Buffer.from(b64, "base64");
+    const marker = buf.indexOf("http");
+    if (marker <= 0 || marker > 25) return String(url || "");
+    const tail = buf.slice(marker).toString("latin1");
+    const run = tail.match(/^https?:\/\/[^\s]*?[^\x20-\x7e]/);
+    const clean = (run ? run[0] : tail).replace(/[^\x20-\x7e].*$/, "");
+    return /^https?:\/\/.{15,}/i.test(clean) ? clean : String(url || "");
+  } catch {
+    return String(url || "");
+  }
+}
+
+/** Query ke duplicate words hatao ("HPSC ... HPSC Result ... Result" → clean). */
+function dedupeQueryWords(query) {
+  const seen = new Set();
+  return String(query || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((word) => {
+      const key = word.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join(" ");
+}
+
 /** DuckDuckGo HTML se result links nikaale. */
 async function searchDuckDuckGo(query, httpGet) {
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
@@ -87,6 +141,40 @@ async function searchDuckDuckGo(query, httpGet) {
     const text = $(el).text().trim().slice(0, 200);
     const url2 = unwrapDuckDuckGo($(el).attr("href") || "");
     if (url2 && /^https?:/i.test(url2)) links.push({ title: text, url: url2, via: "duckduckgo" });
+  });
+  return links;
+}
+
+/** DDG lite fallback — html endpoint block/empty ho tab bhi chale. */
+async function searchDuckDuckGoLite(query, httpGet) {
+  const url = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`;
+  const resp = await httpGet(url);
+  const html = typeof resp.data === "string" ? resp.data : Buffer.from(resp.data).toString("utf-8");
+  const $ = cheerio.load(html);
+  const links = [];
+  $("a.result-link").each((_, el) => {
+    if (links.length >= MAX_CANDIDATES) return false;
+    const text = $(el).text().trim().slice(0, 200);
+    const url2 = unwrapDuckDuckGo($(el).attr("href") || "");
+    if (url2 && /^https?:/i.test(url2)) links.push({ title: text, url: url2, via: "duckduckgo-lite" });
+  });
+  return links;
+}
+
+/** Bing HTML search — alag engine, isliye DDG down ho to bhi results milte hain. */
+async function searchBing(query, httpGet) {
+  const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=hi&count=25`;
+  const resp = await httpGet(url);
+  const html = typeof resp.data === "string" ? resp.data : Buffer.from(resp.data).toString("utf-8");
+  const $ = cheerio.load(html);
+  const links = [];
+  $("li.b_algo h2 a[href]").each((_, el) => {
+    if (links.length >= MAX_CANDIDATES) return false;
+    const text = $(el).text().trim().slice(0, 200);
+    const url2 = unwrapBing($(el).attr("href") || "");
+    if (url2 && /^https?:/i.test(url2) && !hostOf(url2).includes("bing.com")) {
+      links.push({ title: text, url: url2, via: "bing" });
+    }
   });
   return links;
 }
@@ -121,7 +209,9 @@ async function searchWeb(query, deps = {}) {
   const results = [];
   const seen = new Set();
   const pushAll = (items) => {
-    for (const item of items || []) {
+    for (const raw of items || []) {
+      // Google News redirect → ho sake to asli publisher URL nikaalo
+      const item = { ...raw, url: decodeGoogleNewsUrl(raw.url) };
       if (!item.url || !/^https?:/i.test(item.url)) continue;
       if (isExcluded(item.url) || isBlockedDomain(item.url)) continue;
       const key = item.url.replace(/\/+$/, "").toLowerCase();
@@ -132,9 +222,14 @@ async function searchWeb(query, deps = {}) {
     }
   };
 
-  const [ddg, news] = await Promise.allSettled([searchDuckDuckGo(query, httpGet), searchGoogleNews(query, deps)]);
-  if (ddg.status === "fulfilled") pushAll(ddg.value);
-  if (news.status === "fulfilled") pushAll(news.value);
+  // 4 engines parallel — ek down/block ho to baaki se kaam chale (fault isolation)
+  const settled = await Promise.allSettled([
+    searchDuckDuckGo(query, httpGet),
+    searchBing(query, httpGet),
+    searchDuckDuckGoLite(query, httpGet),
+    searchGoogleNews(query, deps)
+  ]);
+  for (const s of settled) if (s.status === "fulfilled") pushAll(s.value);
   return results;
 }
 
@@ -147,6 +242,7 @@ function scoreCandidate(item) {
   if (NOTIFICATION_WORDS.test(text)) score += 2;
   if (/\.pdf(\?|#|$)/i.test(item.url)) score += 3;
   if (item.via === "duckduckgo") score += 1; // general web > news-only for official pages
+  if (host.includes("news.google.com")) score -= 2; // unresolved redirect — last resort
   return score;
 }
 
@@ -204,7 +300,8 @@ function buildSearchQuery(instructions, sourceUrlHint) {
   base = base.replace(/[|]/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
   if (!base) return "";
   const year = new Date().getFullYear();
-  return `${base} notification ${year}`;
+  // "HPSC ... HPSC Result ... Result notification" jaise duplicates hata-ke clean query
+  return dedupeQueryWords(`${base} notification ${year}`);
 }
 
 module.exports = {
@@ -213,6 +310,9 @@ module.exports = {
   buildSearchQuery,
   scoreCandidate,
   unwrapDuckDuckGo,
+  unwrapBing,
+  decodeGoogleNewsUrl,
+  dedupeQueryWords,
   isExcluded,
   MIN_USEFUL_TEXT
 };
