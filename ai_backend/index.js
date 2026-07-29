@@ -433,7 +433,7 @@ const handleMetaTags = require("./server_seo_renderer").createServerSeoHandler({
 
 // 0. API Core & Meta Tags (Working)
 exports.api = onRequest({
- secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GEMINI_API_KEY", "GMAIL_CREDENTIALS", "SERVICE_ACCOUNT_JSON", "AGENT_ADMIN_TOKEN"],
+ secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_ADMIN_CHAT_ID", "GEMINI_API_KEY", "GMAIL_CREDENTIALS", "SERVICE_ACCOUNT_JSON", "AGENT_ADMIN_TOKEN"],
   maxInstances: 10,
   timeoutSeconds: 300,
   memory: "1GiB",
@@ -444,7 +444,7 @@ exports.serverSideMetaTags = onRequest({ memory: "1GiB" }, (req, res) => handleM
 
 // 📲 Telegram APPROVE BUTTONS — AI draft card ke ✅/❌ clicks yahi handle hote hain
 exports.telegramDraftWebhook = onRequest({
-    secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"],
+    secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_ADMIN_CHAT_ID"],
     maxInstances: 5,
     timeoutSeconds: 60
 }, (req, res) => require("./telegram_draft_bot").handleWebhook(
