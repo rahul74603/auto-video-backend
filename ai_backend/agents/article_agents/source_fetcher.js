@@ -354,7 +354,7 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
     ((url) =>
       axios.get(url, {
         headers: BROWSER_HEADERS,
-        timeout: deps.timeoutMs || 25000,
+        timeout: deps.timeoutMs || 35000,
         maxRedirects: 5,
         maxContentLength: 12 * 1024 * 1024,
         responseType: "arraybuffer",
@@ -362,14 +362,41 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
       }));
 
   let response;
+  let lastErr;
   try {
     response = await httpGet(parsed.toString());
   } catch (err) {
+    lastErr = err;
+    const isTimeout = /timeout|ETIMEDOUT|ECONNABORTED|ECONNRESET|EAI_AGAIN|socket hang up/i.test(
+      String(err?.message || err)
+    );
+    // Slow sarkari servers (HPSC jaise govt sites CDN-warmup me pehli hit hang,
+    // dusri hit dete hain) — timeout/network issue pe EK plain retry zyada timeout ke saath.
+    // deps.slowRetryGet = tests ke liye injectable.
+    if ((!deps.httpGet || deps.slowRetryGet) && isTimeout) {
+      console.warn(`source fetch: pehli hit timeout (${err.message}) — slow-server retry...`);
+      const retryGet =
+        deps.slowRetryGet ||
+        ((url) =>
+          axios.get(url, {
+            headers: BROWSER_HEADERS,
+            timeout: 70000,
+            maxRedirects: 5,
+            maxContentLength: 12 * 1024 * 1024,
+            responseType: "arraybuffer",
+            validateStatus: (status) => status >= 200 && status < 300
+          }));
+      try {
+        response = await retryGet(parsed.toString());
+      } catch (retryErr) {
+        console.warn(`source fetch: slow-server retry bhi fail: ${retryErr.message}`);
+      }
+    }
     // HTTP error (403 bot-block wagera) pe EK baar headless Chrome se try karo —
     // kuch sites real browser ko allow kar deti hain. (Sirf production path pe.)
-    if (!deps.httpGet) {
+    if (!response && !deps.httpGet) {
       try {
-        const renderedHtml = await renderWithChromium(parsed.toString(), deps.timeoutMs || 30000);
+        const renderedHtml = await renderWithChromium(parsed.toString(), deps.timeoutMs || 45000);
         if (typeof renderedHtml === "string" && renderedHtml.length >= 80) {
           response = { data: renderedHtml, headers: {}, viaRender: true };
         }
@@ -378,9 +405,12 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
       }
     }
     if (!response) {
-      const status = err?.response?.status;
+      const status = lastErr?.response?.status;
       const wrapped = new Error(
-        `Source page fetch nahi ho paya${status ? ` (site ne status ${status} diya — shayad block kiya)` : ""}: ${err.message}`
+        `Source page fetch nahi ho paya${status ? ` (site ne status ${status} diya — shayad block kiya)` : ""}: ${lastErr.message}` +
+          (isTimeout
+            ? " — 💡 Site bahut SLOW/hang ho rahi hai (sarkari server). 2-3 minute baad EXACT same link dobara daal ke dekho — humne 70 sec ka extra retry bhi laga diya hai, wo waqt server jawab de to kaam ho jayega."
+            : "")
       );
       wrapped.code = "SOURCE_FETCH_FAILED";
       throw wrapped;

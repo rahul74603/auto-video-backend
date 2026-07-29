@@ -1178,3 +1178,45 @@ test("scoreCandidate unresolved google-news redirect ko niche rakhta hai", () =>
   });
   assert.ok(official > newsRedirect, `official (${official}) should beat news-redirect (${newsRedirect})`);
 });
+
+// =========================================================
+//  SLOW-SERVER RETRY (HPSC case: govt site pehli hit hang,
+//  "timeout of 25000ms exceeded" — ab 70s ka extra retry)
+// =========================================================
+
+test("slow-server retry: pehli hit timeout ho to doosri hit se source aa jata hai", async () => {
+  let firstCalls = 0;
+  let retryCalls = 0;
+  const richHtml = `<html><body><main><p>${"HPSC Assistant Professor Commerce marks list Advt 44/2024 announced on 28/07/2026 with interview details. ".repeat(
+    40
+  )}</p></main></body></html>`;
+  const source = await fetchAndExtractSource("https://hpsc.gov.in/Portals/0/result-page", {
+    httpGet: async () => {
+      firstCalls += 1;
+      throw new Error("timeout of 35000ms exceeded");
+    },
+    slowRetryGet: async () => {
+      retryCalls += 1;
+      return { data: Buffer.from(richHtml), headers: {} };
+    }
+  });
+  assert.equal(firstCalls, 1);
+  assert.equal(retryCalls, 1, "timeout pe slow retry chalna chahiye");
+  assert.ok(source.text.includes("HPSC Assistant Professor"));
+});
+
+test("slow-server retry: dono hit timeout ho to slow-site hint wala error mile", async () => {
+  const timeoutErr = new Error("timeout of 35000ms exceeded");
+  await assert.rejects(
+    () =>
+      fetchAndExtractSource("https://hpsc.gov.in/slow-page", {
+        httpGet: async () => { throw timeoutErr; },
+        slowRetryGet: async () => { throw new Error("timeout of 70000ms exceeded"); }
+      }),
+    (err) => {
+      assert.equal(err.code, "SOURCE_FETCH_FAILED");
+      assert.match(err.message, /bahut SLOW/i, `slow hint expected: ${err.message}`);
+      return true;
+    }
+  );
+});
