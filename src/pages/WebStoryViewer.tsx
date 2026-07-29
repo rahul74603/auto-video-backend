@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStory } from '@/features/stories/hooks/useStory';
 import { storyRepository } from '@/features/stories/data/storyRepository';
@@ -560,6 +561,22 @@ const WebStoryViewer = () => {
         }
     }, [navigate]);
 
+    // 🔒 Story khuli ho to body scroll LOCK + ESC key se close
+    // (portal render ke baad bhi page-layout ka koi side-effect nahi)
+    useEffect(() => {
+        if (!htmlContent) return;
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') handleClose();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => {
+            document.body.style.overflow = previousOverflow;
+            window.removeEventListener('keydown', onKeyDown);
+        };
+    }, [htmlContent, handleClose]);
+
     // =========================================================
     // 🔄 LOADING
     // =========================================================
@@ -606,11 +623,18 @@ const WebStoryViewer = () => {
     const publishedIso = getIsoDate(storyData.createdAt);
 
     // =========================================================
-    // 🎨 RENDER
+    // 🎨 RENDER — PROFESSIONAL STORY VIEWER
+    // Portal se document.body pe render — page-layout ka transform/transform
+    // ancestor is overlay ko kabhi distort NAHI kar sakta (bikhra layout fix).
+    // Story CENTER me phone-frame me; buttons/card usi ke saath chipke.
     // =========================================================
-    return (
-        <div className="h-screen w-screen bg-black flex justify-center items-center fixed inset-0 z-[9999]">
-
+    const overlayContent = (
+        <div
+            className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-sm flex items-center justify-center p-0 sm:p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-label={storyData.title || 'Web Story'}
+        >
             {/* ✅ SEO - Proper props */}
             <SEO
                 customTitle={`${storyData.title} | Web Story | StudyGyaan`}
@@ -627,85 +651,104 @@ const WebStoryViewer = () => {
                 category={storyData.category || "Education"}
             />
 
-            {/* ✅ AMP Story iframe */}
-            <iframe
-                srcDoc={htmlContent}
-                className="w-full h-full max-w-[450px] border-none bg-black shadow-2xl"
-                title={storyData.title}
-                sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation allow-top-navigation-by-user-activation"
-                loading="eager"
-            />
+            {/* 📱 Story Card — center me, phone-frame look */}
+            <div className="relative w-full h-full sm:h-[90vh] sm:w-auto sm:aspect-[9/16] sm:max-w-[94vw] bg-black sm:rounded-[1.75rem] overflow-hidden sm:ring-1 sm:ring-white/25 sm:shadow-[0_25px_80px_rgba(0,0,0,0.9)]">
 
-            {/* ✅ Controls */}
-            <div className="absolute top-4 right-4 flex flex-col gap-2 z-[10000]">
-                {/* Close */}
-                <button
-                    onClick={handleClose}
-                    className="p-2 bg-white/10 hover:bg-red-500 rounded-full text-white transition-all border border-white/20 backdrop-blur-md"
-                    aria-label="Story बंद करें"
-                >
-                    <X size={22} />
-                </button>
-
-                {/* Share */}
-                <button
-                    onClick={handleShare}
-                    className="p-2 bg-white/10 hover:bg-blue-500 rounded-full text-white transition-all border border-white/20 backdrop-blur-md"
-                    aria-label="Share करें"
-                >
-                    {copied
-                        ? <Check size={22} className="text-green-400" />
-                        : <Share2 size={22} />
-                    }
-                </button>
-            </div>
-
-            {/* ✅ Bottom CTA (Visible, Not Hidden!) */}
-            <div className="absolute bottom-0 left-0 right-0 max-w-[450px] mx-auto">
+                {/* ⚡ Brand chip — story ke upar-left chipka */}
                 <a
-                    href={storyData.applyLink || '/'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-black text-sm hover:from-blue-700 transition-all"
+                    href="/web-stories"
+                    className="absolute top-3 left-3 z-20 flex items-center gap-1 bg-black/45 backdrop-blur-md text-white text-[10px] font-black px-3 py-2 rounded-full border border-white/25 hover:bg-black/70 transition-all"
                 >
-                    <span>
-                        {storyData.storyType === 'blog'
-                            ? '📝 Full Blog पढ़ें'
-                            : storyData.storyType === 'job'
-                            ? '🏛️ पूरी भर्ती देखें'
-                            : storyData.storyType === 'fasttrack'
-                            ? '⚡ पूरी जानकारी देखें'
-                            : '🎯 Test Attempt करें'
-                        }
-                    </span>
-                    <ExternalLink size={18} />
+                    ⚡ StudyGyaan<span className="hidden sm:inline"> Stories</span>
                 </a>
+
+                {/* ✅ Controls — story ke SAATH top-right (kahin idhar-udhar nahi) */}
+                <div className="absolute top-3 right-3 flex gap-2 z-20">
+                    {/* Share */}
+                    <button
+                        onClick={handleShare}
+                        className="p-2.5 bg-black/45 hover:bg-blue-500 rounded-full text-white transition-all border border-white/25 backdrop-blur-md active:scale-90"
+                        aria-label="Share करें"
+                    >
+                        {copied
+                            ? <Check size={19} className="text-green-400" />
+                            : <Share2 size={19} />
+                        }
+                    </button>
+
+                    {/* Close */}
+                    <button
+                        onClick={handleClose}
+                        className="p-2.5 bg-black/45 hover:bg-red-500 rounded-full text-white transition-all border border-white/25 backdrop-blur-md active:scale-90"
+                        aria-label="Story बंद करें (ESC)"
+                    >
+                        <X size={19} />
+                    </button>
+                </div>
+
+                {/* ✅ AMP Story iframe — card ko pura bharta hai */}
+                <iframe
+                    srcDoc={htmlContent}
+                    className="w-full h-full border-0 bg-black"
+                    title={storyData.title}
+                    sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation allow-top-navigation-by-user-activation"
+                    loading="eager"
+                />
+
+                {/* ✅ Related Links — card ke ANDAR, CTA ke upar (visible, no cloaking) */}
+                <nav
+                    className="absolute bottom-[52px] inset-x-0 z-20 px-3"
+                    aria-label="Related Links"
+                >
+                    <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+                        {[
+                            { href: "/govt-jobs", label: "🏛️ Jobs" },
+                            { href: "/test", label: "📝 Tests" },
+                            { href: "/blog", label: "📰 Blogs" },
+                            { href: "/free-study-material", label: "📚 Notes" }
+                        ].map(link => (
+                            <a
+                                key={link.href}
+                                href={link.href}
+                                className="shrink-0 bg-black/45 text-white text-[10px] font-black px-3 py-1.5 rounded-full border border-white/25 hover:bg-black/70 transition-all backdrop-blur-md whitespace-nowrap"
+                            >
+                                {link.label}
+                            </a>
+                        ))}
+                    </div>
+                </nav>
+
+                {/* ✅ Bottom CTA — card ke ANDAR bottom me chipka */}
+                <div className="absolute bottom-0 inset-x-0 z-20">
+                    <a
+                        href={storyData.applyLink || '/'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-black text-sm hover:from-blue-700 transition-all"
+                    >
+                        <span>
+                            {storyData.storyType === 'blog'
+                                ? '📝 Full Blog पढ़ें'
+                                : storyData.storyType === 'job'
+                                ? '🏛️ पूरी भर्ती देखें'
+                                : storyData.storyType === 'fasttrack'
+                                ? '⚡ पूरी जानकारी देखें'
+                                : '🎯 Test Attempt करें'
+                            }
+                        </span>
+                        <ExternalLink size={18} />
+                    </a>
+                </div>
             </div>
 
-            {/* ✅ Visible Related Links (Not Hidden - No Cloaking!) */}
-            <nav
-                className="absolute bottom-14 left-0 right-0 max-w-[450px] mx-auto px-3 pb-2"
-                aria-label="Related Links"
-            >
-                <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-                    {[
-                        { href: "/govt-jobs", label: "🏛️ Jobs" },
-                        { href: "/test", label: "📝 Tests" },
-                        { href: "/blog", label: "📰 Blogs" },
-                        { href: "/free-study-material", label: "📚 Notes" }
-                    ].map(link => (
-                        <a
-                            key={link.href}
-                            href={link.href}
-                            className="shrink-0 bg-white/10 text-white text-[10px] font-black px-3 py-1.5 rounded-full border border-white/20 hover:bg-white/20 transition-all backdrop-blur-sm whitespace-nowrap"
-                        >
-                            {link.label}
-                        </a>
-                    ))}
-                </div>
-            </nav>
+            {/* 💡 Desktop hint — ESC se band */}
+            <p className="hidden sm:block absolute bottom-2 inset-x-0 text-center text-[10px] font-bold text-white/30 tracking-widest uppercase pointer-events-none">
+                ESC dabao ya ✕ — story band ho jayegi
+            </p>
         </div>
     );
+
+    return createPortal(overlayContent, document.body);
 };
 
 export default WebStoryViewer;
