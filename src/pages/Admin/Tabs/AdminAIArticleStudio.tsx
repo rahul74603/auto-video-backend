@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Sparkles, Eye, RefreshCcw, Save, Send, Trash2, Link2, FileText,
-  ShieldCheck, ShieldAlert, Clock, CheckCircle2, XCircle, Briefcase, Zap
+  ShieldCheck, ShieldAlert, Clock, CheckCircle2, XCircle, Briefcase, Zap, FileUp
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useAIArticleDrafts from '@/features/ai-articles/hooks/useAIArticleDrafts';
@@ -11,6 +11,7 @@ import aiArticleRepository, {
   EDITORIAL_AUTHOR,
 } from '@/features/ai-articles/data/aiArticleRepository';
 import type { AIArticleDraftRecord } from '@/features/ai-articles/data/aiArticleRepository';
+import { extractTextFromFile } from '@/features/ai-articles/data/pdfTextExtractor';
 
 /** JOBS AI tab की draft row से generate form prefill करने का custom event. */
 export const AI_ARTICLE_PREFILL_EVENT = 'sg-ai-article-prefill';
@@ -81,9 +82,11 @@ const AdminAIArticleStudio = () => {
   const [sourceUrl, setSourceUrl] = useState('');
   const [instructions, setInstructions] = useState('');
   const [pastedText, setPastedText] = useState(''); // blocked/slow site ka manual source text
+  const [extractStatus, setExtractStatus] = useState(''); // PDF/Image se text nikalne ka progress message
+  const extractInputRef = useRef<HTMLInputElement | null>(null); // hidden file input (PDF/Image upload)
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(''); // '', 'generate', 'preview', 'regenerate', 'apply', 'publish', 'delete'
+  const [busy, setBusy] = useState(''); // '', 'generate', 'preview', 'regenerate', 'apply', 'publish', 'delete', 'extract'
   const [showPreview, setShowPreview] = useState(false);
   const [editForm, setEditForm] = useState(EMPTY_EDIT_FORM);
 
@@ -158,6 +161,45 @@ const AdminAIArticleStudio = () => {
         { duration: 9000 }
       );
     } else toast.error(msg);
+  };
+
+  // ================= PDF/IMAGE TEXT EXTRACT (scanned PDF jugaad) =================
+  // Sarkari scanned PDF se copy nahi hota — browser me hi text nikal kar
+  // Source Text box me bhar do. Server ki zaroorat hi nahi.
+  const handleExtractFile = async (file: File) => {
+    if (busy) return;
+    setBusy('extract');
+    setExtractStatus('📄 File padh raha hoon...');
+    try {
+      const text = await extractTextFromFile(file, (p) => {
+        setExtractStatus(
+          p.stage === 'ocr'
+            ? `📷 Scanned page mila — OCR chal raha... ${p.page}/${p.totalPages} page`
+            : `📄 PDF ka text padh raha... ${p.page}/${p.totalPages} page`
+        );
+      });
+      if (text.length < 50) {
+        toast.error(
+          'Is file se theek se text na nikal paya — photo bahut dhundli hai. Phone ke Google Lens se text copy karke neeche box me paste kar do.',
+          { duration: 9000 }
+        );
+      } else {
+        setPastedText(text);
+        toast.success(
+          `✅ ${text.length} characters nikal liye — neeche box me aa gaye. Ab upar OFFICIAL link daal kar GENERATE dabao.`,
+          { duration: 7000 }
+        );
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'File padhne me dikkat aayi — dobara try karo', {
+        duration: 8000,
+      });
+    } finally {
+      setExtractStatus('');
+      setBusy('');
+      // same file dobara select ho sake — input reset
+      if (extractInputRef.current) extractInputRef.current.value = '';
+    }
   };
 
   // ================= GENERATE =================
@@ -513,6 +555,38 @@ const AdminAIArticleStudio = () => {
               placeholder="सिर्फ तब भरो जब upar ka link slow/block हो (जैसे HPSC) — page/PDF खोलकर पूरा text copy करके यहाँ paste कर दो। Article seedha इसी text से बनेगा। (Link भी भरना ज़रूरी है — Links box के लिए)"
               className="mt-1.5 w-full p-3 border border-amber-200 bg-amber-50/40 rounded-xl text-xs font-semibold outline-none focus:ring-2 ring-amber-400 transition-all resize-y"
             />
+            {/* 📄 SCANNED PDF jugaad: copy na ho paane wali PDF/Image se browser me hi text nikalo */}
+            <div className="mt-2 flex flex-wrap items-center gap-2.5">
+              <input
+                ref={extractInputRef}
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleExtractFile(file);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => extractInputRef.current?.click()}
+                disabled={anyBusy}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border text-[11px] font-black uppercase tracking-wider transition-all ${anyBusy ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200 active:scale-95'}`}
+              >
+                {busy === 'extract' ? <RefreshCcw size={13} className="animate-spin" /> : <FileUp size={13} />}
+                {busy === 'extract' ? 'Text nikal raha...' : 'PDF/Image upload — text khud niklega'}
+              </button>
+              {extractStatus && (
+                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider animate-pulse">
+                  {extractStatus}
+                </span>
+              )}
+              {busy !== 'extract' && !extractStatus && (
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Copy na ho paane wali (scanned) PDF ho to सीधे file upload कर दो — text खुद box में आ जाएगा
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
