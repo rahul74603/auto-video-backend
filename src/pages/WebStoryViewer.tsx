@@ -134,7 +134,10 @@ function buildMultiPageStory(data: StoryDocData, storyId: string): string {
         || "https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?w=720&h=1280&fit=crop";
     const applyLink = data.applyLink || "https://studygyaan.in";
     const storyType = String(data.storyType || 'mocktest').toLowerCase();
-    const badgeColor = storyType === 'blog' ? '#059669' : '#2563eb';
+    const badgeColor = storyType === 'blog' ? '#059669'
+        : storyType === 'job' ? '#1d4ed8'
+        : storyType === 'fasttrack' ? '#ea580c'
+        : '#2563eb';
 
     // ✅ Slides - Firestore से या default
     let slides: StorySlide[] | undefined = data.slides;
@@ -481,7 +484,7 @@ function buildMultiPageStory(data: StoryDocData, storyId: string): string {
         standalone
         title="${title}"
         publisher="StudyGyaan"
-        publisher-logo-src="https://studygyaan.in/logo.png"
+        publisher-logo-src="https://studygyaan.in/story-assets/publisher-logo.png"
         poster-portrait-src="${coverImage}">
 
         ${pagesHtml}
@@ -661,6 +664,10 @@ const WebStoryViewer = () => {
                     <span>
                         {storyData.storyType === 'blog'
                             ? '📝 Full Blog पढ़ें'
+                            : storyData.storyType === 'job'
+                            ? '🏛️ पूरी भर्ती देखें'
+                            : storyData.storyType === 'fasttrack'
+                            ? '⚡ पूरी जानकारी देखें'
                             : '🎯 Test Attempt करें'
                         }
                     </span>

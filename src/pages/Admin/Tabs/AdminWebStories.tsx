@@ -5,7 +5,8 @@ import type { MockTestRecord } from '@/features/mock-tests/data/mockTestReposito
 import { blogRepository } from '@/features/blogs/data/blogRepository';
 import type { BlogRecord } from '@/features/blogs/data/blogRepository';
 import { storyRepository } from '@/features/stories/data/storyRepository';
-import { Layers, Plus, Save, X, Zap } from 'lucide-react';
+import { ARTICLE_API_BASE } from '@/features/ai-articles/data/aiArticleRepository';
+import { Layers, Plus, RefreshCw, Save, X, Zap } from 'lucide-react';
 import { asText } from '@/types/firestore';
 
 // =========================================================
@@ -95,6 +96,7 @@ const AdminWebStories = () => {
     const [blogs, setBlogs] = useState<StorySourceBlog[]>([]);
     const [stories, setStories] = useState<PublishedStory[]>([]);
     const [loading, setLoading] = useState(false);
+    const [backfillLoading, setBackfillLoading] = useState(false);
     const [showForm, setShowForm] = useState(false);
     const [activeSource, setActiveSource] = useState<'mocktests' | 'blogs'>('mocktests');
 
@@ -185,6 +187,41 @@ const AdminWebStories = () => {
         }
     };
 
+    // ⚡ Purane published articles (Jobs/FastTrack/Blogs) se stories ek click me
+    const handleBackfill = async () => {
+        setBackfillLoading(true);
+        try {
+            const res = await fetch(`${ARTICLE_API_BASE}/stories/backfill`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ limit: 40 })
+            });
+            const data = (await res.json()) as {
+                success?: boolean;
+                error?: string;
+                created?: string[];
+                junkArchived?: number;
+                skippedExisting?: number;
+                errors?: string[];
+            };
+            if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+            const createdCount = (data.created || []).length;
+            alert(
+                `📱 AUTO-STORY RESULT\n\n` +
+                `✅ Nayi stories: ${createdCount}\n` +
+                `🧹 Purani junk stories safai (noIndex): ${data.junkArchived || 0}\n` +
+                `⏭️ Pehle se bani hui: ${data.skippedExisting || 0}\n` +
+                ((data.errors || []).length ? `⚠️ Errors: ${(data.errors || []).length}\n` : '') +
+                `\nGoogle Discover auto-ready! 🚀`
+            );
+            void refreshStories();
+        } catch (err) {
+            alert(`❌ Backfill fail: ${errMsg(err)}`);
+        } finally {
+            setBackfillLoading(false);
+        }
+    };
+
     const handlePublishStory = async (e: FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -194,7 +231,7 @@ const AdminWebStories = () => {
                 status: 'published',
                 createdAt: new Date(),
                 publisher: 'StudyGyaan',
-                publisherLogo: 'https://studygyaan.in/logo.png',
+                publisherLogo: 'https://studygyaan.in/story-assets/publisher-logo.png',
             };
             await storyRepository.createStory(payload);
             alert("✅ Web Story Live! Google Discover ready.");
@@ -213,12 +250,25 @@ const AdminWebStories = () => {
                         <Zap size={24} className="text-yellow-500 fill-yellow-500" />
                         Web Stories Traffic Machine
                     </h2>
-                    <p className="text-xs font-bold text-slate-500 mt-1">Convert Mock Tests or Blogs into swipeable stories.</p>
+                    <p className="text-xs font-bold text-slate-500 mt-1">
+                        Job/FastTrack/Blog publish hote hi story AUTO banti hai.
+                        Purane articles ke liye Backfill dabao.
+                    </p>
                 </div>
                 {!showForm && (
-                    <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-slate-800 text-white rounded-xl font-black text-xs uppercase shadow-md flex items-center gap-1">
-                        <Plus size={16} /> Custom Story
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        <button
+                            onClick={() => { void handleBackfill(); }}
+                            disabled={backfillLoading}
+                            className="px-4 py-2 bg-orange-600 text-white rounded-xl font-black text-xs uppercase shadow-md flex items-center gap-1 disabled:opacity-50"
+                        >
+                            <RefreshCw size={16} className={backfillLoading ? 'animate-spin' : ''} />
+                            {backfillLoading ? 'Bana raha...' : '⚡ Articles → Stories'}
+                        </button>
+                        <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-slate-800 text-white rounded-xl font-black text-xs uppercase shadow-md flex items-center gap-1">
+                            <Plus size={16} /> Custom Story
+                        </button>
+                    </div>
                 )}
             </div>
 

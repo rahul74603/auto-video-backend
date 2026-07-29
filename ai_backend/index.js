@@ -32,6 +32,8 @@ registerAgentRoutes(app);
 // Source-grounded Job / Fast-track article agents (Generate, Preview,
 // Regenerate, Apply, Publish). Draft-first; failed review blocks publishing.
 require("./agents/article_agents/article_routes").registerArticleAgentRoutes(app, db);
+// 📱 Article → Web Story backfill endpoint (POST /stories/backfill)
+require("./article_to_story").registerStoryRoutes(app, db, admin.firestore.FieldValue);
 app.post("/seo/indexing-audit", async (req, res) => {
   const auth = authorizeAgentRequest(req);
   if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });
@@ -480,6 +482,17 @@ exports.renderWebStory = onRequest({ cors: true }, (req, res) => {
     return require("./web_stories").renderWebStory(req, res);
 });
 exports.generateStoriesSitemap = onRequest({ memory: "256MiB" }, (req, res) => require("./web_stories").generateStoriesSitemap(req, res));
+
+// 📱 4B. AUTO WEB STORIES — article publish hote hi Discover-ready AMP story
+// (jobs/fast_track/blogs; sirf publish-transition pe chalti hai, views/edits pe nahi)
+const autoStoryTrigger = (collectionName, idParam) => (event) =>
+    require("./article_to_story").handleDocumentWritten(db, admin.firestore.FieldValue, collectionName, idParam)(event);
+exports.onJobPublishedAutoStory = onDocumentWritten({ document: "jobs/{jobId}", maxInstances: 5 },
+    autoStoryTrigger("jobs", "jobId"));
+exports.onFastTrackPublishedAutoStory = onDocumentWritten({ document: "fast_track/{docId}", maxInstances: 5 },
+    autoStoryTrigger("fast_track", "docId"));
+exports.onBlogPublishedAutoStory = onDocumentWritten({ document: "blogs/{docId}", maxInstances: 5 },
+    autoStoryTrigger("blogs", "docId"));
 
 // 5. Auto Stories (Triggered via GitHub Actions API)
 exports.triggerBlogStoryNoon = onRequest({ timeoutSeconds: 300, memory: "512MiB" }, (req, res) => require("./auto_stories").triggerBlogStoryNoon(req, res));

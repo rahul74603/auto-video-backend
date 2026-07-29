@@ -10,6 +10,28 @@ const db = admin.firestore();
 // 🎨 SLIDE HTML GENERATORS
 // ==========================================
 
+// HTML injection se bachne ke liye (titles me quotes/& aa sakte hain)
+const { escapeHtml } = require("./agents/article_agents/article_html_utils");
+const esc = (v) => escapeHtml(String(v === undefined || v === null ? "" : v));
+
+// Publisher assets — public/story-assets/ (Discover ke liye real logo zaroori)
+const PUBLISHER_LOGO_URL = "https://studygyaan.in/story-assets/publisher-logo.png";
+
+// storyType → badge color
+const BADGE_COLORS = {
+    job: "#1d4ed8",
+    fasttrack: "#ea580c",
+    blog: "#059669",
+    mocktest: "#7c3aed"
+};
+
+// Blocked statuses — inki story render/sitemap dono se bahar
+const HIDDEN_STORY_STATUS = new Set(["draft", "pending", "rejected", "private", "archived", "deleted", "trash"]);
+function isStoryHidden(data = {}) {
+    if (data.noIndex === true || data.deleted === true || data.isDeleted === true) return true;
+    return HIDDEN_STORY_STATUS.has(String(data.status || "").trim().toLowerCase());
+}
+
 function buildCoverPage(slide, coverImage, coverW, coverH, badgeColor) {
     return `
   <amp-story-page id="page-cover" auto-advance-after="5s">
@@ -19,7 +41,7 @@ function buildCoverPage(slide, coverImage, coverW, coverH, badgeColor) {
         width="${coverW}"
         height="${coverH}"
         layout="responsive"
-        alt="${slide.title}">
+        alt="${esc(slide.title)}">
       </amp-img>
     </amp-story-grid-layer>
 
@@ -30,13 +52,13 @@ function buildCoverPage(slide, coverImage, coverW, coverH, badgeColor) {
     <amp-story-grid-layer template="vertical" class="content-layer">
       <div class="cover-content">
         <div class="badge" style="background:${badgeColor}">
-          ${slide.badge || '📚 STUDYGYAAN'}
+          ${esc(slide.badge || '📚 STUDYGYAAN')}
         </div>
         <h1 class="cover-title" animate-in="fly-in-bottom" animate-in-duration="0.6s">
-          ${slide.title}
+          ${esc(slide.title)}
         </h1>
         <p class="cover-sub" animate-in="fade-in" animate-in-duration="0.8s" animate-in-delay="0.3s">
-          ${slide.subtitle || 'StudyGyaan.in'}
+          ${esc(slide.subtitle || 'StudyGyaan.in')}
         </p>
         <div class="brand-tag" animate-in="fade-in" animate-in-delay="0.5s">
           🌐 StudyGyaan.in
@@ -48,7 +70,7 @@ function buildCoverPage(slide, coverImage, coverW, coverH, badgeColor) {
 
 function buildInfoPage(slide, pageId, bgColor) {
     const linesHtml = (slide.lines || [])
-        .map(line => `<div class="info-line">${line}</div>`)
+        .map(line => `<div class="info-line">${esc(line)}</div>`)
         .join('');
 
     return `
@@ -60,7 +82,7 @@ function buildInfoPage(slide, pageId, bgColor) {
     <amp-story-grid-layer template="vertical" class="content-layer">
       <div class="slide-content">
         <h2 class="slide-heading" animate-in="fly-in-top" animate-in-duration="0.5s">
-          ${slide.heading}
+          ${esc(slide.heading)}
         </h2>
         <div class="lines-box" animate-in="fade-in" animate-in-delay="0.3s">
           ${linesHtml}
@@ -74,9 +96,9 @@ function buildInfoPage(slide, pageId, bgColor) {
 function buildStatsPage(slide, pageId) {
     const statsHtml = (slide.stats || []).map(stat => `
       <div class="stat-card">
-        <span class="stat-icon">${stat.icon}</span>
-        <span class="stat-val">${stat.value}</span>
-        <span class="stat-lbl">${stat.label}</span>
+        <span class="stat-icon">${esc(stat.icon)}</span>
+        <span class="stat-val">${esc(stat.value)}</span>
+        <span class="stat-lbl">${esc(stat.label)}</span>
       </div>`).join('');
 
     return `
@@ -88,7 +110,7 @@ function buildStatsPage(slide, pageId) {
     <amp-story-grid-layer template="vertical" class="content-layer">
       <div class="slide-content">
         <h2 class="slide-heading" animate-in="fly-in-top" animate-in-duration="0.5s">
-          ${slide.heading}
+          ${esc(slide.heading)}
         </h2>
         <div class="stats-grid" animate-in="fade-in" animate-in-delay="0.3s">
           ${statsHtml}
@@ -101,7 +123,7 @@ function buildStatsPage(slide, pageId) {
 
 function buildContentPage(slide, pageId, bgColor) {
     const linesHtml = (slide.lines || [])
-        .map(line => `<div class="content-line">${line}</div>`)
+        .map(line => `<div class="content-line">${esc(line)}</div>`)
         .join('');
 
     return `
@@ -113,7 +135,7 @@ function buildContentPage(slide, pageId, bgColor) {
     <amp-story-grid-layer template="vertical" class="content-layer">
       <div class="slide-content">
         <h2 class="slide-heading" animate-in="fly-in-top" animate-in-duration="0.5s">
-          ${slide.heading}
+          ${esc(slide.heading)}
         </h2>
         <div class="lines-box" animate-in="fly-in-bottom" animate-in-delay="0.3s">
           ${linesHtml}
@@ -126,7 +148,7 @@ function buildContentPage(slide, pageId, bgColor) {
 
 function buildCtaPage(slide, pageId, applyLink) {
     const linesHtml = (slide.lines || [])
-        .map(line => `<div class="cta-line">${line}</div>`)
+        .map(line => `<div class="cta-line">${esc(line)}</div>`)
         .join('');
 
     return `
@@ -138,20 +160,20 @@ function buildCtaPage(slide, pageId, applyLink) {
     <amp-story-grid-layer template="vertical" class="content-layer">
       <div class="slide-content">
         <h2 class="cta-heading" animate-in="zoom-in" animate-in-duration="0.6s">
-          ${slide.heading}
+          ${esc(slide.heading)}
         </h2>
         <div class="cta-box" animate-in="fade-in" animate-in-delay="0.4s">
           ${linesHtml}
         </div>
-        <a href="${applyLink}" class="cta-btn" animate-in="fly-in-bottom" animate-in-delay="0.6s">
-          ${slide.ctaText || 'Visit Now'} →
+        <a href="${esc(applyLink)}" class="cta-btn" animate-in="fly-in-bottom" animate-in-delay="0.6s">
+          ${esc(slide.ctaText || 'Visit Now')} →
         </a>
         <div class="brand-watermark">StudyGyaan.in</div>
       </div>
     </amp-story-grid-layer>
 
     <amp-story-page-outlink layout="nodisplay">
-      <a href="${applyLink}">${slide.ctaText || 'Visit StudyGyaan.in'}</a>
+      <a href="${esc(applyLink)}">${esc(slide.ctaText || 'Visit StudyGyaan.in')}</a>
     </amp-story-page-outlink>
   </amp-story-page>`;
 }
@@ -455,14 +477,20 @@ const renderWebStory = async (req, res) => {
             return res.status(404).send("<h2>Story Not Found</h2>");
         }
 
+        // Draft/noIndex stories public na hon (Discover + search dono se bahar)
+        if (isStoryHidden(storyData)) {
+            res.set("Cache-Control", "no-store");
+            return res.status(404).send("<h2>Story Not Found</h2>");
+        }
+
         const data = storyData;
         const storyType = String(data.storyType || 'mocktest').toLowerCase();
-        const title = data.title || "StudyGyaan Update";
+        const title = String(data.title || "StudyGyaan Update");
         const slug = data.slug || storyId;
         const pageUrl = `https://studygyaan.in/web-stories/${slug}`;
         const applyLink = data.applyLink || "https://studygyaan.in";
         const publisher = "StudyGyaan";
-        const publisherLogo = "https://studygyaan.in/logo.png";
+        const publisherLogo = PUBLISHER_LOGO_URL;
 
         const coverImage = data.coverImage
             || "https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?w=1080&h=1920&fit=crop";
@@ -477,8 +505,8 @@ const renderWebStory = async (req, res) => {
         const metaDescription = data.description
             || `${title} - Free Study Material on StudyGyaan.in`;
 
-        // Badge Color
-        const badgeColor = storyType === 'blog' ? '#059669' : '#2563eb';
+        // Badge Color (storyType ke hisaab se)
+        const badgeColor = BADGE_COLORS[storyType] || '#1d4ed8';
 
         // Background gradients for slides
         const bgColors = [
@@ -561,8 +589,8 @@ const renderWebStory = async (req, res) => {
                 "logo": {
                     "@type": "ImageObject",
                     "url": publisherLogo,
-                    "width": 600,
-                    "height": 60
+                    "width": 512,
+                    "height": 512
                 }
             },
             "description": metaDescription,
@@ -570,8 +598,14 @@ const renderWebStory = async (req, res) => {
             "inLanguage": "hi"
         });
 
-        // ✅ Bookend
-        const bookendJson = buildBookend(title, pageUrl, coverImage);
+        // ✅ Bookend (`</script>` injection se bachne ke liye `<` neutralize)
+        const bookendJson = buildBookend(title, pageUrl, coverImage).replace(/</g, "\\u003c");
+        const jsonLdSafe = jsonLd.replace(/</g, "\\u003c");
+
+        // Head values escaped (titles me " & < aa sakte hain)
+        const safeTitle = esc(title);
+        const safeDesc = esc(metaDescription);
+        const safeCover = esc(coverImage);
 
         // ✅ FULL AMP HTML
         const html = `<!doctype html>
@@ -581,19 +615,19 @@ const renderWebStory = async (req, res) => {
   <script async src="https://cdn.ampproject.org/v0.js"></script>
   <script async custom-element="amp-story"
     src="https://cdn.ampproject.org/v0/amp-story-1.0.js"></script>
-  <title>${title}</title>
-  <meta name="description" content="${metaDescription}">
+  <title>${safeTitle}</title>
+  <meta name="description" content="${safeDesc}">
   <link rel="canonical" href="${pageUrl}">
   <meta name="viewport" content="width=device-width,minimum-scale=1,initial-scale=1">
   <meta name="robots" content="max-image-preview:large">
 
   <!-- Open Graph -->
   <meta property="og:type" content="article">
-  <meta property="og:title" content="${title}">
-  <meta property="og:description" content="${metaDescription}">
+  <meta property="og:title" content="${safeTitle}">
+  <meta property="og:description" content="${safeDesc}">
   <meta property="og:url" content="${pageUrl}">
   <meta property="og:site_name" content="StudyGyaan">
-  <meta property="og:image" content="${coverImage}">
+  <meta property="og:image" content="${safeCover}">
   <meta property="og:image:width" content="${coverImageWidth}">
   <meta property="og:image:height" content="${coverImageHeight}">
   <meta property="og:image:type" content="${coverImageType}">
@@ -601,12 +635,12 @@ const renderWebStory = async (req, res) => {
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="${title}">
-  <meta name="twitter:description" content="${metaDescription}">
-  <meta name="twitter:image" content="${coverImage}">
+  <meta name="twitter:title" content="${safeTitle}">
+  <meta name="twitter:description" content="${safeDesc}">
+  <meta name="twitter:image" content="${safeCover}">
 
   <!-- JSON-LD -->
-  <script type="application/ld+json">${jsonLd}</script>
+  <script type="application/ld+json">${jsonLdSafe}</script>
 
   <!-- AMP Boilerplate -->
   <style amp-boilerplate>body{-webkit-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-moz-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-ms-animation:-amp-start 8s steps(1,end) 0s 1 normal both;animation:-amp-start 8s steps(1,end) 0s 1 normal both}@-webkit-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-moz-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-ms-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-o-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}</style>
@@ -617,10 +651,10 @@ const renderWebStory = async (req, res) => {
 <body>
   <amp-story
     standalone
-    title="${title}"
+    title="${safeTitle}"
     publisher="${publisher}"
     publisher-logo-src="${publisherLogo}"
-    poster-portrait-src="${coverImage}">
+    poster-portrait-src="${safeCover}">
 
     ${slidesHtml}
 
@@ -665,6 +699,7 @@ const generateStoriesSitemap = onRequest({
 
         snapshot.forEach(doc => {
             const data = doc.data();
+            if (isStoryHidden(data)) return;
             const slug = data.slug || doc.id;
             const pageUrl = `https://studygyaan.in/web-stories/${slug}`;
             const coverImage = (data.coverImage || "https://studygyaan.in/og-image.jpg")
