@@ -38,6 +38,9 @@ test("adminCredsFromEnv — ADMIN id pe priority, fallback public id", () => {
 });
 const { publishDraftRecord } = require("../agents/article_agents/article_pipeline");
 
+// Webhook tests buttons-enable mode me chalte hain (admin id configured)
+process.env.TELEGRAM_ADMIN_CHAT_ID = "-1009999";
+
 // ---------------------------------------------------------------------
 // 🔧 mocks
 // ---------------------------------------------------------------------
@@ -291,4 +294,25 @@ test("webhook — malformed callback ignore politely", async () => {
     const res2 = mockRes();
     await handler({ method: "POST", body: { message: { text: "hi" } } }, res2);
     assert.equal(res2.out.body.ignored, true);
+});
+
+test("buttons safety — withButtons:false pe PASS draft ke bhi keyboard nahi", () => {
+    const msg = buildDraftMessage(PASSED_JOB_DRAFT, "abc123", { withButtons: false });
+    assert.equal(msg.canPublish, true);
+    assert.equal(msg.keyboard, null);
+});
+
+test("webhook — TELEGRAM_ADMIN_CHAT_ID missing ho to actions DISABLED", async () => {
+    const backup = process.env.TELEGRAM_ADMIN_CHAT_ID;
+    delete process.env.TELEGRAM_ADMIN_CHAT_ID;
+    try {
+        const db = makeMockDb({ "ai_article_drafts/draftA1": PASSED_JOB_DRAFT });
+        const handler = handleWebhook(db, FieldValue, makeMockHttp(), CREDS);
+        const res = mockRes();
+        await handler(mockCallbackReq("pub:draftA1"), res);
+        assert.equal(res.out.body.disabled, "TELEGRAM_ADMIN_CHAT_ID not set — approve buttons disabled");
+        assert.ok(db.dump()["ai_article_drafts/draftA1"], "draft intact");
+    } finally {
+        process.env.TELEGRAM_ADMIN_CHAT_ID = backup;
+    }
 });

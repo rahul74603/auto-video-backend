@@ -277,7 +277,7 @@ function registerArticleAgentRoutes(app, db) {
       // response kabhi block nahi hoga.
       try {
         const bot = require("../../telegram_draft_bot");
-        await bot.notifyDraft(null, bot.adminCredsFromEnv(), draft, ref.id, { label: "🧠 AI DRAFT READY" });
+        await bot.notifyDraft(null, bot.adminCredsFromEnv(), draft, ref.id, { label: "🧠 AI DRAFT READY", withButtons: Boolean(process.env.TELEGRAM_ADMIN_CHAT_ID) });
       } catch (notifyErr) {
         console.warn("telegram draft notify:", notifyErr.message || notifyErr);
       }
@@ -381,7 +381,7 @@ function registerArticleAgentRoutes(app, db) {
       // 🔔 Naye content ka fresh Telegram card (purane message stale ho gayi)
       try {
         const bot = require("../../telegram_draft_bot");
-        await bot.notifyDraft(null, bot.adminCredsFromEnv(), fresh, draftId, { label: "🔄 DRAFT REGENERATED" });
+        await bot.notifyDraft(null, bot.adminCredsFromEnv(), fresh, draftId, { label: "🔄 DRAFT REGENERATED", withButtons: Boolean(process.env.TELEGRAM_ADMIN_CHAT_ID) });
       } catch (notifyErr) {
         console.warn("telegram draft notify (regenerate):", notifyErr.message || notifyErr);
       }

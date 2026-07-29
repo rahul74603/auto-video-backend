@@ -82,11 +82,14 @@ function buildDraftCard(draft, opts) {
     return { text: lines.join("\n"), canPublish: reviewPassed };
 }
 
-/** Final card — callback_data me draft id inject karke. */
+/** Final card — callback_data me draft id inject karke.
+ *  opts.withButtons === false → keyboard kabhi nahi (safety: admin chat id
+ *  set nahi hui to PUBLIC channel pe buttons mat bhejo — koi aur daba dega). */
 function buildDraftMessage(draft, draftId, opts) {
     const card = buildDraftCard(draft, opts);
+    const buttonsAllowed = !opts || opts.withButtons !== false;
     let keyboard = null;
-    if (card.canPublish) {
+    if (card.canPublish && buttonsAllowed && validDraftId(draftId)) {
         keyboard = {
             inline_keyboard: [[
                 { text: "✅ PUBLISH KARO", callback_data: `pub:${draftId}` },
@@ -146,6 +149,15 @@ function handleWebhook(db, FieldValue, http, creds) {
         }
         if (!creds || !creds.token || !creds.chatId) {
             return res.status(503).json({ ok: false, error: "TELEGRAM creds not configured" });
+        }
+
+        // Safety lock: PRIVATE admin channel id set nahi hai to buttons DISABLED
+        // (warna public channel ke kisi bhi member ka click kaam kar jayega).
+        if (!process.env.TELEGRAM_ADMIN_CHAT_ID) {
+            return res.status(200).json({
+                ok: true,
+                disabled: "TELEGRAM_ADMIN_CHAT_ID not set — approve buttons disabled"
+            });
         }
 
         try {
