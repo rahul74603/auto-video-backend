@@ -24,8 +24,7 @@ const {
   cleanType,
   runGeneratePipeline,
   reReview,
-  assertPublishable,
-  buildPublishPayload,
+  publishDraftRecord,
   sanitizeOriginRef
 } = require("./article_pipeline");
 const { fetchAndExtractSource, assertSafeSourceUrl } = require("./source_fetcher");
@@ -274,6 +273,20 @@ function registerArticleAgentRoutes(app, db) {
       };
       const ref = await db.collection(DRAFT_COLLECTION).add(docPayload);
 
+      // 🔔 Telegram approve-card bhejo (phone se ✅/❌) — fail ho to generate
+      // response kabhi block nahi hoga.
+      try {
+        await require("../../telegram_draft_bot").notifyDraft(
+          null,
+          { token: process.env.TELEGRAM_BOT_TOKEN, chatId: process.env.TELEGRAM_CHAT_ID },
+          draft,
+          ref.id,
+          { label: "🧠 AI DRAFT READY" }
+        );
+      } catch (notifyErr) {
+        console.warn("telegram draft notify:", notifyErr.message || notifyErr);
+      }
+
       return ok(res, {
         draftId: ref.id,
         draft: { id: ref.id, ...draft },
@@ -370,6 +383,19 @@ function registerArticleAgentRoutes(app, db) {
         { merge: true }
       );
 
+      // 🔔 Naye content ka fresh Telegram card (purane message stale ho gayi)
+      try {
+        await require("../../telegram_draft_bot").notifyDraft(
+          null,
+          { token: process.env.TELEGRAM_BOT_TOKEN, chatId: process.env.TELEGRAM_CHAT_ID },
+          fresh,
+          draftId,
+          { label: "🔄 DRAFT REGENERATED" }
+        );
+      } catch (notifyErr) {
+        console.warn("telegram draft notify (regenerate):", notifyErr.message || notifyErr);
+      }
+
       return ok(res, {
         draftId,
         draft: { id: draftId, ...fresh, version: Number(current.version || 1) + 1 },
@@ -463,50 +489,9 @@ function registerArticleAgentRoutes(app, db) {
       if (!snap.exists) return fail(res, 404, "Draft not found");
       const draft = snap.data();
 
-      // Hard gate: failed/stale review can never reach the public collections.
-      assertPublishable(draft);
-
-      const { collection, payload } = buildPublishPayload(draft, draftId);
-      const targetId = draft.publishedDocId || `${draft.type === "JOB" ? "job" : "ft"}-${String(draft.slug || draftId).slice(0, 90)}`;
-
-      await db
-        .collection(collection)
-        .doc(targetId)
-        .set(
-          {
-            ...payload,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            publishedAt: admin.firestore.FieldValue.serverTimestamp()
-          },
-          { merge: true }
-        );
-
-      // ⭐ Publish ke turant baad draft DELETE kar do — duplicate records nahi
-      // rehte. Ab duplicate-guard ka source published jobs/fast_track doc hi hai
-      // (title + slug se same-event dubara generate hone pe bhi block laga rehta hai).
-      // Delete fail ho to publish phir bhi successful hai — sirf log karte hain.
-      await db
-        .collection(DRAFT_COLLECTION)
-        .doc(draftId)
-        .delete()
-        .catch((e) => console.warn(`publish: draft ${draftId} auto-delete failed:`, e.message));
-
-      // ⭐ Origin source-record bhi saaf karo (JOBS AI draft row / Fast Track raw item) —
-      // ab uska kaam khatam. Whitelist sanitizeOriginRef pehle se guarantee karta hai
-      // ki sirf job_drafts/fast_track hi aaye. Delete fail ho to publish phir bhi done.
-      const originRef = sanitizeOriginRef(draft.originRef);
-      let originDeleted = false;
-      if (originRef) {
-        originDeleted = await db
-          .collection(originRef.collection)
-          .doc(originRef.id)
-          .delete()
-          .then(() => true)
-          .catch((e) => {
-            console.warn(`publish: origin ${originRef.collection}/${originRef.id} delete failed:`, e.message);
-            return false;
-          });
-      }
+      // Hard gate + guarded write + draft/origin cleanup — shared with Telegram bot
+      const { collection, docId: targetId, payload, originDeleted } =
+        await publishDraftRecord(db, admin.firestore.FieldValue, draft, draftId);
 
       return ok(res, {
         draftId,

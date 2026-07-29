@@ -361,6 +361,56 @@ function buildPublishPayload(draft, draftId) {
   };
 }
 
+/**
+ * Guarded publish of a passed draft into jobs/fast_track.
+ * Shared by /articles/publish route + Telegram approve buttons.
+ * Review gate PHIR se lagta hai (assertPublishable) — console/telegram dono safe.
+ * db + FieldValue parameter se lete hain (module unit-testable rehta hai).
+ */
+async function publishDraftRecord(db, FieldValue, draft, draftId) {
+  assertPublishable(draft);
+
+  const { collection, payload } = buildPublishPayload(draft, draftId);
+  const targetId = draft.publishedDocId
+    || `${draft.type === "JOB" ? "job" : "ft"}-${String(draft.slug || draftId).slice(0, 90)}`;
+
+  await db
+    .collection(collection)
+    .doc(targetId)
+    .set(
+      {
+        ...payload,
+        createdAt: FieldValue.serverTimestamp(),
+        publishedAt: FieldValue.serverTimestamp()
+      },
+      { merge: true }
+    );
+
+  // ⭐ Publish ke turant baad draft DELETE — duplicate records nahi rehte.
+  await db
+    .collection(DRAFT_COLLECTION)
+    .doc(draftId)
+    .delete()
+    .catch((e) => console.warn(`publish: draft ${draftId} auto-delete failed:`, e.message));
+
+  // ⭐ Origin source-record bhi saaf (JOBS AI draft row / Fast Track raw item).
+  const originRef = sanitizeOriginRef(draft.originRef);
+  let originDeleted = false;
+  if (originRef) {
+    originDeleted = await db
+      .collection(originRef.collection)
+      .doc(originRef.id)
+      .delete()
+      .then(() => true)
+      .catch((e) => {
+        console.warn(`publish: origin ${originRef.collection}/${originRef.id} delete failed:`, e.message);
+        return false;
+      });
+  }
+
+  return { collection, docId: targetId, payload, originDeleted };
+}
+
 module.exports = {
   DRAFT_COLLECTION,
   cleanType,
@@ -368,6 +418,7 @@ module.exports = {
   reReview,
   buildDraftRecord,
   assertPublishable,
+  publishDraftRecord,
   buildJobPublishPayload,
   buildFastTrackPublishPayload,
   buildPublishPayload,

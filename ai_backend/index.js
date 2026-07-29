@@ -442,6 +442,18 @@ exports.api = onRequest({
 
 exports.serverSideMetaTags = onRequest({ memory: "1GiB" }, (req, res) => handleMetaTags(req, res));
 
+// 📲 Telegram APPROVE BUTTONS — AI draft card ke ✅/❌ clicks yahi handle hote hain
+exports.telegramDraftWebhook = onRequest({
+    secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"],
+    maxInstances: 5,
+    timeoutSeconds: 60
+}, (req, res) => require("./telegram_draft_bot").handleWebhook(
+    db,
+    admin.firestore.FieldValue,
+    null,
+    { token: process.env.TELEGRAM_BOT_TOKEN, chatId: process.env.TELEGRAM_CHAT_ID }
+)(req, res));
+
 // 1. Govt Jobs
 exports.onJobApprovedSendTelegram = onDocumentWritten({
     document: "jobs/{jobId}",
