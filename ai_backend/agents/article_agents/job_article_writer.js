@@ -153,6 +153,8 @@ function buildJobWriterPrompt({ source, instructions }) {
     '  - startDate/lastDate/examDate: SIRF asli date likho — "31 July 2026" ya "2026-07-31" jaisi.',
     "    Koi extra shabd NAHI (jaise tentative / as per rules / notification dekho mat likho).",
     '    Source me date na mile to field "" KHAALI chhodo (junk mat bharna).',
+    '    ⭐ ZAROORI: article body me apply-start/last/exam ki JO date likh rahe ho, Wahi EXACT date',
+    '    facts.startDate/lastDate/examDate me BHI copy karo — warna Fact & Quality review FAIL karega.',
     '  - feeGen/feeOBC/feeSCST/feeFemale: SIRF number likho (jaise 1000 ya 0).',
     "    ₹ / Rs / INR / /- sab HATA do (site ka box khud ₹ lagata hai). Free/Exempted ho to 0 likho.",
     '  "officialLinks": [{"label": "Apply Online|Notification PDF|Official Website|...", "url": "https://..."}],',

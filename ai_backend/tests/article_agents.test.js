@@ -1256,3 +1256,142 @@ test("jina fallback: proxy se bhi patla text mile to normal error hi mile", asyn
     }
   );
 });
+
+/* ================================================================== */
+/* FACTS DATE HARVESTER — writer ke chhoote date-box ka deterministic fix */
+/* ================================================================== */
+const { harvestFactsDates } = require("../agents/article_agents/facts_date_harvester");
+
+function jobArticleWithHtml(html, facts = {}) {
+  return {
+    type: "JOB",
+    slug: "test-job",
+    facts: { title: "Test Job", ...facts },
+    contentHtml: html
+  };
+}
+
+test("harvester: lastDate keyword ke paas ki date facts box me bhar deta hai", () => {
+  const a = jobArticleWithHtml(
+    "<h2>Mahatvapurna Tithiyan</h2><p>Aavedan ki antim tithi <strong>05 August 2026</strong> hai. Iske baad form band ho jayega.</p>"
+  );
+  const filled = harvestFactsDates(a);
+  assert.equal(a.facts.lastDate, "05 August 2026");
+  assert.deepEqual(filled, ["lastDate"]);
+});
+
+test("harvester: start+last dono bhar deta hai (dd/mm/yyyy format bhi)", () => {
+  const a = jobArticleWithHtml(
+    "<p>Online application start date: 10/07/2026 aur aavedan karne ki antim tithi 05.08.2026 tak hai.</p>"
+  );
+  harvestFactsDates(a);
+  assert.equal(a.facts.startDate, "10/07/2026");
+  assert.equal(a.facts.lastDate, "05.08.2026");
+});
+
+test("harvester: examDate bhi pakad leta hai", () => {
+  const a = jobArticleWithHtml(
+    "<p>Examination date has been scheduled on 15 September 2026 at various centres.</p>"
+  );
+  harvestFactsDates(a);
+  assert.equal(a.facts.examDate, "15 September 2026");
+});
+
+test("harvester: writer ki di hui date kabhi overwrite nahi karta", () => {
+  const a = jobArticleWithHtml(
+    "<p>Antim tithi 05 August 2026 hai.</p>",
+    { lastDate: "01 September 2026" }
+  );
+  const filled = harvestFactsDates(a);
+  assert.equal(a.facts.lastDate, "01 September 2026"); // wahi jo writer ne di
+  assert.deepEqual(filled, []);
+});
+
+test("harvester: junk string ('soon') ko parseable date se badal deta hai", () => {
+  const a = jobArticleWithHtml(
+    "<p>Last date to apply online is 20 August 2026.</p>",
+    { lastDate: "soon" }
+  );
+  harvestFactsDates(a);
+  assert.equal(a.facts.lastDate, "20 August 2026");
+});
+
+test("harvester: keyword ke paas date na ho to field khaali hi rakhta hai", () => {
+  const a = jobArticleWithHtml(
+    "<p>Aavedan ki antim tithi notification ke anusar hai. Koi pakki tareekh abhi jaari nahi hui.</p>"
+  );
+  const filled = harvestFactsDates(a);
+  assert.equal(a.facts.lastDate || "", "");
+  assert.deepEqual(filled, []);
+});
+
+test("harvester: FAST_TRACK article ko chhoota hi nahi (dates-box check JOB-only hai)", () => {
+  const a = {
+    type: "FAST_TRACK",
+    facts: { title: "X", updateDate: "" },
+    contentHtml: "<p>Result declared on 28 July 2026.</p>"
+  };
+  const filled = harvestFactsDates(a);
+  assert.deepEqual(filled, []);
+});
+
+test("harvester: devanagari digits wali date bhi samajhta hai (parseDateFlexible ke through)", () => {
+  const a = jobArticleWithHtml("<h3>Aavedan ki antim tithi: 31 जुलाई 2026</h3>");
+  harvestFactsDates(a);
+  assert.equal(a.facts.lastDate.trim(), "31 जुलाई 2026");
+});
+
+test("harvester: facts object hi na ho to bana deta hai, crash nahi", () => {
+  const a = { type: "JOB", contentHtml: "<p>Last date: 01/09/2026</p>" };
+  delete a.facts;
+  harvestFactsDates(a);
+  assert.equal(a.facts.lastDate, "01/09/2026");
+});
+
+test("harvester: keyword window se door padi date ko field se link nahi karta", () => {
+  const doorPadiDate = "05 August 2026";
+  const filler = " bahut saara bich ka text ".repeat(10); // 90+ chars ka gap
+  const a = jobArticleWithHtml(
+    `<p>${doorPadiDate} ko notice aaya.${filler}Antim tithi abhi ghoshit nahi hui, jald hi jaari hogi.</p>`
+  );
+  harvestFactsDates(a);
+  assert.equal(a.facts.lastDate || "", "");
+});
+
+test("harvester: pipeline pre-review hook — dates wale article ka box-missing issue ab nahi aata", () => {
+  // End-to-end sanity: article jisme body me dates hain, harvest ke baad
+  // reviewer ka dates:box-missing issue nahi rehna chahiye.
+  const { reviewArticle } = require("../agents/article_agents/fact_quality_reviewer");
+  const html =
+    "<h1>SPMCIL Recruitment 2026</h1><p>Security Printing & Minting Corporation of India Limited ne naukri nikaali hai. " +
+    "Aavedan shuru 12 July 2026 se ho rahe hain. Aavedan ki antim tithi 11 August 2026 hai. " +
+    "Total 44 posts ke liye aavedan maange gaye hain. Selection process me interview shamil hai.</p>" +
+    "<h2>Shrieniyan</h2><p>Deputy Manager IT ke liye engineering chahiye. Salary 70000 tak hai.</p>" +
+    "<h2>Aavedan kaise karein</h2><p>Official website pe jaa kar online form bharna hoga.</p>";
+  const a = jobArticleWithHtml(html, { organization: "SPMCIL" });
+  harvestFactsDates(a);
+  const review = reviewArticle({
+    type: "JOB",
+    article: {
+      ...a,
+      h1: "SPMCIL Recruitment 2026",
+      seoTitle: "SPMCIL Recruitment 2026",
+      metaDescription: "SPMCIL Recruitment 2026 - Deputy Manager & Assistant Manager posts. Apply online before 11 August 2026.",
+      shortDescription: "SPMCIL recruitment.",
+      faqs: [],
+      officialLinks: [{ label: "Notification PDF", url: "https://test.cbexams.com/EDPSU/SPMCIL/SPM/docs/Recruitment%20Advt.pdf" }],
+      keywords: ["spmcil recruitment 2026"],
+      wordCount: 1200
+    },
+    source: {
+      url: "https://test.cbexams.com/EDPSU/SPMCIL/SPM/docs/Recruitment%20Advt.pdf",
+      text: html.replace(/<[^>]+>/g, " "),
+      tables: [],
+      links: []
+    },
+    existing: { titles: [], urls: [] }
+  });
+  const boxIssue = (review.issues || []).find((i) => i.includes("dates:box-missing"));
+  assert.equal(boxIssue, undefined);
+  assert.equal(a.facts.lastDate, "11 August 2026");
+});

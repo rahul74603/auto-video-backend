@@ -23,6 +23,7 @@ const { ARTICLE_TYPES, EDITORIAL_AUTHOR } = require("./constants");
 const { generateJobArticle, normalizeJobArticle } = require("./job_article_writer");
 const { generateFastTrackArticle, normalizeFastTrackArticle } = require("./fast_track_article_writer");
 const { reviewArticle, parseDateFlexible } = require("./fact_quality_reviewer");
+const { harvestFactsDates } = require("./facts_date_harvester");
 const { fetchAndExtractSource } = require("./source_fetcher");
 const { normalizeArticleHtml } = require("./article_html_utils");
 
@@ -99,6 +100,13 @@ async function runGeneratePipeline({ type, sourceUrl, instructions, mode, source
     { source: fetchedSource, instructions },
     deps.writerDeps || {}
   );
+  // Writer ne article body me dates likh kar facts ke date-box khaali chhod diye
+  // to review fail hone se pehle yahin deterministic harvest kar lo (REGENERATE
+  // luck pe nirbhar nahi).
+  const harvested = harvestFactsDates(article);
+  if (harvested.length) {
+    console.log(`facts-dates harvested: ${harvested.join(", ")} (slug=${article.slug || ""})`);
+  }
   const review = reviewArticle({
     type: article.type,
     article,
@@ -125,6 +133,7 @@ function reReview({ type, article, sourceSnapshot, existing }) {
     type === ARTICLE_TYPES.JOB
       ? normalizeJobArticle(article, { source })
       : normalizeFastTrackArticle(article, { source });
+  harvestFactsDates(normalized); // apply-flow: khaali date-box review se pehle bhar do
   const review = reviewArticle({ type: normalized.type, article: normalized, source, existing });
   return { article: normalized, review };
 }
