@@ -404,12 +404,51 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
         console.warn(`render retry failed for ${parsed.toString()}:`, renderErr.message);
       }
     }
+    if (!response && (!deps.httpGet || deps.jinaGet)) {
+      // FINAL FALLBACK: proxy-reader (r.jina.ai) — alag network se page/PDF ka
+      // clean text laata hai. Site humare cloud IP ko blackhole kar rahi ho
+      // (HPSC case) tab bhi article ban jaata hai. deps.jinaGet = tests injectable.
+      try {
+        const jinaGet =
+          deps.jinaGet ||
+          ((u) =>
+            axios.get(u, {
+              headers: BROWSER_HEADERS,
+              timeout: 60000,
+              maxContentLength: 8 * 1024 * 1024,
+              responseType: "text",
+              validateStatus: (status) => status >= 200 && status < 300
+            }));
+        const jr = await jinaGet(`https://r.jina.ai/${parsed.toString()}`);
+        const rawText = String(jr?.data || "");
+        if (rawText.trim().length >= 500) {
+          const titleMatch = rawText.match(/^Title:\s*(.+)$/m);
+          const cleanText = normalizeWhitespace(rawText.replace(/^Title:.*$/m, ""));
+          return {
+            ok: true,
+            url: parsed.toString(),
+            pageTitle: (titleMatch ? titleMatch[1] : cleanText.split("\n")[0] || "").trim().slice(0, 250),
+            metaDescription: "",
+            text: cleanText.slice(0, MAX_TEXT_CHARS),
+            tables: [],
+            links: [],
+            fetchedAt: new Date().toISOString(),
+            fetchedBytes: Buffer.byteLength(rawText),
+            status: 200,
+            via: "jina-reader"
+          };
+        }
+      } catch (jinaErr) {
+        console.warn(`jina-reader fallback failed for ${parsed.toString()}:`, jinaErr.message);
+      }
+    }
+
     if (!response) {
       const status = lastErr?.response?.status;
       const wrapped = new Error(
         `Source page fetch nahi ho paya${status ? ` (site ne status ${status} diya — shayad block kiya)` : ""}: ${lastErr.message}` +
           (isTimeout
-            ? " — 💡 Site bahut SLOW/hang ho rahi hai (sarkari server). 2-3 minute baad EXACT same link dobara daal ke dekho — humne 70 sec ka extra retry bhi laga diya hai, wo waqt server jawab de to kaam ho jayega."
+            ? " — 💡 Site humara server block kar rahi hai (sarkari site). ⭐ AB solution: upar link ke SAATH niche wale box me us page/PDF ka pura TEXT copy-paste kar do — article text se hi ban jayega."
             : "")
       );
       wrapped.code = "SOURCE_FETCH_FAILED";

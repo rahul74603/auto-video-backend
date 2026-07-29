@@ -1215,7 +1215,43 @@ test("slow-server retry: dono hit timeout ho to slow-site hint wala error mile",
       }),
     (err) => {
       assert.equal(err.code, "SOURCE_FETCH_FAILED");
-      assert.match(err.message, /bahut SLOW/i, `slow hint expected: ${err.message}`);
+      assert.match(err.message, /copy-paste/i, `paste-mode hint expected: ${err.message}`);
+      return true;
+    }
+  );
+});
+
+// =========================================================
+//  PROXY-READER (jina) FALLBACK — site humare cloud IP ko
+//  blackhole kare (HPSC case) tab alag network se text laana
+// =========================================================
+
+test("jina fallback: direct+retry fail ho to proxy-reader se source ban jata hai", async () => {
+  const longBody = "HPSC Assistant Professor Commerce Roll wise marks Advt 44/2024 released on 28 July 2026 interview details. ".repeat(15);
+  let jinaCalls = 0;
+  const source = await fetchAndExtractSource("https://hpsc.gov.in/Portals/0/marks.pdf", {
+    httpGet: async () => { throw new Error("timeout of 35000ms exceeded"); },
+    jinaGet: async (u) => {
+      jinaCalls += 1;
+      assert.ok(u.startsWith("https://r.jina.ai/"), `jina URL sahi banna chahiye: ${u}`);
+      return { data: `Title: HPSC Assistant Professor Marks List\n\n${longBody}`, headers: {} };
+    }
+  });
+  assert.equal(jinaCalls, 1);
+  assert.equal(source.via, "jina-reader");
+  assert.equal(source.pageTitle, "HPSC Assistant Professor Marks List");
+  assert.ok(source.text.includes("Advt 44/2024"));
+});
+
+test("jina fallback: proxy se bhi patla text mile to normal error hi mile", async () => {
+  await assert.rejects(
+    () =>
+      fetchAndExtractSource("https://hpsc.gov.in/empty-page", {
+        httpGet: async () => { throw new Error("timeout of 35000ms exceeded"); },
+        jinaGet: async () => ({ data: "too short", headers: {} })
+      }),
+    (err) => {
+      assert.equal(err.code, "SOURCE_FETCH_FAILED");
       return true;
     }
   );

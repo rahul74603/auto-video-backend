@@ -80,6 +80,7 @@ const AdminAIArticleStudio = () => {
   const [genType, setGenType] = useState('job'); // 'job' | 'fast-track'
   const [sourceUrl, setSourceUrl] = useState('');
   const [instructions, setInstructions] = useState('');
+  const [pastedText, setPastedText] = useState(''); // blocked/slow site ka manual source text
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(''); // '', 'generate', 'preview', 'regenerate', 'apply', 'publish', 'delete'
@@ -161,21 +162,34 @@ const AdminAIArticleStudio = () => {
 
   // ================= GENERATE =================
   const handleGenerate = async () => {
-    if (!sourceUrl.trim() && !instructions.trim()) {
+    const pasteMode = pastedText.trim().length > 0;
+    if (pasteMode) {
+      if (!sourceUrl.trim()) {
+        toast.error('Text paste kiya hai to upar OFFICIAL link bhi daalo — Links box ke liye zaroori hai');
+        return;
+      }
+      if (pastedText.trim().length < 400) {
+        toast.error('Pasted text bahut chhota hai (min 400 characters) — page/PDF se aur text copy karke daalo');
+        return;
+      }
+    } else if (!sourceUrl.trim() && !instructions.trim()) {
       toast.error('Source URL daalo YA niche instructions me bharti ka naam likho — AI khud dhoondh lega');
       return;
     }
     setBusy('generate');
     const toastId = toast.loading(
-      sourceUrl.trim()
-        ? `${genType === 'job' ? 'Job' : 'Fast Track'} Writer source पढ़ रहा है...`
-        : '🔍 AI khud internet se notification ढूंढ रहा है...'
+      pasteMode
+        ? '📋 Pasted text se article ban raha hai (fetch skip, seedha text grounded)...'
+        : sourceUrl.trim()
+          ? `${genType === 'job' ? 'Job' : 'Fast Track'} Writer source पढ़ रहा है...`
+          : '🔍 AI khud internet se notification ढूंढ रहा है...'
     );
     try {
       const result = await callArticleApi<ArticleApiResult>('/articles/generate', {
         type: genType,
         sourceUrl: sourceUrl.trim(),
         instructions: instructions.trim(),
+        ...(pasteMode ? { sourceText: pastedText.trim() } : {}),
         mode: 'manual', // draft-first: कभी भी direct publish नहीं
       });
 
@@ -191,6 +205,7 @@ const AdminAIArticleStudio = () => {
         );
       }
       await refresh();
+      setPastedText(''); // paste-mode text ka kaam khatam — box saaf
       if (result.draftId) {
         const fresh = await aiArticleRepository.getDraft(result.draftId);
         if (fresh) loadIntoEditor(fresh);
@@ -479,6 +494,25 @@ const AdminAIArticleStudio = () => {
                 className="mt-1.5 w-full p-3 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 ring-blue-500 transition-all"
               />
             </div>
+          </div>
+
+          {/* ⭐ PASTE MODE — blocked/slow sarkari site ka pakka raasta */}
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-between">
+              <span>Source Text (paste fallback — कभी-कभी hi चाहिए)</span>
+              {pastedText.trim().length > 0 && (
+                <span className={pastedText.trim().length >= 400 ? 'text-emerald-500' : 'text-red-400'}>
+                  {pastedText.trim().length} chars {pastedText.trim().length >= 400 ? '✓' : '(min 400)'}
+                </span>
+              )}
+            </label>
+            <textarea
+              value={pastedText}
+              onChange={(e) => setPastedText(e.target.value)}
+              rows={3}
+              placeholder="सिर्फ तब भरो जब upar ka link slow/block हो (जैसे HPSC) — page/PDF खोलकर पूरा text copy करके यहाँ paste कर दो। Article seedha इसी text से बनेगा। (Link भी भरना ज़रूरी है — Links box के लिए)"
+              className="mt-1.5 w-full p-3 border border-amber-200 bg-amber-50/40 rounded-xl text-xs font-semibold outline-none focus:ring-2 ring-amber-400 transition-all resize-y"
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-3">

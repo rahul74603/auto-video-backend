@@ -27,7 +27,7 @@ const {
   assertPublishable,
   buildPublishPayload
 } = require("./article_pipeline");
-const { fetchAndExtractSource } = require("./source_fetcher");
+const { fetchAndExtractSource, assertSafeSourceUrl } = require("./source_fetcher");
 const { searchAndFetchSource, buildSearchQuery } = require("./web_searcher");
 const { EDITORIAL_AUTHOR, ARTICLE_TYPES, isBlockedDomain } = require("./constants");
 const { plainText } = require("./article_html_utils");
@@ -161,8 +161,10 @@ function registerArticleAgentRoutes(app, db) {
 
       const mode = req.body?.mode === "auto" ? "auto" : "manual";
       const instructions = String(req.body?.instructions || "").slice(0, 1500);
+      const pastedText = String(req.body?.sourceText || "").trim();
 
-      // ⭐ SOURCE RESOLUTION — 3 step smart fallback:
+      // ⭐ SOURCE RESOLUTION — 4 level smart fallback:
+      //   0. admin ne TEXT paste kiya ho (blocked/slow site ka manual raasta) → wahi use
       //   1. diya hua link theek hai → use hi karo
       //   2. link galat/patli/form-portal ho → agent KHUD internet search kare
       //   3. link diya hi na ho → instructions se search karke notification dhoondhe
@@ -171,7 +173,39 @@ function registerArticleAgentRoutes(app, db) {
       let searchQuery = "";
       let directError = null;
 
-      if (sourceUrl) {
+      if (pastedText) {
+        // MANUAL-PASTE MODE: fetch/search skip — article pasted text pe grounded.
+        // Grounding/review rules wahi rehte hain (source = pasted text).
+        if (pastedText.length < 400) {
+          return fail(
+            res,
+            400,
+            "Pasted text bahut chhota hai (kam se kam 400 characters chahiye) — page/PDF se aur zyada text copy karke daalo"
+          );
+        }
+        if (!sourceUrl) {
+          return fail(
+            res,
+            400,
+            "Text paste kiya hai to upar OFFICIAL notification link bhi daalo — article ke Links box ke liye zaroori hai"
+          );
+        }
+        // Invalid/unsafe URL ho to INVALID_SOURCE_URL 400 (existing handler sambhalega)
+        const parsed = assertSafeSourceUrl(sourceUrl);
+        source = {
+          ok: true,
+          via: "manual-paste",
+          url: parsed.toString(),
+          pageTitle: instructions.replace(/^(job|fast\s*track)\s*:\s*/i, "").split("|")[0].trim().slice(0, 180),
+          metaDescription: "",
+          text: pastedText.slice(0, 60000),
+          tables: [],
+          links: [],
+          fetchedAt: new Date().toISOString(),
+          fetchedBytes: Buffer.byteLength(pastedText),
+          status: 200
+        };
+      } else if (sourceUrl) {
         try {
           source = await fetchAndExtractSource(sourceUrl);
         } catch (e) {
