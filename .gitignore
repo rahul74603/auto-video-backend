@@ -64,13 +64,6 @@ node_modules/
 
 # dotenv environment variables file
 .env
-ai_backend/.env
-
-# Local/generated credential and audit artifacts
-my_token.txt
-ai_backend/index.html
-ai_backend/seo-audit-report.json
-ai_backend/seo-reports/
 
 # dataconnect generated files
 .dataconnect

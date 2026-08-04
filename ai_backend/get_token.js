@@ -1,11 +1,9 @@
 const { google } = require('googleapis');
 const fs = require('fs');
 const readline = require('readline');
-require('dotenv').config();
 
-// 🚨 SECURITY: अब हम सीधे Environment Variable से क्रेडेंशियल उठाएंगे
-const credentialsJSON = process.env.GMAIL_CREDENTIALS;
 const TOKEN_PATH = './token.json';
+const CREDENTIALS_PATH = './credentials.json';
 
 const SCOPES = [
     'https://www.googleapis.com/auth/youtube.upload',
@@ -13,13 +11,13 @@ const SCOPES = [
     'https://www.googleapis.com/auth/youtube.force-ssl'
 ];
 
-if (!credentialsJSON) {
-    console.log('❌ Error: GMAIL_CREDENTIALS Environment Variable नहीं मिला!');
-    console.log('कृपया अपनी .env फाइल में GMAIL_CREDENTIALS नाम से अपनी JSON पेस्ट करें।');
-    
+if (!fs.existsSync(CREDENTIALS_PATH)) {
+    console.log('❌ Error: credentials.json फाइल नहीं मिली!');
+    console.log('कृपया ai_backend फोल्डर में credentials.json नाम की एक नई फाइल बनाएं और उसमें अपना Google Cloud का Client Secret JSON पेस्ट करें।');
+    process.exit(1);
 }
 
-// क्रेडेंशियल को पार्स करके ऑथराइज करें
+const credentialsJSON = fs.readFileSync(CREDENTIALS_PATH, 'utf8');
 authorize(JSON.parse(credentialsJSON));
 
 function authorize(credentials) {
@@ -44,13 +42,13 @@ function authorize(credentials) {
 
     rl.question('🔑 2. ब्राउज़र से मिला "Code" यहाँ पेस्ट करें और Enter दबाएँ: ', (code) => {
         rl.close();
-        oAuth2Client.getToken(decodeURIComponent(code), (err, token) => {
+        oAuth2Client.getToken(decodeURIComponent(code.trim()), (err, token) => {
             if (err) return console.error('❌ Token Error:', err);
             oAuth2Client.setCredentials(token);
             
             // टोकन को फाइल में सेव करें और कंसोल में भी दिखाएं
             fs.writeFileSync(TOKEN_PATH, JSON.stringify(token));
-            console.log('\n✅ Token बन गया! नीचे दिए गए JSON को कॉपी करें और GitHub Secrets में डाल दें:\n');
+            console.log('\n✅ Token बन गया! नीचे दिए गए JSON को कॉपी करें और GitHub Secrets में YOUTUBE_TOKEN की जगह डाल दें:\n');
             console.log(JSON.stringify(token, null, 2));
         });
     });
