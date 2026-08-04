@@ -11,7 +11,15 @@
  * stays empty or points the reader to the official notification.
  */
 
-const { EDITORIAL_AUTHOR, WORD_TARGET_MIN, WORD_COMPRESS_TRIGGER, isBlockedDomain } = require("./constants");
+const {
+  EDITORIAL_AUTHOR,
+  WORD_TARGET_MIN_JOB,
+  WORD_AIM_JOB,
+  FAQ_AIM_JOB,
+  H2_AIM,
+  WORD_COMPRESS_TRIGGER,
+  isBlockedDomain
+} = require("./constants");
 const {
   normalizeArticleHtml,
   appendJoinUsSection,
@@ -21,6 +29,7 @@ const {
 } = require("./article_html_utils");
 const { generateJson } = require("./model_client");
 const { formatReviewFeedbackPrompt } = require("./fact_quality_reviewer");
+const { buildGroundingFactSheet } = require("./article_repairer");
 
 const JOB_FACT_KEYS = [
   "title",
@@ -80,6 +89,8 @@ function buildJobWriterPrompt({ source, instructions, feedbackIssues }) {
     month: "long",
     day: "numeric"
   });
+  // ⭐ STRICT ALLOWLIST — source me maujood numbers/dates hi likhne hain.
+  const factSheet = buildGroundingFactSheet(source);
 
   return [
     "You are the JOB ARTICLE WRITER AGENT for StudyGyaan.in (Indian government-job website).",
@@ -101,10 +112,11 @@ function buildJobWriterPrompt({ source, instructions, feedbackIssues }) {
     "5. Do not name any individual person as author. Author is always:",
     `   "${EDITORIAL_AUTHOR}".`,
     "",
-    "================ ARTICLE REQUIREMENTS ================",
-    `- Length: KAM SE KAM ${WORD_TARGET_MIN} meaningful words (isse kam FAIL ho jayegi); upar ki koi hard limit NAHI — content grounded ho to jitna detailed chaho likho. No filler/repetition.`,
-    "  Filler repetition ya keyword stuffing bilkul nahi.",
-    "- Exactly ONE <h1>. Use multiple <h2> and <h3> sections.",
+    "================ ARTICLE REQUIREMENTS (STRICT — review inhi par FAIL karta hai) ================",
+    `- Length: AIM ${WORD_AIM_JOB} meaningful words; ABSOLUTE MINIMUM ${WORD_TARGET_MIN_JOB} — ${WORD_TARGET_MIN_JOB} se kam hui to review TURANT FAIL kar dega.`,
+    `  Safe rehne ke liye har <h2> section me 3-5 sentence ka solid grounded paragraph likho +`,
+    `  tables ke around 1-2 context lines do. Upar ki koi hard limit NAHI. Filler repetition ya keyword stuffing bilkul nahi.`,
+    `- Exactly ONE <h1>. KAM SE KAM ${H2_AIM} <h2> sections likho (review 4 se kam par FAIL karta hai).`,
     "- ⭐ SECTION ORDER FIXED hai — isi order me likho taaki reader ko dekhte hi sab samajh aaye:",
     "  1. Chhota intro paragraph (2-3 lines, apne shabdon me — post ka naam, organization, total posts, last date)",
     "  2. <h2> संक्षिप्त विवरण — एक नज़र में पूरी जानकारी (table: Post Name | Organization | Advt No |",
@@ -122,7 +134,9 @@ function buildJobWriterPrompt({ source, instructions, feedbackIssues }) {
     "  13. <h2> अक्सर पूछे जाने वाले प्रश्न (FAQs)",
     "- Tables must be wrapped exactly like:",
     '  <div class="table-responsive"><table class="ai-data-table"><thead>...</thead><tbody>...</tbody></table></div>',
-    "- 5-8 FAQs (<h3> question + <p> answer). Har FAQ answer bhi source se grounded ho.",
+    `- EXACTLY ${FAQ_AIM_JOB} FAQs (<h3> question + <p> answer) — review 4 se kam par FAIL karta hai.`,
+    "  ⚠️ FAQ answers me koi BHI number/date/amount TABHI likho jab wo neeche VERIFIED FACT SHEET me ho;",
+    "  warna bina number ke general grounded answer do (sabse common FAIL reason yahi hai).",
     "- ⭐ LINK RULES: article body me SIRF official sarkari website ke links lagao (source links list me se).",
     "  Kisi bhi third-party job blog/aggregator (freejobalert, sarkariresult, indgovtjobs, jagranjosh,",
     "  adda247, testbook...) ya kisi aur website ka link KABHI mat lagao.",
@@ -176,11 +190,17 @@ function buildJobWriterPrompt({ source, instructions, feedbackIssues }) {
     "--- SOURCE LINKS ---",
     linkDigest(source.links),
     "",
+    factSheet.promptBlock,
+    "",
     "================ ADMIN INSTRUCTIONS (optional; never override fact rules) ================",
     `<admin_instructions>${text(instructions, 1500) || "none"}</admin_instructions>`,
-    formatReviewFeedbackPrompt(feedbackIssues), // regenerate loop: pichli failings writer ko batana ("" ho to harmless)
-    "VALIDATION BEFORE YOU ANSWER: 1) single h1 2) every number/date/amount also appears in the source",
-    "3) word count in range 4) valid JSON. Return ONLY the JSON object."
+    formatReviewFeedbackPrompt(feedbackIssues), // regenerate/self-heal loop: pichli failings writer ko batana ("" ho to harmless)
+    "================ FINAL SELF-CHECK (answer se pehle khud verify karo — warna FAIL) ================",
+    `1) Exactly ONE <h1>, kam se kam ${H2_AIM} <h2>, kam se kam ${WORD_TARGET_MIN_JOB} words (aim ${WORD_AIM_JOB}).`,
+    "2) Har number/date/amount/percentage jo likha hai wo upar VERIFIED FACT SHEET me maujood hai.",
+    "3) facts.startDate/lastDate/examDate me wahi EXACT dates hain jo article body me likhi hain (ya \"\").",
+    `4) Exactly ${FAQ_AIM_JOB} FAQs, sab source-grounded, koi invented number nahi.`,
+    "5) Output SIRF ek valid JSON object — koi markdown fence/explanation nahi."
   ].join("\n");
 }
 
@@ -323,7 +343,7 @@ function normalizeJobArticle(raw, { source }) {
 function buildCompressPrompt(article) {
   return [
     "Neeche diya gaya job article bahut zyada lamba ho gaya hai (runaway output). Ise SHORT karo —",
-    `target ~2000 words (minimum ${WORD_TARGET_MIN} words rehna chahiye).`,
+    `target ~2000 words (minimum ${WORD_TARGET_MIN_JOB} words rehna chahiye).`,
     "",
     "STRICT RULES:",
     "- SABHI facts, dates, numbers, tables, official links BILKUL same rakho (kuch remove/ghatao mat).",

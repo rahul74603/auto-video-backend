@@ -291,6 +291,10 @@ function registerArticleAgentRoutes(app, db) {
         autoSearched,
         searchQuery,
         resolvedSourceUrl: source.url,
+        // ⭐ Self-healing agent loop ka result (admin panel toast me dikhta hai)
+        repairAttempts: draft.repairAttempts || 1,
+        repairPassedOnAttempt: draft.repairPassedOnAttempt ?? null,
+        repairLog: draft.repairLog || [],
         authorName: EDITORIAL_AUTHOR
       });
     } catch (error) {
@@ -389,7 +393,11 @@ function registerArticleAgentRoutes(app, db) {
       return ok(res, {
         draftId,
         draft: { id: draftId, ...fresh, version: Number(current.version || 1) + 1 },
-        review: fresh.reviewReport
+        review: fresh.reviewReport,
+        // ⭐ Self-healing agent loop ka result
+        repairAttempts: fresh.repairAttempts || 1,
+        repairPassedOnAttempt: fresh.repairPassedOnAttempt ?? null,
+        repairLog: fresh.repairLog || []
       });
     } catch (error) {
       return handleRouteError(res, error, "regenerate");

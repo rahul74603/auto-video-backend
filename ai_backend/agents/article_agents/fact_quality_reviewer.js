@@ -249,15 +249,23 @@ function checkRequiredSections({ type, article, issues }) {
   }
 }
 
+/**
+ * Grounding index of a source extract — normalized haystack + number set.
+ * Reviewer (hallucination check) aur Article Self-Repair agent (facts/FAQ
+ * cleaning + fact-sheet) dono isi se verify karte hain — ek hi ground truth.
+ */
+function buildGroundingIndex(source) {
+  const haystack = [
+    source?.text || "",
+    (source?.tables || []).map((rows) => rows.map((r) => r.join(" ")).join(" ")).join(" "),
+    (source?.links || []).map((l) => `${l.text} ${l.url}`).join(" ")
+  ].join(" ");
+  const haystackNorm = normalizeForCompare(haystack);
+  return { haystack, haystackNorm, sourceNumbers: numberSetOf(haystackNorm) };
+}
+
 function checkFactsAgainstSource({ article, source, issues, warnings, metrics }) {
-  const haystackNorm = normalizeForCompare(
-    [
-      source.text || "",
-      (source.tables || []).map((rows) => rows.map((r) => r.join(" ")).join(" ")).join(" "),
-      (source.links || []).map((l) => `${l.text} ${l.url}`).join(" ")
-    ].join(" ")
-  );
-  const sourceNumbers = numberSetOf(haystackNorm);
+  const { haystackNorm, sourceNumbers } = buildGroundingIndex(source);
 
   const bodyText = plainText(article.contentHtml || "");
   const faqText = (article.faqs || []).map((f) => `${f.question} ${f.answer}`).join(" ");
@@ -636,6 +644,7 @@ module.exports = {
   shingleSet,
   parseDateFlexible,
   containsParseableDate,
+  buildGroundingIndex,
   formatReviewFeedbackPrompt
 };
 

@@ -11,7 +11,7 @@
  *    ki wajah se pura generate fail nahi hota.
  *  - Sab retries ke baad bhi rate-limit rahe to AI_RATE_LIMITED code milta hai
  *    (route 503 deta hai, frontend saaf Hinglish hint dikhata hai).
- *  - WRITER_BAD_JSON pe ek strict retry (jaisa pehle tha).
+ *  - WRITER_BAD_JSON pe do strict retries.
  *  - maxOutputTokens default 32768 taaki lambe articles truncate na hon.
  */
 
@@ -95,7 +95,7 @@ const realSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Default JSON generator with smart retries:
- *  1. WRITER_BAD_JSON → ek baar strict instruction ke saath dobara.
+ *  1. WRITER_BAD_JSON → do strict retries (sirf valid JSON maangta hua prompt).
  *  2. Transient errors (rate-limit/overloaded/5xx/network) → backoff
  *     (2.5s → 5s) ke saath max 3 koshishen.
  *  3. Sab koshish fail → AI_RATE_LIMITED / GEMINI_CALL_FAILED friendly error.
@@ -112,7 +112,7 @@ async function generateJson(prompt, options = {}, deps = {}) {
     `explanation ya extra text bilkul nahi.`;
 
   let currentPrompt = prompt;
-  let strictUsed = false;
+  let strictRetries = 0;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
@@ -120,9 +120,10 @@ async function generateJson(prompt, options = {}, deps = {}) {
     } catch (err) {
       const msg = String(err?.message || err);
 
-      // Non-JSON → ek strict retry (immediate, bina sleep ke)
-      if (err.code === "WRITER_BAD_JSON" && !strictUsed) {
-        strictUsed = true;
+      // Non-JSON → do strict retries (immediate, bina sleep ke) — truncation ya
+      // stray-text ki wajah se valid JSON ek- do baar me hi nahi banta tha.
+      if (err.code === "WRITER_BAD_JSON" && strictRetries < 2) {
+        strictRetries += 1;
         currentPrompt = strictPrompt;
         continue;
       }

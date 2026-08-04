@@ -76,6 +76,10 @@ interface ArticleApiResult {
   published?: boolean;
   draftDeleted?: boolean;
   originDeleted?: boolean;
+  /** 🤖 Self-healing agent loop — kitne attempts chale / kis attempt pe review pass hua. */
+  repairAttempts?: number;
+  repairPassedOnAttempt?: number | null;
+  repairLog?: string[];
 }
 
 const apiErrorStatus = (err: unknown): number | undefined =>
@@ -230,10 +234,11 @@ const AdminAIArticleStudio = () => {
     setBusy('generate');
     const toastId = toast.loading(
       pasteMode
-        ? '📋 Pasted text se article ban raha hai (fetch skip, seedha text grounded)...'
+        ? '🤖 AI Agent pasted text se article likh raha hai (self-healing loop on)...'
         : sourceUrl.trim()
-          ? `${genType === 'job' ? 'Job' : 'Fast Track'} Writer source पढ़ रहा है...`
-          : '🔍 AI khud internet se notification ढूंढ रहा है...'
+          ? `🤖 ${genType === 'job' ? 'Job' : 'Fast Track'} Agent source पढ़कर article likh रहा है...`
+          : '🔍 AI Agent khud notification ढूंढकर article likh रहा है...',
+      { duration: Infinity }
     );
     try {
       const result = await callArticleApi<ArticleApiResult>('/articles/generate', {
@@ -248,11 +253,19 @@ const AdminAIArticleStudio = () => {
       if (result.autoSearched && result.resolvedSourceUrl) {
         toast.success(`🔍 AI ne khud notification ढूंढी: ${result.resolvedSourceUrl.slice(0, 70)}`, { duration: 8000 });
       }
+      // 🤖 Self-healing loop ka hisaab — kis attempt pe pass hua (1 = pehli baar me hi)
+      const attempts = result.repairAttempts || 1;
+      const passedOn = result.repairPassedOnAttempt ?? null;
+      const repairNote =
+        passedOn && passedOn > 1 ? ` — Agent ने खुद ${passedOn}वें attempt में ठीक किया 🤖` : '';
       if (result.review?.verdict === 'pass') {
-        toast.success(`Draft तैयार! Review पास (score ${result.review.score ?? '-'})`, { id: toastId, duration: 5000 });
+        toast.success(
+          `Draft तैयार! Review पास (score ${result.review.score ?? '-'}, ${attempts} attempt)${repairNote}`,
+          { id: toastId, duration: 6000 }
+        );
       } else {
         toast.error(
-          `Draft बना, लेकिन review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}`,
+          `Draft बना, लेकिन ${attempts} attempts के बाद भी review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}`,
           { id: toastId, duration: 9000 }
         );
       }
@@ -300,7 +313,7 @@ const AdminAIArticleStudio = () => {
       return;
     }
     setBusy('regenerate');
-    const toastId = toast.loading('Writer दोबारा article लिख रहा है...');
+    const toastId = toast.loading('🤖 AI Agent दोबारा लिख रहा है (self-healing loop on)...', { duration: Infinity });
     try {
       const result = await callArticleApi<ArticleApiResult>('/articles/regenerate', {
         draftId: selected.id,
@@ -309,11 +322,14 @@ const AdminAIArticleStudio = () => {
       await refresh();
       const fresh = await aiArticleRepository.getDraft(selected.id);
       if (fresh) loadIntoEditor(fresh);
+      const attempts = result.repairAttempts || 1;
+      const passedOn = result.repairPassedOnAttempt ?? null;
+      const repairNote = passedOn && passedOn > 1 ? ` — Agent ने खुद ${passedOn}वें attempt में ठीक किया 🤖` : '';
       if (result.review?.verdict === 'pass') {
-        toast.success('Regenerated — review पास', { id: toastId });
+        toast.success(`Regenerated — review पास (${attempts} attempt)${repairNote}`, { id: toastId });
       } else {
         toast.error(
-          `Regenerated, पर review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}`,
+          `Regenerated, पर ${attempts} attempts के बाद भी review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}`,
           { id: toastId, duration: 9000 }
         );
       }
@@ -738,6 +754,11 @@ const AdminAIArticleStudio = () => {
                       Fact & Quality Review — {selected.reviewReport.verdict === 'pass' ? 'PASS' : 'FAIL'}
                       {selected.reviewReport.score !== undefined && ` (score ${selected.reviewReport.score})`}
                       {Boolean(selected.reviewReport.metrics?.wordCount) && ` · ${String(selected.reviewReport.metrics?.wordCount)} words`}
+                      {(Number(selected.repairAttempts) || 1) > 1 && (
+                        <span className="text-blue-500 normal-case tracking-normal">
+                          · 🤖 Agent self-heal: attempt {String(selected.repairPassedOnAttempt ?? selected.repairAttempts)}/{String(selected.repairAttempts)}
+                        </span>
+                      )}
                     </p>
                     {(selected.reviewReport.issues?.length ?? 0) > 0 && (
                       <ul className="mt-2 space-y-1">

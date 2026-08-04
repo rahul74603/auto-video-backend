@@ -30,6 +30,25 @@ const WORD_TARGET_MAX = 2500; // sirf prompt me guidance-target ke liye (review 
 const WORD_WARN_HIGH = 4500; // iske upar sirf soft WARNING (publish block nahi)
 const WORD_COMPRESS_TRIGGER = 5500; // runaway/truncation safety valve — practice me kabhi nahi chalta
 
+// ⭐ WRITER SAFETY-MARGIN targets — reviewer ke hard-minimum se UPAR rakhe hain
+// taaki LLM thoda kam bhi likhe to bhi review pass ho jaye (bare-minimum likhne
+// par word-count/FAQ/H2 fail hota tha → "50-60 baar me ek baar sahi" wali problem).
+const WORD_AIM_JOB = 2000;      // reviewer minimum 1600 → aim 2000 (400-word buffer)
+const WORD_AIM_FAST_TRACK = 1500; // reviewer minimum 1200 → aim 1500 (300-word buffer)
+const FAQ_AIM_JOB = 6;          // reviewer minimum 4 → aim 6
+const FAQ_AIM_FAST_TRACK = 5;   // reviewer minimum 4 → aim 5
+const H2_AIM = 8;               // JOB: reviewer minimum 4 → aim 8 (fixed list me 12 sections)
+const H2_AIM_FAST_TRACK = 6;    // FT: reviewer minimum 4 → aim 6 (fixed list me 7 sections)
+
+// ⭐ SELF-HEALING AGENT LOOP — review fail hone par writer ko issues feedback
+// dekar automatically dobara likhwata hai (manual REGENERATE ki zaroorat nahi).
+// 1 = purana one-shot behaviour; 2-3 recommended. Latency cap: Cloud Function
+// timeout 300s hai, isliye 3 se zyada practical nahi.
+const MAX_REPAIR_ATTEMPTS = Math.max(
+  1,
+  Math.min(3, Number(process.env.AI_MAX_REPAIR_ATTEMPTS) || 3)
+);
+
 // Third-party aggregator domains that must never leak into saved links.
 // (Inke pages hum SOURCE ki tarah padh sakte hain, par apne article me
 // unke links kabhI nahi lagayenge — sirf official sarkari links + hamare apne.)
@@ -88,8 +107,15 @@ module.exports = {
   WORD_TARGET_MAX,
   WORD_TARGET_MIN_JOB,
   WORD_TARGET_MIN_FAST_TRACK,
+  WORD_AIM_JOB,
+  WORD_AIM_FAST_TRACK,
+  FAQ_AIM_JOB,
+  FAQ_AIM_FAST_TRACK,
+  H2_AIM,
+  H2_AIM_FAST_TRACK,
   WORD_WARN_HIGH,
   WORD_COMPRESS_TRIGGER,
+  MAX_REPAIR_ATTEMPTS,
   BLOCKED_DOMAINS,
   OUR_SOCIAL_LINKS,
   FAST_TRACK_CATEGORIES,

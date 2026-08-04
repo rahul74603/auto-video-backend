@@ -13,6 +13,9 @@
 const {
   EDITORIAL_AUTHOR,
   WORD_TARGET_MIN_FAST_TRACK,
+  WORD_AIM_FAST_TRACK,
+  FAQ_AIM_FAST_TRACK,
+  H2_AIM_FAST_TRACK,
   WORD_COMPRESS_TRIGGER,
   FAST_TRACK_CATEGORIES,
   isBlockedDomain
@@ -20,6 +23,7 @@ const {
 const { normalizeArticleHtml, appendJoinUsSection, plainText, countWords } = require("./article_html_utils");
 const { generateJson } = require("./model_client");
 const { formatReviewFeedbackPrompt } = require("./fact_quality_reviewer");
+const { buildGroundingFactSheet } = require("./article_repairer");
 
 function text(value, max = 500) {
   return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
@@ -45,6 +49,9 @@ function buildFastTrackWriterPrompt({ source, instructions, feedbackIssues }) {
     .join("\n")
     .slice(0, 4500);
 
+  // ⭐ STRICT ALLOWLIST — source me maujood numbers/dates hi likhne hain.
+  const factSheet = buildGroundingFactSheet(source);
+
   return [
     "You are the FAST TRACK ARTICLE WRITER AGENT for StudyGyaan.in.",
     `Today: ${today}.`,
@@ -64,9 +71,11 @@ function buildFastTrackWriterPrompt({ source, instructions, feedbackIssues }) {
     "6. Never attribute authorship to a person; author is always",
     `   "${EDITORIAL_AUTHOR}".`,
     "",
-    "================ ARTICLE REQUIREMENTS ================",
-    `- KAM SE KAM ${WORD_TARGET_MIN_FAST_TRACK} meaningful words (isse kam FAIL ho jayegi; patle result-source me bhi detail likho — imp points, process, next steps); upar ki koi hard limit NAHI. No filler/repetition.`,
-    "- Exactly ONE <h1>; proper <h2>/<h3> hierarchy.",
+    "================ ARTICLE REQUIREMENTS (STRICT — review inhi par FAIL karta hai) ================",
+    `- Length: AIM ${WORD_AIM_FAST_TRACK} meaningful words; ABSOLUTE MINIMUM ${WORD_TARGET_MIN_FAST_TRACK} — isse kam hui to review TURANT FAIL kar dega.`,
+    "  Patle result-source me bhi detail likho (imp points, process, next steps, dhyan rakhne wali baatein).",
+    "  Upar ki koi hard limit NAHI. No filler/repetition.",
+    `- Exactly ONE <h1>; KAM SE KAM ${H2_AIM_FAST_TRACK} <h2> sections likho (review 4 se kam par FAIL karta hai).`,
     "- ⭐ SECTION ORDER FIXED — isi order me, taaki reader ko turant samajh aaye:",
     "  1. Chhota intro paragraph (2-3 lines — kya update aayi hai, kis organization ki, kab)",
     "  2. <h2> अपडेट एक नज़र में (Overview table: Organization | Update Type | Date | Status | Direct Link)",
@@ -77,7 +86,9 @@ function buildFastTrackWriterPrompt({ source, instructions, feedbackIssues }) {
     "  7. <h2> Important Links (table — sirf OFFICIAL sarkari links)",
     "  8. <h2> अक्सर पूछे जाने वाले प्रश्न (FAQs)",
     "- Tables wrapped as: <div class=\"table-responsive\"><table class=\"ai-data-table\">...</table></div>",
-    "- 4-6 FAQs (source-grounded answers).",
+    `- EXACTLY ${FAQ_AIM_FAST_TRACK} FAQs (review 4 se kam par FAIL karta hai). ⚠️ FAQ answers me koi BHI`,
+    "  number/date/amount TABHI likho jab wo neeche VERIFIED FACT SHEET me ho; warna bina number ke",
+    "  general grounded answer do (sabse common FAIL reason yahi hai).",
     "- ⭐ LINK RULES: body me SIRF official sarkari links. Kisi third-party blog/aggregator",
     "  (freejobalert, sarkariresult, indgovtjobs, jagranjosh, adda247, testbook...) ka link KABHI nahi.",
     "  Social media / Telegram / WhatsApp links MAT lagao — wo system end me apne aap jodta hai.",
@@ -119,10 +130,16 @@ function buildFastTrackWriterPrompt({ source, instructions, feedbackIssues }) {
     "--- SOURCE LINKS ---",
     links || "NO LINKS FOUND",
     "",
+    factSheet.promptBlock,
+    "",
     "================ ADMIN INSTRUCTIONS (optional) ================",
     `<admin_instructions>${text(instructions, 1500) || "none"}</admin_instructions>`,
-    formatReviewFeedbackPrompt(feedbackIssues), // regenerate loop: pichli failings writer ko batana ("" ho to harmless)
-    "VALIDATION BEFORE ANSWER: single h1, no invented number/date/link, valid JSON only."
+    formatReviewFeedbackPrompt(feedbackIssues), // regenerate/self-heal loop: pichli failings writer ko batana ("" ho to harmless)
+    "================ FINAL SELF-CHECK (answer se pehle khud verify karo — warna FAIL) ================",
+    `1) Exactly ONE <h1>, kam se kam ${H2_AIM_FAST_TRACK} <h2>, kam se kam ${WORD_TARGET_MIN_FAST_TRACK} words (aim ${WORD_AIM_FAST_TRACK}).`,
+    "2) Har number/date/amount jo likha hai wo upar VERIFIED FACT SHEET me maujood hai.",
+    `3) Exactly ${FAQ_AIM_FAST_TRACK} FAQs, sab source-grounded, koi invented number nahi.`,
+    "4) Output SIRF ek valid JSON object — koi markdown fence/explanation nahi."
   ].join("\n");
 }
 
