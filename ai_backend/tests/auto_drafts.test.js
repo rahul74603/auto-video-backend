@@ -393,6 +393,30 @@ test("pickRepairCandidates — ready/published/cooldown/maxy-tries skip, failed 
     assert.equal(report.repairs[0].id, "fixme");
 });
 
+test("pickRepairCandidates — FATAL issues wale drafts retry queue me NAHI aate", async () => {
+    const db = makeMockDb({
+        "ai_article_drafts/dup": {
+            ...failedDraft(),
+            reviewReport: { verdict: "fail", issues: ["duplicate:title:\"Purani bharti\""] },
+            aiDraftLastTryAt: new Date(Date.now() - 30 * 60 * 1000).toISOString()
+        },
+        "ai_article_drafts/expired": {
+            ...failedDraft(),
+            reviewReport: { verdict: "fail", issues: ["freshness:expired:\"01/01/2020\" — purani"] },
+            aiDraftLastTryAt: new Date(Date.now() - 30 * 60 * 1000).toISOString()
+        },
+        "ai_article_drafts/fixable": {
+            ...failedDraft(),
+            reviewReport: { verdict: "fail", issues: ["word-count-low:1400 (<1600)"] },
+            aiDraftLastTryAt: new Date(Date.now() - 30 * 60 * 1000).toISOString()
+        }
+    });
+    const { deps } = makeDeps();
+    const report = await pickRepairCandidates(db, deps, { limit: 5 });
+    assert.deepEqual(report.repairs.map((d) => d.id), ["fixable"],
+        "sirf writer-fixable issue wala draft retry hoga — duplicate/expired pe quota waste nahi");
+});
+
 test("processRepair — regenerate karke update; PASS ho to telegram card", async () => {
     const db = makeMockDb({ "ai_article_drafts/fixme": failedDraft() });
     const { deps, calls } = makeDeps({

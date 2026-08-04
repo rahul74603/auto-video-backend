@@ -265,8 +265,8 @@ const AdminAIArticleStudio = () => {
         );
       } else {
         toast.error(
-          `Draft बना, लेकिन ${attempts} attempts के बाद भी review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}`,
-          { id: toastId, duration: 9000 }
+          `Draft बनी, पर ${attempts} attempts के बाद भी review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}\n🔁 Auto-Retry Machine हर ~10 min में खुद ठीक करेगी — ready होते ही Telegram approval आएगा`,
+          { id: toastId, duration: 11000 }
         );
       }
       await refresh();
@@ -329,8 +329,8 @@ const AdminAIArticleStudio = () => {
         toast.success(`Regenerated — review पास (${attempts} attempt)${repairNote}`, { id: toastId });
       } else {
         toast.error(
-          `Regenerated, पर ${attempts} attempts के बाद भी review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}`,
-          { id: toastId, duration: 9000 }
+          `Regenerated, पर ${attempts} attempts के बाद भी review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}\n🔁 Auto-Retry Machine हर ~10 min में खुद try करती रहेगी`,
+          { id: toastId, duration: 11000 }
         );
       }
     } catch (err) {
@@ -740,7 +740,7 @@ const AdminAIArticleStudio = () => {
                       <p className="text-[11px] font-black text-red-600 uppercase tracking-wider">Publish Blocked</p>
                       <p className="text-[10px] font-bold text-red-400 mt-0.5">{publishGate.reason}</p>
                       <p className="text-[10px] font-bold text-slate-500 mt-1.5 leading-relaxed">
-                        💡 Apply sirf tumhare edits save karta hai — naye rules/word-limit ke liye <span className="text-amber-600">🔄 REGENERATE</span> dabao, article fresh banegi (facts source se hi, wording apni).
+                        🔁 <span className="text-emerald-600">Auto-Retry Machine</span> har ~10 min me ise khud theek karegi (tab tak retry jab tak review PASS na ho) — ready hote hi <span className="text-blue-600">Telegram pe ✅ approval</span> aayega. Turant chahiye to <span className="text-amber-600">🔄 REGENERATE</span> dabao.
                       </p>
                     </div>
                   </div>

@@ -140,7 +140,13 @@ test("card — PASS draft pe PUBLISH/REJECT buttons, FAIL pe nahi", () => {
     assert.equal(fail.canPublish, false);
     assert.equal(fail.keyboard, null);
     assert.ok(fail.text.includes("FAIL"));
-    assert.ok(fail.text.includes("REGENERATE"));
+    assert.ok(fail.text.includes("Auto-Retry Machine"), "FAIL card ab retry-machine ka raasta batata hai");
+});
+
+test("card — self-heal attempts draft pe dikhte hain", () => {
+    const msg = buildDraftMessage({ ...PASSED_JOB_DRAFT, repairAttempts: 3, repairPassedOnAttempt: 2 }, "abc123");
+    assert.ok(msg.text.includes("🤖 Agent"));
+    assert.ok(msg.text.includes("attempt 2/3"));
 });
 
 test("card — HTML injection safe (title/source escaped)", () => {

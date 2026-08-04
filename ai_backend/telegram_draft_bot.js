@@ -63,16 +63,24 @@ function buildDraftCard(draft, opts) {
         catch { return ""; }
     })();
 
+    // 🤖 Self-healing agent loop ka hisaab (kitne attempts lage / kis pe pass hua)
+    const attempts = Number(draft.repairAttempts || 0);
+    const passedOn = draft.repairPassedOnAttempt;
+    const agentLine = attempts > 1
+        ? `🤖 Agent: ${passedOn ? `✅ attempt ${passedOn}/${attempts} me pass` : `${attempts} attempts lage, abhi pass nahi`}`
+        : "";
+
     const lines = [
         `<b>${escHtml(label)} — ${draftTypeLabel(draft)}${score !== null ? ` ⭐${score}` : ""}</b>`,
         "",
         `<b>${escHtml(draft.title || "(no title)")}</b>`,
         "",
         reviewPassed
-            ? `✅ Review: <b>PASS</b>${score !== null ? ` (${score}/100)` : ""}`
-            : `❌ Review: <b>FAIL</b> — studio me REGENERATE dabao`,
+            ? `✅ Review: <b>PASS</b>${score !== null ? ` (${score}/100)` : ""} — ✅ PUBLISH KARO button dabao`
+            : `❌ Review: <b>FAIL</b> — 🔁 Auto-Retry Machine har ~10 min me khud theek karegi; ready hone par ✅ PUBLISH button ke saath naya card aayega`,
         `⚠️ Issues: ${issues.length} | 📝 Words: ${words}`,
     ];
+    if (agentLine) lines.push(agentLine);
     if (sourceHost) lines.push(`🔗 Source: ${escHtml(sourceHost)}`);
     if (!reviewPassed && issues.length) {
         lines.push("", `<i>${escHtml(issues.slice(0, 2).join("; ")).slice(0, 180)}</i>`);

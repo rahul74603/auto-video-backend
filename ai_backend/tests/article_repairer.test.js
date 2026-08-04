@@ -420,3 +420,147 @@ test("pipeline: deterministic repairs draft record me repairLog ke roop me aate 
   );
   assert.equal(draft.facts.vacancies, "", "draft me saaf fact gaya, galat nahi");
 });
+
+/* ------------------------------------------------------------------ */
+/* 5. FAST TRACK — self-healing loop FT ke liye bhi utna hi pakka     */
+/* ------------------------------------------------------------------ */
+
+const FT_SOURCE_URL = "https://ssc.gov.in/portal/mts-result-2028";
+
+const FT_SOURCE_HTML = `<!doctype html><html><head>
+<title>SSC MTS 2027 Result Declared - Check Now</title>
+</head><body>
+<article>
+<h1>SSC MTS 2027 Result</h1>
+<p>Staff Selection Commission (SSC) has declared the Multi Tasking Staff (MTS) 2027 examination result.
+A total of 25000 candidates appeared in the examination. Result was declared on 15/03/2028.</p>
+<p>Candidates can check their result using roll number and date of birth on ssc.gov.in.
+Cut-off marks and category wise merit list are available on the official website.</p>
+</article>
+<a href="https://ssc.gov.in/result-mts-2028">Check Result</a>
+<a href="https://ssc.gov.in/pdf/mts-2028-cutoff.pdf">Cut-off PDF</a>
+</body></html>`;
+
+function makeFtSource() {
+  const extracted = extractFromHtml(FT_SOURCE_HTML, FT_SOURCE_URL);
+  return { ok: true, url: FT_SOURCE_URL, fetchedAt: "2026-08-01T10:00:00.000Z", ...extracted };
+}
+
+function ftBody(wordTarget = 1150) {
+  const overview = `
+  <h1>SSC MTS 2027 Result Declared</h1>
+  <h2>अपडेट एक नज़र में</h2>
+  <p>स्टाफ सिलेक्शन कमिशन ने मल्टी टास्किंग स्टाफ परीक्षा का परिणाम घोषित कर दिया है। कुल 25000 अभ्यर्थी परीक्षा में शामिल हुए थे।</p>
+  <div class="table-responsive"><table class="ai-data-table"><thead><tr><th>विवरण</th><th>जानकारी</th></tr></thead>
+  <tbody><tr><td>संगठन</td><td>Staff Selection Commission (SSC)</td></tr><tr><td>परिणाम तिथि</td><td>15/03/2028</td></tr></tbody></table></div>
+  <h2>महत्वपूर्ण तिथियाँ</h2>
+  <p>परिणाम 15/03/2028 को घोषित किया गया है।</p>
+  <h2>Result कैसे चेक करें</h2>
+  <ol><li>आधिकारिक वेबसाइट खोलें</li><li>Result लिंक पर क्लिक करें</li><li>Roll number व जन्म तिथि भरें</li><li>परिणाम डाउनलोड करें</li></ol>
+  <h2>क्या-क्या details मिलेंगी</h2>
+  <p>Roll number, प्राप्तांक, cut-off marks और category wise merit list की जानकारी आधिकारिक वेबसाइट पर उपलब्ध है।</p>
+  <h2>आगे की प्रक्रिया</h2>
+  <p>चयनित अभ्यर्थियों को document verification व अन्य चरणों की सूचना आयोग द्वारा दी जाएगी।</p>
+  <h2>Important Links</h2>
+  <ul><li><a href="https://ssc.gov.in/result-mts-2028">Check Result</a></li>
+  <li><a href="https://ssc.gov.in/pdf/mts-2028-cutoff.pdf">Cut-off PDF</a></li></ul>
+  <h2>अक्सर पूछे जाने वाले प्रश्न</h2>`;
+  const sentences = [];
+  let words = 0;
+  let i = 0;
+  while (words < wordTarget) {
+    const s = SAFE_SENTENCES[i % SAFE_SENTENCES.length];
+    sentences.push(s);
+    words += s.split(/\s+/).length;
+    i += 1;
+  }
+  return overview + `<p>${sentences.join(" ")}</p>`;
+}
+
+function ftGoodPayload(overrides = {}) {
+  return {
+    seoTitle: "SSC MTS 2027 Result Declared - Check Now",
+    metaDescription:
+      "SSC MTS 2027 का परिणाम घोषित हो गया है। कुल 25000 अभ्यर्थी शामिल हुए। Roll number से परिणाम चेक करने का तरीका, cut-off व merit list की पूरी जानकारी यहाँ पढ़ें।",
+    slug: "ssc-mts-2027-result",
+    h1: "SSC MTS 2027 Result Declared",
+    shortDescription: "Staff Selection Commission ने SSC MTS 2027 परीक्षा का परिणाम घोषित किया।",
+    contentHtml: ftBody(),
+    faqs: [
+      { question: "SSC MTS 2027 का परिणाम कैसे चेक करें?", answer: "आधिकारिक वेबसाइट पर roll number व जन्म तिथि से परिणाम चेक किया जा सकता है।" },
+      { question: "परिणाम कब घोषित हुआ?", answer: "परिणाम 15/03/2028 को घोषित किया गया है।" },
+      { question: "कितने अभ्यर्थी परीक्षा में शामिल हुए?", answer: "कुल 25000 अभ्यर्थी परीक्षा में शामिल हुए थे।" },
+      { question: "Cut-off marks कहाँ मिलेंगे?", answer: "Cut-off marks व category wise merit list आधिकारिक वेबसाइट पर उपलब्ध हैं।" },
+      { question: "चयन के बाद क्या प्रक्रिया है?", answer: "चयनित अभ्यर्थियों को document verification सहित आगे के चरणों की सूचना आयोग देगा।" }
+    ],
+    facts: {
+      title: "SSC MTS 2027 Result Declared",
+      category: "Result",
+      org: "Staff Selection Commission (SSC)",
+      updateDate: "15/03/2028",
+      directLink: "https://ssc.gov.in/result-mts-2028",
+      totalCandidates: "25000",
+      details: "Result declared on official website using roll number"
+    },
+    officialLinks: [
+      { label: "Check Result", url: "https://ssc.gov.in/result-mts-2028" },
+      { label: "Cut-off PDF", url: "https://ssc.gov.in/pdf/mts-2028-cutoff.pdf" }
+    ],
+    keywords: ["ssc mts result", "ssc mts 2027 result"],
+    ...overrides
+  };
+}
+
+test("pipeline (FAST TRACK): self-healing loop FT articles ke liye bhi kaam karta hai", async () => {
+  const source = makeFtSource();
+  const calls = [];
+  const stub = async (prompt) => {
+    calls.push(prompt);
+    if (calls.length === 1) {
+      // pehla attempt: chhoti body → word-count-low (fixable)
+      return JSON.parse(JSON.stringify(ftGoodPayload({ contentHtml: "<h1>SSC MTS 2027 Result Declared</h1><h2>अपडेट एक नज़र में</h2><p>परिणाम घोषित।</p>" })));
+    }
+    return JSON.parse(JSON.stringify(ftGoodPayload()));
+  };
+  const draft = await runGeneratePipeline(
+    { type: "fast-track", sourceUrl: FT_SOURCE_URL, instructions: "", mode: "auto", source, existing: EMPTY_EXISTING },
+    { writerDeps: { generateJson: stub }, maxRepairAttempts: 3 }
+  );
+  assert.equal(calls.length, 2, "FT ke liye bhi fail → feedback → rewrite chala");
+  assert.equal(draft.type, "FAST_TRACK");
+  assert.equal(draft.reviewStatus, "passed");
+  assert.equal(draft.repairPassedOnAttempt, 2);
+  assert.equal(draft.publishBlocked, false);
+  assert.match(calls[1], /PICHLE REVIEW KI FEEDBACK/);
+});
+
+test("pipeline (FAST TRACK): FT prompt me bhi VERIFIED FACT SHEET allowlist hoti hai", () => {
+  const sheet = buildGroundingFactSheet(makeFtSource());
+  assert.ok(sheet.numbers.includes("25000"));
+  assert.ok(sheet.dates.some((d) => d.includes("15/03/2028")));
+});
+
+/* ------------------------------------------------------------------ */
+/* 6. Issue-specific FIX guidance (self-heal quality)                  */
+/* ------------------------------------------------------------------ */
+
+const { formatReviewFeedbackPrompt } = require("../agents/article_agents/fact_quality_reviewer");
+
+test("feedback: har issue ke saath concrete FIX guidance jata hai", () => {
+  const prompt = formatReviewFeedbackPrompt([
+    "word-count-low:1350 (<1600)",
+    "structure:too-few-faqs:2",
+    "hallucination:money:\"₹1,40,000\"",
+    "dates:box-missing — article me dates hain par facts me nahi"
+  ]);
+  assert.match(prompt, /PICHLE REVIEW KI FEEDBACK/);
+  assert.match(prompt, /FIX: Article sirf 1350 words/);   // exact count guidance me
+  assert.match(prompt, /EXACTLY 6 FAQs/);
+  assert.match(prompt, /VERIFIED FACT SHEET me maujood/);
+  assert.match(prompt, /facts\.startDate\/lastDate\/examDate/);
+});
+
+test("feedback: bina issues ke koi block nahi (pehla attempt clean)", () => {
+  assert.equal(formatReviewFeedbackPrompt([]), "");
+  assert.equal(formatReviewFeedbackPrompt(undefined), "");
+});
