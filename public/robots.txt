@@ -6,9 +6,10 @@ Disallow: /secret-admin/
 Disallow: /admin/
 Disallow: /write-blog-secret/
 Disallow: /admin-stories-secret/
-Disallow: /redirect
+Disallow: /student-dashboard/
+Disallow: /manual-payment/
 
-# 🤖 Block AI Crawlers (Correct way to replace line 29)
+# 🤖 Block AI Crawlers
 User-agent: GPTBot
 Disallow: /
 

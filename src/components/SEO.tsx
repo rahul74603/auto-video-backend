@@ -116,7 +116,6 @@ const CANONICAL_PATH_ALIASES: Record<string, string> = {
     '/contact': '/contact-us',
     '/mock-tests': '/test',
     '/all-stories': '/web-stories',
-    '/fasttrack': '/govt-jobs',
     '/jobs': '/govt-jobs',
     '/refund-policy': '/refund-cancellation-policy'
 };
