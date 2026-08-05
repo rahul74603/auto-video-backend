@@ -67,6 +67,11 @@ export type AIArticleDraftRecord = {
   publishedCollection?: string | null;
   /** Kis source se bana tha (JOBS AI draft row / Fast Track item) — publish pe auto-delete hota hai. */
   originRef?: { collection: string; id: string } | null;
+  /** 🤖 Self-healing agent loop — kitne writer-attempts chale aur kis attempt pe review pass hua. */
+  repairAttempts?: number;
+  repairBestAttempt?: number;
+  repairPassedOnAttempt?: number | null;
+  repairLog?: string[];
   createdAt?: { seconds?: number; toDate?: () => Date } | null;
   [key: string]: unknown;
 };

@@ -76,6 +76,10 @@ interface ArticleApiResult {
   published?: boolean;
   draftDeleted?: boolean;
   originDeleted?: boolean;
+  /** 🤖 Self-healing agent loop — kitne attempts chale / kis attempt pe review pass hua. */
+  repairAttempts?: number;
+  repairPassedOnAttempt?: number | null;
+  repairLog?: string[];
 }
 
 const apiErrorStatus = (err: unknown): number | undefined =>
@@ -230,10 +234,11 @@ const AdminAIArticleStudio = () => {
     setBusy('generate');
     const toastId = toast.loading(
       pasteMode
-        ? '📋 Pasted text se article ban raha hai (fetch skip, seedha text grounded)...'
+        ? '🤖 AI Agent pasted text se article likh raha hai (self-healing loop on)...'
         : sourceUrl.trim()
-          ? `${genType === 'job' ? 'Job' : 'Fast Track'} Writer source पढ़ रहा है...`
-          : '🔍 AI khud internet se notification ढूंढ रहा है...'
+          ? `🤖 ${genType === 'job' ? 'Job' : 'Fast Track'} Agent source पढ़कर article likh रहा है...`
+          : '🔍 AI Agent khud notification ढूंढकर article likh रहा है...',
+      { duration: Infinity }
     );
     try {
       const result = await callArticleApi<ArticleApiResult>('/articles/generate', {
@@ -248,12 +253,20 @@ const AdminAIArticleStudio = () => {
       if (result.autoSearched && result.resolvedSourceUrl) {
         toast.success(`🔍 AI ne khud notification ढूंढी: ${result.resolvedSourceUrl.slice(0, 70)}`, { duration: 8000 });
       }
+      // 🤖 Self-healing loop ka hisaab — kis attempt pe pass hua (1 = pehli baar me hi)
+      const attempts = result.repairAttempts || 1;
+      const passedOn = result.repairPassedOnAttempt ?? null;
+      const repairNote =
+        passedOn && passedOn > 1 ? ` — Agent ने खुद ${passedOn}वें attempt में ठीक किया 🤖` : '';
       if (result.review?.verdict === 'pass') {
-        toast.success(`Draft तैयार! Review पास (score ${result.review.score ?? '-'})`, { id: toastId, duration: 5000 });
+        toast.success(
+          `Draft तैयार! Review पास (score ${result.review.score ?? '-'}, ${attempts} attempt)${repairNote}`,
+          { id: toastId, duration: 6000 }
+        );
       } else {
         toast.error(
-          `Draft बना, लेकिन review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}`,
-          { id: toastId, duration: 9000 }
+          `Draft बनी, पर ${attempts} attempts के बाद भी review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}\n🔁 Auto-Retry Machine हर ~10 min में खुद ठीक करेगी — ready होते ही Telegram approval आएगा`,
+          { id: toastId, duration: 11000 }
         );
       }
       await refresh();
@@ -300,7 +313,7 @@ const AdminAIArticleStudio = () => {
       return;
     }
     setBusy('regenerate');
-    const toastId = toast.loading('Writer दोबारा article लिख रहा है...');
+    const toastId = toast.loading('🤖 AI Agent दोबारा लिख रहा है (self-healing loop on)...', { duration: Infinity });
     try {
       const result = await callArticleApi<ArticleApiResult>('/articles/regenerate', {
         draftId: selected.id,
@@ -309,12 +322,15 @@ const AdminAIArticleStudio = () => {
       await refresh();
       const fresh = await aiArticleRepository.getDraft(selected.id);
       if (fresh) loadIntoEditor(fresh);
+      const attempts = result.repairAttempts || 1;
+      const passedOn = result.repairPassedOnAttempt ?? null;
+      const repairNote = passedOn && passedOn > 1 ? ` — Agent ने खुद ${passedOn}वें attempt में ठीक किया 🤖` : '';
       if (result.review?.verdict === 'pass') {
-        toast.success('Regenerated — review पास', { id: toastId });
+        toast.success(`Regenerated — review पास (${attempts} attempt)${repairNote}`, { id: toastId });
       } else {
         toast.error(
-          `Regenerated, पर review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}`,
-          { id: toastId, duration: 9000 }
+          `Regenerated, पर ${attempts} attempts के बाद भी review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}\n🔁 Auto-Retry Machine हर ~10 min में खुद try करती रहेगी`,
+          { id: toastId, duration: 11000 }
         );
       }
     } catch (err) {
@@ -724,7 +740,7 @@ const AdminAIArticleStudio = () => {
                       <p className="text-[11px] font-black text-red-600 uppercase tracking-wider">Publish Blocked</p>
                       <p className="text-[10px] font-bold text-red-400 mt-0.5">{publishGate.reason}</p>
                       <p className="text-[10px] font-bold text-slate-500 mt-1.5 leading-relaxed">
-                        💡 Apply sirf tumhare edits save karta hai — naye rules/word-limit ke liye <span className="text-amber-600">🔄 REGENERATE</span> dabao, article fresh banegi (facts source se hi, wording apni).
+                        🔁 <span className="text-emerald-600">Auto-Retry Machine</span> har ~10 min me ise khud theek karegi (tab tak retry jab tak review PASS na ho) — ready hote hi <span className="text-blue-600">Telegram pe ✅ approval</span> aayega. Turant chahiye to <span className="text-amber-600">🔄 REGENERATE</span> dabao.
                       </p>
                     </div>
                   </div>
@@ -738,6 +754,11 @@ const AdminAIArticleStudio = () => {
                       Fact & Quality Review — {selected.reviewReport.verdict === 'pass' ? 'PASS' : 'FAIL'}
                       {selected.reviewReport.score !== undefined && ` (score ${selected.reviewReport.score})`}
                       {Boolean(selected.reviewReport.metrics?.wordCount) && ` · ${String(selected.reviewReport.metrics?.wordCount)} words`}
+                      {(Number(selected.repairAttempts) || 1) > 1 && (
+                        <span className="text-blue-500 normal-case tracking-normal">
+                          · 🤖 Agent self-heal: attempt {String(selected.repairPassedOnAttempt ?? selected.repairAttempts)}/{String(selected.repairAttempts)}
+                        </span>
+                      )}
                     </p>
                     {(selected.reviewReport.issues?.length ?? 0) > 0 && (
                       <ul className="mt-2 space-y-1">

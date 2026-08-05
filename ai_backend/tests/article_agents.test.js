@@ -291,7 +291,9 @@ test("source fetcher fails when page has too little text", async () => {
 test("job writer prompt is source-grounded and demands the required structure", () => {
   const prompt = buildJobWriterPrompt({ source: makeJobSource(), instructions: "focus on dates" });
   assert.match(prompt, /NEVER invent or guess dates/);
-  assert.match(prompt, /KAM SE KAM 1600 meaningful words/); // word policy: min-only, upar ki hard limit nahi
+  assert.match(prompt, /ABSOLUTE MINIMUM 1600/); // word policy: min-only, upar ki hard limit nahi
+  assert.match(prompt, /AIM 2000 meaningful words/); // safety-margin aim (review min se upar)
+  assert.match(prompt, /VERIFIED FACT SHEET/); // strict number/date allowlist
   assert.match(prompt, /table-responsive/);
   assert.match(prompt, new RegExp(EDITORIAL_AUTHOR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(prompt, /01\/07\/2026/); // grounded table data present
@@ -1423,8 +1425,8 @@ test("buildJobWriterPrompt: feedbackIssues prompt me ghus jaate hain", () => {
   });
   assert.ok(prompt.includes("PICHLE REVIEW KI FEEDBACK"));
   assert.ok(prompt.includes("₹1,40,000"));
-  // feedback validation se pehle aana chahiye (LLM ko aakhir me yaad rahe)
-  assert.ok(prompt.indexOf("PICHLE REVIEW") < prompt.indexOf("VALIDATION BEFORE YOU ANSWER"));
+  // feedback final self-check se pehle aana chahiye (LLM ko aakhir me yaad rahe)
+  assert.ok(prompt.indexOf("PICHLE REVIEW") < prompt.indexOf("FINAL SELF-CHECK"));
 });
 
 test("buildJobWriterPrompt: feedbackIssues ke bina prompt pehle jaisa hi (no feedback block)", () => {

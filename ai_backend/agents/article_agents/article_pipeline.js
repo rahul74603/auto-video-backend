@@ -36,7 +36,7 @@ function sanitizeOriginRef(raw) {
 }
 
 const crypto = require("crypto");
-const { ARTICLE_TYPES, EDITORIAL_AUTHOR } = require("./constants");
+const { ARTICLE_TYPES, EDITORIAL_AUTHOR, MAX_REPAIR_ATTEMPTS } = require("./constants");
 const { generateJobArticle, normalizeJobArticle } = require("./job_article_writer");
 const { generateFastTrackArticle, normalizeFastTrackArticle } = require("./fast_track_article_writer");
 const { reviewArticle, parseDateFlexible } = require("./fact_quality_reviewer");
@@ -44,6 +44,10 @@ const { harvestFactsDates } = require("./facts_date_harvester");
 const { assertSourceArticleWorthy } = require("./source_adequacy_gate");
 const { fetchAndExtractSource } = require("./source_fetcher");
 const { normalizeArticleHtml } = require("./article_html_utils");
+const {
+  repairArticleDeterministically,
+  splitReviewIssues
+} = require("./article_repairer");
 
 const DRAFT_COLLECTION = "ai_article_drafts";
 
@@ -105,8 +109,16 @@ function snapshotOf(source) {
 }
 
 /**
- * Run the full generate→review chain. Always returns a draft record;
- * review failure is recorded (`reviewStatus:'failed'`) and publishing stays blocked.
+ * Run the full generate→review chain with the SELF-HEALING AGENT LOOP:
+ *
+ *   attempt N: writer → deterministic self-repair → independent review
+ *     - verdict PASS  → done
+ *     - FAIL + issues writer-fixable hain → issues feedback me dekar dobara likhwao
+ *     - FAIL + fatal issues (duplicate/expired/speculative) → retry bekaar hai, stop
+ *
+ * Sab attempts me se BEST-score draft save hota hai; review failure sirf record
+ * hoti hai (`reviewStatus:'failed'`) aur publishing blocked rehti hai. Manual
+ * REGENERATE ab shayad hi kabhi chahiye ho — agent khud theek karta hai.
  */
 async function runGeneratePipeline({ type, sourceUrl, instructions, mode, source, existing, feedbackIssues }, deps = {}) {
   const cleanArticleType = cleanType(type);
@@ -117,31 +129,98 @@ async function runGeneratePipeline({ type, sourceUrl, instructions, mode, source
   // shell text) to writer tak jaane hi mat do; warna 'संभावित' nonsense article banti hai.
   assertSourceArticleWorthy(fetchedSource);
   const generate = writerFor(cleanArticleType);
-  const article = await generate(
-    { source: fetchedSource, instructions, feedbackIssues },
-    deps.writerDeps || {}
-  );
-  // Writer ne article body me dates likh kar facts ke date-box khaali chhod diye
-  // to review fail hone se pehle yahin deterministic harvest kar lo (REGENERATE
-  // luck pe nirbhar nahi).
-  const harvested = harvestFactsDates(article);
-  if (harvested.length) {
-    console.log(`facts-dates harvested: ${harvested.join(", ")} (slug=${article.slug || ""})`);
+  const renormalize =
+    cleanArticleType === ARTICLE_TYPES.JOB ? normalizeJobArticle : normalizeFastTrackArticle;
+
+  const maxAttempts = Math.max(1, Number(deps.maxRepairAttempts) || MAX_REPAIR_ATTEMPTS);
+  let feedback = Array.isArray(feedbackIssues) ? feedbackIssues.map(String) : [];
+  let best = null;
+  let attemptsRun = 0;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    attemptsRun = attempt;
+    let article;
+    try {
+      article = await generate(
+        { source: fetchedSource, instructions, feedbackIssues: feedback },
+        deps.writerDeps || {}
+      );
+    } catch (writerErr) {
+      // Retry-attempt me writer crash (rate-limit/JSON fail...) ho to pehle ka
+      // BEST draft bachao — pehla hi attempt faila ho tabhi error aage badhega.
+      if (best) {
+        console.warn(
+          `[article-agent] attempt ${attempt} writer fail — best-so-far draft rakhte hain:`,
+          writerErr.message
+        );
+        break;
+      }
+      throw writerErr;
+    }
+
+    // ⭐ Deterministic self-repair — writer ki chhoti galtiyan (ungrounded facts
+    // numbers, khaali date-box, SEO overshoot...) LLM-luck ke bina yahin theek.
+    const repairs = repairArticleDeterministically(article, fetchedSource);
+    if (repairs.length) {
+      // Repairs ke baad wordCount/structuredData dobara compute karo.
+      article = renormalize(article, { source: fetchedSource });
+      console.log(`[article-agent] self-repair (attempt ${attempt}): ${repairs.join(", ")}`);
+    }
+
+    const review = reviewArticle({
+      type: article.type,
+      article,
+      source: fetchedSource,
+      existing
+    });
+
+    const record = { article, review, attempt, repairs };
+    if (
+      !best ||
+      review.verdict === "pass" ||
+      (best.review.verdict !== "pass" && review.score > best.review.score)
+    ) {
+      best = record;
+    }
+
+    if (review.verdict === "pass") {
+      if (attempt > 1) {
+        console.log(`[article-agent] ✅ review PASS on attempt ${attempt}/${maxAttempts} (self-healing loop)`);
+      }
+      break;
+    }
+
+    const { fatal, fixable } = splitReviewIssues(review.issues);
+    console.warn(
+      `[article-agent] ❌ review FAIL (attempt ${attempt}/${maxAttempts}): ` +
+        `${review.issues.slice(0, 6).join(" | ")}`
+    );
+    if (fatal.length) {
+      console.warn(
+        `[article-agent] non-fixable issues (${fatal.slice(0, 3).join(", ")}) — retry se theek nahi honge, rok rahe hain`
+      );
+      break;
+    }
+    if (!fixable.length || attempt === maxAttempts) break;
+    // ⭐ Writer ko pichli failings batao — andhere me dobara wahi galti na kare.
+    feedback = review.issues;
   }
-  const review = reviewArticle({
-    type: article.type,
-    article,
-    source: fetchedSource,
-    existing
-  });
-  return buildDraftRecord({
+
+  const draft = buildDraftRecord({
     type: cleanArticleType,
-    article,
-    review,
+    article: best.article,
+    review: best.review,
     source: fetchedSource,
     mode,
-    instructions
+    instructions,
+    repair: {
+      attempts: attemptsRun,
+      bestAttempt: best.attempt,
+      passedOnAttempt: best.review.verdict === "pass" ? best.attempt : null,
+      log: best.repairs
+    }
   });
+  return draft;
 }
 
 /**
@@ -154,7 +233,9 @@ function reReview({ type, article, sourceSnapshot, existing }) {
     type === ARTICLE_TYPES.JOB
       ? normalizeJobArticle(article, { source })
       : normalizeFastTrackArticle(article, { source });
-  harvestFactsDates(normalized); // apply-flow: khaali date-box review se pehle bhar do
+  // apply-flow: admin ke jaan-bujh kar bhare facts clear NAHI karne — sirf
+  // safe deterministic repairs (SEO trims + khaali date-box harvest).
+  repairArticleDeterministically(normalized, source, { applyMode: true });
   const review = reviewArticle({ type: normalized.type, article: normalized, source, existing });
   return { article: normalized, review };
 }
@@ -163,7 +244,7 @@ function reReview({ type, article, sourceSnapshot, existing }) {
  * Assemble the Firestore draft document. This function must NEVER return a
  * published record — publication is a separate guarded step.
  */
-function buildDraftRecord({ type, article, review, source, mode, instructions }) {
+function buildDraftRecord({ type, article, review, source, mode, instructions, repair }) {
   return {
     type: article.type, // 'JOB' | 'FAST_TRACK' — kept compatible with site schema
     articleType: type,
@@ -171,6 +252,11 @@ function buildDraftRecord({ type, article, review, source, mode, instructions })
     publishBlocked: review.verdict !== "pass",
     reviewStatus: review.verdict === "pass" ? "passed" : "failed",
     reviewReport: review,
+    // ⭐ Self-healing agent loop ka audit trail (admin panel me dikhta hai)
+    repairAttempts: repair?.attempts || 1,
+    repairBestAttempt: repair?.bestAttempt || 1,
+    repairPassedOnAttempt: repair?.passedOnAttempt ?? null,
+    repairLog: (repair?.log || []).slice(0, 10).map((s) => String(s).slice(0, 140)),
     title: article.facts.title || article.h1,
     h1: article.h1,
     slug: article.slug,

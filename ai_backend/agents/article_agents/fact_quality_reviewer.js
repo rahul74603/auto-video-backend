@@ -249,15 +249,23 @@ function checkRequiredSections({ type, article, issues }) {
   }
 }
 
+/**
+ * Grounding index of a source extract — normalized haystack + number set.
+ * Reviewer (hallucination check) aur Article Self-Repair agent (facts/FAQ
+ * cleaning + fact-sheet) dono isi se verify karte hain — ek hi ground truth.
+ */
+function buildGroundingIndex(source) {
+  const haystack = [
+    source?.text || "",
+    (source?.tables || []).map((rows) => rows.map((r) => r.join(" ")).join(" ")).join(" "),
+    (source?.links || []).map((l) => `${l.text} ${l.url}`).join(" ")
+  ].join(" ");
+  const haystackNorm = normalizeForCompare(haystack);
+  return { haystack, haystackNorm, sourceNumbers: numberSetOf(haystackNorm) };
+}
+
 function checkFactsAgainstSource({ article, source, issues, warnings, metrics }) {
-  const haystackNorm = normalizeForCompare(
-    [
-      source.text || "",
-      (source.tables || []).map((rows) => rows.map((r) => r.join(" ")).join(" ")).join(" "),
-      (source.links || []).map((l) => `${l.text} ${l.url}`).join(" ")
-    ].join(" ")
-  );
-  const sourceNumbers = numberSetOf(haystackNorm);
+  const { haystackNorm, sourceNumbers } = buildGroundingIndex(source);
 
   const bodyText = plainText(article.contentHtml || "");
   const faqText = (article.faqs || []).map((f) => `${f.question} ${f.answer}`).join(" ");
@@ -636,12 +644,91 @@ module.exports = {
   shingleSet,
   parseDateFlexible,
   containsParseableDate,
+  buildGroundingIndex,
   formatReviewFeedbackPrompt
 };
 
 /**
- * REGENERATE feedback loop: pichli failed draft ke review issues ko writer ke
- * liye prompt text me badlo. (Pehle writer ko pichli failings pata hi nahi
+ * Issue-code → concrete fix guidance. Writer ko sirf "ye faila hai" nahi,
+ * "aise theek karo" bhi batao — self-healing loop ki asli quality yahin se
+ * aati hai (har retry me article pehle se behtar banti hai).
+ */
+const ISSUE_GUIDANCE = [
+  {
+    re: /^word-count-low:(\d+)/,
+    fix: (m) =>
+      `Article sirf ${m[1]} words ki bani — minimum se kam hai. Har <h2> section me 2-4 EXTRA ` +
+      "grounded sentences jodo (source ki dates/fee/eligibility/selection/details apne shabdon me), " +
+      "har table ke upar-neeche 1-2 context lines likho, FAQ answers thode vistrit karo. " +
+      "KOI naya fact/number invent kiye bina length badhao — target ~2000 words."
+  },
+  {
+    re: /^structure:too-few-h2/,
+    fix: () => "Kam se kam 8 <h2> sections likho — di gayi fixed section-order list ke saare sections."
+  },
+  {
+    re: /^structure:too-few-faqs/,
+    fix: () => "EXACTLY 6 FAQs likho (h3 question + grounded answer) — 4 se kam FAIL hai."
+  },
+  {
+    re: /^structure:missing-h1/,
+    fix: () => "Article me exactly ONE <h1> hona chahiye (sabse pehle)."
+  },
+  {
+    re: /^structure:table-not-responsive/,
+    fix: () => 'Har <table> ko <div class="table-responsive"><table class="ai-data-table">...</table></div> me wrap karo.'
+  },
+  {
+    re: /^section:missing:(.+)/,
+    fix: (m) => `Ye section missing hai: "${m[1]}" — ise source ki jaankari se apne shabdon me likho.`
+  },
+  {
+    re: /^hallucination:/,
+    fix: () =>
+      "Jo values 'hallucination' me dikhi hain wo SOURCE me nahi mili — unhe HATAO ya 'Official Notification में देखें' " +
+      "likho. Number/date/amount/percentage TABHI likho jab wo VERIFIED FACT SHEET me maujood ho."
+  },
+  {
+    re: /^dates:missed/,
+    fix: () =>
+      "Source me jo dates hain (apply start/last/exam) unhe article body + Important Dates table me EXACT waise hi likho."
+  },
+  {
+    re: /^dates:box-missing/,
+    fix: () =>
+      "Body me likhi dates Wahi EXACT facts.startDate/lastDate/examDate me daalo — dono jagah same date honi chahiye."
+  },
+  {
+    re: /^keyword-stuffing/,
+    fix: () => "Ek hi shabd baar-baar repeat mat karo — har paragraph me variety rakho, natural Hindi likho."
+  },
+  {
+    re: /^duplicate:source-copy/,
+    fix: () =>
+      "Source ki lines copy lag rahi hain — facts/dates same rakho par har line APNE alag shabdon + alag sentence structure me likho."
+  },
+  {
+    re: /^duplicate:title/,
+    fix: () => "Title is tarah likho ki pehle wali article se alag lage (same bharti, fresh wording — jaise last-date ya total posts pe focus)."
+  },
+  {
+    re: /^seo:title-too-long/,
+    fix: () => "seoTitle 70 characters ke andar rakho."
+  },
+  {
+    re: /^official-links:missing/,
+    fix: () => "officialLinks array me source ke official sarkari links (Apply/Notification/Website) zaroor do."
+  },
+  {
+    re: /^organization:partial-match/,
+    fix: () => "Organization ka naam EXACT wahi likho jo source me likha hai (apna mat banao)."
+  }
+];
+
+/**
+ * REGENERATE/self-heal feedback loop: pichli failed draft ke review issues ko
+ * writer ke liye prompt text me badlo — ab har issue ke saath USKA concrete
+ * fix-guidance bhi jata hai. (Pehle writer ko pichli failings pata hi nahi
  * chalti thi — isliye wahi ungrounded claims dobara likh deta tha.)
  * @param {string[]} issues review.issues (pichli draft se)
  * @returns {string} prompt block (blank string agar issues nahi)
@@ -652,11 +739,19 @@ function formatReviewFeedbackPrompt(issues) {
     .filter(Boolean)
     .slice(0, 10);
   if (!list.length) return "";
+
+  const guidance = [];
+  for (const issue of list) {
+    const match = ISSUE_GUIDANCE.find((g) => g.re.test(issue));
+    if (match) guidance.push(`- FIX: ${match.fix(issue.match(match.re))}`);
+  }
+
   return [
     "",
-    "================ PICHLE REVIEW KI FEEDBACK (isse repeat mat karo) ================",
+    "================ ⭐ PICHLE REVIEW KI FEEDBACK — IS BAAR YE GALTIYAAN MAT KARO ================",
     "Pichli draft Fact & Quality review me FAIL hui thi. Usme ye issues mile the:",
-    ...list.map((i) => `- ${i}`),
+    ...list.map((i) => `- ISSUE: ${i}`),
+    ...(guidance.length ? ["", "IN ISSUES KO AISE THEEK KARO:", ...guidance] : []),
     "",
     "HARD RULE (ye baaki saari writing-instructions se upar hai): jis bhi claim/",
     "number/amount/date ko upar review ne source me 'nahi mila' bataya hai, use NAI",

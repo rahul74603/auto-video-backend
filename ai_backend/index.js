@@ -526,12 +526,14 @@ exports.scheduledAutoDrafts = onSchedule({
 
 // 🔁 4D. RETRY MACHINE — har 10 minute: jo draft "ready for publish" (review
 // PASS) nahi hua, use dobara regenerate karo (pichli review issues ke saath);
+// har cycle me pipeline ka self-healing loop khud 3 writer-attempts leta hai.
+// Ready hote hi Telegram pe ✅ PUBLISH approval card jata hai.
 // + 1 fresh candidate bhi. Khali queue pe kuch nahi hota (AI call zero).
 exports.scheduledAutoDraftRetry = onSchedule({
     schedule: "every 10 minutes",
     timeZone: "Asia/Kolkata",
     secrets: ["GEMINI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_ADMIN_CHAT_ID"],
-    timeoutSeconds: 300,
+    timeoutSeconds: 540,
     memory: "1GiB",
     maxInstances: 1
 }, () => require("./auto_drafts").runAutoDraftsJob(db, admin.firestore.FieldValue, { limit: 1, repairLimit: 1 }));

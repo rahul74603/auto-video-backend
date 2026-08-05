@@ -18,13 +18,18 @@
 
 const { overlapsAny } = require("./agents/article_agents/title_utils");
 const { plainText } = require("./agents/article_agents/article_html_utils");
+const { splitReviewIssues } = require("./agents/article_agents/article_repairer");
 
 const JOBS_DRAFTS = "job_drafts";
 const FAST_TRACK = "fast_track";
 const DEFAULT_MAX_PER_RUN = 2;
 const MAX_TRIES = 5;                 // create-side tries (cooldown ke beech)
-const RETRY_COOLDOWN_MS = 10 * 60 * 1000; // ⏱️ ek item pe retry se pehle 10 min gap
-const REPAIR_MAX_TRIES = 5;          // not-ready draft ko kitni baar repair kare
+// ⏱️ "jab tak thik na ho" retry machine — env se tune hoti hai:
+//   AI_RETRY_COOLDOWN_MIN  → har retry ke beech ka gap (default 10 min)
+//   AI_REPAIR_MAX_TRIES    → ek draft pe max repair cycles (default 20;
+//                            har cycle me pipeline khud 3 writer-attempts leti hai)
+const RETRY_COOLDOWN_MS = Math.max(2, Number(process.env.AI_RETRY_COOLDOWN_MIN) || 10) * 60 * 1000;
+const REPAIR_MAX_TRIES = Math.max(1, Number(process.env.AI_REPAIR_MAX_TRIES) || 20);
 const REPAIR_SCAN_LIMIT = 40;
 
 /**
@@ -268,8 +273,15 @@ async function pickRepairCandidates(db, deps, options) {
         const ready = data.reviewStatus === "passed" && data.reviewStale !== true;
         if (ready) continue;                                        // ✅ ready — admin ka ✅ pending
         if (Number(data.autoRepairTries || 0) >= REPAIR_MAX_TRIES) continue;
-        if (lastTryTooRecent(data)) continue;                       // ⏱️ 10 min gap
+        if (lastTryTooRecent(data)) continue;                       // ⏱️ cooldown gap
         if (!data.sourceUrl) continue;                              // regenerate ke liye source zaroori
+        // ⭐ FATAL issues (duplicate/expired/speculative) retry se KABHI theek
+        // nahi honge — unpe Gemini quota jalana bekaar hai. Writer-fixable
+        // issues wale drafts hi repair queue me aate hain.
+        const issues = Array.isArray(data.reviewReport && data.reviewReport.issues)
+            ? data.reviewReport.issues
+            : [];
+        if (issues.length && splitReviewIssues(issues).fatal.length) continue;
         report.repairs.push(docSnap);
     }
     return report;
