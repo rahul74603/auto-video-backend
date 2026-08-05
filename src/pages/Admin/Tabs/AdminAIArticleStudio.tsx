@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Sparkles, Eye, RefreshCcw, Save, Send, Trash2, Link2, FileText,
   ShieldCheck, ShieldAlert, Clock, CheckCircle2, XCircle, Briefcase, Zap, FileUp
@@ -87,6 +88,7 @@ const apiErrorStatus = (err: unknown): number | undefined =>
 
 const AdminAIArticleStudio = () => {
   const { drafts, loading, refresh } = useAIArticleDrafts();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // ---------- Generate form ----------
   const [genType, setGenType] = useState('job'); // 'job' | 'fast-track'
@@ -106,6 +108,22 @@ const AdminAIArticleStudio = () => {
     () => drafts.find((d) => d.id === selectedId) || null,
     [drafts, selectedId]
   );
+
+  /** Draft editor me load karo (selectedId + form fields set). */
+  const loadIntoEditor = useCallback((draft: AIArticleDraftRecord | null) => {
+    setSelectedId(draft?.id || null);
+    setShowPreview(false);
+    if (!draft) {
+      setEditForm(EMPTY_EDIT_FORM);
+      return;
+    }
+    setEditForm({
+      title: draft.title || '',
+      seoTitle: draft.seoTitle || '',
+      metaDescription: draft.metaDescription || '',
+      articleHtml: draft.articleHtml || '',
+    });
+  }, []);
 
   // 📩 JOBS AI draft row का '✨ AI Article' बटन — generate form auto-prefill
   useEffect(() => {
@@ -129,20 +147,28 @@ const AdminAIArticleStudio = () => {
     return () => window.removeEventListener(AI_ARTICLE_PREFILL_EVENT, handlePrefill);
   }, []);
 
-  const loadIntoEditor = (draft: AIArticleDraftRecord | null) => {
-    setSelectedId(draft?.id || null);
-    setShowPreview(false);
-    if (!draft) {
-      setEditForm(EMPTY_EDIT_FORM);
-      return;
+  // ================= 🔗 DEEP-LINK: ?editDraft=<id> =================
+  // Telegram EDIT button se admin panel khulta hai — ye draft auto-load karke
+  // editor me le aata hai. URL param consume hone ke baad clean bhi ho jaata hai.
+  useEffect(() => {
+    const editDraftId = searchParams.get('editDraft');
+    if (!editDraftId || drafts.length === 0) return;
+    const target = drafts.find((d) => d.id === editDraftId);
+    if (target) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadIntoEditor(target);
+      toast.success(`✏️ Draft "${(target.title || '').slice(0, 40)}" editor me load hua`, { duration: 3000 });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      toast.error(`Draft "${editDraftId.slice(0, 16)}..." nahi mili — refresh karke dobara try karo`, { duration: 5000 });
     }
-    setEditForm({
-      title: draft.title || '',
-      seoTitle: draft.seoTitle || '',
-      metaDescription: draft.metaDescription || '',
-      articleHtml: draft.articleHtml || '',
-    });
-  };
+    // URL se param hatao (history replace) — dobara mount pe trigger na ho
+    const next = new URLSearchParams(searchParams);
+    next.delete('editDraft');
+    next.delete('tab');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSearchParams(next, { replace: true });
+  }, [searchParams, drafts, loadIntoEditor]);
 
   const handleApiError = (err: unknown, fallback: string) => {
     const status = apiErrorStatus(err);

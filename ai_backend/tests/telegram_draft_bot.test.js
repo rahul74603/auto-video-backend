@@ -125,20 +125,27 @@ function mockCallbackReq(data, chatId = CREDS.chatId) {
 // ---------------------------------------------------------------------
 // Card building
 // ---------------------------------------------------------------------
-test("card — PASS draft pe PUBLISH/REJECT buttons, FAIL pe nahi", () => {
+test("card — PASS draft pe PUBLISH/EDIT/REJECT buttons, FAIL pe sirf EDIT/REJECT", () => {
     const pass = buildDraftMessage(PASSED_JOB_DRAFT, "abc123");
     assert.equal(pass.canPublish, true);
-    assert.deepEqual(
-        pass.keyboard.inline_keyboard[0].map(b => b.callback_data),
-        ["pub:abc123", "rej:abc123"]
-    );
+    // 3 buttons: PUBLISH (callback), EDIT (URL), REJECT (callback)
+    const row = pass.keyboard.inline_keyboard[0];
+    assert.equal(row.length, 3);
+    assert.equal(row[0].callback_data, "pub:abc123");
+    assert.ok(row[1].url.includes("editDraft=abc123"), "EDIT button studio deep-link hai");
+    assert.equal(row[2].callback_data, "rej:abc123");
     assert.ok(pass.text.includes("SPMCIL Deputy Manager"));
     assert.ok(pass.text.includes("PASS"));
     assert.ok(pass.text.includes("92"));
 
+    // FAIL draft — sirf EDIT + REJECT (PUBLISH button nahi kyunki review fail hai)
     const fail = buildDraftMessage({ ...PASSED_JOB_DRAFT, reviewStatus: "failed", reviewReport: { score: 40, issues: ["dates:box-missing"] } }, "abc123");
     assert.equal(fail.canPublish, false);
-    assert.equal(fail.keyboard, null);
+    assert.ok(fail.keyboard, "FAIL draft pe bhi keyboard aata hai (EDIT + REJECT)");
+    const failRow = fail.keyboard.inline_keyboard[0];
+    assert.equal(failRow.length, 2);
+    assert.ok(failRow[0].url.includes("editDraft=abc123"), "FAIL pe bhi EDIT button");
+    assert.equal(failRow[1].callback_data, "rej:abc123");
     assert.ok(fail.text.includes("FAIL"));
     assert.ok(fail.text.includes("Auto-Retry Machine"), "FAIL card ab retry-machine ka raasta batata hai");
 });
@@ -177,6 +184,21 @@ test("notifyDraft — keyboard ke saath sendMessage, no-creds pe skip", async ()
 
     const skipped = await notifyDraft(http, { token: "", chatId: "" }, PASSED_JOB_DRAFT, "abc123");
     assert.equal(skipped.sent, false);
+});
+
+test("EDIT button — Telegram card me ✏️ EDIT URL button studio deep-link ke saath", () => {
+    const msg = buildDraftMessage(PASSED_JOB_DRAFT, "draftX1");
+    const editBtn = msg.keyboard.inline_keyboard[0].find(b => b.text.includes("EDIT"));
+    assert.ok(editBtn, "EDIT button hai keyboard me");
+    assert.ok(editBtn.url.includes("studygyaan.in/secret-admin"), "EDIT button admin panel ka URL hai");
+    assert.ok(editBtn.url.includes("editDraft=draftX1"), "EDIT button me draftId deep-link param hai");
+    assert.ok(editBtn.url.includes("tab=JOBS"), "EDIT button me tab switch param hai");
+    assert.equal(editBtn.callback_data, undefined, "EDIT button URL button hai, callback nahi");
+});
+
+test("EDIT button — studio link card text me bhi draft-specific deep-link hai", () => {
+    const msg = buildDraftMessage(PASSED_JOB_DRAFT, "draftY2");
+    assert.ok(msg.text.includes("editDraft=draftY2"), "Card text me bhi studio deep-link");
 });
 
 // ---------------------------------------------------------------------

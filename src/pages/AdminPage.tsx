@@ -29,6 +29,7 @@ import AdminBrowseTab from './Admin/Tabs/AdminBrowseTab';
 import AdminStorageTab from './Admin/Tabs/AdminStorageTab';
 import AdminJobDrafts from './Admin/Tabs/AdminJobDrafts'; 
 import AdminAIArticleStudio from './Admin/Tabs/AdminAIArticleStudio';
+import AdminBrowseAIDrafts from './Admin/Tabs/AdminBrowseAIDrafts';
 import FastTrackManager from './Admin/Tabs/FastTrackManager'; 
 import AdminWebStories from './Admin/Tabs/AdminWebStories';
 // 🔥 NEW: Payment Approval Tab Import
@@ -49,13 +50,26 @@ const AdminPage = () => {
 
     const { content: siteContent, updateContent: updateSiteContent } = useSiteContent();
 
-    // --- 🚀 TAB SWITCHING LOGIC (render-time sync, no effect needed) ---
+    // ---  TAB SWITCHING LOGIC (render-time sync, no effect needed) ---
     const [prevLocationState, setPrevLocationState] = useState(location.state);
     if (location.state !== prevLocationState) {
         setPrevLocationState(location.state);
         const requestedTab = (location.state as { activeTab?: AdminTab } | null)?.activeTab;
         if (requestedTab) {
             setActiveTab(requestedTab);
+        }
+    }
+
+    // 🔗 Deep-link: ?tab=<TabName> URL param se tab auto-switch (render-time sync)
+    // (Telegram EDIT button / bookmark se direct kisi tab pe land kar sakte hain)
+    const currentUrlSearch = typeof window !== 'undefined' ? window.location.search : '';
+    const [prevUrlSearch, setPrevUrlSearch] = useState(currentUrlSearch);
+    if (currentUrlSearch !== prevUrlSearch) {
+        setPrevUrlSearch(currentUrlSearch);
+        const params = new URLSearchParams(currentUrlSearch);
+        const urlTab = params.get('tab');
+        if (urlTab && (['BROWSE', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'HOMEPAGE', 'FAST TRACK', 'WEB STORIES', 'CUSTOMIZE', 'SIDEBAR', 'MOCK TEST', 'STORAGE', 'JOBS AI', 'PAYMENTS'] as AdminTab[]).includes(urlTab as AdminTab)) {
+            setActiveTab(urlTab as AdminTab);
         }
     }
 
@@ -164,9 +178,11 @@ const AdminPage = () => {
                     {activeTab === 'BROWSE' && <AdminBrowseTab />}
                     {activeTab === 'JOBS AI' && (
                         <div className="space-y-4">
-                            {/* ✍️ AI Article Studio — उपर: fetched jobs से Article बनाने का इंजन */}
+                            {/* ✍️ AI Article Studio — upar: fetched jobs se Article banane ka engine */}
                             <AdminAIArticleStudio />
-                            {/* 📥 AI Job Drafts — नीचे: auto-fetched jobs review & publish */}
+                            {/* 📋 Browse AI Drafts — Telegram EDIT button ka landing pad + draft management */}
+                            <AdminBrowseAIDrafts />
+                            {/* 📥 AI Job Drafts — neeche: auto-fetched jobs review & publish */}
                             <AdminJobDrafts />
                         </div>
                     )}
