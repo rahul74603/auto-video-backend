@@ -85,25 +85,35 @@ function buildDraftCard(draft, opts) {
     if (!reviewPassed && issues.length) {
         lines.push("", `<i>${escHtml(issues.slice(0, 2).join("; ")).slice(0, 180)}</i>`);
     }
-    lines.push("", `<a href="${STUDIO_URL}">🛠️ Studio kholo</a>`);
+    const draftId = opts && opts.draftId;
+    const studioLink = draftId && validDraftId(draftId)
+        ? `${STUDIO_URL}?editDraft=${encodeURIComponent(draftId)}&tab=JOBS%20AI`
+        : STUDIO_URL;
+    lines.push("", `<a href="${studioLink}">🛠️ Studio me kholo / edit karo</a>`);
 
     return { text: lines.join("\n"), canPublish: reviewPassed };
 }
 
 /** Final card — callback_data me draft id inject karke.
  *  opts.withButtons === false → keyboard kabhi nahi (safety: admin chat id
- *  set nahi hui to PUBLIC channel pe buttons mat bhejo — koi aur daba dega). */
+ *  set nahi hui to PUBLIC channel pe buttons mat bhejo — koi aur daba dega).
+ *
+ *  EDIT button — URL button, studio deep-link. Draft ke liye admin panel khulta hai
+ *  aur us draft editor me auto-load ho jaati hai (review/edit/publish turant kar sakte hain).
+ */
 function buildDraftMessage(draft, draftId, opts) {
-    const card = buildDraftCard(draft, opts);
+    const card = buildDraftCard(draft, { ...(opts || {}), draftId });
     const buttonsAllowed = !opts || opts.withButtons !== false;
+    const editUrl = `${STUDIO_URL}?editDraft=${encodeURIComponent(draftId)}&tab=JOBS%20AI`;
     let keyboard = null;
-    if (card.canPublish && buttonsAllowed && validDraftId(draftId)) {
-        keyboard = {
-            inline_keyboard: [[
-                { text: "✅ PUBLISH KARO", callback_data: `pub:${draftId}` },
-                { text: "❌ REJECT", callback_data: `rej:${draftId}` }
-            ]]
-        };
+    if (buttonsAllowed && validDraftId(draftId)) {
+        const row = [];
+        if (card.canPublish) {
+            row.push({ text: "✅ PUBLISH KARO", callback_data: `pub:${draftId}` });
+        }
+        row.push({ text: "✏️ EDIT / REVIEW", url: editUrl });
+        row.push({ text: "❌ REJECT", callback_data: `rej:${draftId}` });
+        keyboard = { inline_keyboard: [row] };
     }
     return { text: card.text, canPublish: card.canPublish, keyboard };
 }

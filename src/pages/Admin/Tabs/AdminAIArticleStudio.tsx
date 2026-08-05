@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Sparkles, Eye, RefreshCcw, Save, Send, Trash2, Link2, FileText,
   ShieldCheck, ShieldAlert, Clock, CheckCircle2, XCircle, Briefcase, Zap, FileUp
@@ -87,6 +88,7 @@ const apiErrorStatus = (err: unknown): number | undefined =>
 
 const AdminAIArticleStudio = () => {
   const { drafts, loading, refresh } = useAIArticleDrafts();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // ---------- Generate form ----------
   const [genType, setGenType] = useState('job'); // 'job' | 'fast-track'
@@ -128,6 +130,27 @@ const AdminAIArticleStudio = () => {
     if (stored) applyPrefill(stored);
     return () => window.removeEventListener(AI_ARTICLE_PREFILL_EVENT, handlePrefill);
   }, []);
+
+  // ================= 🔗 DEEP-LINK: ?editDraft=<id> =================
+  // Telegram EDIT button se admin panel khulta hai — ye draft auto-load karke
+  // editor me le aata hai. URL param consume hone ke baad clean bhi ho jaata hai.
+  useEffect(() => {
+    const editDraftId = searchParams.get('editDraft');
+    if (!editDraftId || drafts.length === 0) return;
+    const target = drafts.find((d) => d.id === editDraftId);
+    if (target) {
+      loadIntoEditor(target);
+      toast.success(`✏️ Draft "${(target.title || '').slice(0, 40)}" editor me load hua`, { duration: 3000 });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      toast.error(`Draft "${editDraftId.slice(0, 16)}..." nahi mili — refresh karke dobara try karo`, { duration: 5000 });
+    }
+    // URL se param hatao (history replace) — dobara mount pe trigger na ho
+    const next = new URLSearchParams(searchParams);
+    next.delete('editDraft');
+    next.delete('tab');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, drafts]);
 
   const loadIntoEditor = (draft: AIArticleDraftRecord | null) => {
     setSelectedId(draft?.id || null);

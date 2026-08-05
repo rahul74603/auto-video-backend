@@ -29,6 +29,7 @@ import AdminBrowseTab from './Admin/Tabs/AdminBrowseTab';
 import AdminStorageTab from './Admin/Tabs/AdminStorageTab';
 import AdminJobDrafts from './Admin/Tabs/AdminJobDrafts'; 
 import AdminAIArticleStudio from './Admin/Tabs/AdminAIArticleStudio';
+import AdminBrowseAIDrafts from './Admin/Tabs/AdminBrowseAIDrafts';
 import FastTrackManager from './Admin/Tabs/FastTrackManager'; 
 import AdminWebStories from './Admin/Tabs/AdminWebStories';
 // 🔥 NEW: Payment Approval Tab Import
@@ -58,6 +59,19 @@ const AdminPage = () => {
             setActiveTab(requestedTab);
         }
     }
+
+    // 🔗 Deep-link: ?tab=<TabName> URL param se tab auto-switch
+    // (Telegram EDIT button / bookmark se direct kisi tab pe land kar sakte hain)
+    const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const urlTab = urlParams?.get('tab');
+    useEffect(() => {
+        if (urlTab) {
+            const tab = urlTab as AdminTab;
+            if (['BROWSE', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'HOMEPAGE', 'FAST TRACK', 'WEB STORIES', 'CUSTOMIZE', 'SIDEBAR', 'MOCK TEST', 'STORAGE', 'JOBS AI', 'PAYMENTS'].includes(tab)) {
+                setActiveTab(tab);
+            }
+        }
+    }, [urlTab]);
 
     // --- 🔐 AUTHENTICATION LOGIC ---
     const handleGoogleLogin = async () => {
@@ -164,9 +178,11 @@ const AdminPage = () => {
                     {activeTab === 'BROWSE' && <AdminBrowseTab />}
                     {activeTab === 'JOBS AI' && (
                         <div className="space-y-4">
-                            {/* ✍️ AI Article Studio — उपर: fetched jobs से Article बनाने का इंजन */}
+                            {/* ✍️ AI Article Studio — upar: fetched jobs se Article banane ka engine */}
                             <AdminAIArticleStudio />
-                            {/* 📥 AI Job Drafts — नीचे: auto-fetched jobs review & publish */}
+                            {/* 📋 Browse AI Drafts — Telegram EDIT button ka landing pad + draft management */}
+                            <AdminBrowseAIDrafts />
+                            {/* 📥 AI Job Drafts — neeche: auto-fetched jobs review & publish */}
                             <AdminJobDrafts />
                         </div>
                     )}
