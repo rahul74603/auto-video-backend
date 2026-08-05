@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Sparkles, Eye, RefreshCcw, Save, Send, Trash2, Link2, FileText,
@@ -109,6 +109,22 @@ const AdminAIArticleStudio = () => {
     [drafts, selectedId]
   );
 
+  /** Draft editor me load karo (selectedId + form fields set). */
+  const loadIntoEditor = useCallback((draft: AIArticleDraftRecord | null) => {
+    setSelectedId(draft?.id || null);
+    setShowPreview(false);
+    if (!draft) {
+      setEditForm(EMPTY_EDIT_FORM);
+      return;
+    }
+    setEditForm({
+      title: draft.title || '',
+      seoTitle: draft.seoTitle || '',
+      metaDescription: draft.metaDescription || '',
+      articleHtml: draft.articleHtml || '',
+    });
+  }, []);
+
   // 📩 JOBS AI draft row का '✨ AI Article' बटन — generate form auto-prefill
   useEffect(() => {
     const applyPrefill = (detail: PrefillDetail) => {
@@ -139,6 +155,7 @@ const AdminAIArticleStudio = () => {
     if (!editDraftId || drafts.length === 0) return;
     const target = drafts.find((d) => d.id === editDraftId);
     if (target) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadIntoEditor(target);
       toast.success(`✏️ Draft "${(target.title || '').slice(0, 40)}" editor me load hua`, { duration: 3000 });
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -149,23 +166,9 @@ const AdminAIArticleStudio = () => {
     const next = new URLSearchParams(searchParams);
     next.delete('editDraft');
     next.delete('tab');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSearchParams(next, { replace: true });
-  }, [searchParams, drafts]);
-
-  const loadIntoEditor = (draft: AIArticleDraftRecord | null) => {
-    setSelectedId(draft?.id || null);
-    setShowPreview(false);
-    if (!draft) {
-      setEditForm(EMPTY_EDIT_FORM);
-      return;
-    }
-    setEditForm({
-      title: draft.title || '',
-      seoTitle: draft.seoTitle || '',
-      metaDescription: draft.metaDescription || '',
-      articleHtml: draft.articleHtml || '',
-    });
-  };
+  }, [searchParams, drafts, loadIntoEditor]);
 
   const handleApiError = (err: unknown, fallback: string) => {
     const status = apiErrorStatus(err);

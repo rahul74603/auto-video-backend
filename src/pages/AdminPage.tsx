@@ -50,7 +50,7 @@ const AdminPage = () => {
 
     const { content: siteContent, updateContent: updateSiteContent } = useSiteContent();
 
-    // --- 🚀 TAB SWITCHING LOGIC (render-time sync, no effect needed) ---
+    // ---  TAB SWITCHING LOGIC (render-time sync, no effect needed) ---
     const [prevLocationState, setPrevLocationState] = useState(location.state);
     if (location.state !== prevLocationState) {
         setPrevLocationState(location.state);
@@ -60,18 +60,18 @@ const AdminPage = () => {
         }
     }
 
-    // 🔗 Deep-link: ?tab=<TabName> URL param se tab auto-switch
+    // 🔗 Deep-link: ?tab=<TabName> URL param se tab auto-switch (render-time sync)
     // (Telegram EDIT button / bookmark se direct kisi tab pe land kar sakte hain)
-    const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-    const urlTab = urlParams?.get('tab');
-    useEffect(() => {
-        if (urlTab) {
-            const tab = urlTab as AdminTab;
-            if (['BROWSE', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'HOMEPAGE', 'FAST TRACK', 'WEB STORIES', 'CUSTOMIZE', 'SIDEBAR', 'MOCK TEST', 'STORAGE', 'JOBS AI', 'PAYMENTS'].includes(tab)) {
-                setActiveTab(tab);
-            }
+    const currentUrlSearch = typeof window !== 'undefined' ? window.location.search : '';
+    const [prevUrlSearch, setPrevUrlSearch] = useState(currentUrlSearch);
+    if (currentUrlSearch !== prevUrlSearch) {
+        setPrevUrlSearch(currentUrlSearch);
+        const params = new URLSearchParams(currentUrlSearch);
+        const urlTab = params.get('tab');
+        if (urlTab && (['BROWSE', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'HOMEPAGE', 'FAST TRACK', 'WEB STORIES', 'CUSTOMIZE', 'SIDEBAR', 'MOCK TEST', 'STORAGE', 'JOBS AI', 'PAYMENTS'] as AdminTab[]).includes(urlTab as AdminTab)) {
+            setActiveTab(urlTab as AdminTab);
         }
-    }, [urlTab]);
+    }
 
     // --- 🔐 AUTHENTICATION LOGIC ---
     const handleGoogleLogin = async () => {
