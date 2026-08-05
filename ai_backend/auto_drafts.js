@@ -210,12 +210,17 @@ async function processCandidate(db, FieldValue, candidate, deps) {
         { merge: true }
     );
 
-    // 5) Telegram card (phone approve)
-    if (deps.notifyDraft && deps.creds) {
+    // 5) Telegram — SIRF ready-to-publish pe (reviewStatus === 'passed')
+    // Failed pe bilkul nahi — auto-repair machine har ~10 min me retry karegi
+    const verdict = String(draft.reviewReport?.verdict || '').toLowerCase();
+    const isDraftReady = (draft.reviewStatus === 'passed' || verdict === 'pass') && draft.reviewStale !== true && draft.publishBlocked !== true;
+    if (isDraftReady && deps.notifyDraft && deps.creds) {
         await deps.notifyDraft(null, deps.creds, draft, ref.id, {
             label: "🌅 AUTO DRAFT READY",
             withButtons: deps.withButtons !== false
         }).catch(e => console.warn("auto-draft telegram:", e.message));
+    } else {
+        console.log(`[auto-draft] ${ref.id} not ready (reviewStatus=${draft.reviewStatus}) — telegram skipped, will auto-retry when ready`);
     }
 
     return { draftId: ref.id, resolvedVia, title: draft.title || candidate.title };

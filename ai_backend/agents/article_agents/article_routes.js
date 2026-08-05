@@ -273,11 +273,18 @@ function registerArticleAgentRoutes(app, db) {
       };
       const ref = await db.collection(DRAFT_COLLECTION).add(docPayload);
 
-      // 🔔 Telegram approve-card bhejo (phone se ✅/❌) — fail ho to generate
-      // response kabhi block nahi hoga.
+      // 🔔 Telegram — SIRF ready-to-publish pe (reviewStatus === 'passed')
+      // Failed/blocked pe telegram bilkul nahi — auto-retry machine har ~10 min
+      // me khud theek karegi aur ready hote hi telegram bhejegi. Isse faltu msg band.
       try {
-        const bot = require("../../telegram_draft_bot");
-        await bot.notifyDraft(null, bot.adminCredsFromEnv(), draft, ref.id, { label: "🧠 AI DRAFT READY", withButtons: Boolean(process.env.TELEGRAM_ADMIN_CHAT_ID) });
+        const verdict = String(draft.reviewReport?.verdict || '').toLowerCase();
+        const isReady = (draft.reviewStatus === 'passed' || verdict === 'pass') && !draft.reviewStale && draft.publishBlocked !== true;
+        if (isReady) {
+          const bot = require("../../telegram_draft_bot");
+          await bot.notifyDraft(null, bot.adminCredsFromEnv(), draft, ref.id, { label: "🧠 AI DRAFT READY", withButtons: Boolean(process.env.TELEGRAM_ADMIN_CHAT_ID) });
+        } else {
+          console.log(`[articles:generate] draft ${ref.id} not ready (reviewStatus=${draft.reviewStatus}) — telegram skipped, will auto-retry`);
+        }
       } catch (notifyErr) {
         console.warn("telegram draft notify:", notifyErr.message || notifyErr);
       }
@@ -382,10 +389,16 @@ function registerArticleAgentRoutes(app, db) {
         { merge: true }
       );
 
-      // 🔔 Naye content ka fresh Telegram card (purane message stale ho gayi)
+      // 🔔 Regenerate telegram — SIRF ready pe, warna silent (auto-retry queue)
       try {
-        const bot = require("../../telegram_draft_bot");
-        await bot.notifyDraft(null, bot.adminCredsFromEnv(), fresh, draftId, { label: "🔄 DRAFT REGENERATED", withButtons: Boolean(process.env.TELEGRAM_ADMIN_CHAT_ID) });
+        const verdict = String(fresh.reviewReport?.verdict || '').toLowerCase();
+        const isReady = (fresh.reviewStatus === 'passed' || verdict === 'pass') && !fresh.reviewStale && fresh.publishBlocked !== true;
+        if (isReady) {
+          const bot = require("../../telegram_draft_bot");
+          await bot.notifyDraft(null, bot.adminCredsFromEnv(), fresh, draftId, { label: "🔄 DRAFT REGENERATED", withButtons: Boolean(process.env.TELEGRAM_ADMIN_CHAT_ID) });
+        } else {
+          console.log(`[articles:regenerate] draft ${draftId} still not ready (reviewStatus=${fresh.reviewStatus}) — telegram skipped`);
+        }
       } catch (notifyErr) {
         console.warn("telegram draft notify (regenerate):", notifyErr.message || notifyErr);
       }
