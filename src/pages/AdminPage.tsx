@@ -8,7 +8,7 @@ import {
     signInWithPopup 
 } from 'firebase/auth';
 import {
-    FilePenLine, ShieldCheck, Sparkles, Zap, Layers, IndianRupee
+    FilePenLine, ShieldCheck, Sparkles, Zap, Layers, IndianRupee, Power
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -34,6 +34,8 @@ import FastTrackManager from './Admin/Tabs/FastTrackManager';
 import AdminWebStories from './Admin/Tabs/AdminWebStories';
 // 🔥 NEW: Payment Approval Tab Import
 import AdminPaymentApproval from './Admin/Tabs/AdminPaymentApproval';
+// 🛑 Automation Control Tab
+import AdminAutomationControl from './Admin/Tabs/AdminAutomationControl';
 
 const AdminPage = () => {
     const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -44,8 +46,8 @@ const AdminPage = () => {
     
     const location = useLocation(); 
 
-    // ✅ Active Tab State — AI Article Studio अब JOBS AI tab के अंदर ही है
-    type AdminTab = 'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'SIDEBAR' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'PAYMENTS';
+    // ✅ Active Tab State — AI Article Studio अब JOBS AI tab के अंदर ही है + Automation Control
+    type AdminTab = 'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'SIDEBAR' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'PAYMENTS' | 'AUTOMATION';
     const [activeTab, setActiveTab] = useState<AdminTab>('BROWSE');
 
     const { content: siteContent, updateContent: updateSiteContent } = useSiteContent();
@@ -68,7 +70,7 @@ const AdminPage = () => {
         setPrevUrlSearch(currentUrlSearch);
         const params = new URLSearchParams(currentUrlSearch);
         const urlTab = params.get('tab');
-        if (urlTab && (['BROWSE', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'HOMEPAGE', 'FAST TRACK', 'WEB STORIES', 'CUSTOMIZE', 'SIDEBAR', 'MOCK TEST', 'STORAGE', 'JOBS AI', 'PAYMENTS'] as AdminTab[]).includes(urlTab as AdminTab)) {
+        if (urlTab && (['BROWSE', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'HOMEPAGE', 'FAST TRACK', 'WEB STORIES', 'CUSTOMIZE', 'SIDEBAR', 'MOCK TEST', 'STORAGE', 'JOBS AI', 'PAYMENTS', 'AUTOMATION'] as AdminTab[]).includes(urlTab as AdminTab)) {
             setActiveTab(urlTab as AdminTab);
         }
     }
@@ -147,15 +149,16 @@ const AdminPage = () => {
                         </div>
                     </div>
                     
-                    {/* NAVIGATION TABS (Added PAYMENTS) */}
+                    {/* NAVIGATION TABS (Added PAYMENTS + AUTOMATION) */}
                     <div className="flex flex-wrap gap-1 md:gap-2 w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scroll-smooth items-center no-scrollbar">
-                        {['BROWSE', 'JOBS AI', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'SIDEBAR', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE'].map(t => (
+                        {['BROWSE', 'JOBS AI', 'AUTOMATION', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'SIDEBAR', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE'].map(t => (
                             <button 
                                 key={t} 
                                 onClick={() => setActiveTab(t as AdminTab)} 
                                 className={`px-3 py-1.5 md:px-5 md:py-2.5 rounded-md md:rounded-xl font-black text-[9px] md:text-xs whitespace-nowrap shrink-0 transition-all uppercase tracking-tighter ${activeTab === t ? 'bg-blue-600 text-white shadow-xl scale-105' : 'bg-gray-50 text-gray-400 border border-gray-100 hover:bg-white hover:text-blue-600 hover:shadow-md'}`}
                             >
                                 {t === 'JOBS AI' ? <span className="flex items-center gap-1"><Sparkles size={12}/> JOBS AI</span> :
+                                 t === 'AUTOMATION' ? <span className="flex items-center gap-1 text-red-500 group-hover:text-white"><Power size={12}/> AUTOMATION</span> :
                                  t === 'FAST TRACK' ? <span className="flex items-center gap-1"><Zap size={12}/> FAST TRACK</span> : 
                                  t === 'WEB STORIES' ? <span className="flex items-center gap-1"><Layers size={12}/> WEB STORIES</span> : 
                                  t === 'PAYMENTS' ? <span className="flex items-center gap-1 text-green-500 group-hover:text-white"><IndianRupee size={12}/> PAYMENTS</span> :
@@ -200,6 +203,8 @@ const AdminPage = () => {
                     {activeTab === 'STORAGE' && <AdminStorageTab />}
                     {/* 🔥 NEW Content for Payments */}
                     {activeTab === 'PAYMENTS' && <AdminPaymentApproval />}
+                    {/* 🛑 Automation Control */}
+                    {activeTab === 'AUTOMATION' && <AdminAutomationControl />}
                 </div>
             </div>
             

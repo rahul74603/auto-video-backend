@@ -25,6 +25,7 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 const db = admin.firestore();
+const { isAutomationEnabled } = require("./agents/automation_guard");
 
 // Manual and automatic specialist-agent entry points. Cost-bearing routes are
 // protected with AGENT_ADMIN_TOKEN inside the orchestrator.
@@ -515,6 +516,7 @@ exports.onBlogPublishedAutoStory = onDocumentWritten({ document: "blogs/{docId}"
 
 // 🌅 4C. AUTO-DRAFTS MACHINE — roz subah 8 baje (IST) fresh items se AI drafts
 // bante hain + Telegram approve-card (publish kabhi khud nahi karta)
+// 🛑 Automation guard — Firestore system_settings/automation se ON/OFF
 exports.scheduledAutoDrafts = onSchedule({
     schedule: "every day 08:00",
     timeZone: "Asia/Kolkata",
@@ -522,13 +524,21 @@ exports.scheduledAutoDrafts = onSchedule({
     timeoutSeconds: 540,
     memory: "1GiB",
     maxInstances: 1
-}, () => require("./auto_drafts").runAutoDraftsJob(db, admin.firestore.FieldValue, { limit: 2, repairLimit: 2 }));
+}, async () => {
+    const guard = await isAutomationEnabled(db, 'auto_drafts');
+    if (!guard.enabled) {
+        console.log(`⏸️ scheduledAutoDrafts skipped — ${guard.reason}`);
+        return { skipped: true, reason: guard.reason };
+    }
+    return require("./auto_drafts").runAutoDraftsJob(db, admin.firestore.FieldValue, { limit: 2, repairLimit: 2 });
+});
 
 // 🔁 4D. RETRY MACHINE — har 10 minute: jo draft "ready for publish" (review
 // PASS) nahi hua, use dobara regenerate karo (pichli review issues ke saath);
 // har cycle me pipeline ka self-healing loop khud 3 writer-attempts leta hai.
 // Ready hote hi Telegram pe ✅ PUBLISH approval card jata hai.
 // + 1 fresh candidate bhi. Khali queue pe kuch nahi hota (AI call zero).
+// 🛑 Automation guard
 exports.scheduledAutoDraftRetry = onSchedule({
     schedule: "every 10 minutes",
     timeZone: "Asia/Kolkata",
@@ -536,15 +546,30 @@ exports.scheduledAutoDraftRetry = onSchedule({
     timeoutSeconds: 540,
     memory: "1GiB",
     maxInstances: 1
-}, () => require("./auto_drafts").runAutoDraftsJob(db, admin.firestore.FieldValue, { limit: 1, repairLimit: 1 }));
+}, async () => {
+    const guard = await isAutomationEnabled(db, 'auto_drafts_repair');
+    if (!guard.enabled) {
+        console.log(`⏸️ scheduledAutoDraftRetry skipped — ${guard.reason}`);
+        return { skipped: true, reason: guard.reason };
+    }
+    return require("./auto_drafts").runAutoDraftsJob(db, admin.firestore.FieldValue, { limit: 1, repairLimit: 1 });
+});
 
 // Manual run (admin/GitHub Actions ke liye) — GET/POST dono chalega
+// 🛑 Guard — unless ?force=true
 exports.triggerAutoDrafts = onRequest({
     secrets: ["GEMINI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_ADMIN_CHAT_ID"],
     timeoutSeconds: 540,
     memory: "1GiB"
 }, async (req, res) => {
     try {
+        const force = String(req.query.force || req.body?.force || '').toLowerCase() === 'true';
+        if (!force) {
+            const guard = await isAutomationEnabled(db, 'auto_drafts');
+            if (!guard.enabled) {
+                return res.status(200).json({ success: false, skipped: true, reason: guard.reason, message: `Paused: ${guard.reason}. Use ?force=true to override.` });
+            }
+        }
         const limit = Number(req.query.limit || req.body?.limit || 2);
         const repairLimit = Number(req.query.repairLimit || req.body?.repairLimit || 1);
         const report = await require("./auto_drafts").runAutoDraftsJob(db, admin.firestore.FieldValue, { limit, repairLimit });
