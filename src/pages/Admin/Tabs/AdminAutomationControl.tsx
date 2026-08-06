@@ -135,7 +135,7 @@ const AdminAutomationControl = () => {
   const totalCount = Object.keys(settings.features).length;
   const categories = ['all', 'ai', 'scrape', 'content', 'notify', 'seo', 'system'] as const;
 
-  const filteredFeatures = Object.entries(DEFAULT_FEATURES).filter(([key, meta]) => {
+  const filteredFeatures = Object.entries(DEFAULT_FEATURES).filter(([, meta]) => {
     if (filterCategory === 'all') return true;
     return meta.category === filterCategory;
   });

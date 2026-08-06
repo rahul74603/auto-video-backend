@@ -1,8 +1,17 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+/**
+ * patch-workflows.js — One-click automation guard installer for GitHub Actions
+ * Run from project root: node tools/patch-workflows.js
+ * 
+ * What it does:
+ * - Adds 🛑 Check Automation Switch step to all cost-bearing workflows
+ * - Makes later steps conditional on enabled == true
+ * - Uses ai_backend/check_automation.js which reads Firestore system_settings/automation
+ * 
+ * Safe to run multiple times — skips if already patched.
+ */
+
+const fs = require('fs');
+const path = require('path');
 
 const workflowsDir = path.join(__dirname, '..', '.github', 'workflows');
 
@@ -62,6 +71,7 @@ function createCheckStep(feature, hasAiBackendWorkdir) {
   }
 }
 
+// Special handling for fast_track and telegram_alert (separate jobs)
 function patchFastTrack(filePath) {
   const content = `
 name: Fast Track Scraper
@@ -160,13 +170,13 @@ jobs:
             const payload = context.payload.client_payload;
             const jobData = payload.jobData;
             const docId = payload.docId;
-            const type = payload.type;
+            const type = payload.type; // 'JOB' or 'FAST_TRACK'
 
             const botToken = process.env.BOT_TOKEN;
             const chatId = process.env.CHAT_ID;
 
             if (!botToken || !chatId) {
-                console.error("❌ Missing secrets!");
+                console.error("❌ GitHub Secrets (BOT_TOKEN or CHAT_ID) are missing!");
                 return;
             }
 
@@ -180,12 +190,16 @@ jobs:
                 message += \`🏢 <b>Dept:</b> \${jobData.organization || 'Govt Dept'}\\\\n\` +
                            \`🎓 <b>Qualification:</b> \${jobData.qualification || 'Check Details'}\\\\n\` +
                            \`⏳ <b>Last Date:</b> \${jobData.lastDate || 'Apply Soon'}\\\\n\\\\n\`;
+            } else {
+                message += \`\\\\n\`;
             }
 
             message += \`📖 <b>Full Details Here:</b>\\\\n\${url}\\\\n\\\\n\` +
                        \`🚀 <i>Join @studygyaan_official for updates!</i>\`;
 
             const apiUrl = \`https://api.telegram.org/bot\${botToken}/sendMessage\`;
+
+            console.log(\`Sending message for: \${title}\`);
 
             try {
                 const response = await fetch(apiUrl, {
@@ -198,9 +212,13 @@ jobs:
                         disable_web_page_preview: false
                     })
                 });
+                
                 const result = await response.json();
-                if (result.ok) console.log("✅ Telegram Sent!");
-                else console.error("❌ Telegram Error:", result);
+                if (result.ok) {
+                    console.log("✅ Telegram Message Sent Successfully via GitHub Actions!");
+                } else {
+                    console.error("❌ Telegram API Error:", result);
+                }
             } catch(error) {
                 console.error("❌ Fetch failed:", error);
             }
@@ -211,17 +229,25 @@ jobs:
 
 function patchGeneric(filePath, feature) {
   let content = fs.readFileSync(filePath, 'utf8');
+
   if (content.includes('Check Automation Switch') || content.includes('check_automation')) {
     console.log(`⏭️  ${path.basename(filePath)} already patched — skip`);
     return;
   }
+
   const hasAiBackendWorkdir = content.includes('working-directory: ai_backend');
   const checkStep = createCheckStep(feature, hasAiBackendWorkdir);
+
+  // Insert after checkout
   if (content.includes('actions/checkout@v4')) {
+    // Find first checkout and insert after
     content = content.replace(/(uses:\s*actions\/checkout@v4[^\n]*\n)/, `$1\n${checkStep}\n`);
   } else {
+    // Fallback: insert after jobs:
     content = content.replace(/(jobs:\s*\n)/, `$1  # 🛑 Automation guard\n${checkStep}\n`);
   }
+
+  // Add if condition to all subsequent steps that have run: and no if:
   const lines = content.split('\n');
   let foundCheck = false;
   let output = [];
@@ -229,7 +255,9 @@ function patchGeneric(filePath, feature) {
     const line = lines[i];
     output.push(line);
     if (line.includes('id: automation_check')) foundCheck = true;
+    // After check, for each "- name:" that is followed soon by run: and no if:
     if (foundCheck && /^\s*- name:/.test(line) && !line.includes('Check Automation Switch')) {
+      // Look ahead 10 lines
       const snippet = lines.slice(i, i + 10).join('\n');
       if (!snippet.includes('if:') && snippet.includes('run:')) {
         const indent = (line.match(/^(\s*)- name:/) || ['', '      '])[1] + '  ';
@@ -237,27 +265,43 @@ function patchGeneric(filePath, feature) {
       }
     }
   }
+
   fs.writeFileSync(filePath, output.join('\n'), 'utf8');
   console.log(`✅ Patched ${path.basename(filePath)} -> ${feature}`);
 }
 
+// MAIN
 console.log('🔧 Patching workflows for automation guard...\n');
+
 if (!fs.existsSync(workflowsDir)) {
   console.error('❌ .github/workflows folder not found!');
   process.exit(1);
 }
+
 const files = fs.readdirSync(workflowsDir).filter(f => f.endsWith('.yml'));
+
 for (const file of files) {
   const filePath = path.join(workflowsDir, file);
+
+  // Skip CI, codeql, deploy, firebase_data — not cost-bearing
   if (['ci.yml', 'codeql.yml', 'deploy.yml', 'firebase_data.yml'].includes(file)) {
     console.log(`⏭️  ${file} skipped (not cost-bearing)`);
     continue;
   }
-  if (file === 'fast_track.yml') { patchFastTrack(filePath); continue; }
-  if (file === 'telegram_alert.yml') { patchTelegram(filePath); continue; }
+
+  if (file === 'fast_track.yml') {
+    patchFastTrack(filePath);
+    continue;
+  }
+  if (file === 'telegram_alert.yml') {
+    patchTelegram(filePath);
+    continue;
+  }
+
   const feature = mapping[file] || 'global';
   patchGeneric(filePath, feature);
 }
+
 console.log('\n✅ All workflows patched! Now run:');
 console.log('   git add .github/workflows/');
 console.log('   git commit -m "ci: add automation guard"');
