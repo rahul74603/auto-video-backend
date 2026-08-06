@@ -179,6 +179,40 @@ function repairArticleDeterministically(article, source, { applyMode = false } =
     }
   }
 
+  // 5. 🔥 AGGRESSIVE HALLUCINATION FIX — body me ungrounded money/date/percent claims ko safe text se replace
+  // Isse 2nd/3rd attempt me hi pass ho jata hai, loop infinite nahi chalta (user complaint fix)
+  if (index && !applyMode && article.contentHtml) {
+    const bodyClaims = extractClaims(article.contentHtml);
+    const ungroundedInBody = bodyClaims.filter(c => !isClaimGrounded(c, index.haystackNorm, index.sourceNumbers));
+    if (ungroundedInBody.length) {
+      let fixedHtml = article.contentHtml;
+      let replacedCount = 0;
+      for (const claim of ungroundedInBody.slice(0, 10)) { // max 10 replacements
+        // Skip if claim is date that looks like salary misclassified? Still replace with safe placeholder
+        const safeReplacement = claim.kind === 'money' 
+          ? 'Official Notification में देखें' 
+          : claim.kind === 'date' && /PMT|CTC|LPA|salary|वेतन|pay/i.test(claim.value + ' ' + fixedHtml.slice(0, 500))
+            ? 'Official Notification में देखें'
+            : null;
+        if (safeReplacement) {
+          // Escape special regex chars in claim value
+          const escaped = claim.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          try {
+            const re = new RegExp(escaped, 'g');
+            const before = fixedHtml;
+            fixedHtml = fixedHtml.replace(re, safeReplacement);
+            if (before !== fixedHtml) replacedCount++;
+          } catch {}
+        }
+      }
+      if (replacedCount > 0) {
+        article.contentHtml = fixedHtml;
+        article.wordCount = countWords(fixedHtml);
+        repairs.push(`body:replaced-ungrounded:${replacedCount}`);
+      }
+    }
+  }
+
   return repairs;
 }
 

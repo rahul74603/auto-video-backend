@@ -82,7 +82,9 @@ function normalizeForCompare(text) {
 }
 
 function numberSetOf(text) {
-  const normalized = normalizeDigits(String(text || "")).replace(/(\d),(?=\d{3}\b)/g, "$1");
+  // Fix: Indian numbering 1,60,000 and western 160,000 both -> 160000
+  // Remove all commas between digits and normalize
+  const normalized = normalizeDigits(String(text || "")).replace(/(\d),(?=\d)/g, "$1$2").replace(/,/g, "");
   const matches = normalized.match(/\d+/g) || [];
   const nums = new Set();
   for (const m of matches) {
@@ -117,7 +119,7 @@ const DATE_PATTERNS = [
   /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s*\d{4}\b/gi
 ];
 
-const MONEY_PATTERN = /(?:₹|rs\.?|रुपये|रु\.?|inr)\s*\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s*(?:₹|रुपये|rs\.?)/gi;
+const MONEY_PATTERN = /(?:₹|rs\.?|रुपये|रु\.?|inr)\s*\d[\d,]*(?:\.\d+)?(?:\s*(?:PMT|CTC|LPA|per\s*month|\/month))?|\d[\d,]*(?:\.\d+)?\s*(?:₹|रुपये|rs\.?|PMT|CTC|LPA|per\s*month|\/month)/gi;
 const VACANCY_PATTERN = /\b\d[\d,]*\s*(?:पद|पदों|posts?|vacanc(?:y|ies)|वैकेंसी|वैकेन्सी|भर्तियों|भर्ती|seats?)/gi;
 const PERCENT_PATTERN = /\b\d{1,3}(?:\.\d+)?\s*%/g;
 const AGE_PATTERN = /\b(?:यह भी:|आयु(?:\s*सीमा)?|age(?:\s*limit)?)\D{0,20}?(\d{2})\s*(?:से|to|और|वर्ष|years?|yrs?)/gi;
