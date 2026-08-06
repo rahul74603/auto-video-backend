@@ -6,18 +6,38 @@ on:
     - cron: '0 5 * * *' # रोज़ सुबह 10:30 AM IST
 
 jobs:
+  # 🛑 Automation guard
+      - name: 🛑 Check Automation Switch (pdf_gen)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        working-directory: ai_backend
+        run: |
+          npm install --ignore-scripts --legacy-peer-deps axios firebase-admin 2>&1 | tail -n 5 || true
+          node check_automation.js pdf_gen || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ pdf_gen paused — skipping workflow"
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
   pdf-engine:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
+        if: steps.automation_check.outputs.enabled == 'true'
         uses: actions/checkout@v3
 
       - name: Setup Node.js
+        if: steps.automation_check.outputs.enabled == 'true'
         uses: actions/setup-node@v3
         with:
           node-version: '20'
 
       - name: Install Dependencies
+        if: steps.automation_check.outputs.enabled == 'true'
         run: |
           # Ghostscript इन्सटॉल करें ताकि PDF कंप्रेस हो सके
           sudo apt-get update && sudo apt-get install -y ghostscript
@@ -25,6 +45,7 @@ jobs:
           npm install puppeteer firebase-admin dotenv @google/generative-ai --legacy-peer-deps
 
       - name: 🔥 Run AutoPDF Engine
+        if: steps.automation_check.outputs.enabled == 'true'
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

@@ -22,7 +22,25 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
+      - name: 🛑 Check Automation Switch (video_maker)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
+        run: |
+          node check_automation.js video_maker || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ video_maker paused — skipping workflow"
+            exit 0
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
+
       - name: 🔍 Debug Data
+        if: steps.automation_check.outputs.enabled == 'true'
         run: |
           echo "================================"
           echo "Event : ${{ github.event_name }}"
@@ -34,11 +52,13 @@ jobs:
           echo "================================"
 
       - name: 📦 Setup Node.js
+        if: steps.automation_check.outputs.enabled == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: 🔧 System Dependencies
+        if: steps.automation_check.outputs.enabled == 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y \
@@ -50,6 +70,7 @@ jobs:
             librsvg2-dev
 
       - name: 📦 NPM Install
+        if: steps.automation_check.outputs.enabled == 'true'
         run: |
           rm -rf node_modules package-lock.json
           npm install

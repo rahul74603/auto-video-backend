@@ -17,28 +17,50 @@ jobs:
       - name: 📥 Checkout Code
         uses: actions/checkout@v4
 
+      - name: 🛑 Check Automation Switch (auto_blog)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
+        run: |
+          node check_automation.js auto_blog || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ auto_blog paused — skipping workflow"
+            exit 0
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
+
       # 🔥 Node FIX (stable)
       - name: ⚙️ Setup Node.js
+        if: steps.automation_check.outputs.enabled == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       # 🔍 Debug (confirm version)
       - name: 🔎 Check Node Version
+        if: steps.automation_check.outputs.enabled == 'true'
         run: node -v
 
       # 🧹 Clean install (important)
       - name: 🧹 Clean node_modules
+        if: steps.automation_check.outputs.enabled == 'true'
         run: |
           rm -rf node_modules
           rm -rf package-lock.json
 
       # 📦 Install dependencies
       - name: 📦 Install Dependencies
+        if: steps.automation_check.outputs.enabled == 'true'
         run: npm install
 
       # 🚀 Run Auto Blogger
       - name: 🤖 Run Auto Blogger Script
+        if: steps.automation_check.outputs.enabled == 'true'
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

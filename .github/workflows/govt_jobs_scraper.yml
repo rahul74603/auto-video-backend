@@ -18,15 +18,35 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
+      - name: 🛑 Check Automation Switch (govt_jobs)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
+        run: |
+          node check_automation.js govt_jobs || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ govt_jobs paused — skipping workflow"
+            exit 0
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
+
       - name: 📦 Setup Node
+        if: steps.automation_check.outputs.enabled == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'    # ✅ 24 से 20 (stable)
 
       - name: 📦 Install Dependencies
+        if: steps.automation_check.outputs.enabled == 'true'
         run: npm install --legacy-peer-deps
 
       - name: 🤖 Run Scraper
+        if: steps.automation_check.outputs.enabled == 'true'
         run: |
           node -e "
             require('./govt_jobs.js')

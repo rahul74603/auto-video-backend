@@ -7,18 +7,38 @@ on:
   workflow_dispatch:
 
 jobs:
+  # 🛑 Automation guard
+      - name: 🛑 Check Automation Switch (mock_test)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        working-directory: ai_backend
+        run: |
+          npm install --ignore-scripts --legacy-peer-deps axios firebase-admin 2>&1 | tail -n 5 || true
+          node check_automation.js mock_test || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ mock_test paused — skipping workflow"
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
   run-mock-test-video:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
+        if: steps.automation_check.outputs.enabled == 'true'
         uses: actions/checkout@v3
 
       - name: Setup Node.js
+        if: steps.automation_check.outputs.enabled == 'true'
         uses: actions/setup-node@v3
         with:
           node-version: '20'
 
       - name: Install Dependencies
+        if: steps.automation_check.outputs.enabled == 'true'
         run: |
           npm install --legacy-peer-deps
           if [ -d "ai_backend" ]; then cd ai_backend && npm install --legacy-peer-deps || true; fi

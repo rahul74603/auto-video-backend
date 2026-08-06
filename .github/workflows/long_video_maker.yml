@@ -7,6 +7,23 @@
   #workflow_dispatch: 
 
 #jobs:
+  # 🛑 Automation guard
+      - name: 🛑 Check Automation Switch (long_video)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        working-directory: ai_backend
+        run: |
+          npm install --ignore-scripts --legacy-peer-deps axios firebase-admin 2>&1 | tail -n 5 || true
+          node check_automation.js long_video || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ long_video paused — skipping workflow"
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
   #run-long-video:
     #runs-on: ubuntu-latest
     #steps:

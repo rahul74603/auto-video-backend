@@ -6,7 +6,33 @@ on:
   workflow_dispatch: 
 
 jobs:
+  check-automation:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.automation_check.outputs.enabled }}
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🛑 Check Automation Switch (fast_track)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        working-directory: ai_backend
+        run: |
+          npm install --ignore-scripts --legacy-peer-deps axios firebase-admin 2>&1 | tail -n 5 || true
+          node check_automation.js fast_track || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ fast_track paused — skipping workflow"
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
   run-api:
+    needs: check-automation
+    if: needs.check-automation.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Fast Track API

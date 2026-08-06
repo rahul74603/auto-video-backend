@@ -16,18 +16,38 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: 🛑 Check Automation Switch (mock_test)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        working-directory: ai_backend
+        run: |
+          npm install --ignore-scripts --legacy-peer-deps axios firebase-admin 2>&1 | tail -n 5 || true
+          node check_automation.js mock_test || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ mock_test paused — skipping workflow"
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
+
       - name: Setup Node.js
+        if: steps.automation_check.outputs.enabled == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Install Packages
+        if: steps.automation_check.outputs.enabled == 'true'
         # अगर आपके फोल्डर का नाम ai_backend है, तो इसे ऐसा ही रहने दें
         run: |
           cd ai_backend
           npm install firebase-admin @google/generative-ai axios dotenv
 
       - name: Run Auto Mock Generator
+        if: steps.automation_check.outputs.enabled == 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

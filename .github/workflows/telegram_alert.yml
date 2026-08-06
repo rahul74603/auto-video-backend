@@ -3,9 +3,36 @@ name: Send Telegram Alert
 on:
   repository_dispatch:
     types: [send_telegram_alert]
+  workflow_dispatch:
 
 jobs:
+  check-automation:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.automation_check.outputs.enabled }}
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🛑 Check Automation Switch (telegram_drafts)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        working-directory: ai_backend
+        run: |
+          npm install --ignore-scripts --legacy-peer-deps axios firebase-admin 2>&1 | tail -n 5 || true
+          node check_automation.js telegram_drafts || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ telegram_drafts paused — skipping"
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
   send_message:
+    needs: check-automation
+    if: needs.check-automation.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Send Telegram Message via GitHub Script
@@ -18,36 +45,32 @@ jobs:
             const payload = context.payload.client_payload;
             const jobData = payload.jobData;
             const docId = payload.docId;
-            const type = payload.type; // 'JOB' or 'FAST_TRACK'
+            const type = payload.type;
 
             const botToken = process.env.BOT_TOKEN;
             const chatId = process.env.CHAT_ID;
 
             if (!botToken || !chatId) {
-                console.error("❌ GitHub Secrets (BOT_TOKEN or CHAT_ID) are missing!");
+                console.error("❌ Missing secrets!");
                 return;
             }
 
             let title = jobData.title || 'Official Update';
             let url = `https://studygyaan.in/${type === 'JOB' ? 'job' : 'update'}/${docId}`;
 
-            let message = `🚨 <b>New Update Alert!</b> 🚨\n\n` +
-                          `📌 <b>Title:</b> ${title}\n`;
+            let message = `🚨 <b>New Update Alert!</b> 🚨\\n\\n` +
+                          `📌 <b>Title:</b> ${title}\\n`;
 
             if (type === 'JOB') {
-                message += `🏢 <b>Dept:</b> ${jobData.organization || 'Govt Dept'}\n` +
-                           `🎓 <b>Qualification:</b> ${jobData.qualification || 'Check Details'}\n` +
-                           `⏳ <b>Last Date:</b> ${jobData.lastDate || 'Apply Soon'}\n\n`;
-            } else {
-                message += `\n`; // Fast Track formatting
+                message += `🏢 <b>Dept:</b> ${jobData.organization || 'Govt Dept'}\\n` +
+                           `🎓 <b>Qualification:</b> ${jobData.qualification || 'Check Details'}\\n` +
+                           `⏳ <b>Last Date:</b> ${jobData.lastDate || 'Apply Soon'}\\n\\n`;
             }
 
-            message += `📖 <b>Full Details Here:</b>\n${url}\n\n` +
+            message += `📖 <b>Full Details Here:</b>\\n${url}\\n\\n` +
                        `🚀 <i>Join @studygyaan_official for updates!</i>`;
 
             const apiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
-
-            console.log(`Sending message for: ${title}`);
 
             try {
                 const response = await fetch(apiUrl, {
@@ -60,13 +83,9 @@ jobs:
                         disable_web_page_preview: false
                     })
                 });
-                
                 const result = await response.json();
-                if (result.ok) {
-                    console.log("✅ Telegram Message Sent Successfully via GitHub Actions!");
-                } else {
-                    console.error("❌ Telegram API Error:", result);
-                }
+                if (result.ok) console.log("✅ Telegram Sent!");
+                else console.error("❌ Telegram Error:", result);
             } catch(error) {
                 console.error("❌ Fetch failed:", error);
             }
