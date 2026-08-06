@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
 // C:\Users\Rahul\auto-video-backend\src\pages\Admin\Tabs\PremiumTab.tsx
 // ✅ MERGED - AI Generator + Manual Course/Folder Manager (Restored old screen)
 

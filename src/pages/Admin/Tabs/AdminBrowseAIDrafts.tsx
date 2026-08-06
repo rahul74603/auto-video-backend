@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
 import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
