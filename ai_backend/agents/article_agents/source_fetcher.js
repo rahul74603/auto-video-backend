@@ -445,10 +445,11 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
 
     if (!response) {
       const status = lastErr?.response?.status;
+      const isPdfUrl = parsed.toString().toLowerCase().endsWith('.pdf');
       const wrapped = new Error(
-        `Source page fetch nahi ho paya${status ? ` (site ne status ${status} diya — shayad block kiya)` : ""}: ${lastErr.message}` +
-          (isTimeout
-            ? " — 💡 Site humara server block kar rahi hai (sarkari site). ⭐ AB solution: upar link ke SAATH niche wale box me us page/PDF ka pura TEXT copy-paste kar do — article text se hi ban jayega."
+        `Source ${isPdfUrl ? 'PDF' : 'page'} fetch nahi ho paya${status ? ` (site ne status ${status} diya — shayad Cloudflare block)` : ""}: ${lastErr.message}` +
+          (isTimeout || isPdfUrl || status === 502 || status === 403
+            ? " — 💡 Site ne humara cloud server block kiya hai (SRCC/HPSC jaise Cloudflare sites). ⭐ SOLUTION: 📄 UPLOAD BUTTON se PDF file khud upload karo — text tumhare browser me hi nikal jayega, ya niche Source Text box me PDF ka pura text copy-paste karke GENERATE dabao. Link upar bhara rahe — Links box ke liye zaroori hai. Jina-ai fallback bhi try kiya par fail hua."
             : "")
       );
       wrapped.code = "SOURCE_FETCH_FAILED";
