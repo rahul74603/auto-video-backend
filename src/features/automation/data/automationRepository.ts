@@ -43,6 +43,7 @@ export const DEFAULT_FEATURES: Record<string, { label: string; description: stri
   fb_post: { label: 'Facebook Auto Post', description: 'New post pe FB page pe auto share', icon: '👍', category: 'notify' },
   payment_checker: { label: 'Payment Checker', description: 'Payment verification auto', icon: '💳', category: 'system' },
   note_processor: { label: 'Note Processor', description: 'Notes processing workflow', icon: '📝', category: 'content' },
+  seo_master: { label: 'SEO Master Agent (6hr + Daily)', description: 'Pure project SEO control, connections guardian, trending', icon: '🚀', category: 'seo' },
 };
 
 export const getDefaultSettings = (): AutomationSettings => ({

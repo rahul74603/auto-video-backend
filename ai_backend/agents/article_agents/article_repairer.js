@@ -31,6 +31,7 @@ const {
   numberSetOf
 } = require("./fact_quality_reviewer");
 const { harvestFactsDates } = require("./facts_date_harvester");
+const { harvestSmartFacts } = require("./smart_facts_harvester");
 const {
   ARTICLE_TYPES,
   WORD_TARGET_MIN_JOB,
@@ -152,6 +153,10 @@ function repairArticleDeterministically(article, source, { applyMode = false } =
   // 3. facts dates harvest — body ki dates khaali info-box me bharo (JOB only)
   const filled = harvestFactsDates(article);
   for (const field of filled) repairs.push(`facts:${field}:harvested-from-body`);
+
+  // 3b. SMART FACTS — salary, vacancy, title, org, qualification etc.
+  const smartFilled = harvestSmartFacts(article, source);
+  for (const field of smartFilled) repairs.push(`facts:${field}:smart-harvested`);
 
   // 4. Ungrounded FAQs DROP — sirf jab 4+ FAQs bachti hon (reviewer min 4)
   //    aur word-floor na toot'ta ho (reviewer word-count bhi check karta hai).

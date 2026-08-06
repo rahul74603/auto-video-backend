@@ -533,14 +533,14 @@ exports.scheduledAutoDrafts = onSchedule({
     return require("./auto_drafts").runAutoDraftsJob(db, admin.firestore.FieldValue, { limit: 2, repairLimit: 2 });
 });
 
-// 🔁 4D. RETRY MACHINE — har 10 minute: jo draft "ready for publish" (review
+// 🔁 4D. RETRY MACHINE — har 30 minute (user request 30-40 min): jo draft "ready for publish" (review
 // PASS) nahi hua, use dobara regenerate karo (pichli review issues ke saath);
 // har cycle me pipeline ka self-healing loop khud 3 writer-attempts leta hai.
 // Ready hote hi Telegram pe ✅ PUBLISH approval card jata hai.
 // + 1 fresh candidate bhi. Khali queue pe kuch nahi hota (AI call zero).
-// 🛑 Automation guard
+// 🛑 Automation guard — smart facts harvester (salary, dates, titles) ke saath
 exports.scheduledAutoDraftRetry = onSchedule({
-    schedule: "every 10 minutes",
+    schedule: "every 30 minutes",
     timeZone: "Asia/Kolkata",
     secrets: ["GEMINI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_ADMIN_CHAT_ID"],
     timeoutSeconds: 540,
@@ -600,6 +600,74 @@ exports.autoImageJobDrafts = onDocumentWritten("job_drafts/{docId}", (event) => 
 
 exports.autoImageFastTrack = onDocumentWritten("fast_track_drafts/{docId}", (event) => {
     return require('./autoImage').autoImageFastTrack(event);
+});
+
+/* ============ 🤖 SEO MASTER AGENT — Pure project ka SEO + Connections Guardian ============ */
+// Smart facts harvester: salary, dates, titles, vacancy, org sab pehchanta hai
+// Har 30-40 min me fetch draft jobs/fast-tracks ko regenerate + Telegram
+// SEO control, connections jodke rakhna, gadbad thik karna, Google trending
+
+// 6hrly SEO Master — deep audit + connection health + auto-fix
+exports.scheduledSEOMaster6Hourly = onSchedule({
+    schedule: "every 6 hours",
+    timeZone: "Asia/Kolkata",
+    secrets: ["GEMINI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_ADMIN_CHAT_ID", "SERVICE_ACCOUNT_JSON"],
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    maxInstances: 1
+}, async () => {
+    const guard = await isAutomationEnabled(db, 'google_indexing');
+    if (!guard.enabled) {
+        console.log(`⏸️ SEO Master 6hr skipped — ${guard.reason}`);
+        return { skipped: true, reason: guard.reason };
+    }
+    const { runSEOMasterAgent } = require("./agents/seo_master_agent");
+    return runSEOMasterAgent(db, admin.firestore.FieldValue, { maxUrls: 100 });
+});
+
+// Daily 9am IST — Trending check + Telegram summary
+exports.scheduledSEOMasterDaily = onSchedule({
+    schedule: "every day 09:00",
+    timeZone: "Asia/Kolkata",
+    secrets: ["GEMINI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_ADMIN_CHAT_ID", "SERVICE_ACCOUNT_JSON"],
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    maxInstances: 1
+}, async () => {
+    const guard = await isAutomationEnabled(db, 'google_indexing');
+    if (!guard.enabled) {
+        console.log(`⏸️ SEO Master Daily skipped — ${guard.reason}`);
+        return { skipped: true, reason: guard.reason };
+    }
+    const { runSEOMasterAgent } = require("./agents/seo_master_agent");
+    return runSEOMasterAgent(db, admin.firestore.FieldValue, { maxUrls: 150, isDaily: true });
+});
+
+// Manual trigger for SEO Master (admin)
+exports.triggerSEOMaster = onRequest({
+    secrets: ["GEMINI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_ADMIN_CHAT_ID", "SERVICE_ACCOUNT_JSON"],
+    timeoutSeconds: 540,
+    memory: "1GiB"
+}, async (req, res) => {
+    try {
+        const force = String(req.query.force || req.body?.force || '').toLowerCase() === 'true';
+        if (!force) {
+            const guard = await isAutomationEnabled(db, 'google_indexing');
+            if (!guard.enabled) {
+                return res.status(200).json({ success: false, skipped: true, reason: guard.reason });
+            }
+        }
+        const { runSEOMasterAgent } = require("./agents/seo_master_agent");
+        const report = await runSEOMasterAgent(db, admin.firestore.FieldValue, { 
+            maxUrls: Number(req.query.maxUrls || 120),
+            isDaily: String(req.query.daily || '').toLowerCase() === 'true',
+            force
+        });
+        return res.json({ success: true, ...report });
+    } catch (e) {
+        console.error("SEO Master error:", e);
+        return res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 /* ============ AUTO SEO INDEXING (naya public page bante hi Google/Bing ping) ============ */
