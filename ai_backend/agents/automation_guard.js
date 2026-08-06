@@ -28,6 +28,7 @@
  *     payment_checker: true/false,
  *     note_processor: true/false,
  *     premium_notes: true/false
+ *     seo_master: true/false
  *   }
  * }
  * 
