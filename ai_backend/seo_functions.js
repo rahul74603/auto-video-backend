@@ -116,7 +116,19 @@ exports.generateSitemapMain = onRequest({
             xml += `  </url>\n`;
         });
 
-        xml += `</urlset>`;
+        xml += `        // ============ COURSES ===========
+        try {
+            const coursesSnap = await db.collection("courses").orderBy("createdAt", "desc").limit(1000).get();
+            coursesSnap.forEach(doc => {
+                const data = doc.data();
+                if (!hasUsefulTitle(data)) return;
+                const slug = safeXml(doc.id);
+                const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
+                xml += `  <url>\n    <loc>${WEBSITE_URL}/course/${slug}</loc>\n    <lastmod>${updateTime}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
+            });
+        } catch (e) { console.error("❌ Courses error:", e.message); }
+
+        xml += `</urlset>`;`;
 
         res.set('Cache-Control', 'public, max-age=3600, s-maxage=7200');
         res.set('Content-Type', 'text/xml; charset=utf-8');
@@ -144,7 +156,7 @@ exports.generateSitemapBlogs = onRequest({
 
         const snap = await db.collection("blogs")
             .orderBy("createdAt", "desc")
-            .limit(1000)
+            .limit(5000)
             .get();
 
         snap.forEach(doc => {
@@ -198,7 +210,7 @@ exports.generateSitemapJobs = onRequest({
 
         const snap = await db.collection("jobs")
             .orderBy("createdAt", "desc")
-            .limit(1000)
+            .limit(5000)
             .get();
 
         snap.forEach(doc => {
@@ -250,7 +262,7 @@ exports.generateSitemapTests = onRequest({
 
         const snap = await db.collection("mock_tests")
             .orderBy("createdAt", "desc")
-            .limit(500)
+            .limit(2000)
             .get();
 
         snap.forEach(doc => {
@@ -295,7 +307,7 @@ exports.generateSitemapStories = onRequest({
 
         const snap = await db.collection("web_stories")
             .orderBy("createdAt", "desc")
-            .limit(500)
+            .limit(2000)
             .get();
 
         snap.forEach(doc => {
@@ -346,7 +358,7 @@ exports.generateSitemapUpdates = onRequest({
 
         const snap = await db.collection("fast_track")
             .orderBy("createdAt", "desc")
-            .limit(1000)
+            .limit(5000)
             .get();
 
         snap.forEach(doc => {
@@ -553,7 +565,7 @@ exports.generateSitemap = onRequest({
         try {
             const blogsSnap = await db.collection("blogs")
                 .orderBy("createdAt", "desc")
-                .limit(1000)
+                .limit(5000)
                 .get();
             
             blogsSnap.forEach(doc => {
@@ -583,7 +595,7 @@ exports.generateSitemap = onRequest({
         try {
             const jobsSnap = await db.collection("jobs")
                 .orderBy("createdAt", "desc")
-                .limit(1000)
+                .limit(5000)
                 .get();
             
             jobsSnap.forEach(doc => {
@@ -614,7 +626,7 @@ exports.generateSitemap = onRequest({
         try {
             const testsSnap = await db.collection("mock_tests")
                 .orderBy("createdAt", "desc")
-                .limit(500)
+                .limit(2000)
                 .get();
             
             testsSnap.forEach(doc => {
@@ -638,7 +650,7 @@ exports.generateSitemap = onRequest({
         try {
             const storiesSnap = await db.collection("web_stories")
                 .orderBy("createdAt", "desc")
-                .limit(500)
+                .limit(2000)
                 .get();
             
             storiesSnap.forEach(doc => {
@@ -668,7 +680,7 @@ exports.generateSitemap = onRequest({
         try {
             const fastSnap = await db.collection("fast_track")
                 .orderBy("createdAt", "desc")
-                .limit(500)
+                .limit(2000)
                 .get();
             
             fastSnap.forEach(doc => {
