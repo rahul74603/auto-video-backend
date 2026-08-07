@@ -24,6 +24,7 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
         run: |
+          npm install --ignore-scripts --legacy-peer-deps firebase-admin axios 2>&1 | tail -n 3 || true
           node check_automation.js auto_blog || STATUS=$?
           if [ "$STATUS" = "78" ]; then
             echo "enabled=false" >> $GITHUB_OUTPUT
