@@ -27,6 +27,7 @@ const {
   publishDraftRecord,
   sanitizeOriginRef
 } = require("./article_pipeline");
+const { runBestOfN } = require("./best_ai_orchestrator");
 const { fetchAndExtractSource, assertSafeSourceUrl } = require("./source_fetcher");
 const { searchAndFetchSource, buildSearchQuery } = require("./web_searcher");
 const { EDITORIAL_AUTHOR, ARTICLE_TYPES, isBlockedDomain } = require("./constants");
@@ -255,9 +256,11 @@ function registerArticleAgentRoutes(app, db) {
       }
 
       const existing = await collectExistingContent(db, type);
-      const draft = await runGeneratePipeline(
+      // BEST-OF-5 for manual generate — user demand: best of best agent, 1st fail to 2nd/3rd pass
+      const draft = await runBestOfN(
         { type, sourceUrl: source.url, instructions, mode, source, existing },
-        {}
+        {},
+        5
       );
       draft.autoSearched = autoSearched;
       draft.searchQuery = searchQuery;
@@ -368,9 +371,8 @@ function registerArticleAgentRoutes(app, db) {
 
       const instructions = String(req.body?.instructions ?? current.instructions ?? "").slice(0, 1500);
       const existing = await collectExistingContent(db, type, { excludeDraftId: draftId });
-      // ⭐ REGENERATE feedback loop: pichli failed review ke issues writer tak pahunchao,
-      // warna writer andher me wahi ungrounded claims dobara likhta hai (death-loop).
-      const fresh = await runGeneratePipeline({
+      // ⭐ REGENERATE feedback loop + BEST-OF-3 — pichli failings + best of best
+      const fresh = await runBestOfN({
         type,
         sourceUrl: current.sourceUrl,
         instructions,
@@ -378,7 +380,7 @@ function registerArticleAgentRoutes(app, db) {
         source,
         existing,
         feedbackIssues: current.reviewReport?.issues
-      });
+      }, {}, 3);
 
       await db.collection(DRAFT_COLLECTION).doc(draftId).set(
         {

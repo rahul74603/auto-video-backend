@@ -19,6 +19,7 @@
 const { overlapsAny } = require("./agents/article_agents/title_utils");
 const { plainText } = require("./agents/article_agents/article_html_utils");
 const { splitReviewIssues } = require("./agents/article_agents/article_repairer");
+const { runBestOfN } = require("./agents/article_agents/best_ai_orchestrator");
 
 const JOBS_DRAFTS = "job_drafts";
 const FAST_TRACK = "fast_track";
@@ -183,15 +184,17 @@ async function processCandidate(db, FieldValue, candidate, deps) {
     const cleanType = deps.cleanType;
     const existing = await deps.collectExistingContent(db, cleanType(candidate.type));
 
-    // 3) AI pipeline (auto mode = sirf draft, publish NEVER)
-    const draft = await deps.runGeneratePipeline({
+    // 3) AI pipeline — BEST-OF-3 for auto drafts (best of best agent)
+    // User demand: 1st fail ho to 2nd/3rd me thik ho jaye, na ki infinite loop
+    const pipelineFn = deps.runBestOfN || deps.runGeneratePipeline;
+    const draft = await pipelineFn({
         type: cleanType(candidate.type),
         sourceUrl: source.url,
         instructions: "",
         mode: "auto",
         source,
         existing
-    });
+    }, {}, 3); // best-of-3 for auto (cost balance)
 
     // 4) Draft save + origin mark
     const nowIso = new Date().toISOString();
@@ -323,7 +326,8 @@ async function processRepair(db, FieldValue, docSnap, deps) {
     const feedbackIssues = current.reviewReport && Array.isArray(current.reviewReport.issues)
         ? current.reviewReport.issues
         : undefined;
-    const fresh = await deps.runGeneratePipeline({
+    const pipelineFn2 = deps.runBestOfN || deps.runGeneratePipeline;
+    const fresh = await pipelineFn2({
         type,
         sourceUrl: current.sourceUrl,
         instructions: current.instructions || "",
@@ -331,7 +335,7 @@ async function processRepair(db, FieldValue, docSnap, deps) {
         source,
         existing,
         feedbackIssues
-    });
+    }, {}, 3); // best-of-3 for repair
 
     await db.collection(deps.DRAFT_COLLECTION).doc(draftId).set(
         {
@@ -402,8 +406,10 @@ async function runAutoDraftsJob(db, FieldValue, options) {
     const routes = require("./agents/article_agents/article_routes");
     const bot = require("./telegram_draft_bot");
 
+    const { runBestOfN } = require("./agents/article_agents/best_ai_orchestrator");
     const deps = {
         runGeneratePipeline: pipeline.runGeneratePipeline,
+        runBestOfN: runBestOfN,
         fetchAndExtractSource: fetcher.fetchAndExtractSource,
         searchAndFetchSource: searcher.searchAndFetchSource,
         collectExistingContent: routes.collectExistingContent,
