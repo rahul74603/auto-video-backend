@@ -14,6 +14,10 @@ import {
     Globe, ShieldCheck, Eye, Check
 } from 'lucide-react';
 import SEO from '../components/SEO';
+import Breadcrumbs from '../components/Breadcrumbs';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
+import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
 
 // =========================================================
 // 🛠️ HELPERS
@@ -342,6 +346,18 @@ const JobDetails = () => {
             )}
 
             <div className="max-w-7xl mx-auto px-2 md:px-6">
+
+                {/* 🍞 Breadcrumbs — fixes orphan pages by adding internal links */}
+                {job && (
+                  <Breadcrumbs
+                    crumbs={buildBreadcrumbPath({
+                      title: job.title || 'Job Details',
+                      exam: job.category || job.organization || 'GENERAL',
+                      category: 'JOB' as any,
+                    })}
+                    className="mb-3 bg-white px-3 py-2 rounded-xl border shadow-sm"
+                  />
+                )}
 
                 {/* Back + Share Bar */}
                 <div className="flex items-center justify-between mb-4">
@@ -772,6 +788,23 @@ const JobDetails = () => {
                                             ))}
                                         </div>
                                     </div>
+                                )}
+
+                                {/* 🧭 Exam Hub Navigation — fixes orphan pages hub-and-spoke */}
+                                {job && (
+                                  <ExamHubNavigation exam={job.category || job.organization || 'GENERAL'} className="mt-6" />
+                                )}
+
+                                {/* 🔗 Related Content — auto-fixes orphan pages with relevant internal links */}
+                                {job && (
+                                  <RelatedContent
+                                    currentId={job.id}
+                                    exam={job.category || job.organization}
+                                    category={'JOB' as any}
+                                    title={job.title || ''}
+                                    limit={8}
+                                    className="mt-6"
+                                  />
                                 )}
 
                                 {/* ✅ Internal Links - /mock-tests FIX */}

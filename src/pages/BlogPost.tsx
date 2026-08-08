@@ -10,6 +10,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SEO from '../components/SEO';
+import Breadcrumbs from '../components/Breadcrumbs';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
+import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import type { BlogPostRecord, TimestampLike } from '@/types/firestore';
 
@@ -411,6 +415,18 @@ const BlogPost = () => {
                 </div>
             </header>
 
+            {/* 🍞 Breadcrumbs — fixes orphan pages */}
+            <div className="max-w-7xl mx-auto px-2 md:px-4 pt-4">
+              <Breadcrumbs
+                crumbs={buildBreadcrumbPath({
+                  title: blog?.title || 'Blog Post',
+                  exam: (blog?.category as string) || 'GENERAL',
+                  category: 'UPDATE' as any,
+                })}
+                className="bg-white px-3 py-2 rounded-xl border shadow-sm"
+              />
+            </div>
+
             {/* Main Content */}
             <main className="max-w-7xl mx-auto px-2 md:px-4 py-4 md:py-8">
                 <div className="flex flex-col md:flex-row gap-4 md:gap-8 items-start">
@@ -489,6 +505,17 @@ const BlogPost = () => {
                                         </p>
                                     )}
                                 </section>
+
+                                {/* 🧭 Exam Hub + Related Content — fixes orphan pages */}
+                                <ExamHubNavigation exam={(blog?.category as string) || 'GENERAL'} className="mt-8" />
+                                <RelatedContent
+                                  currentId={blog?.id || ''}
+                                  exam={blog?.category}
+                                  category={'UPDATE' as any}
+                                  title={blog?.title || ''}
+                                  limit={6}
+                                  className="mt-6"
+                                />
 
                                 {/* Internal Links */}
                                 <div className="bg-blue-50/50 p-6 rounded-[2rem] border border-blue-100 mt-8">
