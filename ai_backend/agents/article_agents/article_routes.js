@@ -256,11 +256,12 @@ function registerArticleAgentRoutes(app, db) {
       }
 
       const existing = await collectExistingContent(db, type);
-      // BEST-OF-5 for manual generate — user demand: best of best agent, 1st fail to 2nd/3rd pass
+      // BEST-OF-3 for manual generate — balance between quality and timeout (300s limit)
+      // 5 was causing 502 timeout (15 Gemini calls * 20s = 300s+). 3 = 9 calls max, ~180s
       const draft = await runBestOfN(
         { type, sourceUrl: source.url, instructions, mode, source, existing },
         {},
-        5
+        3
       );
       draft.autoSearched = autoSearched;
       draft.searchQuery = searchQuery;
