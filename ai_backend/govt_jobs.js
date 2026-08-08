@@ -721,6 +721,31 @@ exports.onJobPublishedNotify = onDocumentCreated({
     }
 
     // ─────────────────────────────────────
+    // STEP 4B: Social Media Orchestrator — Twitter, LinkedIn, Facebook, Insta, YouTube
+    // Respects automation guard (Pause All) and posts to all enabled platforms
+    // Just add keys in .env and GitHub Secrets — no code change needed
+    // ─────────────────────────────────────
+    try {
+        const { postToAllPlatforms } = require('./social_media/social_orchestrator');
+        const socialResult = await postToAllPlatforms({
+            type: 'JOB',
+            data: job,
+            url: jobUrl,
+            db: db,
+            FieldValue: admin.firestore.FieldValue
+        });
+        console.log(`📊 Social orchestrator: ${socialResult.summary}`);
+        // Save result to job doc for debugging
+        await db.collection("jobs").doc(jobId).update({
+            socialPostedAt: admin.firestore.FieldValue.serverTimestamp(),
+            socialSummary: socialResult.summary,
+            socialSucceeded: socialResult.succeeded.map(s => s.platform)
+        }).catch(() => {});
+    } catch (socialErr) {
+        console.error("Social orchestrator error (non-blocking):", socialErr.message);
+    }
+
+    // ─────────────────────────────────────
     // STEP 5: WhatsApp (अभी बंद है)
     // ─────────────────────────────────────
     /*
