@@ -1,0 +1,79 @@
+name: Auto Post to Twitter/X
+
+on:
+  repository_dispatch:
+    types: [twitter_post, social_media_post]
+  workflow_dispatch:
+    inputs:
+      title:
+        description: 'Post title/message'
+        required: false
+        default: 'StudyGyaan Update'
+      url:
+        description: 'URL to share'
+        required: false
+        default: 'https://studygyaan.in'
+
+jobs:
+  check-automation:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.automation_check.outputs.enabled }}
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      - name: 🛑 Check Automation Switch (twitter)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        working-directory: ai_backend
+        run: |
+          npm install --ignore-scripts --legacy-peer-deps firebase-admin axios 2>&1 | tail -n 3 || true
+          node check_automation.js twitter || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ twitter paused — skipping"
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
+  post_to_twitter:
+    needs: check-automation
+    if: needs.check-automation.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai_backend
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: 📦 Install Dependencies
+        run: npm install --ignore-scripts --legacy-peer-deps
+      - name: 🐦 Post to Twitter/X
+        env:
+          TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
+          TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
+          TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
+          TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+        run: |
+          node - << 'NODE'
+          const jobData = {
+            title: `${{ github.event.client_payload.jobData.title }}` || process.env.INPUT_TITLE || 'StudyGyaan Update',
+            slug: `${{ github.event.client_payload.jobData.slug }}` || '',
+            organization: `${{ github.event.client_payload.jobData.organization }}` || '',
+            lastDate: `${{ github.event.client_payload.jobData.lastDate }}` || '',
+            id: `${{ github.event.client_payload.jobData.id }}` || 'test'
+          };
+          const { postJobToTwitter } = require('./social_media/twitter_poster');
+          postJobToTwitter(jobData).then(r => {
+            console.log('Twitter result:', r);
+            process.exit(r.sent ? 0 : (r.reason === 'no-creds' ? 0 : 1));
+          });
+          NODE

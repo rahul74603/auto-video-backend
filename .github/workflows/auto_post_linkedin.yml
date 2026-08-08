@@ -1,0 +1,81 @@
+name: Auto Post to LinkedIn
+
+on:
+  repository_dispatch:
+    types: [linkedin_post, social_media_post]
+  workflow_dispatch:
+    inputs:
+      title:
+        description: 'Post title'
+        required: false
+        default: 'StudyGyaan Update'
+      url:
+        description: 'URL to share'
+        required: false
+        default: 'https://studygyaan.in'
+
+jobs:
+  check-automation:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.automation_check.outputs.enabled }}
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      - name: 🛑 Check Automation Switch (linkedin)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        working-directory: ai_backend
+        run: |
+          npm install --ignore-scripts --legacy-peer-deps firebase-admin axios 2>&1 | tail -n 3 || true
+          node check_automation.js linkedin || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ linkedin paused — skipping"
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
+  post_to_linkedin:
+    needs: check-automation
+    if: needs.check-automation.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai_backend
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: 📦 Install Dependencies
+        run: npm install --ignore-scripts --legacy-peer-deps
+      - name: 💼 Post to LinkedIn
+        env:
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_ORGANIZATION_ID: ${{ secrets.LINKEDIN_ORGANIZATION_ID }}
+          LINKEDIN_PERSON_ID: ${{ secrets.LINKEDIN_PERSON_ID }}
+          LINKEDIN_CLIENT_ID: ${{ secrets.LINKEDIN_CLIENT_ID }}
+          LINKEDIN_CLIENT_SECRET: ${{ secrets.LINKEDIN_CLIENT_SECRET }}
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+        run: |
+          node - << 'NODE'
+          const jobData = {
+            title: `${{ github.event.client_payload.jobData.title }}` || 'StudyGyaan Update',
+            slug: `${{ github.event.client_payload.jobData.slug }}` || '',
+            organization: `${{ github.event.client_payload.jobData.organization }}` || 'Govt Dept',
+            lastDate: `${{ github.event.client_payload.jobData.lastDate }}` || '',
+            vacancies: `${{ github.event.client_payload.jobData.vacancies }}` || '',
+            location: `${{ github.event.client_payload.jobData.location }}` || 'India',
+            id: `${{ github.event.client_payload.jobData.id }}` || 'test'
+          };
+          const { postJobToLinkedIn } = require('./social_media/linkedin_poster');
+          postJobToLinkedIn(jobData).then(r => {
+            console.log('LinkedIn result:', r);
+            process.exit(r.sent ? 0 : (r.reason === 'no-creds' ? 0 : 1));
+          });
+          NODE
