@@ -16,14 +16,13 @@
  * 
  * Env required:
  *   SERVICE_ACCOUNT_JSON (for Google Indexing API)
- *   INDEXNOW_KEY (generate from https://www.indexnow.org/ — create key file at root)
- *   Or uses existing auto_indexer logic
+ *   INDEXNOW_KEY (optional, defaults to studygyaan-indexnow-key-2026)
  * 
- * Cost: Indexing API 200/day default quota, IndexNow 10k/day
+ * Cost: Indexing API 200/day, IndexNow 10k/day
  * So run in batches: 200 Google + 1000 IndexNow per day
  */
 
-// Load .env from ai_backend folder and root
+// Load .env from multiple locations
 try { require('dotenv').config(); } catch {}
 try { require('dotenv').config({ path: '../.env' }); } catch {}
 try { require('dotenv').config({ path: './.env' }); } catch {}
@@ -31,40 +30,16 @@ try { require('dotenv').config({ path: './.env' }); } catch {}
 const admin = require('firebase-admin');
 const axios = require('axios');
 const { google } = require('googleapis');
+const fs = require('fs');
+const path = require('path');
 
 function initFirebase() {
   if (admin.apps.length) return;
 
-<<<<<<< HEAD
-  const saRaw = process.env.SERVICE_ACCOUNT_JSON;
-
-  if (!saRaw) {
-    console.error(`
-❌ SERVICE_ACCOUNT_JSON missing!
-
-How to fix:
-1. Go to Firebase Console: https://console.firebase.google.com/project/studymaterial-406ad/settings/serviceaccounts/adminsdk
-2. Click "Generate new private key" -> Download JSON file
-3. Option A - Set as env variable (PowerShell):
-   $env:SERVICE_ACCOUNT_JSON = (Get-Content -Raw .\service-account.json)
-   node bulk_indexing.js --limit=500 --type=jobs
-
-4. Option B - Put JSON file in ai_backend folder as service-account.json and set:
-   $env:GOOGLE_APPLICATION_CREDENTIALS = "C:\Users\Rahul\auto-video-backend\ai_backend\service-account.json"
-
-5. Option C - Create .env file in ai_backend folder with:
-   SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"studymaterial-406ad",...}'
-
-Current project will default to strategic-well-501911-f3 (wrong) if not set, causing PERMISSION_DENIED.
-=======
-  const fs = require('fs');
-  const path = require('path');
-
   let saRaw = process.env.SERVICE_ACCOUNT_JSON;
-  let creds = null;
   let fromFile = '';
 
-  // Try to auto-load service_account.json from common locations if env var missing
+  // Auto-load from common file locations if env var missing
   if (!saRaw) {
     const possiblePaths = [
       path.join(__dirname, 'service_account.json'),
@@ -72,16 +47,18 @@ Current project will default to strategic-well-501911-f3 (wrong) if not set, cau
       path.join(process.cwd(), 'service_account.json'),
       path.join(process.cwd(), 'service-account.json'),
       path.join(__dirname, '..', 'service_account.json'),
+      path.join(__dirname, 'credentials.json'),
     ];
     for (const p of possiblePaths) {
       try {
         if (fs.existsSync(p)) {
           const content = fs.readFileSync(p, 'utf8');
           const parsed = JSON.parse(content);
-          if (parsed.project_id) {
+          // Check if it's a service account (not OAuth client)
+          if (parsed.type === 'service_account' && parsed.project_id) {
             saRaw = content;
             fromFile = p;
-            console.log(`✅ Found service account file at: ${p} (project: ${parsed.project_id}) — using it`);
+            console.log(`✅ Found service account file at: ${p} (project: ${parsed.project_id})`);
             break;
           }
         }
@@ -89,14 +66,14 @@ Current project will default to strategic-well-501911-f3 (wrong) if not set, cau
     }
   }
 
-  // Try GOOGLE_APPLICATION_CREDENTIALS env var
+  // Try GOOGLE_APPLICATION_CREDENTIALS
   if (!saRaw) {
     const gac = process.env.GOOGLE_APPLICATION_CREDENTIALS;
     if (gac && fs.existsSync(gac)) {
       try {
         const content = fs.readFileSync(gac, 'utf8');
         const parsed = JSON.parse(content);
-        if (parsed.project_id) {
+        if (parsed.type === 'service_account' && parsed.project_id) {
           saRaw = content;
           fromFile = gac;
           console.log(`✅ Found service account via GOOGLE_APPLICATION_CREDENTIALS: ${gac}`);
@@ -109,82 +86,38 @@ Current project will default to strategic-well-501911-f3 (wrong) if not set, cau
     console.error(`
 ❌ SERVICE_ACCOUNT_JSON missing and no service_account.json file found!
 
-How to fix (choose one):
-
-1. FASTEST (you already have file at ${path.join(__dirname, 'service_account.json')}):
-   PowerShell: $env:GOOGLE_APPLICATION_CREDENTIALS = "C:\Users\Rahul\auto-video-backend\ai_backend\service_account.json"
-   Then run: node bulk_indexing.js --limit=100 --type=jobs --no-google
-
-2. OR set env variable directly:
-   PowerShell: $env:SERVICE_ACCOUNT_JSON = (Get-Content -Raw .\service_account.json)
-   Then run: node bulk_indexing.js
-
-3. OR create ai_backend/.env file with:
-   SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"studymaterial-406ad",...}'
-
-Current project will default to strategic-well-501911-f3 (wrong) if not set, causing PERMISSION_DENIED.
-
 Checked paths:
 - ${path.join(__dirname, 'service_account.json')}
 - ${path.join(__dirname, 'service-account.json')}
 - ./service_account.json
->>>>>>> 0518e7c (fix: bulk_indexing auto-load service_account.json file — no env needed, fixes SERVICE_ACCOUNT_JSON missing)
+- GOOGLE_APPLICATION_CREDENTIALS env var
+
+How to fix:
+1. Download from: https://console.firebase.google.com/project/studymaterial-406ad/settings/serviceaccounts/adminsdk
+2. Save as: ai_backend/service_account.json
+3. Then run: node bulk_indexing.js --limit=100 --type=jobs --no-google
+
+If you have credentials.json (OAuth), that's different — you need service_account.json (service_account type).
 `);
-    throw new Error('SERVICE_ACCOUNT_JSON missing - see instructions above');
+    throw new Error('SERVICE_ACCOUNT_JSON missing');
   }
 
   try {
-<<<<<<< HEAD
-    let creds;
-    // If it's a file path
-    if (saRaw.trim().startsWith('{')) {
-      creds = JSON.parse(saRaw);
-    } else if (saRaw.endsWith('.json')) {
-      const fs = require('fs');
-      const content = fs.readFileSync(saRaw, 'utf8');
-      creds = JSON.parse(content);
-    } else {
-      // Try to read as file path from GOOGLE_APPLICATION_CREDENTIALS
-      const gac = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-      if (gac) {
-        const fs = require('fs');
-        const content = fs.readFileSync(gac, 'utf8');
-        creds = JSON.parse(content);
-      } else {
-        throw new Error('SERVICE_ACCOUNT_JSON is not valid JSON and GOOGLE_APPLICATION_CREDENTIALS not set');
-      }
-=======
-    if (fromFile) {
-      console.log(`   Using service account from file: ${fromFile}`);
-    }
-
-
-  try {
-    let creds;
-    if (typeof saRaw === 'string' && saRaw.trim().startsWith('{')) {
-      creds = JSON.parse(saRaw);
-    } else {
-      // saRaw is file content already (from auto-load)
-      creds = JSON.parse(saRaw);
->>>>>>> 0518e7c (fix: bulk_indexing auto-load service_account.json file — no env needed, fixes SERVICE_ACCOUNT_JSON missing)
-    }
-
+    const creds = JSON.parse(saRaw);
+    
     if (creds.project_id !== 'studymaterial-406ad') {
-      console.warn(`⚠️ Warning: Service account project_id is ${creds.project_id}, expected studymaterial-406ad. You may get PERMISSION_DENIED for strategic-well-501911-f3. Please download key from studymaterial-406ad project.`);
+      console.warn(`⚠️ Warning: project_id is ${creds.project_id}, expected studymaterial-406ad. May cause PERMISSION_DENIED.`);
     }
 
     admin.initializeApp({ credential: admin.credential.cert(creds) });
-    console.log(`✅ Firebase initialized for project: ${creds.project_id}`);
+    console.log(`✅ Firebase initialized for project: ${creds.project_id}${fromFile ? ` (from ${fromFile})` : ''}`);
   } catch (e) {
     console.error(`❌ Firebase init failed: ${e.message}`);
-    console.error(`   If you see PERMISSION_DENIED for strategic-well-501911-f3, you are using wrong project credentials.`);
-    console.error(`   Download correct key from: https://console.firebase.google.com/project/studymaterial-406ad/settings/serviceaccounts/adminsdk`);
     throw e;
   }
 }
 
 initFirebase();
-
 
 const db = admin.firestore();
 const WEBSITE_URL = 'https://studygyaan.in';
@@ -192,8 +125,37 @@ const WEBSITE_URL = 'https://studygyaan.in';
 // ---------- Google Indexing API ----------
 async function getGoogleAuth() {
   const raw = process.env.SERVICE_ACCOUNT_JSON;
-  if (!raw) throw new Error('SERVICE_ACCOUNT_JSON missing');
-  const creds = JSON.parse(raw);
+  // If env var missing but we loaded from file, try to read file again for auth
+  let credsData = raw;
+  if (!credsData) {
+    const possiblePaths = [
+      path.join(__dirname, 'service_account.json'),
+      path.join(process.cwd(), 'service_account.json'),
+    ];
+    for (const p of possiblePaths) {
+      try {
+        if (fs.existsSync(p)) {
+          credsData = fs.readFileSync(p, 'utf8');
+          break;
+        }
+      } catch {}
+    }
+  }
+  
+  if (!credsData) throw new Error('SERVICE_ACCOUNT_JSON missing for Google Indexing');
+  
+  let creds;
+  try {
+    creds = JSON.parse(credsData);
+  } catch {
+    // If it's a file path
+    if (fs.existsSync(credsData)) {
+      creds = JSON.parse(fs.readFileSync(credsData, 'utf8'));
+    } else {
+      throw new Error('Invalid SERVICE_ACCOUNT_JSON');
+    }
+  }
+
   const auth = new google.auth.GoogleAuth({
     credentials: creds,
     scopes: ['https://www.googleapis.com/auth/indexing']
@@ -209,8 +171,8 @@ async function submitToGoogleIndexing(urls, type = 'URL_UPDATED') {
     const indexing = google.indexing({ version: 'v3', auth: authClient });
 
     for (const url of urls) {
-      if (!url.includes('/job/')) continue; // Google Indexing API only for JobPosting / job pages
-      if (results.attempted >= 180) { // Daily quota 200, keep buffer
+      if (!url.includes('/job/')) continue;
+      if (results.attempted >= 180) {
         console.log('⏸️ Google Indexing daily quota reached (180), stopping');
         break;
       }
@@ -221,7 +183,7 @@ async function submitToGoogleIndexing(urls, type = 'URL_UPDATED') {
         results.attempted++;
         results.succeeded++;
         console.log(`✅ Google Indexed: ${url}`);
-        await new Promise(r => setTimeout(r, 500)); // 0.5s gap to avoid rate limit
+        await new Promise(r => setTimeout(r, 500));
       } catch (e) {
         results.attempted++;
         results.failed++;
@@ -241,16 +203,10 @@ async function submitToGoogleIndexing(urls, type = 'URL_UPDATED') {
   return results;
 }
 
-// ---------- IndexNow (Bing, Yandex etc.) ----------
+// ---------- IndexNow ----------
 async function submitToIndexNow(urls) {
   const results = { attempted: 0, succeeded: 0, failed: 0 };
-
-  // IndexNow needs a key — try to get from env or generate one
-  // For StudyGyaan, key should be at https://studygyaan.in/<key>.txt
   const key = process.env.INDEXNOW_KEY || 'studygyaan-indexnow-key-2026';
-  
-  // IndexNow API: https://api.indexnow.org/indexnow
-  // Can submit up to 10k URLs per day, 10k per request max
   const batches = [];
   for (let i = 0; i < urls.length; i += 1000) {
     batches.push(urls.slice(i, i + 1000));
@@ -264,13 +220,11 @@ async function submitToIndexNow(urls) {
         keyLocation: `https://studygyaan.in/${key}.txt`,
         urlList: batch
       };
-
       const res = await axios.post('https://api.indexnow.org/indexnow', payload, {
         headers: { 'Content-Type': 'application/json' },
         timeout: 20000,
         validateStatus: () => true
       });
-
       if (res.status === 200 || res.status === 202) {
         results.attempted += batch.length;
         results.succeeded += batch.length;
@@ -278,16 +232,14 @@ async function submitToIndexNow(urls) {
       } else {
         results.attempted += batch.length;
         results.failed += batch.length;
-        console.warn(`❌ IndexNow failed status ${res.status}: ${JSON.stringify(res.data).slice(0,200)}`);
+        console.warn(`❌ IndexNow failed status ${res.status}`);
       }
-
       await new Promise(r => setTimeout(r, 1000));
     } catch (e) {
       console.error('IndexNow batch failed:', e.message);
       results.failed += batch.length;
     }
   }
-
   return results;
 }
 
@@ -302,14 +254,10 @@ async function pingSitemaps() {
     `${WEBSITE_URL}/sitemap-stories.xml`,
     `${WEBSITE_URL}/sitemap-courses.xml`,
   ];
-
   const results = [];
-
   for (const sitemapUrl of sitemaps) {
     try {
-      // Ping Google
       await axios.get(`https://www.google.com/ping?sitemap=${encodeURIComponent(sitemapUrl)}`, { timeout: 10000, validateStatus: () => true });
-      // Ping Bing
       await axios.get(`https://www.bing.com/ping?sitemap=${encodeURIComponent(sitemapUrl)}`, { timeout: 10000, validateStatus: () => true });
       results.push({ sitemap: sitemapUrl, pinged: true });
       console.log(`✅ Sitemap pinged: ${sitemapUrl}`);
@@ -319,15 +267,13 @@ async function pingSitemaps() {
     }
     await new Promise(r => setTimeout(r, 500));
   }
-
   return results;
 }
 
-// ---------- Fetch all indexable URLs from Firestore ----------
+// ---------- Fetch all URLs ----------
 async function fetchAllUrls(limitPerCollection = 1000, typeFilter = 'all') {
   const urls = [];
   const collections = [];
-
   if (typeFilter === 'all' || typeFilter === 'jobs') collections.push({ name: 'jobs', path: '/job/', limit: limitPerCollection });
   if (typeFilter === 'all' || typeFilter === 'blogs') collections.push({ name: 'blogs', path: '/blog/', limit: Math.min(limitPerCollection, 1000) });
   if (typeFilter === 'all' || typeFilter === 'fast_track') collections.push({ name: 'fast_track', path: '/update/', limit: limitPerCollection });
@@ -340,11 +286,9 @@ async function fetchAllUrls(limitPerCollection = 1000, typeFilter = 'all') {
       const snap = await db.collection(col.name).orderBy('createdAt', 'desc').limit(col.limit).get();
       snap.forEach(doc => {
         const data = doc.data();
-        // Only indexable
         const status = String(data.status || '').toLowerCase();
         if (['draft', 'pending', 'rejected', 'private', 'archived', 'deleted', 'trash'].includes(status)) return;
         if (!data.title || String(data.title).trim().length < 5) return;
-        
         const slug = data.slug || doc.id;
         urls.push(`${WEBSITE_URL}${col.path}${encodeURIComponent(slug)}`);
       });
@@ -353,8 +297,6 @@ async function fetchAllUrls(limitPerCollection = 1000, typeFilter = 'all') {
       console.warn(`Failed to fetch ${col.name}: ${e.message}`);
     }
   }
-
-  // Deduplicate
   const unique = [...new Set(urls)];
   console.log(`📊 Total unique URLs: ${unique.length} (from ${collections.length} collections)`);
   return unique;
@@ -386,20 +328,16 @@ async function runBulkIndexing(options = {}) {
   if (doSitemapPing) {
     report.sitemaps = await pingSitemaps();
   }
-
   if (doIndexNow) {
     report.indexnow = await submitToIndexNow(urlsToProcess);
   }
-
   if (doGoogle) {
-    // Google only for job pages, limited to 180/day
     const jobUrls = urlsToProcess.filter(u => u.includes('/job/'));
     report.google = await submitToGoogleIndexing(jobUrls);
   }
 
   report.completedAt = new Date().toISOString();
   report.durationMs = new Date(report.completedAt) - new Date(report.startedAt);
-
   console.log('📊 Bulk Indexing Complete:', JSON.stringify(report, null, 2));
   return report;
 }
@@ -415,7 +353,6 @@ if (require.main === module) {
     if (arg === '--no-indexnow') opts.indexnow = false;
     if (arg === '--no-sitemap') opts.sitemapPing = false;
   });
-
   runBulkIndexing(opts).then(report => {
     console.log('\n✅ Done');
     process.exit(0);
