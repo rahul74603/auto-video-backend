@@ -11,10 +11,6 @@ import {
     CheckSquare, Lightbulb, X
 } from 'lucide-react';
 import SEO from '../components/SEO';
-import Breadcrumbs from '../components/Breadcrumbs';
-import RelatedContent from '../components/RelatedContent';
-import ExamHubNavigation from '../components/ExamHubNavigation';
-import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
 
 // Strict view of the mock test document used by the player.
 interface PlayTestData {

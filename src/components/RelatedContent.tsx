@@ -36,6 +36,7 @@ const RelatedContent = ({
   limit = 6,
   showTitle = true,
 }: RelatedContentProps) => {
+  void title; // TS6133 fix - prop reserved for future use
   const [related, setRelated] = useState<Awaited<ReturnType<typeof fetchRelatedContent>>>([]);
   const [loading, setLoading] = useState(true);
 

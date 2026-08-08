@@ -4,6 +4,9 @@ import { Trophy, Ticket, Key, BookOpen, ChevronRight, Sparkles, Zap, ArrowRight 
 import { Link } from 'react-router-dom';
 // ✅ यहाँ हमने Admin Panel वाला डेटा लाने के लिए Hook इम्पोर्ट कर लिया
 import { useSiteContent } from "@/hooks/useSiteContent"; 
+import Breadcrumbs from '../components/Breadcrumbs';
+import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
+
 
 const FastTrackGrid = () => {
   const { updates, loading } = useFastTracks(40);

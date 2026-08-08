@@ -1,6 +1,6 @@
 /* eslint-disable */
 import { db } from '@/firebase/config';
-import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 
 /**
  * Internal Linking Repository — scalable related content system for 1,170+ orphan pages fix
@@ -236,7 +236,7 @@ export function buildBreadcrumbPath(current: { title: string; exam?: string; cat
   }
 
   if (current.exam && current.exam !== 'GENERAL') {
-    const examSlug = current.exam.toLowerCase().replace(/\s+/g, '-');
+    void current.exam; // TS6133 fix
     crumbs.push({
       name: current.exam,
       url: `/govt-jobs?exam=${encodeURIComponent(current.exam)}`
