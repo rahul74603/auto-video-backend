@@ -23,23 +23,79 @@
  * So run in batches: 200 Google + 1000 IndexNow per day
  */
 
+// Load .env from ai_backend folder and root
+try { require('dotenv').config(); } catch {}
+try { require('dotenv').config({ path: '../.env' }); } catch {}
+try { require('dotenv').config({ path: './.env' }); } catch {}
+
 const admin = require('firebase-admin');
 const axios = require('axios');
 const { google } = require('googleapis');
 
-if (!admin.apps.length) {
-  const sa = process.env.SERVICE_ACCOUNT_JSON;
-  if (sa) {
-    try {
-      const creds = JSON.parse(sa);
-      admin.initializeApp({ credential: admin.credential.cert(creds) });
-    } catch {
-      admin.initializeApp();
+function initFirebase() {
+  if (admin.apps.length) return;
+
+  const saRaw = process.env.SERVICE_ACCOUNT_JSON;
+
+  if (!saRaw) {
+    console.error(`
+❌ SERVICE_ACCOUNT_JSON missing!
+
+How to fix:
+1. Go to Firebase Console: https://console.firebase.google.com/project/studymaterial-406ad/settings/serviceaccounts/adminsdk
+2. Click "Generate new private key" -> Download JSON file
+3. Option A - Set as env variable (PowerShell):
+   $env:SERVICE_ACCOUNT_JSON = (Get-Content -Raw .\service-account.json)
+   node bulk_indexing.js --limit=500 --type=jobs
+
+4. Option B - Put JSON file in ai_backend folder as service-account.json and set:
+   $env:GOOGLE_APPLICATION_CREDENTIALS = "C:\Users\Rahul\auto-video-backend\ai_backend\service-account.json"
+
+5. Option C - Create .env file in ai_backend folder with:
+   SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"studymaterial-406ad",...}'
+
+Current project will default to strategic-well-501911-f3 (wrong) if not set, causing PERMISSION_DENIED.
+`);
+    throw new Error('SERVICE_ACCOUNT_JSON missing - see instructions above');
+  }
+
+  try {
+    let creds;
+    // If it's a file path
+    if (saRaw.trim().startsWith('{')) {
+      creds = JSON.parse(saRaw);
+    } else if (saRaw.endsWith('.json')) {
+      const fs = require('fs');
+      const content = fs.readFileSync(saRaw, 'utf8');
+      creds = JSON.parse(content);
+    } else {
+      // Try to read as file path from GOOGLE_APPLICATION_CREDENTIALS
+      const gac = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+      if (gac) {
+        const fs = require('fs');
+        const content = fs.readFileSync(gac, 'utf8');
+        creds = JSON.parse(content);
+      } else {
+        throw new Error('SERVICE_ACCOUNT_JSON is not valid JSON and GOOGLE_APPLICATION_CREDENTIALS not set');
+      }
     }
-  } else {
-    admin.initializeApp();
+
+    if (creds.project_id !== 'studymaterial-406ad') {
+      console.warn(`⚠️ Warning: Service account project_id is ${creds.project_id}, expected studymaterial-406ad. You may get PERMISSION_DENIED for strategic-well-501911-f3. Please download key from studymaterial-406ad project.`);
+    }
+
+    admin.initializeApp({ credential: admin.credential.cert(creds) });
+    console.log(`✅ Firebase initialized for project: ${creds.project_id}`);
+  } catch (e) {
+    console.error(`❌ Firebase init failed: ${e.message}`);
+    console.error(`   If you see PERMISSION_DENIED for strategic-well-501911-f3, you are using wrong project credentials.`);
+    console.error(`   Download correct key from: https://console.firebase.google.com/project/studymaterial-406ad/settings/serviceaccounts/adminsdk`);
+    throw e;
   }
 }
+
+initFirebase();
+
 
 const db = admin.firestore();
 const WEBSITE_URL = 'https://studygyaan.in';
