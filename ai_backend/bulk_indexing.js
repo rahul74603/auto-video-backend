@@ -35,6 +35,7 @@ const { google } = require('googleapis');
 function initFirebase() {
   if (admin.apps.length) return;
 
+<<<<<<< HEAD
   const saRaw = process.env.SERVICE_ACCOUNT_JSON;
 
   if (!saRaw) {
@@ -55,11 +56,85 @@ How to fix:
    SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"studymaterial-406ad",...}'
 
 Current project will default to strategic-well-501911-f3 (wrong) if not set, causing PERMISSION_DENIED.
+=======
+  const fs = require('fs');
+  const path = require('path');
+
+  let saRaw = process.env.SERVICE_ACCOUNT_JSON;
+  let creds = null;
+  let fromFile = '';
+
+  // Try to auto-load service_account.json from common locations if env var missing
+  if (!saRaw) {
+    const possiblePaths = [
+      path.join(__dirname, 'service_account.json'),
+      path.join(__dirname, 'service-account.json'),
+      path.join(process.cwd(), 'service_account.json'),
+      path.join(process.cwd(), 'service-account.json'),
+      path.join(__dirname, '..', 'service_account.json'),
+    ];
+    for (const p of possiblePaths) {
+      try {
+        if (fs.existsSync(p)) {
+          const content = fs.readFileSync(p, 'utf8');
+          const parsed = JSON.parse(content);
+          if (parsed.project_id) {
+            saRaw = content;
+            fromFile = p;
+            console.log(`✅ Found service account file at: ${p} (project: ${parsed.project_id}) — using it`);
+            break;
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // Try GOOGLE_APPLICATION_CREDENTIALS env var
+  if (!saRaw) {
+    const gac = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    if (gac && fs.existsSync(gac)) {
+      try {
+        const content = fs.readFileSync(gac, 'utf8');
+        const parsed = JSON.parse(content);
+        if (parsed.project_id) {
+          saRaw = content;
+          fromFile = gac;
+          console.log(`✅ Found service account via GOOGLE_APPLICATION_CREDENTIALS: ${gac}`);
+        }
+      } catch {}
+    }
+  }
+
+  if (!saRaw) {
+    console.error(`
+❌ SERVICE_ACCOUNT_JSON missing and no service_account.json file found!
+
+How to fix (choose one):
+
+1. FASTEST (you already have file at ${path.join(__dirname, 'service_account.json')}):
+   PowerShell: $env:GOOGLE_APPLICATION_CREDENTIALS = "C:\Users\Rahul\auto-video-backend\ai_backend\service_account.json"
+   Then run: node bulk_indexing.js --limit=100 --type=jobs --no-google
+
+2. OR set env variable directly:
+   PowerShell: $env:SERVICE_ACCOUNT_JSON = (Get-Content -Raw .\service_account.json)
+   Then run: node bulk_indexing.js
+
+3. OR create ai_backend/.env file with:
+   SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"studymaterial-406ad",...}'
+
+Current project will default to strategic-well-501911-f3 (wrong) if not set, causing PERMISSION_DENIED.
+
+Checked paths:
+- ${path.join(__dirname, 'service_account.json')}
+- ${path.join(__dirname, 'service-account.json')}
+- ./service_account.json
+>>>>>>> 0518e7c (fix: bulk_indexing auto-load service_account.json file — no env needed, fixes SERVICE_ACCOUNT_JSON missing)
 `);
     throw new Error('SERVICE_ACCOUNT_JSON missing - see instructions above');
   }
 
   try {
+<<<<<<< HEAD
     let creds;
     // If it's a file path
     if (saRaw.trim().startsWith('{')) {
@@ -78,6 +153,20 @@ Current project will default to strategic-well-501911-f3 (wrong) if not set, cau
       } else {
         throw new Error('SERVICE_ACCOUNT_JSON is not valid JSON and GOOGLE_APPLICATION_CREDENTIALS not set');
       }
+=======
+    if (fromFile) {
+      console.log(`   Using service account from file: ${fromFile}`);
+    }
+
+
+  try {
+    let creds;
+    if (typeof saRaw === 'string' && saRaw.trim().startsWith('{')) {
+      creds = JSON.parse(saRaw);
+    } else {
+      // saRaw is file content already (from auto-load)
+      creds = JSON.parse(saRaw);
+>>>>>>> 0518e7c (fix: bulk_indexing auto-load service_account.json file — no env needed, fixes SERVICE_ACCOUNT_JSON missing)
     }
 
     if (creds.project_id !== 'studymaterial-406ad') {
