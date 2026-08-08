@@ -699,6 +699,20 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     // STEP 3 - Video Generation
     let videoStatus = "⏳ Video trigger initiated";
 
+    // Check automation guard
+    try {
+        const { isAutomationEnabled } = require('./agents/automation_guard');
+        const guard = await isAutomationEnabled(db, 'video_maker');
+        if (!guard.enabled) {
+            console.log(`⏸️ Video trigger skipped — ${guard.reason}`);
+            videoStatus = `⏸️ Paused: ${guard.reason}`;
+            throw new Error(`Skipped: ${guard.reason}`);
+        }
+    } catch (guardErr) {
+        if (guardErr.message && guardErr.message.startsWith('Skipped:')) throw guardErr;
+        console.warn('Guard check failed (continuing):', guardErr.message);
+    }
+
     try {
         const triggered = await triggerGitHubVideoAction({
             ...item,
