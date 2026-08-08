@@ -8,6 +8,10 @@ import {
     Download, FileText, ChevronRight, Loader2
 } from 'lucide-react';
 import SEO from '../components/SEO';
+import Breadcrumbs from '../components/Breadcrumbs';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
+import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
 
 // =========================================================
 // 🛠️ HELPERS
@@ -278,6 +282,16 @@ const FastTrackDetails = () => {
     return (
         <div className="max-w-7xl mx-auto p-4 md:p-8 bg-slate-50 min-h-screen">
 
+            {/* 🍞 Breadcrumbs — fixes orphan pages */}
+            <Breadcrumbs
+              crumbs={buildBreadcrumbPath({
+                title: data?.title || 'Update Details',
+                exam: (data?.category as string) || 'GENERAL',
+                category: ((data?.category === 'Admit Card' ? 'ADMIT_CARD' : data?.category === 'Result' ? 'RESULT' : data?.category === 'Syllabus' ? 'SYLLABUS' : 'UPDATE') as any),
+              })}
+              className="mb-4 bg-white px-3 py-2 rounded-xl border shadow-sm"
+            />
+
             {/* ✅ SEO - Article type */}
             <SEO
                 customTitle={seoTitle}
@@ -472,6 +486,17 @@ const FastTrackDetails = () => {
                             </div>
                         )}
                     </article>
+
+                    {/* 🧭 Exam Hub + Related Content — fixes orphan */}
+                    <ExamHubNavigation exam={(data?.category as string) || 'GENERAL'} className="mt-6" />
+                    <RelatedContent
+                      currentId={data?.id || ''}
+                      exam={data?.category}
+                      category={((data?.category === 'Admit Card' ? 'ADMIT_CARD' : data?.category === 'Result' ? 'RESULT' : 'UPDATE') as any)}
+                      title={data?.title || ''}
+                      limit={6}
+                      className="mt-6"
+                    />
 
                     {/* ✅ Internal Links - Fixed /mock-tests → /test */}
                     <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-100">

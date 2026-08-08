@@ -6,7 +6,11 @@ import {
   Tag, ExternalLink, ShoppingCart, Flame, User, BookOpen
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
-import SEO from '../components/SEO'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
+import SEO from '../components/SEO';
+import Breadcrumbs from '../components/Breadcrumbs';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
+import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 
 type MaterialView = {
@@ -90,6 +94,16 @@ const MaterialDetails = () => {
       />
 
       <div className="max-w-7xl mx-auto px-2 md:px-8">
+
+                {/* 🍞 Breadcrumbs — fixes orphan pages */}
+                <Breadcrumbs
+                  crumbs={buildBreadcrumbPath({
+                    title: 'StudyGyaan',
+                    exam: 'GENERAL',
+                    category: 'UPDATE' as any,
+                  })}
+                  className="mb-4 bg-white px-3 py-2 rounded-xl border shadow-sm"
+                />
         
         <button onClick={() => navigate('/free-study-material')} className="flex items-center gap-1.5 text-slate-500 hover:text-blue-600 font-black mb-4 transition-all text-[11px] md:text-base bg-white px-3 py-1.5 rounded-full shadow-sm border border-slate-100">
           <ArrowLeft className="w-4 h-4 md:w-5 md:h-5"/> पूरी लाइब्रेरी देखें

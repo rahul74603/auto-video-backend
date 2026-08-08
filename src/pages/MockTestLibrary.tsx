@@ -7,6 +7,10 @@ import {
     ChevronRight, ExternalLink, Sparkles
 } from 'lucide-react';
 import SEO from '../components/SEO';
+import Breadcrumbs from '../components/Breadcrumbs';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
+import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
 import { asText } from '@/types/firestore';
 
 // =========================================================
@@ -83,6 +87,16 @@ const MockTestLibrary = () => {
             {/* --- HERO HEADER --- */}
             <header className="bg-gradient-to-b from-slate-900 to-[#020617] py-10 md:py-16 border-b border-white/5">
                 <div className="max-w-7xl mx-auto px-4 text-center">
+
+                {/* 🍞 Breadcrumbs — fixes orphan pages */}
+                <Breadcrumbs
+                  crumbs={buildBreadcrumbPath({
+                    title: 'StudyGyaan',
+                    exam: 'GENERAL',
+                    category: 'UPDATE' as any,
+                  })}
+                  className="mb-4 bg-white px-3 py-2 rounded-xl border shadow-sm"
+                />
                     <div className="inline-flex items-center gap-2 bg-blue-600/10 text-blue-400 px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-blue-500/20 mb-4">
                         <Target size={14} aria-hidden="true" /> Practice Portal
                     </div>

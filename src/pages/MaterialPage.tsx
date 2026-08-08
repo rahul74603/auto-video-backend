@@ -6,7 +6,11 @@ import { Folder, FileText, Download, ArrowLeft, ChevronRight, Home, Search, Load
 import { Button } from '@/components/ui/button';
 import ShareButtons from '../components/ShareButtons';
 import { useNavigate } from 'react-router-dom';
-import SEO from '../components/SEO'; 
+import SEO from '../components/SEO';
+import Breadcrumbs from '../components/Breadcrumbs';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
+import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository'; 
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { toDateSafe, type TimestampLike } from '@/types/firestore';
@@ -177,6 +181,16 @@ const StudyMaterials: React.FC = () => {
 
       <header className="py-4 md:py-16 bg-white border-b border-slate-100">
         <div className="max-w-7xl mx-auto px-4 text-center">
+
+                {/* 🍞 Breadcrumbs — fixes orphan pages */}
+                <Breadcrumbs
+                  crumbs={buildBreadcrumbPath({
+                    title: 'StudyGyaan',
+                    exam: 'GENERAL',
+                    category: 'UPDATE' as any,
+                  })}
+                  className="mb-4 bg-white px-3 py-2 rounded-xl border shadow-sm"
+                />
           {/* ✅ SEO FIX: Dynamic H1 Tag */}
           <h1 className="text-lg md:text-5xl font-black text-slate-900 mb-0.5">
             {currentFolderName === 'All Subjects' ? 'Free PDF Study Materials Library' : `${currentFolderName} Notes PDF`}
