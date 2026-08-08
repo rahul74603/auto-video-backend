@@ -9,8 +9,6 @@ import ShareButtons from '../components/ShareButtons';
 import { useNavigate } from 'react-router-dom';
 import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
-import RelatedContent from '../components/RelatedContent';
-import ExamHubNavigation from '../components/ExamHubNavigation';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository'; 
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
