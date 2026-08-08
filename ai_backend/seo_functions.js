@@ -74,6 +74,7 @@ exports.generateSitemapIndex = onRequest({
             `${WEBSITE_URL}/sitemap-tests.xml`,
             `${WEBSITE_URL}/sitemap-stories.xml`,
             `${WEBSITE_URL}/sitemap-updates.xml`,
+            `${WEBSITE_URL}/sitemap-courses.xml`,
             `${WEBSITE_URL}/sitemap-news.xml`
         ];
 
@@ -385,7 +386,47 @@ exports.generateSitemapUpdates = onRequest({
 });
 
 // =========================================================
-// 8. GOOGLE NEWS SITEMAP (Last 2 Days Only)
+// 8. COURSES SITEMAP (Premium Notes) — fixes 140 missing + orphan
+// =========================================================
+exports.generateSitemapCourses = onRequest({
+    timeoutSeconds: 300,
+    memory: "512MiB"
+}, async (req, res) => {
+    try {
+        const now = new Date().toISOString();
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+        xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+
+        const snap = await db.collection("courses")
+            .orderBy("createdAt", "desc")
+            .limit(2000)
+            .get();
+
+        snap.forEach(doc => {
+            const data = doc.data();
+            if (!hasUsefulTitle(data)) return;
+            const slug = safeXml(doc.id);
+            const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
+            xml += `  <url>\n`;
+            xml += `    <loc>${WEBSITE_URL}/course/${slug}</loc>\n`;
+            xml += `    <lastmod>${updateTime}</lastmod>\n`;
+            xml += `    <changefreq>weekly</changefreq>\n`;
+            xml += `    <priority>0.8</priority>\n`;
+            xml += `  </url>\n`;
+        });
+
+        xml += `</urlset>`;
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=1200');
+        res.set('Content-Type', 'text/xml; charset=utf-8');
+        res.status(200).send(xml);
+    } catch (error) {
+        console.error("❌ Courses Sitemap Error:", error.message);
+        res.status(500).send("Error");
+    }
+});
+
+// =========================================================
+// 9. GOOGLE NEWS SITEMAP (Last 2 Days Only)
 // =========================================================
 exports.generateSitemapNews = onRequest({
     timeoutSeconds: 120,

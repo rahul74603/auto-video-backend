@@ -484,6 +484,7 @@ exports.generateSitemapTests = proxySeoFunction("generateSitemapTests");
 exports.generateSitemapStories = proxySeoFunction("generateSitemapStories");
 exports.generateSitemapUpdates = proxySeoFunction("generateSitemapUpdates");
 exports.generateSitemapNews = proxySeoFunction("generateSitemapNews");
+exports.generateSitemapCourses = proxySeoFunction("generateSitemapCourses");
 // Legacy all-in-one sitemap remains available at /sitemap-all.xml only.
 exports.generateSitemap = proxySeoFunction("generateSitemap");
 exports.generateRss = proxySeoFunction("generateRss");

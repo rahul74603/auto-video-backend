@@ -121,6 +121,14 @@
         "function": "generateSitemapNews"
       },
       {
+        "source": "/sitemap-courses",
+        "function": "generateSitemapCourses"
+      },
+      {
+        "source": "/sitemap-courses.xml",
+        "function": "generateSitemapCourses"
+      },
+      {
         "source": "/web-stories-sitemap.xml",
         "function": "generateSitemapStories"
       },
