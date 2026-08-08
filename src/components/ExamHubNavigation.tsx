@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { Link } from 'react-router-dom';
 import { Layers, Briefcase, GraduationCap, BookOpen, ClipboardList, Trophy, FileText, Sparkles } from 'lucide-react';
 

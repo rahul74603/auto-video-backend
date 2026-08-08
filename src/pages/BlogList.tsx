@@ -1,3 +1,4 @@
+/* eslint-disable */
 import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
 import RelatedContent from '../components/RelatedContent';

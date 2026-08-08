@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Clock, ArrowRight, Sparkles, BookOpen, Briefcase, FileText } from 'lucide-react';

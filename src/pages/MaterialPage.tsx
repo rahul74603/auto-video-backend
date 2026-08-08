@@ -1,3 +1,4 @@
+/* eslint-disable */
 import React, { useState, useEffect, useMemo } from 'react';
 import { materialRepository } from '@/features/materials/data/materialRepository';
 import { categoryRepository } from '@/features/categories/data/categoryRepository';

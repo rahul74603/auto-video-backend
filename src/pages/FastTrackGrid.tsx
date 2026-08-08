@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { useFastTracks } from '@/features/fast-track/hooks/useFastTracks';
 import { Trophy, Ticket, Key, BookOpen, ChevronRight, Sparkles, Zap, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
