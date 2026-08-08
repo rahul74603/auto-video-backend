@@ -117,19 +117,7 @@ exports.generateSitemapMain = onRequest({
             xml += `  </url>\n`;
         });
 
-        xml += `        // ============ COURSES ===========
-        try {
-            const coursesSnap = await db.collection("courses").orderBy("createdAt", "desc").limit(1000).get();
-            coursesSnap.forEach(doc => {
-                const data = doc.data();
-                if (!hasUsefulTitle(data)) return;
-                const slug = safeXml(doc.id);
-                const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
-                xml += `  <url>\n    <loc>${WEBSITE_URL}/course/${slug}</loc>\n    <lastmod>${updateTime}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
-            });
-        } catch (e) { console.error("❌ Courses error:", e.message); }
-
-        xml += `</urlset>`;`;
+        xml += `</urlset>`;
 
         res.set('Cache-Control', 'public, max-age=3600, s-maxage=7200');
         res.set('Content-Type', 'text/xml; charset=utf-8');
