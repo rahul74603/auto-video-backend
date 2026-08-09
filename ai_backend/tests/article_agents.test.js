@@ -15,7 +15,8 @@ const {
   assertSafeSourceUrl,
   fetchAndExtractSource,
   extractFromHtml,
-  isPrivateHostname
+  isPrivateHostname,
+  isTlsCertificateError
 } = require("../agents/article_agents/source_fetcher");
 const {
   normalizeJobArticle,
@@ -241,6 +242,13 @@ function makeGroundedJobArticle() {
 /* ------------------------------------------------------------------ */
 /* 1. Source fetcher                                                   */
 /* ------------------------------------------------------------------ */
+
+test("source fetcher identifies only certificate failures for TLS compatibility retry", () => {
+  assert.equal(isTlsCertificateError({ code: "UNABLE_TO_VERIFY_LEAF_SIGNATURE" }), true);
+  assert.equal(isTlsCertificateError(new Error("self signed certificate in certificate chain")), true);
+  assert.equal(isTlsCertificateError(new Error("Request failed with status code 403")), false);
+  assert.equal(isTlsCertificateError(new Error("connect ETIMEDOUT")), false);
+});
 
 test("source fetcher rejects unsafe URLs", () => {
   for (const bad of [

@@ -161,7 +161,20 @@ async function runBestOfN({ type, sourceUrl, instructions, mode, source, existin
   // Pick best
   const validResults = results.filter(r => r.draft);
   if (!validResults.length) {
-    throw new Error(`Best-of-${n} all failed — no draft produced`);
+    // Do not hide the real source/AI failure behind a generic Best-of message.
+    // The UI can now tell whether the link could not be read or the AI provider
+    // was unavailable, and admins have a useful server log to act on.
+    const reasons = results
+      .filter((result) => result.error)
+      .map((result) => `${result.strategy.id}: ${String(result.error).replace(/\s+/g, " ").slice(0, 220)}`)
+      .slice(0, 3);
+    const err = new Error(
+      `Best-of-${strategies.length} all failed — no draft produced` +
+      (reasons.length ? `. Actual failures: ${reasons.join(" | ")}` : "")
+    );
+    err.code = "BEST_OF_ALL_FAILED";
+    err.attemptErrors = reasons;
+    throw err;
   }
   
   // Sort by score descending

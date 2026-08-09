@@ -50,6 +50,7 @@ const EXPECTED_CODES = new Set([
   "AI_NOT_CONFIGURED",
   "AI_RATE_LIMITED",
   "WRITER_BAD_JSON",
+  "BEST_OF_ALL_FAILED",
   "PUBLISH_BLOCKED",
   "ALREADY_PUBLISHED",
   "DRAFT_NOT_FOUND"
@@ -76,7 +77,8 @@ function handleRouteError(res, error, context) {
       // Gemini rate-limit/overload — admin ko "bas thodi der baad dabao" hint
       return fail(res, 503, error.message);
     case "WRITER_BAD_JSON":
-      return fail(res, 502, error.message);
+    case "BEST_OF_ALL_FAILED":
+      return fail(res, 502, error.message, error.attemptErrors ? { attemptErrors: error.attemptErrors } : undefined);
     case "PUBLISH_BLOCKED":
       return fail(res, 409, error.message, { publishBlocked: true });
     case "ALREADY_PUBLISHED":

@@ -12,7 +12,12 @@
  */
 
 const axios = require("axios");
+const https = require("https");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
 const cheerio = require("cheerio");
+
+const execFileAsync = promisify(execFile);
 const { isBlockedDomain } = require("./constants");
 
 const MAX_TEXT_CHARS = 24000;
@@ -20,6 +25,11 @@ const MAX_TABLES = 25;
 const MAX_TABLE_ROWS = 80;
 const MAX_TABLE_CELLS = 14;
 const MAX_LINKS = 120;
+const MAX_DOWNLOAD_BYTES = 12 * 1024 * 1024;
+
+// Most requests keep normal TLS verification. This agent is deliberately used
+// only as a fallback for broken government/university certificate chains.
+const INSECURE_GOVT_TLS_AGENT = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
 
 function isPrivateHostname(hostname) {
   const host = String(hostname || "").toLowerCase().replace(/\.$/, "");
@@ -229,7 +239,9 @@ const BROWSER_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
   Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf;q=0.8,*/*;q=0.7",
-  "Accept-Language": "hi-IN,hi;q=0.9,en-IN;q=0.8,en;q=0.7"
+  "Accept-Language": "hi-IN,hi;q=0.9,en-IN;q=0.8,en;q=0.7",
+  Referer: "https://www.google.com/",
+  "Upgrade-Insecure-Requests": "1"
 };
 
 // pdf-parse lazy-loaded (sirf tab chahiye jab PDF aaye).
@@ -329,6 +341,61 @@ async function renderWithChromium(url, timeoutMs) {
   }
 }
 
+function isTlsCertificateError(error) {
+  return /UNABLE_TO_VERIFY_LEAF_SIGNATURE|SELF_SIGNED_CERT|self[ -]signed certificate|CERT_HAS_EXPIRED|CERTIFICATE_VERIFY_FAILED|unable to verify/i.test(
+    String(error?.code || "") + " " + String(error?.message || error || "")
+  );
+}
+
+function assertSafeRedirect(options) {
+  // Axios calls this hook before opening every redirected connection. It closes
+  // the otherwise easy SSRF hole where a public URL redirects to 127.0.0.1.
+  const protocol = options?.protocol || "https:";
+  const host = options?.hostname || options?.host;
+  assertSafeSourceUrl(`${protocol}//${host || ""}${options?.path || "/"}`);
+}
+
+function axiosSourceGet(url, { timeout, insecureTls = false } = {}) {
+  return axios.get(url, {
+    headers: BROWSER_HEADERS,
+    timeout: timeout || 35000,
+    maxRedirects: 5,
+    maxContentLength: MAX_DOWNLOAD_BYTES,
+    maxBodyLength: MAX_DOWNLOAD_BYTES,
+    responseType: "arraybuffer",
+    httpsAgent: insecureTls ? INSECURE_GOVT_TLS_AGENT : undefined,
+    beforeRedirect: (options) => assertSafeRedirect(options),
+    validateStatus: (status) => status >= 200 && status < 300
+  });
+}
+
+/**
+ * Last transport fallback for badly configured public portals. execFile (not a
+ * shell string) prevents URL command injection. Curl's protocol and size caps
+ * keep this bounded; source URLs are validated before reaching this function.
+ */
+async function fetchWithCurl(url, timeoutMs = 45000) {
+  const args = [
+    "--silent", "--show-error", "--fail", "--location", "--insecure",
+    "--max-redirs", "5", "--max-time", String(Math.ceil(timeoutMs / 1000)),
+    "--max-filesize", String(MAX_DOWNLOAD_BYTES),
+    "--proto", "=http,https", "--proto-redir", "=http,https",
+    "--user-agent", BROWSER_HEADERS["User-Agent"],
+    "--header", `Accept: ${BROWSER_HEADERS.Accept}`,
+    "--header", `Accept-Language: ${BROWSER_HEADERS["Accept-Language"]}`,
+    "--referer", BROWSER_HEADERS.Referer,
+    url
+  ];
+  const { stdout } = await execFileAsync("curl", args, {
+    encoding: "buffer",
+    timeout: timeoutMs + 5000,
+    maxBuffer: MAX_DOWNLOAD_BYTES + 1024
+  });
+  const buffer = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout || "");
+  if (buffer.length < 80) throw new Error("curl returned an empty or too-small response");
+  return { data: buffer, headers: {}, viaCurl: true };
+}
+
 /**
  * Fetch a URL and extract source material.
  * deps.httpGet is injectable for tests; must resolve to { data, headers }.
@@ -351,15 +418,7 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
 
   const httpGet =
     deps.httpGet ||
-    ((url) =>
-      axios.get(url, {
-        headers: BROWSER_HEADERS,
-        timeout: deps.timeoutMs || 35000,
-        maxRedirects: 5,
-        maxContentLength: 12 * 1024 * 1024,
-        responseType: "arraybuffer",
-        validateStatus: (status) => status >= 200 && status < 300
-      }));
+    ((url) => axiosSourceGet(url, { timeout: deps.timeoutMs || 35000 }));
 
   let response;
   let lastErr;
@@ -377,21 +436,37 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
       console.warn(`source fetch: pehli hit timeout (${err.message}) — slow-server retry...`);
       const retryGet =
         deps.slowRetryGet ||
-        ((url) =>
-          axios.get(url, {
-            headers: BROWSER_HEADERS,
-            timeout: 70000,
-            maxRedirects: 5,
-            maxContentLength: 12 * 1024 * 1024,
-            responseType: "arraybuffer",
-            validateStatus: (status) => status >= 200 && status < 300
-          }));
+        ((url) => axiosSourceGet(url, { timeout: 70000 }));
       try {
         response = await retryGet(parsed.toString());
       } catch (retryErr) {
         console.warn(`source fetch: slow-server retry bhi fail: ${retryErr.message}`);
       }
     }
+    // Defective certificate chains are common on university/government portals.
+    // Do not weaken TLS for every site: retry only after a certificate failure.
+    if (!response && !deps.httpGet && isTlsCertificateError(lastErr)) {
+      try {
+        console.warn(`source fetch: certificate issue for ${parsed.hostname}; retrying this source with compatibility TLS`);
+        response = await axiosSourceGet(parsed.toString(), { timeout: deps.timeoutMs || 45000, insecureTls: true });
+        response.viaInsecureTls = true;
+      } catch (tlsErr) {
+        lastErr = tlsErr;
+        console.warn(`source fetch: compatibility TLS retry failed: ${tlsErr.message}`);
+      }
+    }
+
+    // Curl handles a few legacy TLS/WAF stacks that Node's HTTP client cannot.
+    // It remains a final transport fallback after the normal browser-like request.
+    if (!response && !deps.httpGet) {
+      try {
+        console.warn(`source fetch: trying curl fallback for ${parsed.toString()}`);
+        response = await fetchWithCurl(parsed.toString(), deps.timeoutMs || 45000);
+      } catch (curlErr) {
+        console.warn(`source fetch: curl fallback failed: ${curlErr.message}`);
+      }
+    }
+
     // HTTP error (403 bot-block wagera) pe EK baar headless Chrome se try karo —
     // kuch sites real browser ko allow kar deti hain. (Sirf production path pe.)
     if (!response && !deps.httpGet) {
@@ -541,7 +616,7 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
     throw err;
   }
 
-  const via = extracted.viaLink ? "link-follow" : extracted.viaRender ? "render" : "http";
+  const via = extracted.viaLink ? "link-follow" : extracted.viaRender ? "render" : response.viaCurl ? "curl" : response.viaInsecureTls ? "compatibility-tls" : "http";
   delete extracted.viaRender;
   delete extracted.viaLink;
   return {
@@ -559,5 +634,7 @@ module.exports = {
   extractFromHtml,
   isPrivateHostname,
   MAX_TEXT_CHARS,
-  BROWSER_HEADERS
+  BROWSER_HEADERS,
+  fetchWithCurl,
+  isTlsCertificateError
 };
