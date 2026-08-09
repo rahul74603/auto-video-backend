@@ -296,7 +296,10 @@ const JobDetails = () => {
             "@type": "Place",
             address: {
                 "@type": "PostalAddress",
-                addressLocality: job.location || "India",
+                streetAddress: (job.location || "India").slice(0, 200),
+                addressLocality: (job.location || "India").split(',')[0].trim().slice(0, 100) || "India",
+                addressRegion: (job.location || "India").split(',')[0].trim().slice(0, 100) || "India",
+                postalCode: (job as any).postalCode || "110001",
                 addressCountry: "IN"
             }
         },

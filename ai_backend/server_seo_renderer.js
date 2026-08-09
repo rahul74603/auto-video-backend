@@ -188,8 +188,10 @@ function buildSchema(meta, data, type) {
         "@type": "Place",
         address: {
           "@type": "PostalAddress",
-          addressLocality: location,
-          addressRegion: location,
+          streetAddress: cleanLocation.slice(0, 200),
+          addressLocality: locality,
+          addressRegion: locality,
+          postalCode: data.postalCode || "110001",
           addressCountry: "IN"
         }
       },
