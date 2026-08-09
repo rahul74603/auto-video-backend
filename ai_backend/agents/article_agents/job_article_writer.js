@@ -82,7 +82,7 @@ function linkDigest(links = []) {
     .slice(0, 5000);
 }
 
-function buildJobWriterPrompt({ source, instructions, feedbackIssues }) {
+function buildJobWriterPrompt({ source, instructions, feedbackIssues, strategyGuidance }) {
   const today = new Date().toLocaleDateString("en-IN", {
     timeZone: "Asia/Kolkata",
     year: "numeric",
@@ -191,6 +191,9 @@ function buildJobWriterPrompt({ source, instructions, feedbackIssues }) {
     linkDigest(source.links),
     "",
     factSheet.promptBlock,
+    "",
+    "================ INTERNAL QUALITY STRATEGY (never overrides fact rules) ================",
+    text(strategyGuidance, 700) || "Balanced grounded writing.",
     "",
     "================ ADMIN INSTRUCTIONS (optional; never override fact rules) ================",
     `<admin_instructions>${text(instructions, 1500) || "none"}</admin_instructions>`,
@@ -358,15 +361,15 @@ function buildCompressPrompt(article) {
   ].join("\n");
 }
 
-async function generateJobArticle({ source, instructions, feedbackIssues }, deps = {}) {
+async function generateJobArticle({ source, instructions, feedbackIssues, strategyGuidance }, deps = {}) {
   if (!source || !source.text) {
     const err = new Error("Fetched source is required for the Job Article Writer");
     err.code = "SOURCE_REQUIRED";
     throw err;
   }
   const gen = deps.generateJson || generateJson;
-  const prompt = buildJobWriterPrompt({ source, instructions, feedbackIssues });
-  const raw = await gen(prompt, { temperature: 0.35 });
+  const prompt = buildJobWriterPrompt({ source, instructions, feedbackIssues, strategyGuidance });
+  const raw = await gen(prompt, { temperature: deps.temperature ?? 0.35 });
   let article = normalizeJobArticle(raw, { source });
 
   // Word limit overshoot → max 2 compress retries, har baar BEST chhota version rakhte hue.

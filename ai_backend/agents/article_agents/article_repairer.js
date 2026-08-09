@@ -150,15 +150,48 @@ function repairArticleDeterministically(article, source, { applyMode = false } =
     }
   }
 
-  // 3. facts dates harvest — body ki dates khaali info-box me bharo (JOB only)
+  // 3. Body me hard claim source se grounded na ho to exact figure ko neutral
+  // source-reference se replace karo. Ye date harvest se PEHLE hota hai, warna
+  // body ki hallucinated date khaali facts box me dobara bhar sakti thi.
+  if (index && !applyMode && article.contentHtml) {
+    const replacements = {
+      money: "amount के लिए Official Notification देखें",
+      vacancy: "पदों की संख्या के लिए Official Notification देखें",
+      date: "तिथि के लिए Official Notification देखें",
+      percent: "प्रतिशत के लिए Official Notification देखें"
+    };
+    let html = String(article.contentHtml);
+    let replaced = 0;
+    const claims = extractClaims(html).filter(
+      (claim) => !isClaimGrounded(claim, index.haystackNorm, index.sourceNumbers)
+    );
+    for (const claim of claims.slice(0, 20)) {
+      const replacement = replacements[claim.kind];
+      if (!replacement || !claim.value || !html.includes(claim.value)) continue;
+      const before = html;
+      html = html.split(claim.value).join(replacement);
+      if (html !== before) replaced += 1;
+    }
+    if (replaced) {
+      article.contentHtml = html;
+      article.wordCount = countWords(html);
+      repairs.push(`body:removed-ungrounded-claims:${replaced}`);
+    }
+  }
+
+  // 4. facts dates harvest — ab sirf grounded body dates khaali info-box me aayengi.
   const filled = harvestFactsDates(article);
   for (const field of filled) repairs.push(`facts:${field}:harvested-from-body`);
 
-  // 3b. SMART FACTS — salary, vacancy, title, org, qualification etc.
-  const smartFilled = harvestSmartFacts(article, source);
-  for (const field of smartFilled) repairs.push(`facts:${field}:smart-harvested`);
+  // 5. Source-only recovery: writer ne salary/vacancy/qualification/org khaali
+  // chhoda ho to fetched notification se deterministic value uthao. Admin edit
+  // flow me koi missing field apne-aap nahi bharte.
+  if (!applyMode) {
+    const smartFilled = harvestSmartFacts(article, source);
+    for (const field of smartFilled) repairs.push(`facts:${field}:source-harvested`);
+  }
 
-  // 4. Ungrounded FAQs DROP — sirf jab 4+ FAQs bachti hon (reviewer min 4)
+  // 6. Ungrounded FAQs DROP — sirf jab 4+ FAQs bachti hon (reviewer min 4)
   //    aur word-floor na toot'ta ho (reviewer word-count bhi check karta hai).
   if (index && !applyMode && Array.isArray(article.faqs) && article.faqs.length > 4) {
     const badIdx = [];
@@ -180,40 +213,6 @@ function repairArticleDeterministically(article, source, { applyMode = false } =
       if (kept.length >= 4 && projectedWords >= wordFloor) {
         article.faqs = kept;
         repairs.push(`faqs:dropped-ungrounded:${badIdx.length}`);
-      }
-    }
-  }
-
-  // 5. 🔥 AGGRESSIVE HALLUCINATION FIX — body me ungrounded money/date/percent claims ko safe text se replace
-  // Isse 2nd/3rd attempt me hi pass ho jata hai, loop infinite nahi chalta (user complaint fix)
-  if (index && !applyMode && article.contentHtml) {
-    const bodyClaims = extractClaims(article.contentHtml);
-    const ungroundedInBody = bodyClaims.filter(c => !isClaimGrounded(c, index.haystackNorm, index.sourceNumbers));
-    if (ungroundedInBody.length) {
-      let fixedHtml = article.contentHtml;
-      let replacedCount = 0;
-      for (const claim of ungroundedInBody.slice(0, 10)) { // max 10 replacements
-        // Skip if claim is date that looks like salary misclassified? Still replace with safe placeholder
-        const safeReplacement = claim.kind === 'money' 
-          ? 'Official Notification में देखें' 
-          : claim.kind === 'date' && /PMT|CTC|LPA|salary|वेतन|pay/i.test(claim.value + ' ' + fixedHtml.slice(0, 500))
-            ? 'Official Notification में देखें'
-            : null;
-        if (safeReplacement) {
-          // Escape special regex chars in claim value
-          const escaped = claim.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          try {
-            const re = new RegExp(escaped, 'g');
-            const before = fixedHtml;
-            fixedHtml = fixedHtml.replace(re, safeReplacement);
-            if (before !== fixedHtml) replacedCount++;
-          } catch {}
-        }
-      }
-      if (replacedCount > 0) {
-        article.contentHtml = fixedHtml;
-        article.wordCount = countWords(fixedHtml);
-        repairs.push(`body:replaced-ungrounded:${replacedCount}`);
       }
     }
   }

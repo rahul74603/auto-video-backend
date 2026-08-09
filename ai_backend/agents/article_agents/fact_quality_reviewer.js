@@ -82,9 +82,10 @@ function normalizeForCompare(text) {
 }
 
 function numberSetOf(text) {
-  // Fix: Indian numbering 1,60,000 and western 160,000 both -> 160000
-  // Remove all commas between digits and normalize
-  const normalized = normalizeDigits(String(text || "")).replace(/(\d),(?=\d)/g, "$1$2").replace(/,/g, "");
+  // Indian (1,60,000) aur western (160,000) grouping dono ko ek hi
+  // canonical number 160000 me badlo. Sirf do digits ke BEECH wali comma
+  // hat-ti hai; punctuation commas baaki text me apni jagah rehti hain.
+  const normalized = normalizeDigits(String(text || "")).replace(/(\d),(?=\d)/g, "$1");
   const matches = normalized.match(/\d+/g) || [];
   const nums = new Set();
   for (const m of matches) {
@@ -119,7 +120,9 @@ const DATE_PATTERNS = [
   /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s*\d{4}\b/gi
 ];
 
-const MONEY_PATTERN = /(?:₹|rs\.?|रुपये|रु\.?|inr)\s*\d[\d,]*(?:\.\d+)?(?:\s*(?:PMT|CTC|LPA|per\s*month|\/month))?|\d[\d,]*(?:\.\d+)?\s*(?:₹|रुपये|rs\.?|PMT|CTC|LPA|per\s*month|\/month)/gi;
+// Currency prefix ke alawa PMT/CTC/LPA/per-month wording bhi hard money
+// claim hai. Reviewer ise source se verify karega (e.g. "1,60,000 PMT").
+const MONEY_PATTERN = /(?:₹|rs\.?|रुपये|रु\.?|inr)\s*\d[\d,]*(?:\.\d+)?(?:\s*(?:pmt|ctc|lpa|per\s*month|\/month|per\s*annum))?|\d[\d,]*(?:\.\d+)?\s*(?:₹|रुपये|रु\.?|rs\.?|pmt|ctc|lpa|per\s*month|\/month|per\s*annum)/gi;
 const VACANCY_PATTERN = /\b\d[\d,]*\s*(?:पद|पदों|posts?|vacanc(?:y|ies)|वैकेंसी|वैकेन्सी|भर्तियों|भर्ती|seats?)/gi;
 const PERCENT_PATTERN = /\b\d{1,3}(?:\.\d+)?\s*%/g;
 const AGE_PATTERN = /\b(?:यह भी:|आयु(?:\s*सीमा)?|age(?:\s*limit)?)\D{0,20}?(\d{2})\s*(?:से|to|और|वर्ष|years?|yrs?)/gi;
@@ -263,7 +266,10 @@ function buildGroundingIndex(source) {
     (source?.links || []).map((l) => `${l.text} ${l.url}`).join(" ")
   ].join(" ");
   const haystackNorm = normalizeForCompare(haystack);
-  return { haystack, haystackNorm, sourceNumbers: numberSetOf(haystackNorm) };
+  // Number extraction RAW source par karo. normalizeForCompare punctuation
+  // commas ko spaces bana deta hai (1,60,000 → 1 60 000), jisse Indian salary
+  // grouping toot kar false hallucination ban rahi thi.
+  return { haystack, haystackNorm, sourceNumbers: numberSetOf(haystack) };
 }
 
 function checkFactsAgainstSource({ article, source, issues, warnings, metrics }) {

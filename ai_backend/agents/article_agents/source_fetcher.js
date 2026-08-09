@@ -445,11 +445,12 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
 
     if (!response) {
       const status = lastErr?.response?.status;
-      const isPdfUrl = parsed.toString().toLowerCase().endsWith('.pdf');
+      const isPdfUrl = parsed.pathname.toLowerCase().endsWith(".pdf");
+      const blocked = isTimeout || isPdfUrl || status === 403 || status === 429 || status === 502;
       const wrapped = new Error(
-        `Source ${isPdfUrl ? 'PDF' : 'page'} fetch nahi ho paya${status ? ` (site ne status ${status} diya — shayad Cloudflare block)` : ""}: ${lastErr.message}` +
-          (isTimeout || isPdfUrl || status === 502 || status === 403
-            ? " — 💡 Site ne humara cloud server block kiya hai (SRCC/HPSC jaise Cloudflare sites). ⭐ SOLUTION: 📄 UPLOAD BUTTON se PDF file khud upload karo — text tumhare browser me hi nikal jayega, ya niche Source Text box me PDF ka pura text copy-paste karke GENERATE dabao. Link upar bhara rahe — Links box ke liye zaroori hai. Jina-ai fallback bhi try kiya par fail hua."
+        `Source ${isPdfUrl ? "PDF" : "page"} fetch nahi ho paya${status ? ` (site ne status ${status} diya — shayad block kiya)` : ""}: ${lastErr?.message || "unknown network error"}` +
+          (blocked
+            ? " — 💡 Sarkari site cloud server ko block kar rahi ho sakti hai. PDF/Image ko 📄 UPLOAD button se do, ya official link upar rakhkar poora text Source Text box me copy-paste karo."
             : "")
       );
       wrapped.code = "SOURCE_FETCH_FAILED";

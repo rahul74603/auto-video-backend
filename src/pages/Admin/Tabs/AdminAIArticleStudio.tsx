@@ -82,6 +82,7 @@ interface ArticleApiResult {
   repairAttempts?: number;
   repairPassedOnAttempt?: number | null;
   repairLog?: string[];
+  generationMeta?: AIArticleDraftRecord['generationMeta'];
 }
 
 const apiErrorStatus = (err: unknown): number | undefined =>
@@ -167,14 +168,14 @@ const AdminAIArticleStudio = () => {
     const next = new URLSearchParams(searchParams);
     next.delete('editDraft');
     next.delete('tab');
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSearchParams(next, { replace: true });
-  }, [searchParams, drafts, loadIntoEditor]);
+  }, [searchParams, drafts, loadIntoEditor, setSearchParams]);
 
   const handleApiError = (err: unknown, fallback: string) => {
     const status = apiErrorStatus(err);
     const msg = err instanceof Error ? err.message : fallback;
     if (status === 401) toast.error('Unauthorized — admin Gmail se dubara login karke dekho');
+    else if (status === 403) toast.error('Yeh Gmail AI Article Studio admin allow-list me nahi hai');
     else if (status === 409) toast.error(msg);
     else if (status === 404) {
       // Do cases: route hi nahi mila (functions पुराने) YA draft delete ho chuki.
@@ -285,14 +286,17 @@ const AdminAIArticleStudio = () => {
       const passedOn = result.repairPassedOnAttempt ?? null;
       const repairNote =
         passedOn && passedOn > 1 ? ` — Agent ने खुद ${passedOn}वें attempt में ठीक किया 🤖` : '';
+      const adaptiveNote = result.generationMeta?.strategiesTried
+        ? ` · Adaptive ${result.generationMeta.strategiesTried}/${result.generationMeta.maxStrategies || 3} (${result.generationMeta.bestStrategyLabel || result.generationMeta.bestStrategy || 'grounded'})`
+        : '';
       if (result.review?.verdict === 'pass') {
         toast.success(
-          `Draft तैयार! Review पास (score ${result.review.score ?? '-'}, ${attempts} attempt)${repairNote}`,
+          `Draft तैयार! Review पास (score ${result.review.score ?? '-'}, ${attempts} attempt)${adaptiveNote}${repairNote}`,
           { id: toastId, duration: 6000 }
         );
       } else {
         toast.error(
-          `Draft बनी, पर ${attempts} attempts के बाद भी review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}\n🔁 Auto-Retry Machine हर ~10 min में खुद ठीक करेगी — ready होते ही Telegram approval आएगा`,
+          `Draft बनी, पर ${attempts} attempts के बाद भी review FAIL — publish blocked${adaptiveNote}${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}\n🔁 Auto-Retry Machine हर ~10 min में खुद ठीक करेगी — ready होते ही Telegram approval आएगा`,
           { id: toastId, duration: 11000 }
         );
       }
@@ -352,11 +356,14 @@ const AdminAIArticleStudio = () => {
       const attempts = result.repairAttempts || 1;
       const passedOn = result.repairPassedOnAttempt ?? null;
       const repairNote = passedOn && passedOn > 1 ? ` — Agent ने खुद ${passedOn}वें attempt में ठीक किया 🤖` : '';
+      const adaptiveNote = result.generationMeta?.strategiesTried
+        ? ` · Adaptive ${result.generationMeta.strategiesTried}/${result.generationMeta.maxStrategies || 3}`
+        : '';
       if (result.review?.verdict === 'pass') {
-        toast.success(`Regenerated — review पास (${attempts} attempt)${repairNote}`, { id: toastId });
+        toast.success(`Regenerated — review पास (${attempts} attempt)${adaptiveNote}${repairNote}`, { id: toastId });
       } else {
         toast.error(
-          `Regenerated, पर ${attempts} attempts के बाद भी review FAIL — publish blocked${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}\n🔁 Auto-Retry Machine हर ~10 min में खुद try करती रहेगी`,
+          `Regenerated, पर ${attempts} attempts के बाद भी review FAIL — publish blocked${adaptiveNote}${result.review?.issues?.[0] ? `\n📋 वजह: ${result.review.issues[0]}` : ''}\n🔁 Auto-Retry Machine हर ~10 min में खुद try करती रहेगी`,
           { id: toastId, duration: 11000 }
         );
       }
@@ -437,27 +444,12 @@ const AdminAIArticleStudio = () => {
     setBusy('publish');
     const toastId = toast.loading('Publishing...');
     try {
-      let resultInfo = '';
-      let originDeleted = false;
-      try {
-        const result = await callArticleApi<ArticleApiResult>('/articles/publish', { draftId: current.id });
-        resultInfo = `${result.collection}/${result.docId}`;
-        originDeleted = Boolean(result.originDeleted);
-      } catch (apiErr) {
-        const status = apiErrorStatus(apiErr);
-        if (status === 401) throw apiErr;
-        if (status === 409) {
-          // Server ne block kiya → latest state sync karke reason dikhao
-          await refresh().catch(() => {});
-          const synced = await aiArticleRepository.getDraft(current.id).catch(() => null);
-          if (synced) loadIntoEditor(synced);
-          throw apiErr;
-        }
-        // Fallback: client-side publish with the same review gate
-        const fallback = await aiArticleRepository.publishDraftClientSide(current);
-        resultInfo = `${fallback.collection}/${fallback.docId}`;
-        originDeleted = fallback.originDeleted;
-      }
+      // Publish is server-authoritative. Network/backend failure par browser se
+      // direct Firestore publish nahi hota—warna latest review/auth gate bypass
+      // ho sakta tha.
+      const result = await callArticleApi<ArticleApiResult>('/articles/publish', { draftId: current.id });
+      const resultInfo = `${result.collection}/${result.docId}`;
+      const originDeleted = Boolean(result.originDeleted);
       toast.success(
         `Published → ${resultInfo} ✓ (draft auto-delete — duplicate nahi${originDeleted ? ' + source-record bhi saaf 🧹' : ''})`,
         { id: toastId, duration: 7000 }
@@ -465,6 +457,11 @@ const AdminAIArticleStudio = () => {
       await refresh();
       loadIntoEditor(null);
     } catch (err) {
+      if (apiErrorStatus(err) === 409) {
+        await refresh().catch(() => {});
+        const synced = await aiArticleRepository.getDraft(current.id).catch(() => null);
+        if (synced) loadIntoEditor(synced);
+      }
       handleApiError(err, 'Publish नहीं हो पाया');
       toast.dismiss(toastId);
     } finally {
@@ -784,6 +781,12 @@ const AdminAIArticleStudio = () => {
                       {(Number(selected.repairAttempts) || 1) > 1 && (
                         <span className="text-blue-500 normal-case tracking-normal">
                           · 🤖 Agent self-heal: attempt {String(selected.repairPassedOnAttempt ?? selected.repairAttempts)}/{String(selected.repairAttempts)}
+                        </span>
+                      )}
+                      {Boolean(selected.generationMeta?.strategiesTried) && (
+                        <span className="text-violet-600 normal-case tracking-normal">
+                          · Adaptive grounded: {String(selected.generationMeta?.strategiesTried)}/{String(selected.generationMeta?.maxStrategies || 3)}
+                          {' · '}{selected.generationMeta?.bestStrategyLabel || selected.generationMeta?.bestStrategy}
                         </span>
                       )}
                     </p>

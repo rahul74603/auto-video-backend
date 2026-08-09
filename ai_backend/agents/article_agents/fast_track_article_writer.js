@@ -29,7 +29,7 @@ function text(value, max = 500) {
   return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 }
 
-function buildFastTrackWriterPrompt({ source, instructions, feedbackIssues }) {
+function buildFastTrackWriterPrompt({ source, instructions, feedbackIssues, strategyGuidance }) {
   const today = new Date().toLocaleDateString("en-IN", {
     timeZone: "Asia/Kolkata",
     year: "numeric",
@@ -131,6 +131,9 @@ function buildFastTrackWriterPrompt({ source, instructions, feedbackIssues }) {
     links || "NO LINKS FOUND",
     "",
     factSheet.promptBlock,
+    "",
+    "================ INTERNAL QUALITY STRATEGY (never overrides fact rules) ================",
+    text(strategyGuidance, 700) || "Balanced grounded writing.",
     "",
     "================ ADMIN INSTRUCTIONS (optional) ================",
     `<admin_instructions>${text(instructions, 1500) || "none"}</admin_instructions>`,
@@ -272,15 +275,15 @@ function buildCompressPrompt(article) {
   ].join("\n");
 }
 
-async function generateFastTrackArticle({ source, instructions, feedbackIssues }, deps = {}) {
+async function generateFastTrackArticle({ source, instructions, feedbackIssues, strategyGuidance }, deps = {}) {
   if (!source || !source.text) {
     const err = new Error("Fetched source is required for the Fast Track Article Writer");
     err.code = "SOURCE_REQUIRED";
     throw err;
   }
   const gen = deps.generateJson || generateJson;
-  const prompt = buildFastTrackWriterPrompt({ source, instructions, feedbackIssues });
-  const raw = await gen(prompt, { temperature: 0.35 });
+  const prompt = buildFastTrackWriterPrompt({ source, instructions, feedbackIssues, strategyGuidance });
+  const raw = await gen(prompt, { temperature: deps.temperature ?? 0.35 });
   let article = normalizeFastTrackArticle(raw, { source });
 
   for (
