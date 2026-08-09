@@ -232,7 +232,10 @@ function buildJobStructuredData({ facts, faqs, article, publishedIso }) {
       "@type": "Place",
       address: {
         "@type": "PostalAddress",
-        addressRegion: facts.location || "India",
+        streetAddress: (facts.location || "India").slice(0, 200),
+        addressLocality: (facts.location || "India").split(',')[0].trim().slice(0, 100) || "India",
+        addressRegion: (facts.location || "India").split(',')[0].trim().slice(0, 100) || "India",
+        postalCode: "110001",
         addressCountry: "IN"
       }
     },
