@@ -173,7 +173,7 @@ const EMPTY_EXISTING = { titles: [], slugs: [], snippets: [] };
 /* 1. Deterministic repairs                                            */
 /* ------------------------------------------------------------------ */
 
-test("repairer: ungrounded facts-numbers CLEAR, grounded untouched, SEO trims", () => {
+test("repairer: ungrounded facts clear, source-known values recover, SEO trims", () => {
   const source = makeSource();
   const article = {
     type: "JOB",
@@ -191,9 +191,10 @@ test("repairer: ungrounded facts-numbers CLEAR, grounded untouched, SEO trims", 
     contentHtml: "<h1>t</h1>"
   };
   const repairs = repairArticleDeterministically(article, source);
-  assert.equal(article.facts.vacancies, "");
+  assert.equal(article.facts.vacancies, "8000", "bad value clear hone ke baad source se sahi vacancy recover hoti hai");
   assert.equal(article.facts.examDate, "");
-  assert.equal(article.facts.salary, "");
+  assert.match(article.facts.salary, /Pay Level 1.*18000.*56900/, "bad salary ke badle source salary recover hoti hai");
+  assert.doesNotMatch(article.facts.salary, /25000|60000/);
   assert.equal(article.facts.feeGen, "100");
   assert.equal(article.facts.lastDate, "31/12/2027");
   assert.ok(article.seoTitle.length <= 70);
@@ -418,7 +419,11 @@ test("pipeline: deterministic repairs draft record me repairLog ke roop me aate 
     draft.repairLog.some((r) => r.startsWith("facts:vacancies:cleared-ungrounded")),
     "ungrounded vacancy fact clear hua aur log me gaya"
   );
-  assert.equal(draft.facts.vacancies, "", "draft me saaf fact gaya, galat nahi");
+  assert.equal(draft.facts.vacancies, "8000", "draft me source wala sahi fact gaya, galat nahi");
+  assert.ok(
+    draft.repairLog.some((r) => r === "facts:vacancies:source-harvested"),
+    "clear hone ke baad source-only harvester ne sahi value recover ki"
+  );
 });
 
 /* ------------------------------------------------------------------ */

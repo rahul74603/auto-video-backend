@@ -16,6 +16,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.6.2",
     "ffmpeg-static": "^5.3.0",
     "firebase-admin": "^13.7.0",
     "firebase-functions": "^7.2.5",
@@ -31,7 +32,7 @@
   },
   "private": true,
   "scripts": {
-    "check": "node --check index.js && node --check google_indexing.js && node --check agents/seo_indexing_agent.js && node --check agents/article_agents/source_fetcher.js && node --check agents/article_agents/job_article_writer.js && node --check agents/article_agents/fast_track_article_writer.js && node --check agents/article_agents/fact_quality_reviewer.js && node --check agents/article_agents/article_pipeline.js && node --check agents/article_agents/article_routes.js && node --check agents/article_agents/article_repairer.js && node --check agents/article_agents/title_utils.js && node --check auto_drafts.js && node --check article_to_story.js && node --check og_image.js && node --check server_seo_renderer.js",
+    "check": "node --check index.js && node --check google_indexing.js && node --check agents/seo_indexing_agent.js && node --check agents/article_agents/source_fetcher.js && node --check agents/article_agents/source_adequacy_gate.js && node --check agents/article_agents/job_article_writer.js && node --check agents/article_agents/fast_track_article_writer.js && node --check agents/article_agents/fact_quality_reviewer.js && node --check agents/article_agents/article_pipeline.js && node --check agents/article_agents/article_routes.js && node --check agents/article_agents/article_repairer.js && node --check agents/article_agents/smart_facts_harvester.js && node --check agents/article_agents/adaptive_article_orchestrator.js && node --check agents/article_agents/article_auth.js && node --check agents/article_agents/title_utils.js && node --check auto_drafts.js && node --check article_to_story.js && node --check og_image.js && node --check server_seo_renderer.js",
     "test": "node --test tests/*.test.js",
     "seo:audit": "node google_indexing.js --audit"
   }

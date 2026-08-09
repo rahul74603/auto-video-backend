@@ -16,14 +16,12 @@ const {
   mockGetDocs,
   mockGetDoc,
   mockAddDoc,
-  mockSetDoc,
   mockUpdateDoc,
   mockDeleteDoc,
 } = vi.hoisted(() => ({
   mockGetDocs: vi.fn(),
   mockGetDoc: vi.fn(),
   mockAddDoc: vi.fn(),
-  mockSetDoc: vi.fn(),
   mockUpdateDoc: vi.fn(),
   mockDeleteDoc: vi.fn(),
 }));
@@ -34,7 +32,6 @@ vi.mock('firebase/firestore', () => ({
   getDocs: mockGetDocs,
   getDoc: mockGetDoc,
   addDoc: mockAddDoc,
-  setDoc: mockSetDoc,
   updateDoc: mockUpdateDoc,
   deleteDoc: mockDeleteDoc,
   query: vi.fn(() => 'mock-query'),
@@ -230,27 +227,13 @@ describe('AI Article Workflow — publish payloads', () => {
     expect(buildPublishPayloadFromDraft(passedDraft({ type: 'FAST_TRACK' })).collection).toBe('fast_track');
   });
 
-  it('client-side publish writes with merged setDoc and deletes the draft (no duplicate record)', async () => {
-    const result = await aiArticleRepository.publishDraftClientSide(passedDraft());
-    expect(result.collection).toBe('jobs');
-    expect(result.docId).toBe('job-ssc-cgl-2026-recruitment');
-    expect(mockSetDoc).toHaveBeenCalledTimes(1);
-    const setDocArgs = mockSetDoc.mock.calls[0];
-    expect(setDocArgs[1]).toEqual(expect.objectContaining({ type: 'JOB', status: 'published', authorName: EDITORIAL_AUTHOR }));
-    // ⭐ publish ke baad draft DELETE hoti hai — status update nahi
-    expect(mockDeleteDoc).toHaveBeenCalledTimes(1);
-    expect(mockUpdateDoc).not.toHaveBeenCalled();
-  });
-
-  it('client-side publish refuses failed reviews (same gate as backend)', async () => {
-    const failed = passedDraft({ reviewStatus: 'failed', reviewReport: { verdict: 'fail', issues: ['x'] } });
-    await expect(aiArticleRepository.publishDraftClientSide(failed)).rejects.toThrow();
-    expect(mockSetDoc).not.toHaveBeenCalled();
+  it('does not expose a browser-side publish method (publishing is server-authoritative)', () => {
+    expect('publishDraftClientSide' in aiArticleRepository).toBe(false);
   });
 });
 
 describe('AI Article Workflow — backend API client', () => {
-  it('sends token header and parses JSON', async () => {
+  it('sends trusted agent token header and parses JSON', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ success: true, draftId: 'abc' }),
@@ -265,6 +248,23 @@ describe('AI Article Workflow — backend API client', () => {
     expect(url).toBe('https://api.example.com/articles/generate');
     expect(options.method).toBe('POST');
     expect(options.headers['x-agent-token']).toBe('secret-token');
+    vi.unstubAllGlobals();
+  });
+
+  it('sends Firebase admin ID token as bearer auth', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, draftId: 'secure' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await callArticleApi(
+      '/articles/generate',
+      { type: 'job', sourceUrl: 'https://ssc.gov.in/x' },
+      { idToken: 'firebase-id-token', baseUrl: 'https://api.example.com' }
+    );
+    const [, options] = fetchMock.mock.calls[0];
+    expect(options.headers.Authorization).toBe('Bearer firebase-id-token');
     vi.unstubAllGlobals();
   });
 
@@ -302,18 +302,7 @@ describe('AI Article Workflow — originRef (publish pe source-record delete)', 
     expect(sanitizeOriginRef('job_drafts')).toBeNull();
   });
 
-  it('publishDraftClientSide: valid originRef ho to origin bhi delete hota hai', async () => {
-    const draft = passedDraft({ originRef: { collection: 'job_drafts', id: 'j1' } });
-    const result = await aiArticleRepository.publishDraftClientSide(draft);
-    expect(result.originDeleted).toBe(true);
-    // 2 deletes: ai draft + origin record
-    expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
-  });
-
-  it('publishDraftClientSide: malicious originRef ko ignore karta hai (sirf draft delete)', async () => {
-    const draft = passedDraft({ originRef: { collection: 'users', id: 'admin' } });
-    const result = await aiArticleRepository.publishDraftClientSide(draft);
-    expect(result.originDeleted).toBe(false);
-    expect(mockDeleteDoc).toHaveBeenCalledTimes(1); // sirf ai draft
+  it('origin cleanup remains backend-only; frontend only validates the pointer shape', () => {
+    expect('publishDraftClientSide' in aiArticleRepository).toBe(false);
   });
 });

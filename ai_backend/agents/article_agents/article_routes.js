@@ -19,6 +19,7 @@
  */
 
 const admin = require("firebase-admin");
+const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
 const {
   DRAFT_COLLECTION,
   cleanType,
@@ -29,6 +30,8 @@ const {
 } = require("./article_pipeline");
 const { fetchAndExtractSource, assertSafeSourceUrl } = require("./source_fetcher");
 const { searchAndFetchSource, buildSearchQuery } = require("./web_searcher");
+const { runAdaptivePipeline } = require("./adaptive_article_orchestrator");
+const { createArticleAuthMiddleware } = require("./article_auth");
 const { EDITORIAL_AUTHOR, ARTICLE_TYPES, isBlockedDomain } = require("./constants");
 const { plainText } = require("./article_html_utils");
 
@@ -153,7 +156,41 @@ function sanitizeEdits(edits) {
   return allowed;
 }
 
+function articleRateLimiter({ windowMs, limit, adminScoped = false }) {
+  return rateLimit({
+    windowMs,
+    limit,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    keyGenerator: adminScoped
+      ? (req) => req.articleAdmin?.uid || req.articleAdmin?.email || ipKeyGenerator(req.ip)
+      : undefined,
+    handler: (_req, res) => res.status(429).json({
+      success: false,
+      error: "AI Article Studio rate limit reached — thodi der baad dobara try karo"
+    })
+  });
+}
+
 function registerArticleAgentRoutes(app, db) {
+  // Cloud Run/Firebase ek trusted proxy hop ke peeche hai; rate limiter ko real
+  // client IP milni chahiye, proxy ka shared IP nahi.
+  app.set("trust proxy", 1);
+
+  // Public edge limit token verification ko flood hone se bachata hai.
+  app.use("/articles", articleRateLimiter({ windowMs: 15 * 60 * 1000, limit: 60 }));
+
+  // Client-side hidden admin page alone is not security. Every article read,
+  // generation, edit and publish call must carry a verified admin credential.
+  app.use("/articles", createArticleAuthMiddleware(admin.auth()));
+
+  // Cost-bearing writer calls get a tighter per-admin budget. Preview/apply/
+  // publish remain under the broader edge limit above.
+  app.use(
+    ["/articles/generate", "/articles/regenerate"],
+    articleRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10, adminScoped: true })
+  );
+
   /* ---------------- GENERATE ---------------- */
   app.post("/articles/generate", async (req, res) => {
 
@@ -255,9 +292,11 @@ function registerArticleAgentRoutes(app, db) {
       }
 
       const existing = await collectExistingContent(db, type);
-      const draft = await runGeneratePipeline(
-        { type, sourceUrl: source.url, instructions, mode, source, existing },
-        {}
+      // Adaptive best-of-3: PASS/fatal issue pe early-stop; alternatives sirf
+      // writer-fixable failure par. Blind 5×3 calls wali branch ki 502 timeout
+      // problem ke bina quality fallback milta hai.
+      const draft = await runAdaptivePipeline(
+        { type, sourceUrl: source.url, instructions, mode, source, existing }
       );
       draft.autoSearched = autoSearched;
       draft.searchQuery = searchQuery;
@@ -302,6 +341,7 @@ function registerArticleAgentRoutes(app, db) {
         repairAttempts: draft.repairAttempts || 1,
         repairPassedOnAttempt: draft.repairPassedOnAttempt ?? null,
         repairLog: draft.repairLog || [],
+        generationMeta: draft.generationMeta || null,
         authorName: EDITORIAL_AUTHOR
       });
     } catch (error) {
@@ -370,7 +410,7 @@ function registerArticleAgentRoutes(app, db) {
       const existing = await collectExistingContent(db, type, { excludeDraftId: draftId });
       // ⭐ REGENERATE feedback loop: pichli failed review ke issues writer tak pahunchao,
       // warna writer andher me wahi ungrounded claims dobara likhta hai (death-loop).
-      const fresh = await runGeneratePipeline({
+      const fresh = await runAdaptivePipeline({
         type,
         sourceUrl: current.sourceUrl,
         instructions,
@@ -410,7 +450,8 @@ function registerArticleAgentRoutes(app, db) {
         // ⭐ Self-healing agent loop ka result
         repairAttempts: fresh.repairAttempts || 1,
         repairPassedOnAttempt: fresh.repairPassedOnAttempt ?? null,
-        repairLog: fresh.repairLog || []
+        repairLog: fresh.repairLog || [],
+        generationMeta: fresh.generationMeta || null
       });
     } catch (error) {
       return handleRouteError(res, error, "regenerate");
@@ -435,7 +476,9 @@ function registerArticleAgentRoutes(app, db) {
 
       const type = cleanType(current.articleType || (current.type === "JOB" ? "job" : "fast-track"));
       const merged = {
-        h1: edits.h1 ?? current.h1,
+        // Studio ka visible "Title (H1)" field `title` bhejta hai. Pahle sirf
+        // facts.title badalta tha aur article ka H1 purana reh jata tha.
+        h1: edits.h1 ?? edits.title ?? current.h1,
         seoTitle: edits.seoTitle ?? current.seoTitle,
         metaDescription: edits.metaDescription ?? current.metaDescription,
         shortDescription: edits.shortDescription ?? current.shortDescription,

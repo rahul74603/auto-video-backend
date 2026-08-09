@@ -31,6 +31,7 @@ const {
   numberSetOf
 } = require("./fact_quality_reviewer");
 const { harvestFactsDates } = require("./facts_date_harvester");
+const { harvestSmartFacts } = require("./smart_facts_harvester");
 const {
   ARTICLE_TYPES,
   WORD_TARGET_MIN_JOB,
@@ -149,11 +150,48 @@ function repairArticleDeterministically(article, source, { applyMode = false } =
     }
   }
 
-  // 3. facts dates harvest — body ki dates khaali info-box me bharo (JOB only)
+  // 3. Body me hard claim source se grounded na ho to exact figure ko neutral
+  // source-reference se replace karo. Ye date harvest se PEHLE hota hai, warna
+  // body ki hallucinated date khaali facts box me dobara bhar sakti thi.
+  if (index && !applyMode && article.contentHtml) {
+    const replacements = {
+      money: "amount के लिए Official Notification देखें",
+      vacancy: "पदों की संख्या के लिए Official Notification देखें",
+      date: "तिथि के लिए Official Notification देखें",
+      percent: "प्रतिशत के लिए Official Notification देखें"
+    };
+    let html = String(article.contentHtml);
+    let replaced = 0;
+    const claims = extractClaims(html).filter(
+      (claim) => !isClaimGrounded(claim, index.haystackNorm, index.sourceNumbers)
+    );
+    for (const claim of claims.slice(0, 20)) {
+      const replacement = replacements[claim.kind];
+      if (!replacement || !claim.value || !html.includes(claim.value)) continue;
+      const before = html;
+      html = html.split(claim.value).join(replacement);
+      if (html !== before) replaced += 1;
+    }
+    if (replaced) {
+      article.contentHtml = html;
+      article.wordCount = countWords(html);
+      repairs.push(`body:removed-ungrounded-claims:${replaced}`);
+    }
+  }
+
+  // 4. facts dates harvest — ab sirf grounded body dates khaali info-box me aayengi.
   const filled = harvestFactsDates(article);
   for (const field of filled) repairs.push(`facts:${field}:harvested-from-body`);
 
-  // 4. Ungrounded FAQs DROP — sirf jab 4+ FAQs bachti hon (reviewer min 4)
+  // 5. Source-only recovery: writer ne salary/vacancy/qualification/org khaali
+  // chhoda ho to fetched notification se deterministic value uthao. Admin edit
+  // flow me koi missing field apne-aap nahi bharte.
+  if (!applyMode) {
+    const smartFilled = harvestSmartFacts(article, source);
+    for (const field of smartFilled) repairs.push(`facts:${field}:source-harvested`);
+  }
+
+  // 6. Ungrounded FAQs DROP — sirf jab 4+ FAQs bachti hon (reviewer min 4)
   //    aur word-floor na toot'ta ho (reviewer word-count bhi check karta hai).
   if (index && !applyMode && Array.isArray(article.faqs) && article.faqs.length > 4) {
     const badIdx = [];
