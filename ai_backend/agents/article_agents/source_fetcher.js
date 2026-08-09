@@ -349,17 +349,25 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
     throw err;
   }
 
+  // For PDFs that are >12MB (like 20MB RITES PDFs) and SSL issues (unable to verify first certificate)
+  const https = require('https');
   const httpGet =
     deps.httpGet ||
-    ((url) =>
-      axios.get(url, {
+    ((url) => {
+      const isPdf = url.toLowerCase().endsWith('.pdf');
+      return axios.get(url, {
         headers: BROWSER_HEADERS,
-        timeout: deps.timeoutMs || 35000,
+        timeout: deps.timeoutMs || 60000, // Increased timeout for slow govt sites
         maxRedirects: 5,
-        maxContentLength: 12 * 1024 * 1024,
+        maxContentLength: isPdf ? 50 * 1024 * 1024 : 12 * 1024 * 1024, // 50MB for PDFs, 12MB for HTML
+        maxBodyLength: isPdf ? 50 * 1024 * 1024 : 12 * 1024 * 1024,
         responseType: "arraybuffer",
-        validateStatus: (status) => status >= 200 && status < 300
-      }));
+        validateStatus: (status) => status >= 200 && status < 300,
+        // Fix for "unable to verify the first certificate" on govt sites like rrcpryj.org
+        httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+        httpAgent: new (require('http').Agent)({ keepAlive: true })
+      });
+    });
 
   let response;
   let lastErr;
@@ -375,17 +383,22 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
     // deps.slowRetryGet = tests ke liye injectable.
     if ((!deps.httpGet || deps.slowRetryGet) && isTimeout) {
       console.warn(`source fetch: pehli hit timeout (${err.message}) — slow-server retry...`);
+      const https = require('https');
       const retryGet =
         deps.slowRetryGet ||
-        ((url) =>
-          axios.get(url, {
+        ((url) => {
+          const isPdf = url.toLowerCase().endsWith('.pdf');
+          return axios.get(url, {
             headers: BROWSER_HEADERS,
-            timeout: 70000,
+            timeout: 90000,
             maxRedirects: 5,
-            maxContentLength: 12 * 1024 * 1024,
+            maxContentLength: isPdf ? 50 * 1024 * 1024 : 12 * 1024 * 1024,
+            maxBodyLength: isPdf ? 50 * 1024 * 1024 : 12 * 1024 * 1024,
             responseType: "arraybuffer",
-            validateStatus: (status) => status >= 200 && status < 300
-          }));
+            validateStatus: (status) => status >= 200 && status < 300,
+            httpsAgent: new https.Agent({ rejectUnauthorized: false })
+          });
+        });
       try {
         response = await retryGet(parsed.toString());
       } catch (retryErr) {
