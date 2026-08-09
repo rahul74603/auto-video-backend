@@ -158,10 +158,27 @@ async function runBestOfN({ type, sourceUrl, instructions, mode, source, existin
     }
   }
   
-  // Pick best
+  // Pick best — handle source fetch failures specially
   const validResults = results.filter(r => r.draft);
   if (!validResults.length) {
-    throw new Error(`Best-of-${n} all failed — no draft produced`);
+    // Check if all failures were due to source fetch / not worthy (e.g., Cloudflare block, 502, SRCC PDF)
+    // In that case, throw the original source error with its code so frontend gets actionable 502 message + upload hint
+    // Instead of generic "Best-of-3 all failed"
+    const sourceErrors = results.filter(r => r.error && /SOURCE_FETCH_FAILED|SOURCE_NOT_ARTICLE_WORTHY|SOURCE_TOO_THIN|INVALID_SOURCE_URL|FETCH_ERR|blocked|Cloudflare|certificate|ETELEGRAM/i.test(r.error + ' ' + (r.draft?.reviewReport?.issues?.join(' ') || '')));
+    const firstSourceError = results.find(r => r.error && r.error.includes('Source') || r.error && r.error.includes('fetch') || r.error && r.error.includes('PDF') || r.error && r.error.includes('Cloudflare'));
+    
+    // Find any result that has an error with code (from source_fetcher)
+    // The results array contains error messages from catch, but we need to preserve original error code if possible
+    // Look for the first error that looks like source-related
+    const meaningfulError = results.find(r => r.error)?.error || `Best-of-${n} all failed — no draft produced. Last errors: ${results.map(r => r.error || 'unknown').slice(0,3).join(' | ')}`;
+    
+    // If it's a source fetch failure, throw with code SOURCE_FETCH_FAILED so route returns 502 with upload hint, not 500
+    const err = new Error(meaningfulError);
+    // Preserve original error code if it was source-related
+    if (/fetch|Source|PDF|Cloudflare|certificate|not.*found|unable|block/i.test(meaningfulError)) {
+      err.code = 'SOURCE_FETCH_FAILED';
+    }
+    throw err;
   }
   
   // Sort by score descending
