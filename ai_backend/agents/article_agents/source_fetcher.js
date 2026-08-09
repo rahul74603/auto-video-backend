@@ -445,10 +445,12 @@ async function fetchAndExtractSource(rawUrl, deps = {}) {
 
     if (!response) {
       const status = lastErr?.response?.status;
+      const isPdfUrl = parsed.pathname.toLowerCase().endsWith(".pdf");
+      const blocked = isTimeout || isPdfUrl || status === 403 || status === 429 || status === 502;
       const wrapped = new Error(
-        `Source page fetch nahi ho paya${status ? ` (site ne status ${status} diya — shayad block kiya)` : ""}: ${lastErr.message}` +
-          (isTimeout
-            ? " — 💡 Site humara server block kar rahi hai (sarkari site). ⭐ AB solution: upar link ke SAATH niche wale box me us page/PDF ka pura TEXT copy-paste kar do — article text se hi ban jayega."
+        `Source ${isPdfUrl ? "PDF" : "page"} fetch nahi ho paya${status ? ` (site ne status ${status} diya — shayad block kiya)` : ""}: ${lastErr?.message || "unknown network error"}` +
+          (blocked
+            ? " — 💡 Sarkari site cloud server ko block kar rahi ho sakti hai. PDF/Image ko 📄 UPLOAD button se do, ya official link upar rakhkar poora text Source Text box me copy-paste karo."
             : "")
       );
       wrapped.code = "SOURCE_FETCH_FAILED";

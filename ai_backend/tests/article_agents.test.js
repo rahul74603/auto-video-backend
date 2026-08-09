@@ -573,8 +573,10 @@ test("pipeline always creates a draft — automatic mode can never publish direc
 
 test("failed review marks the draft unpublishable", async () => {
   const source = makeJobSource();
+  // Deterministic hallucination repair ab bad figures hata deta hai, isliye
+  // yahan jaan-bujhkar unrepairable short/structure failure use karte hain.
   const raw = groundedWriterPayload({
-    contentHtml: groundedContentHtml() + "<p>भर्ती 99999 posts की है।</p>",
+    contentHtml: "<h1>SSC CGL Recruitment</h1><h2>Overview</h2><p>Official notification जारी हुई है।</p>",
     faqs: groundedFaqs()
   });
   const draft = await runGeneratePipeline(
@@ -592,6 +594,17 @@ test("assertPublishable blocks failed/stale/published drafts and not manual revi
 
   const failed = { ...good, reviewStatus: "failed" };
   assert.throws(() => assertPublishable(failed), /Publish blocked/);
+
+  const contradictoryReview = {
+    ...good,
+    reviewStatus: "passed",
+    publishBlocked: false,
+    reviewReport: { ...good.reviewReport, verdict: "fail" }
+  };
+  assert.throws(() => assertPublishable(contradictoryReview), /Fact & Quality review FAILED/);
+
+  const wrongAuthor = { ...good, authorName: "Someone Else" };
+  assert.throws(() => assertPublishable(wrongAuthor), /author must be StudyGyaan Editorial Team/);
 
   const stale = { ...good, reviewStale: true };
   assert.throws(() => assertPublishable(stale), /re-run|review/i);

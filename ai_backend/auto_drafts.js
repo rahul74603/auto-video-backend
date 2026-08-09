@@ -183,8 +183,10 @@ async function processCandidate(db, FieldValue, candidate, deps) {
     const cleanType = deps.cleanType;
     const existing = await deps.collectExistingContent(db, cleanType(candidate.type));
 
-    // 3) AI pipeline (auto mode = sirf draft, publish NEVER)
-    const draft = await deps.runGeneratePipeline({
+    // 3) Adaptive grounded pipeline in production; tests/legacy callers can
+    // still inject the single pipeline. Either way mode:auto remains draft-only.
+    const generateDraft = deps.runAdaptivePipeline || deps.runGeneratePipeline;
+    const draft = await generateDraft({
         type: cleanType(candidate.type),
         sourceUrl: source.url,
         instructions: "",
@@ -323,7 +325,8 @@ async function processRepair(db, FieldValue, docSnap, deps) {
     const feedbackIssues = current.reviewReport && Array.isArray(current.reviewReport.issues)
         ? current.reviewReport.issues
         : undefined;
-    const fresh = await deps.runGeneratePipeline({
+    const generateDraft = deps.runAdaptivePipeline || deps.runGeneratePipeline;
+    const fresh = await generateDraft({
         type,
         sourceUrl: current.sourceUrl,
         instructions: current.instructions || "",
@@ -397,6 +400,7 @@ async function runAutoDrafts(db, FieldValue, deps) {
 /** Production deps assemble karke job chalao (scheduled/trigger se). */
 async function runAutoDraftsJob(db, FieldValue, options) {
     const pipeline = require("./agents/article_agents/article_pipeline");
+    const adaptive = require("./agents/article_agents/adaptive_article_orchestrator");
     const fetcher = require("./agents/article_agents/source_fetcher");
     const searcher = require("./agents/article_agents/web_searcher");
     const routes = require("./agents/article_agents/article_routes");
@@ -404,6 +408,7 @@ async function runAutoDraftsJob(db, FieldValue, options) {
 
     const deps = {
         runGeneratePipeline: pipeline.runGeneratePipeline,
+        runAdaptivePipeline: adaptive.runAdaptivePipeline,
         fetchAndExtractSource: fetcher.fetchAndExtractSource,
         searchAndFetchSource: searcher.searchAndFetchSource,
         collectExistingContent: routes.collectExistingContent,

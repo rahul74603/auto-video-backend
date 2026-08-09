@@ -101,7 +101,10 @@ function snapshotOf(source) {
     url: source.url,
     fetchedAt: source.fetchedAt,
     pageTitle: source.pageTitle || "",
-    text: String(source.text || "").slice(0, 12000),
+    // Apply/re-review ko wahi grounding evidence chahiye jo writer ne dekha tha.
+    // 12k truncation se long PDFs ke aakhri facts jhoothe "hallucination" lagte
+    // the; 60k Firestore's document limit ke andar rehte hue full input rakhta hai.
+    text: String(source.text || "").slice(0, 60000),
     tables: packTables(source.tables),
     links: (source.links || []).slice(0, 80),
     sha256: crypto.createHash("sha256").update(String(source.text || "")).digest("hex")
@@ -120,7 +123,7 @@ function snapshotOf(source) {
  * hoti hai (`reviewStatus:'failed'`) aur publishing blocked rehti hai. Manual
  * REGENERATE ab shayad hi kabhi chahiye ho — agent khud theek karta hai.
  */
-async function runGeneratePipeline({ type, sourceUrl, instructions, mode, source, existing, feedbackIssues }, deps = {}) {
+async function runGeneratePipeline({ type, sourceUrl, instructions, mode, source, existing, feedbackIssues, strategyGuidance }, deps = {}) {
   const cleanArticleType = cleanType(type);
   const fetchedSource = source || (await fetchAndExtractSource(sourceUrl, deps.fetchDeps));
   // Snapshot se aaya source ho to packed tables ko normal shape me lao.
@@ -142,7 +145,7 @@ async function runGeneratePipeline({ type, sourceUrl, instructions, mode, source
     let article;
     try {
       article = await generate(
-        { source: fetchedSource, instructions, feedbackIssues: feedback },
+        { source: fetchedSource, instructions, feedbackIssues: feedback, strategyGuidance },
         deps.writerDeps || {}
       );
     } catch (writerErr) {
@@ -302,11 +305,21 @@ function assertPublishable(draft) {
     err.code = "PUBLISH_BLOCKED";
     throw err;
   }
-  if (draft.reviewStatus !== "passed") {
+  const reviewVerdict = String(draft.reviewReport?.verdict || "").toLowerCase();
+  if (
+    draft.reviewStatus !== "passed" ||
+    reviewVerdict !== "pass" ||
+    draft.publishBlocked === true
+  ) {
     const err = new Error(
-      `Publish blocked: Fact & Quality review ${draft.reviewStatus === "failed" ? "FAILED" : "not passed yet"}` +
+      `Publish blocked: Fact & Quality review ${draft.reviewStatus === "failed" || reviewVerdict === "fail" ? "FAILED" : "not passed yet"}` +
         (draft.reviewReport?.issues?.length ? ` — ${draft.reviewReport.issues.slice(0, 3).join("; ")}` : "")
     );
+    err.code = "PUBLISH_BLOCKED";
+    throw err;
+  }
+  if (draft.authorName !== EDITORIAL_AUTHOR) {
+    const err = new Error(`Publish blocked: author must be ${EDITORIAL_AUTHOR}`);
     err.code = "PUBLISH_BLOCKED";
     throw err;
   }

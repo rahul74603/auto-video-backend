@@ -85,22 +85,31 @@ const AdminBrowseAIDrafts = () => {
   };
 
   const handlePublish = async (draft: AIArticleDraftRecord) => {
-    const gate = canPublishDraft(draft);
+    // Firestore se latest state verify karke publish hamesha backend gate se.
+    // Browser-side fallback stale/forged review ko live nahi kar sakta.
+    const latest = await aiArticleRepository.getDraft(draft.id).catch(() => null);
+    const current = latest || draft;
+    const gate = canPublishDraft(current);
     if (!gate.ok) {
       toast.error(`Publish blocked: ${gate.reason}`, { duration: 6000 });
       return;
     }
-    if (!window.confirm(`"${draft.title}" publish karein?`)) return;
+    if (!window.confirm(`"${current.title}" publish karein?`)) return;
     try {
-      const fallback = await aiArticleRepository.publishDraftClientSide(draft);
-      toast.success(`Published → ${fallback.collection}/${fallback.docId}`);
+      const result = await callArticleApi<{ collection?: string; docId?: string }>(
+        '/articles/publish',
+        { draftId: current.id }
+      );
+      toast.success(`Published → ${result.collection}/${result.docId}`);
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Publish fail');
+      await refresh().catch(() => {});
     }
   };
 
-  // 🔁 AUTO FIX UNTIL READY — jab tak pass na ho tab tak regenerate
+  // 🔁 BOUNDED AUTO FIX — backend ka har call khud adaptive grounded strategies
+  // chalata hai; browser se 15 baar spam karna quota/timeout dono bigaadta tha.
   const handleAutoFixUntilReady = async (draft: AIArticleDraftRecord) => {
     if (autoFixingIds.has(draft.id)) return;
     
@@ -111,9 +120,10 @@ const AdminBrowseAIDrafts = () => {
     });
     setFixAttempts(prev => ({ ...prev, [draft.id]: 0 }));
 
-    const maxAttempts = 15; // 15 * 8sec = 2 min frontend, backend also retries every 10 min
+    const maxAttempts = 2; // each call already runs up to 3 bounded strategies
     let attempts = 0;
-    const toastId = toast.loading(`🤖 Auto-fix start: "${draft.title?.slice(0, 35)}" — tab tak retry jab tak ready na ho...`, { duration: Infinity });
+    let completed = false;
+    const toastId = toast.loading(`🤖 Adaptive auto-fix: "${draft.title?.slice(0, 35)}" — max ${maxAttempts} safe cycles...`, { duration: Infinity });
 
     try {
       while (attempts < maxAttempts) {
@@ -123,7 +133,10 @@ const AdminBrowseAIDrafts = () => {
 
         try {
           // Regenerate API — feedback loop ke saath pichli issues writer ko bhejta hai backend
-          const result: any = await callArticleApi('/articles/regenerate', {
+          const result = await callArticleApi<{
+            review?: { verdict?: 'pass' | 'fail' };
+            draft?: { reviewStatus?: 'passed' | 'failed' };
+          }>('/articles/regenerate', {
             draftId: draft.id,
             instructions: '', // backend will use stored + previous issues
           });
@@ -135,6 +148,7 @@ const AdminBrowseAIDrafts = () => {
           if (fresh) {
             const isReady = fresh.reviewStatus === 'passed' && !fresh.reviewStale;
             if (isReady) {
+              completed = true;
               toast.success(`✅ Fixed in ${attempts} attempts! "${(fresh.title || '').slice(0, 40)}" ab READY hai — Telegram ab jayega publish ke liye!`, { id: toastId, duration: 8000 });
               break;
             } else {
@@ -142,6 +156,7 @@ const AdminBrowseAIDrafts = () => {
               const issues = fresh.reviewReport?.issues || [];
               const fatal = issues.some((iss: string) => /duplicate|expired|speculative|not.*article.*worthy/i.test(iss));
               if (fatal) {
+                completed = true;
                 toast.error(`❌ Fatal issue (duplicate/expired) — auto-fix se thik nahi hoga: ${issues[0]?.slice(0, 80)}`, { id: toastId, duration: 8000 });
                 break;
               }
@@ -153,32 +168,35 @@ const AdminBrowseAIDrafts = () => {
             }
           } else {
             // Fresh not found — maybe got published/deleted
+            completed = true;
             toast.error('Draft ka data nahi mila (shayad already handled)', { id: toastId });
             break;
           }
 
           // If result directly says pass
           if (result?.review?.verdict === 'pass' || result?.draft?.reviewStatus === 'passed') {
+            completed = true;
             toast.success(`✅ Review PASS on attempt ${attempts}! Ready to publish`, { id: toastId });
             await refresh();
             break;
           }
 
-        } catch (err: any) {
-          const msg = err?.message || 'Unknown error';
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Unknown error';
           // 503 rate limit etc — wait longer
           const wait = /rate|busy|503/i.test(msg) ? 15000 : 6000;
           if (attempts < maxAttempts) {
             toast.loading(`⚠️ Attempt ${attempts} error: ${msg.slice(0, 80)} — ${wait/1000}s baad retry...`, { id: toastId });
             await new Promise(r => setTimeout(r, wait));
           } else {
+            completed = true;
             toast.error(`❌ Auto-fix ${maxAttempts} attempts ke baad bhi fail: ${msg}`, { id: toastId, duration: 8000 });
           }
         }
       }
 
-      if (attempts >= maxAttempts) {
-        toast.error(`⏸️ ${maxAttempts} attempts ke baad pause kiya — backend auto-retry machine har ~10 min me khud try karti rahegi, ready hote hi Telegram aayega`, { id: toastId, duration: 10000 });
+      if (!completed && attempts >= maxAttempts) {
+        toast.error(`⏸️ ${maxAttempts} bounded cycles ke baad pause kiya — backend auto-retry machine har ~10 min me khud try karti rahegi, ready hote hi Telegram aayega`, { id: toastId, duration: 10000 });
       }
 
     } finally {
@@ -204,7 +222,7 @@ const AdminBrowseAIDrafts = () => {
       toast.error('Koi fixable blocked draft nahi hai (fatal duplicate/expired wale skip honge)');
       return;
     }
-    if (!window.confirm(`${failed.length} blocked drafts ko ek-ek karke auto-fix karna hai?\n\nHar draft pe ~10-15 attempts lagenge, tab tak jab tak ready na ho.\nBackend bhi har 10 min me khud retry karta hai — Telegram sirf ready hone par aayega.\n\nContinue?`)) return;
+    if (!window.confirm(`${failed.length} blocked drafts ko ek-ek karke adaptive auto-fix karna hai?\n\nHar draft par max 2 browser cycles chalenge; har backend call khud bounded grounded strategies use karta hai.\nBackend bhi har 10 min me retry karta hai — Telegram sirf ready hone par aayega.\n\nContinue?`)) return;
 
     setAutoFixingAll(true);
     const toastId = toast.loading(`🔧 Fix All: ${failed.length} drafts — started...`, { duration: Infinity });

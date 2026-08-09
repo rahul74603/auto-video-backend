@@ -1,78 +1,98 @@
 "use strict";
 
 /**
- * ============================================================
- *  SOURCE ADEQUACY GATE — "kaam na ho to MANA kar do" guard
- * ============================================================
- *  Kabhi-kabhi source me article banane layak REAL content hota hi nahi
- *  (Cloudflare/security block-page, sirf shell text, ya "coming soon"
- *  placeholder). Pahle writer aise source se "संभावित परिणाम update..." jaisi
- *  SPECULATIVE nonsense article likh deta tha.
- *
- *  Ab writer se pehle ye gate chalta hai:
- *    1. Block-page/challenge-page signature mila            → REFUSE
- *    2. Patla text + notification-signals (declared info) na mile → REFUSE
- *  Refuse = article kabhi banegi hi nahi; admin ko actionable raasta milta
- *  hai (text paste / PDF upload / dusra DIRECT official link).
+ * Source adequacy gate: refuse challenge/shell pages before an LLM can turn
+ * them into a speculative article. Genuine PDFs get a format-aware rule, but
+ * still need concrete notification evidence; simply lowering the global text
+ * threshold (as an older branch did) would let thin junk pages through.
  */
 
-/** Browser-security / anti-bot challenge pages (site content nahi, nabbe pinjare). */
 const BLOCK_PAGE_RE =
   /(just a moment|checking your browser|checking if the site connection is secure|attention required|cloudflare ray id|ddos protection|403 forbidden|access denied|you have been blocked|security check|verify you are human|captcha|bot detection|please enable javascript and cookies to continue|blocked by)/i;
 
-/** Real notification/result/bharti hone ke shabd (English + Hindi). */
 const DECLARE_RE =
-  /(\bresult\b|declared|घोषित|परिणाम|notification|advt\.?|advertisement|shortlist|merit\s*list|answer\s*key|cut[- ]?off|joining|appointment|recruitment|bharti|भर्ती|नियुक्ति|admit\s*card|call\s*letter|vacanc(?:y|ies)|पदों\s*की\s*संगख्या|आवेदन)/i;
+  /(\bresult\b|declared|घोषित|परिणाम|notification|advt\.?|advertisement|shortlist|merit\s*list|answer\s*key|cut[- ]?off|joining|appointment|recruitment|bharti|भर्ती|नियुक्ति|admit\s*card|call\s*letter|vacanc(?:y|ies)|आवेदन|teaching|assistant\s*professor|associate\s*professor|faculty|college|university)/i;
 
-/** Date hone ka signal (dd/mm/yyyy + "28 July 2026" + "28-Jul-2026" dono likhawat). */
 const DATE_TOKEN_RE =
   /\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{1,2}[\s\/\-.][A-Za-z\u0900-\u097F]{3,12}[\s\/\-.]\d{4}/;
 
-/** Grey-zone se neeche ka text + kamzor signals → article-worthy nahi. */
-const THIN_TEXT_LIMIT = 1500;
+/** Concrete detail labels—not merely a generic word such as "posts". */
+const DETAIL_RE =
+  /(?:advt\.?|advertisement)\s*(?:no\.?|number)?\s*[:\-]?\s*[a-z0-9/.-]+|(?:total\s*)?(?:vacanc(?:y|ies)|posts?|पदों?)\s*[:\-]?\s*\d|(?:salary|pay\s*(?:scale|level)|वेतन|fee|शुल्क|age\s*limit|आयु\s*सीमा)\D{0,24}\d|(?:qualification|eligibility|योग्यता)\s*[:\-]/i;
 
-/** Notification hone ke signals (min 2 chahiye jab text patla ho). */
+const THIN_TEXT_LIMIT = 1500;
+const PDF_MIN_TEXT = 400;
+
+function tableRowCount(tables) {
+  return (Array.isArray(tables) ? tables : []).reduce((sum, table) => {
+    const rows = Array.isArray(table) ? table : table?.rows;
+    return sum + (Array.isArray(rows) ? rows.length : 0);
+  }, 0);
+}
+
+function isPdfSource(source) {
+  if (String(source?.via || "").toLowerCase() === "pdf") return true;
+  if (/application\/pdf/i.test(String(source?.contentType || ""))) return true;
+  try {
+    return new URL(String(source?.url || "")).pathname.toLowerCase().endsWith(".pdf");
+  } catch {
+    return /\.pdf(?:$|[?#])/i.test(String(source?.url || ""));
+  }
+}
+
 function countNotificationSignals({ text, tables }) {
   let signals = 0;
-  const tableRows = (Array.isArray(tables) ? tables : []).reduce(
-    (sum, t) => sum + (Array.isArray(t) ? t.length : 0),
-    0
-  );
   if (DATE_TOKEN_RE.test(text)) signals += 1;
   if (DECLARE_RE.test(text)) signals += 1;
-  if (tableRows >= 2) signals += 1;
+  if (DETAIL_RE.test(text)) signals += 1;
+  if (tableRowCount(tables) >= 2) signals += 1;
   return signals;
 }
 
-/**
- * Source ko article-worthy verify karo. Fail hone par code
- * SOURCE_NOT_ARTICLE_WORTHY ke saath throw karta hai (route 502 + raasta batata hai).
- * @param {{text?: string, tables?: Array, url?: string}} source
- */
 function assertSourceArticleWorthy(source) {
   const text = String(source?.text || "").replace(/\s+/g, " ").trim();
+  const pdf = isPdfSource(source);
   const refuse = (reason) => {
-    const err = new Error(
-      `${reason} — is liye AI ne uda ke 'संभावित/speculative' article banana MANA kar diya ✅. ` +
-        `Ab ye karo: page/PDF khud kholkar uska ASLI text copy karke Source Text box me daalo ` +
-        `(ya 📄 upload button se file do), ya koi AUR DIRECT official notification link try karo.`
+    const hint = pdf
+      ? "PDF ko browser me kholkar 📄 upload button se file do, ya uska asli text Source Text box me paste karo."
+      : "Page/PDF ka asli text Source Text box me paste karo (ya 📄 upload button use karo), ya doosra DIRECT official link try karo.";
+    const error = new Error(
+      `${reason} — AI ne speculative article banana MANA kar diya ✅. Ab ye karo: ${hint}`
     );
-    err.code = "SOURCE_NOT_ARTICLE_WORTHY";
-    throw err;
+    error.code = "SOURCE_NOT_ARTICLE_WORTHY";
+    throw error;
   };
 
-  // 1. Security/block page hi mila ho — content maana hi nahi ja sakta
-  if (BLOCK_PAGE_RE.test(text.slice(0, 3000))) {
-    refuse("Source to browser-SECURITY BLOCK page nikla (Cloudflare/anti-bot challenge, real content nahi)");
+  if (BLOCK_PAGE_RE.test(text.slice(0, 4000))) {
+    refuse("Source browser-security/Cloudflare block page nikla, real notification content nahi");
   }
 
-  // 2. Patla text + notification-signals na ho — speculation ka darr
   const signals = countNotificationSignals({ text, tables: source?.tables });
-  if (text.length < THIN_TEXT_LIMIT && signals < 2) {
-    refuse(
-      "Source me article banne layak REAL details hi nahi hain (na pakki notification/language, na dates/table — sirf shell text)"
-    );
+
+  if (pdf) {
+    if (text.length < PDF_MIN_TEXT) {
+      refuse(`PDF se sirf ${text.length} readable characters mile; file scanned ya blocked ho sakti hai`);
+    }
+    // A real short PDF must carry at least two independent signals such as a
+    // date + recruitment term, or a concrete vacancy detail + table.
+    if (signals < 2) {
+      refuse("PDF me pakki notification details nahi mili (date/table/advt/vacancy evidence kam hai)");
+    }
+    return true;
   }
+
+  if (text.length < THIN_TEXT_LIMIT && signals < 2) {
+    refuse("Source me article banane layak real details nahi hain; ye sirf thin shell/placeholder text lagta hai");
+  }
+  return true;
 }
 
-module.exports = { assertSourceArticleWorthy, countNotificationSignals, BLOCK_PAGE_RE, DECLARE_RE };
+module.exports = {
+  assertSourceArticleWorthy,
+  countNotificationSignals,
+  isPdfSource,
+  tableRowCount,
+  BLOCK_PAGE_RE,
+  DECLARE_RE,
+  DETAIL_RE
+};

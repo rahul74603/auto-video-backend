@@ -1,4 +1,4 @@
-import { db } from '@/firebase/config';
+import { auth, db } from '@/firebase/config';
 import {
   addDoc,
   collection,
@@ -9,7 +9,6 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
   updateDoc,
 } from 'firebase/firestore';
 
@@ -37,6 +36,24 @@ export type ReviewReport = {
   warnings?: string[];
   metrics?: Record<string, unknown>;
   reviewedAt?: string;
+} | null;
+
+export type ArticleGenerationMeta = {
+  engine?: 'adaptive-grounded-v1' | string;
+  maxStrategies?: number;
+  strategiesTried?: number;
+  bestStrategy?: string;
+  bestStrategyLabel?: string;
+  passedCount?: number;
+  stoppedReason?: string;
+  durationMs?: number;
+  outcomes?: Array<{
+    strategy?: string;
+    verdict?: ReviewVerdict;
+    score?: number;
+    issueCount?: number;
+    repairAttempts?: number;
+  }>;
 } | null;
 
 export type AIArticleDraftRecord = {
@@ -72,6 +89,7 @@ export type AIArticleDraftRecord = {
   repairBestAttempt?: number;
   repairPassedOnAttempt?: number | null;
   repairLog?: string[];
+  generationMeta?: ArticleGenerationMeta;
   createdAt?: { seconds?: number; toDate?: () => Date } | null;
   [key: string]: unknown;
 };
@@ -119,40 +137,9 @@ export const aiArticleRepository = {
     await deleteDoc(doc(db, AI_ARTICLE_DRAFTS, id));
   },
 
-  /**
-   * Client-side publish fallback — used only when the backend publishes
-   * endpoint is unreachable. The same review gate is enforced here, so a
-   * failed review still blocks publication.
-   */
-  async publishDraftClientSide(draft: AIArticleDraftRecord): Promise<{ collection: string; docId: string; originDeleted: boolean }> {
-    assertDraftPublishable(draft);
-    const { collection: target, payload } = buildPublishPayloadFromDraft(draft);
-    const docId = draft.publishedDocId
-      ? draft.publishedDocId
-      : `${draft.type === 'JOB' ? 'job' : 'ft'}-${String(draft.slug || draft.id).slice(0, 90)}`;
-    await setDoc(
-      doc(db, target, docId),
-      { ...payload, createdAt: serverTimestamp(), publishedAt: serverTimestamp() },
-      { merge: true }
-    );
-    // ⭐ Publish ke baad draft DELETE — duplicate record nahi rehta
-    // (published jobs/fast_track doc hi ab duplicate-guard ka source hai).
-    await deleteDoc(doc(db, AI_ARTICLE_DRAFTS, draft.id));
-    // ⭐ Origin source-record bhi delete (JOBS AI draft row / Fast Track raw item) —
-    // whitelist sanitizeOriginRef guarantee karta hai sirf job_drafts/fast_track jaye.
-    // Fail ho jaye to publish kaam phir bhi poora — sirf false report karte hain.
-    let originDeleted = false;
-    const originRef = sanitizeOriginRef(draft.originRef);
-    if (originRef) {
-      try {
-        await deleteDoc(doc(db, originRef.collection, originRef.id));
-        originDeleted = true;
-      } catch (e) {
-        console.warn(`publish: origin ${originRef.collection}/${originRef.id} delete failed:`, e);
-      }
-    }
-    return { collection: target, docId, originDeleted };
-  },
+  // Publishing intentionally has NO browser-side repository method. Both
+  // Studio panels must call /articles/publish so auth + latest review + author
+  // checks execute server-side before any public collection write.
 
   async saveFallbackGeneration(draft: Record<string, unknown>): Promise<string> {
     const ref = await addDoc(draftsCollection, { ...draft, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
@@ -184,7 +171,7 @@ export function canPublishDraft(draft: AIArticleDraftRecord | null | undefined):
       reason: `Fact & Quality review पास नहीं हुआ${issues ? ` — ${issues}` : ''}`,
     };
   }
-  if (draft.authorName && draft.authorName !== EDITORIAL_AUTHOR) {
+  if (draft.authorName !== EDITORIAL_AUTHOR) {
     return { ok: false, reason: `Author label "${EDITORIAL_AUTHOR}" होना चाहिए` };
   }
   return { ok: true, reason: '' };
@@ -300,13 +287,17 @@ export function buildPublishPayloadFromDraft(draft: AIArticleDraftRecord): {
 export async function callArticleApi<T = Record<string, unknown>>(
   path: string,
   body: Record<string, unknown>,
-  options: { token?: string; baseUrl?: string } = {}
+  options: { token?: string; idToken?: string; baseUrl?: string } = {}
 ): Promise<T & { success: boolean }> {
   const base = (options.baseUrl || ARTICLE_API_BASE).replace(/\/+$/, '');
+  // Browser calls use the currently signed-in Firebase admin session. `token`
+  // remains available for trusted server tooling through AGENT_ADMIN_TOKEN.
+  const firebaseIdToken = options.idToken || await auth.currentUser?.getIdToken();
   const response = await fetch(`${base}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(firebaseIdToken ? { Authorization: `Bearer ${firebaseIdToken}` } : {}),
       ...(options.token ? { 'x-agent-token': options.token } : {}),
     },
     body: JSON.stringify(body),

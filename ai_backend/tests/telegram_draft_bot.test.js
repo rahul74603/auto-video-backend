@@ -37,6 +37,7 @@ test("adminCredsFromEnv — ADMIN id pe priority, fallback public id", () => {
     }
 });
 const { publishDraftRecord } = require("../agents/article_agents/article_pipeline");
+const { EDITORIAL_AUTHOR } = require("../agents/article_agents/constants");
 
 // Webhook tests buttons-enable mode me chalte hain (admin id configured)
 process.env.TELEGRAM_ADMIN_CHAT_ID = "-1009999";
@@ -92,7 +93,9 @@ const PASSED_JOB_DRAFT = {
     status: "draft",
     reviewStatus: "passed",
     reviewStale: false,
-    reviewReport: { score: 92, issues: [] },
+    publishBlocked: false,
+    reviewReport: { verdict: "pass", score: 92, issues: [] },
+    authorName: EDITORIAL_AUTHOR,
     wordCount: 1820,
     sourceUrl: "https://test.cbexams.com/EDPSU/SPMCIL/SPM/docs/Advt.pdf",
     metaDescription: "SPMCIL 24 manager posts — apply before 24 Aug 2026.",
