@@ -19,6 +19,7 @@
  */
 
 const admin = require("firebase-admin");
+const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
 const {
   DRAFT_COLLECTION,
   cleanType,
@@ -155,10 +156,40 @@ function sanitizeEdits(edits) {
   return allowed;
 }
 
+function articleRateLimiter({ windowMs, limit, adminScoped = false }) {
+  return rateLimit({
+    windowMs,
+    limit,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    keyGenerator: adminScoped
+      ? (req) => req.articleAdmin?.uid || req.articleAdmin?.email || ipKeyGenerator(req.ip)
+      : undefined,
+    handler: (_req, res) => res.status(429).json({
+      success: false,
+      error: "AI Article Studio rate limit reached — thodi der baad dobara try karo"
+    })
+  });
+}
+
 function registerArticleAgentRoutes(app, db) {
+  // Cloud Run/Firebase ek trusted proxy hop ke peeche hai; rate limiter ko real
+  // client IP milni chahiye, proxy ka shared IP nahi.
+  app.set("trust proxy", 1);
+
+  // Public edge limit token verification ko flood hone se bachata hai.
+  app.use("/articles", articleRateLimiter({ windowMs: 15 * 60 * 1000, limit: 60 }));
+
   // Client-side hidden admin page alone is not security. Every article read,
   // generation, edit and publish call must carry a verified admin credential.
   app.use("/articles", createArticleAuthMiddleware(admin.auth()));
+
+  // Cost-bearing writer calls get a tighter per-admin budget. Preview/apply/
+  // publish remain under the broader edge limit above.
+  app.use(
+    ["/articles/generate", "/articles/regenerate"],
+    articleRateLimiter({ windowMs: 15 * 60 * 1000, limit: 10, adminScoped: true })
+  );
 
   /* ---------------- GENERATE ---------------- */
   app.post("/articles/generate", async (req, res) => {
