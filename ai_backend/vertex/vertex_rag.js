@@ -113,21 +113,34 @@ function toVertexDocument({ id, title, url, content, schema, fields = {} }) {
 
 /**
  * Import a batch of inline documents into the data store.
+ * Discovery Engine ek call me at most 100 inline documents leta hai, isliye
+ * hum 100 ke chunks me import karte hain.
  * @param {Array} docs — toVertexDocument() output
- * @returns {Promise<{imported:number, operation:boolean}>}
+ * @returns {Promise<{imported:number, operation:boolean, batches:number}>}
  */
 async function importDocuments(docs = []) {
   ensureLib();
-  if (!docs.length) return { imported: 0, operation: false };
+  if (!docs.length) return { imported: 0, operation: false, batches: 0 };
   const client = vc.clientFor(DocumentServiceClient);
   const parent = branchPath(); // import ko branch path chahiye
-  const [operation] = await client.importDocuments({
-    parent,
-    inlineSource: { documents: docs },
-  });
-  // operation is a LRO; we fire-and-forget (operation handles async ingestion)
-  await operation?.promise?.().catch(() => {});
-  return { imported: docs.length, operation: true };
+
+  const BATCH_SIZE = 100;
+  const chunks = [];
+  for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+    chunks.push(docs.slice(i, i + BATCH_SIZE));
+  }
+
+  let imported = 0;
+  for (const chunk of chunks) {
+    const [operation] = await client.importDocuments({
+      parent,
+      inlineSource: { documents: chunk },
+    });
+    await operation?.promise?.().catch(() => {});
+    imported += chunk.length;
+  }
+
+  return { imported, operation: true, batches: chunks.length };
 }
 
 /**
