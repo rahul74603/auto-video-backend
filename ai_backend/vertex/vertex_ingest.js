@@ -24,10 +24,10 @@ const COLLECTION_MAP = {
     label: "jobs",
     publishedOnly: true,
     fields: ["title", "slug", "qualification", "lastDate", "totalPosts", "applicationFee", "salary", "category"],
-    makeDoc: (doc) => ({
-      id: `job-${doc.id}`,
+    makeDoc: (id, doc) => ({
+      id: `job-${id}`,
       title: doc.title || doc.jobTitle || "Job",
-      url: `https://studygyaan.in/job/${doc.slug || doc.id}`,
+      url: `https://studygyaan.in/job/${doc.slug || id}`,
       content: [
         doc.jobTitle || doc.title,
         doc.description || doc.eligibility || "",
@@ -44,10 +44,10 @@ const COLLECTION_MAP = {
     label: "blogs",
     publishedOnly: true,
     fields: ["title", "slug", "category", "tags", "seoTitle"],
-    makeDoc: (doc) => ({
-      id: `blog-${doc.id}`,
+    makeDoc: (id, doc) => ({
+      id: `blog-${id}`,
       title: doc.title || doc.seoTitle || "Blog",
-      url: `https://studygyaan.in/blog/${doc.slug || doc.id}`,
+      url: `https://studygyaan.in/blog/${doc.slug || id}`,
       content: [doc.title, doc.excerpt || "", (doc.content || "").replace(/<[^>]+>/g, " ").slice(0, 3000)].filter(Boolean).join("\n"),
       fields: { jobType: "blog", category: doc.category || "" },
     }),
@@ -56,10 +56,10 @@ const COLLECTION_MAP = {
     label: "fast_track",
     publishedOnly: true,
     fields: ["title", "slug", "subject", "exam"],
-    makeDoc: (doc) => ({
-      id: `fast-${doc.id}`,
+    makeDoc: (id, doc) => ({
+      id: `fast-${id}`,
       title: doc.title || "Fast Track",
-      url: `https://studygyaan.in/fast-track/${doc.slug || doc.id}`,
+      url: `https://studygyaan.in/fast-track/${doc.slug || id}`,
       content: [doc.title, doc.subject || "", doc.exam || "", (doc.description || "")].filter(Boolean).join("\n"),
       fields: { jobType: "fast_track", subject: doc.subject || "" },
     }),
@@ -81,7 +81,7 @@ async function ingestCollection(db, collection, { limit = 200, dryRun = false } 
     const d = s.data();
     if (spec.publishedOnly && d.status && d.status !== "published" && d.published !== true) return;
     if (d.published === false) return;
-    docs.push(vrag.toVertexDocument(spec.makeDoc(d)));
+    docs.push(vrag.toVertexDocument(spec.makeDoc(s.id, d)));
   });
 
   if (dryRun) return { collection, imported: docs.length, dryRun: true, docs };

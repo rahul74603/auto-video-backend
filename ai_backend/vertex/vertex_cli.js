@@ -111,6 +111,12 @@ async function main() {
     docs.slice(0, 20).forEach((d) => console.log("   -", d.id, d.name));
     return;
   }
+  if (has("--purge")) {
+    // Saare (ya specific) documents data store se hatao (red-ingest se pehle).
+    const out = await vrag.purgeDocuments({ deleteAll: true });
+    console.log(`🗑️ Purge: ${out.purged} document(s) remove kiye.`);
+    return;
+  }
   console.log("Usage:");
   console.log("  node vertex/vertex_cli.js --health");
   console.log("  node vertex/vertex_cli.js --ingest [--coll jobs|blogs|fast_track] [--limit 200] [--dry]");
