@@ -515,8 +515,15 @@ exports.jobOgImage = onRequest(
 
 // 📱 4B. AUTO WEB STORIES — article publish hote hi Discover-ready AMP story
 // (jobs/fast_track/blogs; sirf publish-transition pe chalti hai, views/edits pe nahi)
-const autoStoryTrigger = (collectionName, idParam) => (event) =>
-    require("./article_to_story").handleDocumentWritten(db, admin.firestore.FieldValue, collectionName, idParam)(event);
+const autoStoryTrigger = (collectionName, idParam) => async (event) => {
+    // 🛑 Automation guard — PAUSE ALL pe story generation (Gemini) bhi band
+    const guard = await isAutomationEnabled(db, 'web_stories');
+    if (!guard.enabled) {
+        console.log(`⏸️ autoStory(${collectionName}) skipped — ${guard.reason}`);
+        return null;
+    }
+    return require("./article_to_story").handleDocumentWritten(db, admin.firestore.FieldValue, collectionName, idParam)(event);
+};
 exports.onJobPublishedAutoStory = onDocumentWritten({ document: "jobs/{jobId}", maxInstances: 5 },
     autoStoryTrigger("jobs", "jobId"));
 exports.onFastTrackPublishedAutoStory = onDocumentWritten({ document: "fast_track/{docId}", maxInstances: 5 },
@@ -604,11 +611,22 @@ exports.generatePremiumNote = onRequest({ timeoutSeconds: 300, memory: "1GiB" },
 
 // ✅ NOTE: generateDailyMocks अब GitHub Actions पर है, इसलिए इसे यहाँ से हटा दिया गया है। 
 
-exports.autoImageJobDrafts = onDocumentWritten("job_drafts/{docId}", (event) => {
+exports.autoImageJobDrafts = onDocumentWritten("job_drafts/{docId}", async (event) => {
+    // 🛑 Automation guard — PAUSE ALL pe image generation (mahanga Gemini) bhi band
+    const guard = await isAutomationEnabled(db, 'auto_image');
+    if (!guard.enabled) {
+        console.log(`⏸️ autoImageJobDrafts skipped — ${guard.reason}`);
+        return null;
+    }
     return require('./autoImage').autoImageJobDrafts(event);
 });
 
-exports.autoImageFastTrack = onDocumentWritten("fast_track_drafts/{docId}", (event) => {
+exports.autoImageFastTrack = onDocumentWritten("fast_track_drafts/{docId}", async (event) => {
+    const guard = await isAutomationEnabled(db, 'auto_image');
+    if (!guard.enabled) {
+        console.log(`⏸️ autoImageFastTrack skipped — ${guard.reason}`);
+        return null;
+    }
     return require('./autoImage').autoImageFastTrack(event);
 });
 

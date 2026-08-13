@@ -49,6 +49,9 @@
     "monitor:report": "node monitor/monitor_cli.js --report",
     "monitor:billing": "node monitor/monitor_cli.js --billing",
     "monitor:usage": "node monitor/monitor_cli.js --usage",
-    "monitor:recent": "node monitor/monitor_cli.js --recent"
+    "monitor:recent": "node monitor/monitor_cli.js --recent",
+    "kill:off": "node kill_switch.js --off",
+    "kill:on": "node kill_switch.js --on",
+    "kill:status": "node kill_switch.js --status"
   }
 }
