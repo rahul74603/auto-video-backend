@@ -131,16 +131,27 @@ async function importDocuments(docs = []) {
   }
 
   let imported = 0;
+  const results = [];
   for (const chunk of chunks) {
     const [operation] = await client.importDocuments({
       parent,
       inlineSource: { documents: chunk },
     });
-    await operation?.promise?.().catch(() => {});
+    // LRO ko proper await karo aur asli result/error surface karo (chhupao mat).
+    let opResult = null;
+    try {
+      const [resp] = await operation.promise();
+      opResult = resp;
+    } catch (e) {
+      console.error("⚠️ Import LRO failed:", e?.message || e);
+      results.push({ error: e?.message || String(e), imported: 0 });
+      continue;
+    }
     imported += chunk.length;
+    results.push({ imported: chunk.length });
   }
 
-  return { imported, operation: true, batches: chunks.length };
+  return { imported, operation: true, batches: chunks.length, results };
 }
 
 /**
@@ -163,7 +174,10 @@ async function purgeDocuments(opts = {}) {
 async function listDocuments(pageSize = 100) {
   ensureLib();
   const client = vc.clientFor(DocumentServiceClient);
-  const [resp] = await client.listDocuments({ parent: branchPath(), pageSize });
+  const [resp] = await client.listDocuments(
+    { parent: branchPath(), pageSize },
+    { autoPaginate: false }
+  );
   return (resp.documents || []).map((d) => ({ id: d.id, name: d.name }));
 }
 
