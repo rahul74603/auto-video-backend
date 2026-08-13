@@ -45,6 +45,10 @@
     "vertex:search": "node vertex/vertex_cli.js --search",
     "vertex:chat": "node vertex/vertex_cli.js --chat",
     "vertex:questions": "node vertex/vertex_cli.js --questions",
-    "vertex:from-source": "node vertex/vertex_cli.js --from-source"
+    "vertex:from-source": "node vertex/vertex_cli.js --from-source",
+    "monitor:report": "node monitor/monitor_cli.js --report",
+    "monitor:billing": "node monitor/monitor_cli.js --billing",
+    "monitor:usage": "node monitor/monitor_cli.js --usage",
+    "monitor:recent": "node monitor/monitor_cli.js --recent"
   }
 }

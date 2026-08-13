@@ -44,6 +44,8 @@ const db = admin.firestore();
 const vvertex = require("./vertex/vertex_client");
 const vvrag = require("./vertex/vertex_rag");
 const vvledger = require("./vertex/vertex_credit_ledger");
+// 📊 Usage monitor — premium set generation ka spend track (non-invasive)
+const vusage = require("./monitor/usage_logger");
 
 /**
  * Topic ke liye Vertex AI Search se grounded source context retrieve karo.
@@ -892,6 +894,8 @@ exports.generatePremiumNote = onRequest(
       if (usedVertex) console.log(`🧩 Vertex grounding: ${sourcesCount} source(s) retrieved (credit consumed)`);
       const finalPrompt = usedVertex ? prompt + groundedContext : prompt;
       const { text: aiResponse, model: usedModel } = await callGemini(finalPrompt);
+      // 📊 Usage log (non-invasive) — premium set ka spend track
+      try { await vusage.logUsage(usedVertex ? "vertex_questions" : "gemini_premium", { note: `${topic} - ${exam}` }); } catch {};
 
       // ===== STEP 5: EXTRACT CONTENT =====
       console.log("📄 Step 5: Extracting content...");

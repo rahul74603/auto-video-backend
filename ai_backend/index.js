@@ -233,6 +233,8 @@ Format:
       requestedTopic: topic,
       createdAt: new Date(),
     });
+    // 📊 Usage log (non-invasive)
+    try { require("./monitor/usage_logger").logUsage("gemini_mock", { note: topic, calls: allQuestions.length }); } catch {}
 
     return res.json({
       success: true,

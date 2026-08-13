@@ -3,6 +3,8 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const axios = require("axios");
 const { google } = require("googleapis");
 require("dotenv").config();
+// 📊 Usage monitor — mock-test generation ka spend track (non-invasive)
+const usageLogger = require("./monitor/usage_logger");
 
 // =========================================================
 // 🔐 1. FIREBASE & GOOGLE INDEXING AUTH
@@ -168,6 +170,8 @@ Generate exactly 25 high-quality, completely bilingual questions.
             });
 
             console.log("✅ Mock Saved with Unique Slug:", slug);
+            // 📊 Usage log (non-invasive)
+            try { await usageLogger.logUsage("gemini_mock", { note: randomTopic }); } catch {};
 
             // 🌐 Google Indexing
             await notifyGoogle(testUrl);
