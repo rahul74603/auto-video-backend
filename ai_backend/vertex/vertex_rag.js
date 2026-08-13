@@ -163,9 +163,13 @@ async function purgeDocuments(opts = {}) {
   const client = vc.clientFor(DocumentServiceClient);
   const parent = branchPath(); // purge ko bhi branch path chahiye
   const request = { parent, force: true };
-  if (opts.deleteAll) request.deleteAll = true;
-  else if (opts.docIds && opts.docIds.length) request.filter = `id in (${opts.docIds.map((d) => `"${d}"`).join(", ")})`;
-  else return { purged: 0 };
+  // Google require karta hai EITHER filter YA source. Sab docs hataane ke liye
+  // generic filter `*` use karo (deleteAll + filter ek saath mat bhejo).
+  if (opts.docIds && opts.docIds.length) {
+    request.filter = `id in (${opts.docIds.map((d) => `"${d}"`).join(", ")})`;
+  } else {
+    request.filter = "*"; // saare documents match
+  }
   const [operation] = await client.purgeDocuments(request);
   const [resp] = await operation.promise();
   return { purged: Number(resp.purgeCount || 0) };
