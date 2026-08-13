@@ -32,6 +32,14 @@ function ensureLib() {
 }
 
 /**
+ * Branch path — import/purge/list documents ko chahiye.
+ * projects/{p}/locations/{l}/collections/default_collection/dataStores/{ds}/branches/default_branch
+ */
+function branchPath() {
+  return `${vc.dataStorePath()}/branches/default_branch`;
+}
+
+/**
  * Vertex AI Search over StudyGyaan data store.
  * NOTE: Standard Edition compatible — extractive/enterprise features OFF
  * (aapka data store Standard Edition hai). Snippet document ke struct_data se
@@ -112,7 +120,7 @@ async function importDocuments(docs = []) {
   ensureLib();
   if (!docs.length) return { imported: 0, operation: false };
   const client = vc.clientFor(DocumentServiceClient);
-  const parent = vc.dataStorePath();
+  const parent = branchPath(); // import ko branch path chahiye
   const [operation] = await client.importDocuments({
     parent,
     inlineSource: { documents: docs },
@@ -142,8 +150,8 @@ async function purgeDocuments(opts = {}) {
 async function listDocuments(pageSize = 100) {
   ensureLib();
   const client = vc.clientFor(DocumentServiceClient);
-  const [resp] = await client.listDocuments({ parent: vc.dataStorePath(), pageSize });
+  const [resp] = await client.listDocuments({ parent: branchPath(), pageSize });
   return (resp.documents || []).map((d) => ({ id: d.id, name: d.name }));
 }
 
-module.exports = { search, importDocuments, purgeDocuments, listDocuments, toVertexDocument };
+module.exports = { search, importDocuments, purgeDocuments, listDocuments, toVertexDocument, branchPath };
