@@ -32,11 +32,14 @@ function ensureLib() {
 }
 
 /**
- * Grounded enterprise search over StudyGyaan data store.
- * @param {{query:string,pageSize?:number,filter?:string,returnExtractive?:boolean}} input
+ * Vertex AI Search over StudyGyaan data store.
+ * NOTE: Standard Edition compatible — extractive/enterprise features OFF
+ * (aapka data store Standard Edition hai). Snippet document ke struct_data se
+ * nikala jata hai.
+ * @param {{query:string,pageSize?:number,filter?:string}} input
  * @returns {Promise<{answers:Array, total:number, raw:Array}>}
  */
-async function search({ query, pageSize = 5, filter, returnExtractive = true } = {}) {
+async function search({ query, pageSize = 5, filter } = {}) {
   ensureLib();
   if (!query || !String(query).trim()) {
     const err = new Error("query required");
@@ -48,32 +51,37 @@ async function search({ query, pageSize = 5, filter, returnExtractive = true } =
     servingConfig: vc.servingConfigPath(),
     query: { text: String(query).trim() },
     pageSize,
+    // autoPaginate false taaki pageSize respect ho (warning nahi aaye)
+    autoPaginate: false,
     contentSearchSpec: {
-      searchResultMode: returnExtractive ? "CHUNKS" : "DOCUMENT",
+      searchResultMode: "DOCUMENT",
       snippetSpec: { returnSnippet: true },
     },
   };
   if (filter) request.filter = filter;
-  if (returnExtractive) {
-    request.contentSearchSpec.extractiveContentSpec = { maxExtractiveAnswerCount: 2 };
-  }
 
   const [resp] = await client.search(request);
+
+  // derivedStructData ke fields ko {key: {stringValue}} format se nikalo.
+  const flatten = (struct = {}) => {
+    const out = {};
+    const fields = struct.fields || struct;
+    for (const [k, v] of Object.entries(fields || {})) {
+      if (v && typeof v === "object") out[k] = v.stringValue || v.numberValue || "";
+      else out[k] = v;
+    }
+    return out;
+  };
+
   const answers = (resp.results || []).map((r, i) => {
-    const struct = r.document?.derivedStructData || {};
-    const fields = struct.fields || {};
-    const pick = (k) => {
-      const f = fields[k];
-      return f ? f.stringValue || f.numberValue || JSON.stringify(f) : "";
-    };
-    const chunk = struct.chunks && struct.chunks[0];
+    const d = flatten(r.document?.derivedStructData);
     return {
       rank: i + 1,
       id: r.document?.id,
-      title: pick("title") || r.document?.name,
-      url: pick("link") || pick("url") || "",
-      snippet: chunk ? chunk.content : (pick("content") || pick("description") || "").slice(0, 500),
-      extractiveAnswer: chunk?.pageSpan ? chunk.content : null,
+      title: d.title || r.document?.name,
+      url: d.link || d.url || "",
+      snippet: (d.content || d.description || "").slice(0, 500),
+      extractiveAnswer: null,
     };
   });
   return {
@@ -85,10 +93,11 @@ async function search({ query, pageSize = 5, filter, returnExtractive = true } =
 
 /** Build a Discovery Engine Document from a StudyGyaan record. */
 function toVertexDocument({ id, title, url, content, schema, fields = {} }) {
+  // struct_data ek plain object hona chahiye { field: value } — wrapper nahi.
   const structData = { title, link: url, content, ...fields };
   const doc = {
     id: String(id),
-    structData: { fields: structData },
+    structData,
   };
   if (schema) doc.schemaId = schema;
   return doc;

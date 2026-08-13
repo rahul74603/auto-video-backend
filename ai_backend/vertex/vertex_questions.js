@@ -140,7 +140,7 @@ async function generateQuestions({ topic, exam, totalQuestions = 25, pageSize = 
   }
 
   const searchQuery = `${exam ? exam + " " : ""}${topic} syllabus previous year questions`;
-  const retrieval = await vrag.search({ query: searchQuery, pageSize, returnExtractive: true });
+  const retrieval = await vrag.search({ query: searchQuery, pageSize });
   await ledger.recordSpend("search", { ok: true, note: `question-set retrieval: ${topic}` });
 
   const sources = (retrieval.answers || []).map((a) => a.snippet || a.extractiveAnswer).filter(Boolean).slice(0, pageSize);

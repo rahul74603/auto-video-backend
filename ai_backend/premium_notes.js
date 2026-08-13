@@ -53,7 +53,7 @@ async function retrieveGroundedContext(topic, exam) {
   if (!vvertex.isConfigured()) return { context: "", usedVertex: false, sourcesCount: 0 };
   try {
     const query = `${exam} ${topic} syllabus previous year questions answer`;
-    const r = await vvrag.search({ query, pageSize: 6, returnExtractive: true });
+    const r = await vvrag.search({ query, pageSize: 6 });
     await vvledger.recordSpend("search", { ok: true, note: `premium set grounding: ${topic}` });
     const sources = (r.answers || []).map((a) => a.snippet || a.extractiveAnswer).filter(Boolean).slice(0, 6);
     if (!sources.length) return { context: "", usedVertex: false, sourcesCount: 0 };
