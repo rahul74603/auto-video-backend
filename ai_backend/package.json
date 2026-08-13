@@ -40,6 +40,7 @@
     "credit:status": "node credit_governor.js --status",
     "vertex:health": "node vertex/vertex_cli.js --health",
     "vertex:status": "node vertex/vertex_cli.js --status",
+    "vertex:list": "node vertex/vertex_cli.js --list",
     "vertex:ingest": "node vertex/vertex_cli.js --ingest",
     "vertex:search": "node vertex/vertex_cli.js --search",
     "vertex:chat": "node vertex/vertex_cli.js --chat",
