@@ -111,6 +111,17 @@ async function main() {
     docs.slice(0, 20).forEach((d) => console.log("   -", d.id, d.name));
     return;
   }
+  if (has("--create-store")) {
+    const name = arg("--create-store") || arg("--name") || "studygyaan-rag";
+    const out = await vc.createDataStore(name);
+    console.log("✅ Data store ban gaya (unstructured):");
+    console.log("   ID:", out.id);
+    console.log("   Name:", out.displayName);
+    console.log("   Project:", out.projectId);
+    console.log("   Location:", out.location);
+    console.log("   -> .env me daalo: VERTEX_DATA_STORE_ID=" + out.id);
+    return;
+  }
   if (has("--purge")) {
     // Saare (ya specific) documents data store se hatao (red-ingest se pehle).
     const out = await vrag.purgeDocuments({ deleteAll: true });

@@ -205,6 +205,64 @@ function clientFor(ClientClass) {
 }
 
 /**
+ * Data store collection path (parent for creating data stores).
+ */
+function dataStoreParentPath(cfg = config()) {
+  return [
+    "projects", cfg.projectId,
+    "locations", cfg.location,
+    "collections", "default_collection",
+  ].join("/");
+}
+
+/**
+ * Naya data store banata hai via API — taaki type pe FULL control ho.
+ * Console me "type" choose karne ka option nahi milta isliye ye rasta diya.
+ * Unstructured data store = free-text search (jobs/blogs/content) ke liye.
+ * @param {string} name — display name
+ * @param {{projectId?:string,location?:string}} opts
+ * @returns {Promise<{name:string, displayName:string, projectId:string, location:string}>}
+ */
+async function createDataStore(name, opts = {}) {
+  const { DataStoreServiceClient } = requireLibrary().v1;
+  const cfg = config();
+  const projectId = opts.projectId || cfg.projectId;
+  const location = opts.location || cfg.location;
+  if (!projectId) {
+    const err = new Error("VERTEX_PROJECT_ID required to create data store");
+    err.code = VERTEX_CODES.NOT_CONFIGURED;
+    throw err;
+  }
+  const client = clientFor(DataStoreServiceClient);
+  const parent = [
+    "projects", projectId,
+    "locations", location,
+    "collections", "default_collection",
+  ].join("/");
+  const storeId = `studygyaan-${Date.now()}`;
+  const [operation] = await client.createDataStore({
+    parent,
+    dataStoreId: storeId,
+    dataStore: {
+      displayName: name,
+      industryVertical: "GENERIC",
+      solutionTypes: ["SOLUTION_TYPE_SEARCH"],
+      // Unstructured store — content field (free text) searchable hone ke liye
+      // CONTENT_REQUIRED hona chahiye (NO_CONTENT = structured/no-text store).
+      contentConfig: "CONTENT_REQUIRED",
+    },
+  });
+  const [resp] = await operation.promise();
+  return {
+    name: resp?.name || "",
+    id: storeId,
+    displayName: resp?.displayName || name,
+    projectId,
+    location,
+  };
+}
+
+/**
  * Firebase Admin ko SERVICE_ACCOUNT_JSON se initialize karta hai (agar mila).
  * @returns {object|null} firestore ya null (fail pe)
  */
@@ -234,6 +292,8 @@ module.exports = {
   servingConfigPath,
   dataStorePath,
   enginePath,
+  dataStoreParentPath,
+  createDataStore,
   clientFor,
   firestore,
 };
