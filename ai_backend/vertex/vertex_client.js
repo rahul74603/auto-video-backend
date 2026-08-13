@@ -1,5 +1,13 @@
 "use strict";
 
+// .env ko load karo taaki CLI (node vertex/vertex_cli.js --health) bhi
+// ai_backend/.env me likhi VALUES (VERTEX_PROJECT_ID, VERTEX_DATA_STORE_ID,
+// SERVICE_ACCOUNT_JSON) ko padh sake. dotenv na ho to gracefully chalta rahe.
+try {
+  const path = require("path");
+  require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
+} catch { /* dotenv optional */ }
+
 /**
  * ============================================================================
  * 🧩 Vertex AI Agent Builder — shared client + config
@@ -37,15 +45,42 @@ function envOr(key, def) {
   return v !== undefined && String(v).trim() !== "" ? v : def;
 }
 
-function getCredentials() {
-  const sa = envOr("SERVICE_ACCOUNT_JSON", "");
-  if (sa) {
-    try {
-      const parsed = JSON.parse(sa);
-      return { credentials: parsed, projectId: parsed.project_id || envOr("VERTEX_PROJECT_ID", "") };
-    } catch {
-      /* fall through to projectId-only */
+/**
+ * Service account credentials dhundhta hai — in is order:
+ *   1. env SERVICE_ACCOUNT_JSON (ek-line JSON ya raw multiline JSON string)
+ *   2. ai_backend/service_account.json file (jiski baat tumne ki thi)
+ *   3. GOOGLE_APPLICATION_CREDENTIALS file path
+ * @returns {string} JSON string ya "" (nahi mila)
+ */
+function resolveServiceAccountJson() {
+  const fromEnv = envOr("SERVICE_ACCOUNT_JSON", "");
+  if (fromEnv) return fromEnv;
+  const fs = require("fs");
+  const path = require("path");
+  const candidates = [
+    path.join(__dirname, "..", "service_account.json"),
+    path.join(__dirname, "..", "service-account.json"),
+    envOr("GOOGLE_APPLICATION_CREDENTIALS", ""),
+  ];
+  for (const f of candidates) {
+    if (f && fs.existsSync(f)) {
+      try { return fs.readFileSync(f, "utf8"); } catch { /* try next */ }
     }
+  }
+  return "";
+}
+
+/** Parse karo — chaahe ek-line ho ya multiline JSON. */
+function parseServiceAccount(raw) {
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+function getCredentials() {
+  const raw = resolveServiceAccountJson();
+  const parsed = parseServiceAccount(raw);
+  if (parsed) {
+    return { credentials: parsed, projectId: parsed.project_id || envOr("VERTEX_PROJECT_ID", "") };
   }
   return { projectId: envOr("VERTEX_PROJECT_ID", "") };
 }
@@ -85,7 +120,7 @@ function describeStatus() {
     engineId: c.engineId || null,
     generativeModel: c.generativeModel,
     creditBudgetInr: c.creditBudgetInr,
-    serviceAccountProvided: Boolean(envOr("SERVICE_ACCOUNT_JSON", "")),
+    serviceAccountProvided: Boolean(resolveServiceAccountJson()),
   };
 }
 
@@ -157,6 +192,27 @@ function clientFor(ClientClass) {
   return client;
 }
 
+/**
+ * Firebase Admin ko SERVICE_ACCOUNT_JSON se initialize karta hai (agar mila).
+ * @returns {object|null} firestore ya null (fail pe)
+ */
+function firestore() {
+  try {
+    const admin = require("firebase-admin");
+    if (!admin.apps.length) {
+      const sa = resolveServiceAccountJson();
+      const parsed = parseServiceAccount(sa);
+      if (parsed) {
+        try { admin.initializeApp({ credential: admin.credential.cert(parsed), projectId: parsed.project_id || envOr("VERTEX_PROJECT_ID", "") || undefined }); }
+        catch { admin.initializeApp(); }
+      } else {
+        admin.initializeApp();
+      }
+    }
+    return admin.firestore();
+  } catch { return null; }
+}
+
 module.exports = {
   VERTEX_CODES,
   config,
@@ -167,4 +223,5 @@ module.exports = {
   dataStorePath,
   enginePath,
   clientFor,
+  firestore,
 };

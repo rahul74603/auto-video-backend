@@ -31,13 +31,7 @@ const TYPE_RATES = {
 };
 
 function getFirestore() {
-  try {
-    const admin = require("firebase-admin");
-    if (!admin.apps.length) admin.initializeApp();
-    return admin.firestore();
-  } catch {
-    return null;
-  }
+  return vc.firestore();
 }
 
 function readLocal() {

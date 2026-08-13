@@ -156,8 +156,7 @@ async function generateQuestions({ topic, exam, totalQuestions = 25, pageSize = 
   });
 
   if (save) {
-    const admin = require("firebase-admin");
-    const db = admin.firestore();
+    const db = vc.firestore();
     const id = await saveMockTest(db, { title, questions, requestedTopic: topic, exam });
     return { success: true, id, title, count: questions.length, sources: retrieval.total };
   }
@@ -217,8 +216,7 @@ async function generateFromSource({ title, exam, sourceText, totalQuestions = 25
   });
 
   if (save) {
-    const admin = require("firebase-admin");
-    const db = admin.firestore();
+    const db = vc.firestore();
     const id = await saveMockTest(db, {
       title: finalTitle,
       questions,

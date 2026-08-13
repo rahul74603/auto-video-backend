@@ -28,9 +28,7 @@ function arg(name) {
 function has(name) { return process.argv.includes(name); }
 
 function getFirestore() {
-  const admin = require("firebase-admin");
-  if (!admin.apps.length) admin.initializeApp();
-  return admin.firestore();
+  return vc.firestore();
 }
 
 async function main() {
