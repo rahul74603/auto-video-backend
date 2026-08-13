@@ -161,7 +161,7 @@ async function importDocuments(docs = []) {
 async function purgeDocuments(opts = {}) {
   ensureLib();
   const client = vc.clientFor(DocumentServiceClient);
-  const parent = vc.dataStorePath();
+  const parent = branchPath(); // purge ko bhi branch path chahiye
   const request = { parent, force: true };
   if (opts.deleteAll) request.deleteAll = true;
   else if (opts.docIds && opts.docIds.length) request.filter = `id in (${opts.docIds.map((d) => `"${d}"`).join(", ")})`;
