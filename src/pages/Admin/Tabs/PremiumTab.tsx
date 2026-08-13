@@ -703,7 +703,7 @@ const PremiumTab = () => {
                   🤖 AI Provider
                 </label>
                 <div className="flex gap-2">
-                  {(['gemini',] as const).map(p => (
+                  {(['gemini', 'vertex'] as const).map(p => (
                     <button
                       key={p}
                       onClick={() => setProvider(p)}
@@ -715,12 +715,14 @@ const PremiumTab = () => {
                       }`}
                     >
                       <Cpu className="w-4 h-4 inline mr-1" />
-                      {p === 'gemini' ? 'Gemini' : 'Vertex AI'}
+                      {p === 'gemini' ? 'Gemini' : 'Vertex AI (₹91,785)'}
                     </button>
                   ))}
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
-                  Auto-fallback: {provider === 'gemini' ? 'Gemini → Vertex' : 'Vertex → Gemini'}
+                  {provider === 'vertex'
+                    ? 'Vertex AI Search se ground karke set banta hai (₹91,785 credit use hota hai).'
+                    : 'Gemini se set banta hai; Vertex configured ho to grounding bhi jude (credit use hota hai).'}
                 </p>
               </div>
 

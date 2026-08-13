@@ -8,7 +8,7 @@ import {
     signInWithPopup 
 } from 'firebase/auth';
 import {
-    FilePenLine, ShieldCheck, Sparkles, Zap, Layers, IndianRupee, Power
+    FilePenLine, ShieldCheck, Sparkles, Zap, Layers, IndianRupee, Power, Bot
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -36,6 +36,8 @@ import AdminWebStories from './Admin/Tabs/AdminWebStories';
 import AdminPaymentApproval from './Admin/Tabs/AdminPaymentApproval';
 // 🛑 Automation Control Tab
 import AdminAutomationControl from './Admin/Tabs/AdminAutomationControl';
+// 🤖 Vertex AI Agent Builder Tab (₹91,785 credit)
+import AdminVertexTab from './Admin/Tabs/AdminVertexTab';
 
 const AdminPage = () => {
     const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -47,7 +49,7 @@ const AdminPage = () => {
     const location = useLocation(); 
 
     // ✅ Active Tab State — AI Article Studio अब JOBS AI tab के अंदर ही है + Automation Control
-    type AdminTab = 'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'SIDEBAR' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'PAYMENTS' | 'AUTOMATION';
+    type AdminTab = 'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'SIDEBAR' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'PAYMENTS' | 'AUTOMATION' | 'VERTEX AI';
     const [activeTab, setActiveTab] = useState<AdminTab>('BROWSE');
 
     const { content: siteContent, updateContent: updateSiteContent } = useSiteContent();
@@ -70,7 +72,7 @@ const AdminPage = () => {
         setPrevUrlSearch(currentUrlSearch);
         const params = new URLSearchParams(currentUrlSearch);
         const urlTab = params.get('tab');
-        if (urlTab && (['BROWSE', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'HOMEPAGE', 'FAST TRACK', 'WEB STORIES', 'CUSTOMIZE', 'SIDEBAR', 'MOCK TEST', 'STORAGE', 'JOBS AI', 'PAYMENTS', 'AUTOMATION'] as AdminTab[]).includes(urlTab as AdminTab)) {
+        if (urlTab && (['BROWSE', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'HOMEPAGE', 'FAST TRACK', 'WEB STORIES', 'CUSTOMIZE', 'SIDEBAR', 'MOCK TEST', 'STORAGE', 'JOBS AI', 'PAYMENTS', 'AUTOMATION', 'VERTEX AI'] as AdminTab[]).includes(urlTab as AdminTab)) {
             setActiveTab(urlTab as AdminTab);
         }
     }
@@ -151,7 +153,7 @@ const AdminPage = () => {
                     
                     {/* NAVIGATION TABS (Added PAYMENTS + AUTOMATION) */}
                     <div className="flex flex-wrap gap-1 md:gap-2 w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scroll-smooth items-center no-scrollbar">
-                        {['BROWSE', 'JOBS AI', 'AUTOMATION', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'SIDEBAR', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE'].map(t => (
+                        {['BROWSE', 'JOBS AI', 'VERTEX AI', 'AUTOMATION', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'SIDEBAR', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE'].map(t => (
                             <button 
                                 key={t} 
                                 onClick={() => setActiveTab(t as AdminTab)} 
@@ -162,6 +164,7 @@ const AdminPage = () => {
                                  t === 'FAST TRACK' ? <span className="flex items-center gap-1"><Zap size={12}/> FAST TRACK</span> : 
                                  t === 'WEB STORIES' ? <span className="flex items-center gap-1"><Layers size={12}/> WEB STORIES</span> : 
                                  t === 'PAYMENTS' ? <span className="flex items-center gap-1 text-green-500 group-hover:text-white"><IndianRupee size={12}/> PAYMENTS</span> :
+                                 t === 'VERTEX AI' ? <span className="flex items-center gap-1 text-indigo-600 group-hover:text-white"><Bot size={12}/> VERTEX AI</span> :
                                  t}
                             </button>
                         ))}
@@ -205,6 +208,8 @@ const AdminPage = () => {
                     {activeTab === 'PAYMENTS' && <AdminPaymentApproval />}
                     {/* 🛑 Automation Control */}
                     {activeTab === 'AUTOMATION' && <AdminAutomationControl />}
+                    {/* 🤖 Vertex AI Agent Builder (₹91,785 credit) */}
+                    {activeTab === 'VERTEX AI' && <AdminVertexTab />}
                 </div>
             </div>
             

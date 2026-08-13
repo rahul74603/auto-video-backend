@@ -102,3 +102,5 @@ firebase-debug.log*
 
 firebase-debug.log
 *.log
+# Credit Governor local ledger (runtime data)
+ai_backend/credit_ledger_local.json

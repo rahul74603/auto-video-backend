@@ -35,6 +35,13 @@ registerAgentRoutes(app);
 require("./agents/article_agents/article_routes").registerArticleAgentRoutes(app, db);
 // 📱 Article → Web Story backfill endpoint (POST /stories/backfill)
 require("./article_to_story").registerStoryRoutes(app, db, admin.firestore.FieldValue);
+// 🧩 Vertex AI Agent Builder — RAG search / conversational assistant / ingestion
+//    (₹91,785 Vertex credit ko use karta hai; graceful-fail, kuch nahi todta)
+try {
+  require("./vertex/vertex_routes").registerVertexRoutes(app, db);
+} catch (e) {
+  console.error("Vertex AI routes register fail (non-fatal):", e.message);
+}
 app.post("/seo/indexing-audit", async (req, res) => {
   const auth = authorizeAgentRequest(req);
   if (!auth.ok) return res.status(auth.status).json({ success: false, error: auth.error });

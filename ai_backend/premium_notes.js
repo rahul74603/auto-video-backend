@@ -34,6 +34,41 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 // ============================================
+// 🧩 VERTEX AI AGENT BUILDER (₹91,785 credit) — premium sets ko ground karne ke liye
+// ============================================
+// Is credit ka asli SKU Vertex AI Search / Agent Builder hai. Har premium set
+// generate karte waqt hum Vertex AI Search se relevant source retrieve karte
+// hain (billing = credit consume) aur usi se prompt ground karte hain —
+// hallucination kam, quality behtar. Vertex configured na ho to gracefully skip
+// (existing Gemini path bilkul waisa hi chalta hai).
+const vvertex = require("./vertex/vertex_client");
+const vvrag = require("./vertex/vertex_rag");
+const vvledger = require("./vertex/vertex_credit_ledger");
+
+/**
+ * Topic ke liye Vertex AI Search se grounded source context retrieve karo.
+ * @returns {Promise<{context:string, usedVertex:boolean, sourcesCount:number}>}
+ */
+async function retrieveGroundedContext(topic, exam) {
+  if (!vvertex.isConfigured()) return { context: "", usedVertex: false, sourcesCount: 0 };
+  try {
+    const query = `${exam} ${topic} syllabus previous year questions answer`;
+    const r = await vvrag.search({ query, pageSize: 6, returnExtractive: true });
+    await vvledger.recordSpend("search", { ok: true, note: `premium set grounding: ${topic}` });
+    const sources = (r.answers || []).map((a) => a.snippet || a.extractiveAnswer).filter(Boolean).slice(0, 6);
+    if (!sources.length) return { context: "", usedVertex: false, sourcesCount: 0 };
+    const context =
+      "\n\n=== GROUNDED SOURCE MATERIAL (Vertex AI Search) — bas isi se facts lo, bahar ka mat likho ===\n" +
+      sources.map((s, i) => `[${i + 1}] ${s}`).join("\n\n") +
+      "\n=== END GROUNDED SOURCE ===";
+    return { context, usedVertex: true, sourcesCount: sources.length };
+  } catch (e) {
+    console.warn("Vertex grounding retrieve failed (non-fatal):", e.message);
+    return { context: "", usedVertex: false, sourcesCount: 0 };
+  }
+}
+
+// ============================================
 // 🏷️ STUDYGYAAN BRANDING CONSTANTS
 // ============================================
 const BRAND = {
@@ -850,9 +885,13 @@ exports.generatePremiumNote = onRequest(
         subjectType, currentSet, previousContent
       );
 
-      // ===== STEP 4: CALL GEMINI =====
-      console.log("🤖 Step 4: Calling Gemini API...");
-      const { text: aiResponse, model: usedModel } = await callGemini(prompt);
+      // ===== STEP 4: GROUND + CALL GEMINI =====
+      console.log("🤖 Step 4: Grounding via Vertex AI Search (₹91,785 credit) + generating...");
+      // Har premium set pe Vertex AI Search retrieval → credit consume + grounded prompt.
+      const { context: groundedContext, usedVertex, sourcesCount } = await retrieveGroundedContext(topic, exam);
+      if (usedVertex) console.log(`🧩 Vertex grounding: ${sourcesCount} source(s) retrieved (credit consumed)`);
+      const finalPrompt = usedVertex ? prompt + groundedContext : prompt;
+      const { text: aiResponse, model: usedModel } = await callGemini(finalPrompt);
 
       // ===== STEP 5: EXTRACT CONTENT =====
       console.log("📄 Step 5: Extracting content...");
@@ -944,8 +983,9 @@ exports.generatePremiumNote = onRequest(
         seoCanonicalUrl: seo.canonicalUrl,
 
         // AI Metadata
-        aiProvider: "gemini",
+        aiProvider: usedVertex ? "vertex-rag+gemini" : "gemini",
         aiModel: usedModel,
+        vertexGrounded: usedVertex,
         generationTime: generationTime,
         contentLength: finalHTML.length,
         questionCount: 25,
@@ -1004,8 +1044,10 @@ exports.generatePremiumNote = onRequest(
       return res.json({
         success: true,
         id: docRef.id,
-        provider: "gemini",
+        provider: usedVertex ? "vertex-rag+gemini" : "gemini",
         model: usedModel,
+        vertexGrounded: usedVertex,
+        sourcesCount: sourcesCount,
         subjectType: subjectType,
         generationTime: totalTime + "s",
         contentLength: finalHTML.length,

@@ -10,6 +10,7 @@ import { HelmetProvider } from 'react-helmet-async';
 import { LanguageProvider } from '@/context/LanguageContext';
 import { Toaster } from 'react-hot-toast';
 import SEO from './components/SEO';
+import StudyGyaanAIChat from './components/StudyGyaanAIChat';
 
 // =========================================================
 // 🚀 CRITICAL PATH - Direct Imports
@@ -433,6 +434,11 @@ function App() {
                                     <PopupAd />
                                 </Suspense>
                             </div>
+
+                            {/* 🤖 StudyGyaan AI Sathi — Vertex AI Agent Builder RAG assistant */}
+                            <Suspense fallback={null}>
+                                <StudyGyaanAIChat />
+                            </Suspense>
 
                         </div>
 

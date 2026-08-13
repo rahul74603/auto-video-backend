@@ -6,6 +6,7 @@
   },
   "main": "index.js",
   "dependencies": {
+    "@google-cloud/discoveryengine": "^3.0.0",
     "@google-cloud/text-to-speech": "^6.4.0",
     "@google/genai": "^2.12.0",
     "@google/generative-ai": "^0.24.1",
@@ -32,8 +33,17 @@
   },
   "private": true,
   "scripts": {
-    "check": "node --check index.js && node --check google_indexing.js && node --check agents/seo_indexing_agent.js && node --check agents/article_agents/source_fetcher.js && node --check agents/article_agents/source_adequacy_gate.js && node --check agents/article_agents/job_article_writer.js && node --check agents/article_agents/fast_track_article_writer.js && node --check agents/article_agents/fact_quality_reviewer.js && node --check agents/article_agents/article_pipeline.js && node --check agents/article_agents/article_routes.js && node --check agents/article_agents/article_repairer.js && node --check agents/article_agents/smart_facts_harvester.js && node --check agents/article_agents/adaptive_article_orchestrator.js && node --check agents/article_agents/article_auth.js && node --check agents/article_agents/title_utils.js && node --check auto_drafts.js && node --check article_to_story.js && node --check og_image.js && node --check server_seo_renderer.js",
+    "check": "node --check credit_governor.js && node --check vertex/vertex_client.js && node --check vertex/vertex_rag.js && node --check vertex/vertex_assistant.js && node --check vertex/vertex_credit_ledger.js && node --check vertex/vertex_ingest.js && node --check vertex/vertex_routes.js && node --check vertex/vertex_cli.js && node --check vertex/vertex_questions.js && node --check index.js && node --check google_indexing.js && node --check agents/seo_indexing_agent.js && node --check agents/article_agents/source_fetcher.js && node --check agents/article_agents/source_adequacy_gate.js && node --check agents/article_agents/job_article_writer.js && node --check agents/article_agents/fast_track_article_writer.js && node --check agents/article_agents/fact_quality_reviewer.js && node --check agents/article_agents/article_pipeline.js && node --check agents/article_agents/article_routes.js && node --check agents/article_agents/article_repairer.js && node --check agents/article_agents/smart_facts_harvester.js && node --check agents/article_agents/adaptive_article_orchestrator.js && node --check agents/article_agents/article_auth.js && node --check agents/article_agents/title_utils.js && node --check auto_drafts.js && node --check article_to_story.js && node --check og_image.js && node --check server_seo_renderer.js",
     "test": "node --test tests/*.test.js",
-    "seo:audit": "node google_indexing.js --audit"
+    "seo:audit": "node google_indexing.js --audit",
+    "credit:run": "node credit_governor.js --run",
+    "credit:status": "node credit_governor.js --status",
+    "vertex:health": "node vertex/vertex_cli.js --health",
+    "vertex:status": "node vertex/vertex_cli.js --status",
+    "vertex:ingest": "node vertex/vertex_cli.js --ingest",
+    "vertex:search": "node vertex/vertex_cli.js --search",
+    "vertex:chat": "node vertex/vertex_cli.js --chat",
+    "vertex:questions": "node vertex/vertex_cli.js --questions",
+    "vertex:from-source": "node vertex/vertex_cli.js --from-source"
   }
 }
