@@ -59,8 +59,6 @@ async function search({ query, pageSize = 5, filter } = {}) {
     servingConfig: vc.servingConfigPath(),
     query: { text: String(query).trim() },
     pageSize,
-    // autoPaginate false taaki pageSize respect ho (warning nahi aaye)
-    autoPaginate: false,
     contentSearchSpec: {
       searchResultMode: "DOCUMENT",
       snippetSpec: { returnSnippet: true },
@@ -68,7 +66,9 @@ async function search({ query, pageSize = 5, filter } = {}) {
   };
   if (filter) request.filter = filter;
 
-  const [resp] = await client.search(request);
+  // autoPaginate ek CALL OPTION hai (request body me nahi) — pageSize respect
+  // ho aur "AutopaginateTrueWarning" na aaye.
+  const [resp] = await client.search(request, { autoPaginate: false });
 
   // derivedStructData ke fields ko {key: {stringValue}} format se nikalo.
   const flatten = (struct = {}) => {

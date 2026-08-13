@@ -105,6 +105,12 @@ async function main() {
     else console.log(`📝 Question set saved: ${out.id} | ${out.title} | ${out.count} Q | sources:${out.sources}`);
     return;
   }
+  if (has("--list")) {
+    const docs = await vrag.listDocuments(Number(arg("--n") || 20));
+    console.log(`📚 Data store me ${docs.length} document(s) mili.`);
+    docs.slice(0, 20).forEach((d) => console.log("   -", d.id, d.name));
+    return;
+  }
   console.log("Usage:");
   console.log("  node vertex/vertex_cli.js --health");
   console.log("  node vertex/vertex_cli.js --ingest [--coll jobs|blogs|fast_track] [--limit 200] [--dry]");
