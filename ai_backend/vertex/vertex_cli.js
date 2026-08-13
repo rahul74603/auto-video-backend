@@ -79,7 +79,7 @@ async function main() {
     if (!q) { console.error("usage: node vertex/vertex_cli.js --search \"query\""); process.exit(2); }
     const out = await vrag.search({ query: q, pageSize: Number(arg("--n") || 5) });
     await ledger.recordSpend("search", { ok: true });
-    console.log("🔎 Results:", JSON.stringify(out.answers, null, 2));
+    console.log(`🔎 Results (total=${out.total}):`, JSON.stringify(out.answers, null, 2));
     return;
   }
   if (has("--chat")) {

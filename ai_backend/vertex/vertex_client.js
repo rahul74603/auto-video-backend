@@ -137,10 +137,22 @@ function requireLibrary() {
 }
 
 /**
- * Data store serving config path (Vertex AI Search / RAG + chat).
- * projects/{project}/locations/{location}/collections/default_collection/dataStores/{ds}/servingConfigs/{sc}
+ * Serving config path for search.
+ * Agar VERTEX_ENGINE_ID set hai to ENGINE serving config use karo (Structured
+ * data / app wale data stores me yahi sahi path hota hai):
+ *   projects/{p}/locations/{l}/collections/default_collection/engines/{e}/servingConfigs/{sc}
+ * Warna data store serving config.
  */
 function servingConfigPath(cfg = config()) {
+  if (cfg.engineId) {
+    return [
+      "projects", cfg.projectId,
+      "locations", cfg.location,
+      "collections", "default_collection",
+      "engines", cfg.engineId,
+      "servingConfigs", cfg.servingConfig,
+    ].join("/");
+  }
   return [
     "projects", cfg.projectId,
     "locations", cfg.location,
