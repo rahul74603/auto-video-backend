@@ -1,0 +1,98 @@
+name: Auto Mock Test Video Maker
+
+# NOTE: this workflow used to be invalid YAML — the automation guard step was
+# placed directly under `jobs:` instead of inside a job, so `automation_check`
+# never ran and every later `if: steps.automation_check...` evaluated to false.
+# It is now a proper two-job workflow with a real output.
+#
+# The new video_dispatcher.yml also processes mock tests. Both paths claim the
+# document through ai_backend/video_state.js, so no duplicate video is possible.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'   # सुबह 08:30 AM IST (03:00 UTC)
+    - cron: '0 15 * * *'  # रात 08:30 PM IST (15:00 UTC)
+  workflow_dispatch:
+
+concurrency:
+  group: mock-test-video
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # 🛑 Automation guard
+  check-automation:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.automation_check.outputs.enabled }}
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 🛑 Check Automation Switch (mock_test)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        working-directory: ai_backend
+        run: |
+          npm install --no-save --ignore-scripts --legacy-peer-deps axios firebase-admin 2>&1 | tail -n 5 || true
+          STATUS=0
+          node check_automation.js mock_test || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ mock_test paused — skipping workflow"
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
+  run-mock-test-video:
+    needs: check-automation
+    if: needs.check-automation.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ai_backend/package-lock.json
+
+      - name: 🔧 System Dependencies (canvas)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libjpeg-dev \
+            libgif-dev \
+            librsvg2-dev
+
+      - name: 📦 Install Dependencies (npm ci — lockfile preserved)
+        working-directory: ai_backend
+        run: npm ci
+
+      - name: 🎬 Generate Mock Test Video
+        working-directory: ai_backend
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          TTS_KEY_JSON: ${{ secrets.TTS_KEY_JSON }}
+          GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
+          YOUTUBE_TOKEN_SELF_TEST: ${{ secrets.YOUTUBE_TOKEN_SELF_TEST }}
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node mock_test_video.js

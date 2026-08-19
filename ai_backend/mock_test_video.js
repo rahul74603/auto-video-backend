@@ -9,6 +9,7 @@ const { createCanvas, registerFont } = require('canvas');
 const textToSpeech = require('@google-cloud/text-to-speech');
 const ffmpegPath = require('ffmpeg-static');
 const FormData = require('form-data');
+const V = require('./video_state');
 require("dotenv").config();
 
 // =========================================================
@@ -757,9 +758,10 @@ async function renderClip(imagePath, audioPath, outputPath, isSilentTimer = fals
 // =========================================================
 // 🚀 8. YOUTUBE UPLOAD WITH RETRY
 // =========================================================
-async function uploadToYouTube(youtube, finalVideoPath, ytTitle, seoDescription, seoTags) {
+async function uploadToYouTube(youtube, finalVideoPath, ytTitle, seoDescription, seoTags, privacyStatus) {
     const maxRetries = 3;
     let currentTags = [...seoTags];
+    const finalPrivacy = privacyStatus || process.env.VIDEO_PRIVACY_STATUS || 'public';
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
@@ -786,7 +788,7 @@ async function uploadToYouTube(youtube, finalVideoPath, ytTitle, seoDescription,
                         defaultAudioLanguage: 'hi'
                     },
                     status: {
-                        privacyStatus: 'public',
+                        privacyStatus: finalPrivacy,
                         selfDeclaredMadeForKids: false,
                         madeForKids: false
                     }
@@ -824,31 +826,71 @@ async function uploadToYouTube(youtube, finalVideoPath, ytTitle, seoDescription,
 // =========================================================
 // 🚀 9. MAIN MOCK TEST VIDEO ENGINE
 // =========================================================
-async function generateMockTestVideo() {
+/**
+ * Render + upload one mock test video.
+ *
+ * @param {object} [options]
+ *        options.docRef        Firestore DocumentReference chosen by the dispatcher.
+ *        options.docId         document id (when docRef is supplied).
+ *        options.docData       already-read document data (avoids a second read).
+ *        options.managedState  true when video_dispatcher.js owns videoStatus bookkeeping.
+ *        options.privacyStatus YouTube privacy override ('unlisted' for safe tests).
+ * @returns {Promise<{success:boolean, videoId?:string, videoUrl?:string, error?:string, uploadFailed?:boolean, skipped?:boolean}>}
+ */
+async function generateMockTestVideo(options = {}) {
     console.log("🎬 Mock Test Video Engine Started...");
     const tempDir = os.tmpdir();
+    let renderCompleted = false;
+    let targetRef = options.docRef || null;
 
     try {
         await setupHindiFont();
 
-        const snapshot = await db.collection('mock_tests').limit(300).get();
-        if (snapshot.empty) throw new Error("❌ कोई Mock Test नहीं मिला!");
+        let mockData;
 
-        let targetDoc = null;
-        for (let doc of snapshot.docs) {
-            if (doc.data().mockVideoMade !== true) {
-                targetDoc = doc;
-                break;
+        if (targetRef && options.docData) {
+            mockData = { ...options.docData, id: options.docId || targetRef.id };
+        } else if (targetRef) {
+            const snap = await targetRef.get();
+            if (!snap.exists) throw new Error(`❌ mock_tests/${targetRef.id} नहीं मिला!`);
+            mockData = { ...snap.data(), id: snap.id };
+        } else {
+            // Standalone mode (mock_test_maker.yml / manual run):
+            // pick the first document that the shared state machine considers pending.
+            const snapshot = await db.collection('mock_tests').limit(300).get();
+            if (snapshot.empty) {
+                console.log("ℹ️ mock_tests collection खाली है — कुछ करने को नहीं।");
+                return { success: true, skipped: true };
             }
+
+            let targetDoc = null;
+            for (const doc of snapshot.docs) {
+                const verdict = V.evaluateMockTest(doc.data() || {}, { maxAgeDays: 0 });
+                if (verdict.eligible) { targetDoc = doc; break; }
+            }
+
+            if (!targetDoc) {
+                console.log("✅ सभी eligible Mock Tests के Videos बन चुके हैं (या permanently failed हैं)।");
+                return { success: true, skipped: true };
+            }
+
+            targetRef = targetDoc.ref;
+            mockData = { ...targetDoc.data(), id: targetDoc.id };
+
+            // Claim it so a parallel dispatcher run can never duplicate the video.
+            const claim = await V.claim(db, admin, V.KIND.MOCK_TEST, targetRef, {
+                runId: process.env.GITHUB_RUN_ID ? `mock-${process.env.GITHUB_RUN_ID}` : `mock-${Date.now()}`,
+                worker: 'mock-test-workflow',
+                maxAgeDays: 0
+            });
+            if (!claim.claimed) {
+                console.log(`⏭️ ${targetRef.id} किसी और worker ने ले लिया — ${claim.reason}`);
+                return { success: true, skipped: true };
+            }
+            console.log(`🔒 Claimed mock_tests/${targetRef.id} (attempt ${claim.attempts})`);
         }
 
-        if (!targetDoc) {
-            console.log("✅ सभी Mock Tests के Videos बन चुके हैं।");
-            return true;
-        }
-
-        const mockData = targetDoc.data();
-        mockData.id = targetDoc.id;
+        console.log(`📄 Mock Test doc: ${mockData.id}`);
 
         if (!mockData.questions || mockData.questions.length === 0) {
             throw new Error(`❌ इस Set में कोई Question नहीं है!`);
@@ -1016,6 +1058,7 @@ async function generateMockTestVideo() {
         });
 
         console.log(`✅ Final Video ready!`);
+        renderCompleted = true;
 
         const seoTags = generateMockTestSEO(subject, title, totalQuestions);
         const ytTitle = generateMockTitle(subject, totalQuestions);
@@ -1027,9 +1070,10 @@ async function generateMockTestVideo() {
         // YOUTUBE UPLOAD
         const youtube = await getYouTubeClient();
         let ytVideoId = "";
+        let ytUploadError = null;
 
         try {
-            ytVideoId = await uploadToYouTube(youtube, finalVideoPath, ytTitle, seoDescription, seoTags);
+            ytVideoId = await uploadToYouTube(youtube, finalVideoPath, ytTitle, seoDescription, seoTags, options.privacyStatus);
 
             // THUMBNAIL
             const thumbPath = path.join(tempDir, `thumbnail_${Date.now()}.png`);
@@ -1120,10 +1164,12 @@ async function generateMockTestVideo() {
             }
 
         } catch (ytErr) {
+            // ❌ YouTube is the mandatory destination — record it, do not silently succeed.
+            ytUploadError = ytErr;
             console.error('❌ YouTube upload failed:', ytErr.message);
         }
 
-        // FACEBOOK
+        // FACEBOOK (optional — never fails the run)
         await uploadToFacebook(finalVideoPath, seoDescription);
 
         // TELEGRAM
@@ -1137,34 +1183,74 @@ async function generateMockTestVideo() {
             }).catch(() => console.log('⚠️ Telegram fail।'));
         }
 
-        // FIREBASE UPDATE
-        await db.collection('mock_tests').doc(mockData.id).update({ mockVideoMade: true });
-        console.log(`✅ Firebase updated!`);
-
-        // CLEANUP
+        // CLEANUP (always, before we decide success/failure)
         filesToClean.forEach(f => {
             if (f && fs.existsSync(f)) {
-                try { fs.unlinkSync(f); } catch (e) { }
+                try { fs.unlinkSync(f); } catch (e) { /* ignore */ }
             }
         });
 
+        const ref = targetRef || db.collection('mock_tests').doc(mockData.id);
+        const videoUrl = ytVideoId ? `https://youtu.be/${ytVideoId}` : '';
+
+        if (ytUploadError || !ytVideoId) {
+            const error = ytUploadError || new Error('YouTube upload returned no video id');
+            // Video rendered fine, upload did not → upload_failed (PART 18).
+            if (!options.managedState) {
+                await V.safeUpdate(db, admin, 'mock_tests', ref, (r) =>
+                    V.markFailed(db, admin, 'mock_tests', r, error, { uploadFailed: true })
+                );
+            }
+            console.error('❌ Mock Test: video बना लेकिन YouTube upload fail हुआ।');
+            return { success: false, error: V.shortError(error), uploadFailed: true };
+        }
+
+        // FIREBASE UPDATE — legacy mockVideoMade flag + new status fields
+        if (options.managedState) {
+            console.log('💾 Firestore state handled by dispatcher (managedState) — engine skip.');
+        } else {
+            await V.safeUpdate(db, admin, 'mock_tests', ref, (r) =>
+                V.markCompleted(db, admin, 'mock_tests', r, {
+                    videoId: ytVideoId,
+                    videoUrl,
+                    extra: { mockVideoMade: true }
+                })
+            );
+            console.log(`✅ Firebase updated!`);
+        }
+
         console.log("✅ All done!");
-        return true;
+        return { success: true, videoId: ytVideoId, videoUrl };
 
     } catch (error) {
-        console.error('❌ Mock Test Engine Error:', error.message);
-        throw error;
+        const uploadFailed = renderCompleted === true;
+        console.error(`❌ Mock Test Engine Error (${uploadFailed ? 'upload stage' : 'render stage'}):`, error.message);
+
+        if (!options.managedState && targetRef) {
+            await V.safeUpdate(db, admin, 'mock_tests', targetRef, (r) =>
+                V.markFailed(db, admin, 'mock_tests', r, error, { uploadFailed })
+            );
+        }
+
+        return { success: false, error: V.shortError(error), uploadFailed };
     }
 }
+
+module.exports = { generateMockTestVideo };
 
 // ============================================================================
 // ✅ GitHub Actions Entry Point
 // ============================================================================
 if (require.main === module) {
     generateMockTestVideo()
-        .then(() => {
-            console.log("✅ Mock Test Process Complete!");
-            process.exit(0);
+        .then((result) => {
+            if (result && result.success) {
+                if (result.skipped) console.log("ℹ️ Nothing pending — Mock Test process finished.");
+                else console.log("✅ Mock Test Process Complete!");
+                process.exit(0);
+            }
+            console.error(`❌ Mock Test Failed: ${result && result.error ? result.error : 'unknown error'}`);
+            process.exit(1);
         })
         .catch(err => {
             console.error("❌ Failed:", err.message);

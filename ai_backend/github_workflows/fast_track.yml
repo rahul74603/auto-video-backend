@@ -1,0 +1,101 @@
+name: Fast Track Scraper
+
+# SCRAPER ONLY — this workflow discovers new Fast Track items and stores them in
+# Firestore as drafts. It no longer carries any video responsibility.
+#
+# Video generation for published fast_track items is handled by
+# .github/workflows/video_dispatcher.yml (Firestore poller, no Firebase billing).
+#
+# The scraper runs locally via `node fast_track_updates.js` (CLI mode) so it works
+# on the Spark plan. The old Cloud Function endpoint is kept only as a fallback
+# for backward compatibility and is allowed to fail.
+
+on:
+  schedule:
+    - cron: '30 20 * * *'  # रात 2:00 बजे IST
+  workflow_dispatch:
+
+concurrency:
+  group: fast-track-scraper
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check-automation:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.automation_check.outputs.enabled }}
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 🛑 Check Automation Switch (fast_track)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        working-directory: ai_backend
+        run: |
+          npm install --no-save --ignore-scripts --legacy-peer-deps axios firebase-admin 2>&1 | tail -n 5 || true
+          STATUS=0
+          node check_automation.js fast_track || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ fast_track paused — skipping workflow"
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
+  run-scraper:
+    needs: check-automation
+    if: needs.check-automation.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ai_backend/package-lock.json
+
+      - name: 📦 Install Dependencies (npm ci — lockfile preserved)
+        working-directory: ai_backend
+        run: npm ci
+
+      - name: 🔎 Run Fast Track Scraper (local, no Firebase billing needed)
+        id: local_scraper
+        continue-on-error: true
+        working-directory: ai_backend
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node fast_track_updates.js
+
+      - name: ☁️ Legacy Cloud Function fallback (optional, may be unavailable on Spark)
+        if: steps.local_scraper.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          echo "⚠️ Local scraper failed — trying the legacy Cloud Function endpoint."
+          curl -sS -f -X GET "https://us-central1-studymaterial-406ad.cloudfunctions.net/triggerFastTrackUpdates" \
+            -H "x-gemini-key: ${{ secrets.GEMINI_API_KEY }}" \
+            -H "x-auth-token: ${{ secrets.FAST_TRACK_TRIGGER_TOKEN }}" \
+            || echo "⚠️ Cloud Function unavailable (expected on the Spark plan) — videos are unaffected."
+
+      - name: 🚦 Report scraper result
+        run: |
+          if [ "${{ steps.local_scraper.outcome }}" = "success" ]; then
+            echo "✅ Fast Track scraper completed locally."
+          else
+            echo "::warning::Local Fast Track scraper failed; see the fallback step. Video generation is independent of this workflow."
+          fi
