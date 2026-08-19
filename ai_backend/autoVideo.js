@@ -856,6 +856,13 @@ async function generateAndUploadVideo(jobData, options = {}) {
 
         // ✅ Playlist में add करो
         try {
+            // During a non-public test run, skip the public playlist — otherwise an
+            // "unlisted" test video would still be surfaced through the playlist.
+            const effectivePrivacy = options.privacyStatus || process.env.VIDEO_PRIVACY_STATUS || 'public';
+            if (effectivePrivacy !== 'public') {
+                throw new Error(`Playlist skipped — test upload (privacy=${effectivePrivacy})`);
+            }
+
             const playlistNames = {
                 'Result':     'Results & Updates',
                 'Admit Card': 'Admit Cards',

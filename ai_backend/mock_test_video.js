@@ -1091,6 +1091,12 @@ async function generateMockTestVideo(options = {}) {
 
             // PLAYLIST
             try {
+                // Skip the public playlist for non-public test uploads.
+                const effectivePrivacy = options.privacyStatus || process.env.VIDEO_PRIVACY_STATUS || 'public';
+                if (effectivePrivacy !== 'public') {
+                    throw new Error(`Playlist skipped — test upload (privacy=${effectivePrivacy})`);
+                }
+
                 const playlistTitle = `${subject} Mock Test Series ${new Date().getFullYear()}`;
                 const playlistsRes = await youtube.playlists.list({
                     part: 'snippet', mine: true, maxResults: 50

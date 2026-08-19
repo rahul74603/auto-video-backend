@@ -419,3 +419,48 @@ test("safeUpdate never throws when Firestore is unavailable", async () => {
   const ok = await V.safeUpdate(db, fakeAdmin(), "jobs", { slug: "x" }, async () => {});
   assert.equal(ok, false);
 });
+
+/* ------------------------------------------------------------------ */
+/* Safe-test guarantees (privacy override + one-video-per-run)         */
+/* ------------------------------------------------------------------ */
+
+test("both engines resolve privacy from options, then env, then default public", () => {
+  const fs = require("fs");
+  const path = require("path");
+
+  const autoSrc = fs.readFileSync(path.join(__dirname, "..", "autoVideo.js"), "utf8");
+  const mockSrc = fs.readFileSync(path.join(__dirname, "..", "mock_test_video.js"), "utf8");
+
+  // The video upload itself must honour the override.
+  assert.match(
+    autoSrc,
+    /privacyStatus:\s*options\.privacyStatus \|\| process\.env\.VIDEO_PRIVACY_STATUS \|\| 'public'/
+  );
+  assert.match(
+    mockSrc,
+    /const finalPrivacy = privacyStatus \|\| process\.env\.VIDEO_PRIVACY_STATUS \|\| 'public'/
+  );
+  assert.match(mockSrc, /privacyStatus: finalPrivacy/);
+});
+
+test("a non-public test upload is not added to the public playlist", () => {
+  const fs = require("fs");
+  const path = require("path");
+
+  for (const file of ["autoVideo.js", "mock_test_video.js"]) {
+    const src = fs.readFileSync(path.join(__dirname, "..", file), "utf8");
+    assert.match(
+      src,
+      /Playlist skipped — test upload/,
+      `${file} must skip the public playlist when privacy is not public`
+    );
+  }
+});
+
+test("the dispatcher defaults to exactly one video per scheduled run", () => {
+  // A scheduled run passes no inputs, so the workflow resolves --limit=1;
+  // even with no flag at all the code default must still be 1.
+  assert.equal(dispatcher.parseArgs([]).limit, 1);
+  assert.equal(dispatcher.parseArgs(["--kind=all"]).limit, 1);
+  assert.equal(dispatcher.parseArgs(["--limit=1"]).limit, 1);
+});
