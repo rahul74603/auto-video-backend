@@ -32,6 +32,19 @@ git push
 
 All four files are valid YAML (verified with a YAML parser).
 
+## ⚠️ The dispatcher ships DISABLED
+
+`video_dispatcher.yml` has its `schedule:` block commented out, and its manual
+inputs default to `dry_run=true` / `privacy=unlisted`. Installing it therefore
+cannot start production uploads.
+
+To go live after your unlisted tests pass, uncomment these two lines:
+
+```yaml
+  # schedule:
+  #   - cron: '*/15 * * * *'
+```
+
 ## Optional new secret
 
 `FAST_TRACK_TRIGGER_TOKEN` — only needed if you still want the legacy Fast Track

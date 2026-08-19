@@ -464,3 +464,21 @@ test("the dispatcher defaults to exactly one video per scheduled run", () => {
   assert.equal(dispatcher.parseArgs(["--kind=all"]).limit, 1);
   assert.equal(dispatcher.parseArgs(["--limit=1"]).limit, 1);
 });
+
+test("the dispatcher workflow ships in a safe, non-production state", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const wf = path.join(__dirname, "..", "github_workflows", "video_dispatcher.yml");
+  const src = fs.readFileSync(wf, "utf8");
+
+  // The cron schedule must be commented out so installing the file cannot
+  // immediately start public production uploads.
+  const activeCron = src
+    .split("\n")
+    .filter((line) => line.includes("cron:") && !line.trim().startsWith("#"));
+  assert.equal(activeCron.length, 0, "schedule must be disabled until the user opts in");
+
+  // Manual runs must default to dry-run and unlisted.
+  assert.match(src, /dry_run:[\s\S]{0,220}default:\s*'true'/);
+  assert.match(src, /privacy:[\s\S]{0,220}default:\s*'unlisted'/);
+});

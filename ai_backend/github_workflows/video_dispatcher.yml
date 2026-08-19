@@ -16,10 +16,18 @@ name: 🎬 Video Dispatcher (Firestore Poller)
 # =============================================================================
 
 on:
-  schedule:
-    # Every 15 minutes — a reasonable balance between "published job must not be
-    # missed" (PART 14) and GitHub Actions minute usage (PART 22).
-    - cron: '*/15 * * * *'
+  # ---------------------------------------------------------------------------
+  # ⚠️ AUTOMATIC SCHEDULE IS DISABLED ON PURPOSE.
+  #
+  # While this block is commented out the dispatcher ONLY runs when you press
+  # "Run workflow", so installing this file cannot start production uploads.
+  #
+  # ▶️ TO GO LIVE (after your unlisted tests pass): delete the two `#` below.
+  #    Every 15 minutes balances "a published job must not be missed" against
+  #    GitHub Actions minute usage.
+  # ---------------------------------------------------------------------------
+  # schedule:
+  #   - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       kind:
@@ -31,17 +39,17 @@ on:
         required: false
         default: '1'
       dry_run:
-        description: 'Only report what would be processed (true/false)'
+        description: 'Only report what would be processed, render nothing (true/false)'
         required: false
-        default: 'false'
+        default: 'true'
       doc:
         description: 'Optional single Firestore document id to force-process'
         required: false
         default: ''
       privacy:
-        description: 'YouTube privacy override for testing (public | unlisted | private)'
+        description: 'YouTube privacy (unlisted while testing — set to public only when you are ready to go live)'
         required: false
-        default: ''
+        default: 'unlisted'
 
 # Only one dispatcher run at a time — the Firestore claim is the real lock, this
 # just avoids burning runner minutes on overlapping polls.
