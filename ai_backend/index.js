@@ -475,7 +475,7 @@ exports.onFastTrackApprovedSendTelegram = require("./fast_track_updates").onFast
 // secrets: SERVICE_ACCOUNT_JSON (admin init) + GEMINI_API_KEY (AI title rewrite)
 // are both already used by other deployed functions, so they exist in Secret Manager.
 exports.rssFeed = onRequest(
-    { memory: "1GiB", secrets: ["SERVICE_ACCOUNT_JSON", "GEMINI_API_KEY"] },
+    { memory: "1GiB" },
     (req, res) => require("./newsFeed").rssFeed(req, res)
 );
 const proxySeoFunction = (name) => onRequest({ memory: "512MiB", timeoutSeconds: 300 }, (req, res) => {
