@@ -72,6 +72,21 @@ function linksIn(xml) {
     return [...xml.matchAll(/<link>(.*?)<\/link>/g)].map(m => m[1]);
 }
 
+// Exact URL comparison via real URL parsing (origin + pathname) instead of
+// substring checks — CodeQL js/incomplete-url-substring-sanitization safe.
+function hasLink(xmlOrLinks, url) {
+    const target = new URL(url);
+    const links = Array.isArray(xmlOrLinks) ? xmlOrLinks : linksIn(xmlOrLinks);
+    return links.some(raw => {
+        try {
+            const u = new URL(raw);
+            return u.origin === target.origin && u.pathname === target.pathname;
+        } catch {
+            return false;
+        }
+    });
+}
+
 /* ------------------------- route contract -------------------------- */
 
 test("COLLECTION_CONFIG uses only frontend-valid detail routes", () => {
@@ -111,7 +126,7 @@ test("buildRssItem: jobs use /job/<slug>", () => {
         title: "SSC CGL 2026", _route: "job", _useIdOnly: false,
         _label: "Sarkari Naukri", _timeField: new Date().toISOString()
     });
-    assert.match(xml, /<link>https:\/\/studygyaan\.in\/job\/ssc-cgl-2026<\/link>/);
+    assert.ok(hasLink(xml, "https://studygyaan.in/job/ssc-cgl-2026"));
 });
 
 test("buildRssItem: fast_track updates use /update/<id> when no slug", () => {
@@ -119,7 +134,7 @@ test("buildRssItem: fast_track updates use /update/<id> when no slug", () => {
         id: "upd-9", title: "UPSC Result", _route: "update", _useIdOnly: false,
         _label: "Fast Track", _timeField: new Date().toISOString()
     });
-    assert.match(xml, /<link>https:\/\/studygyaan\.in\/update\/upd-9<\/link>/);
+    assert.ok(hasLink(xml, "https://studygyaan.in/update/upd-9"));
 });
 
 test("buildRssItem: study materials ignore slug and use doc id (/material/<id>)", () => {
@@ -128,8 +143,8 @@ test("buildRssItem: study materials ignore slug and use doc id (/material/<id>)"
         title: "Physics Notes", _route: "material", _useIdOnly: true,
         _label: "Study Material", _timeField: new Date().toISOString()
     });
-    assert.match(xml, /<link>https:\/\/studygyaan\.in\/material\/mat-42<\/link>/);
-    assert.ok(!xml.includes("/material/physics-notes-pdf"), "slug must never be used for study materials");
+    assert.ok(hasLink(xml, "https://studygyaan.in/material/mat-42"));
+    assert.ok(!hasLink(xml, "https://studygyaan.in/material/physics-notes-pdf"), "slug must never be used for study materials");
 });
 
 test("buildRssItem: no dead /jobs/, /mock-tests/, /fast-track/ or /free-study-material/ URLs", () => {
@@ -167,11 +182,11 @@ test("rssFeed serves 200 with canonical URLs and /feed self-link", async () => {
     assert.match(res.headers["Content-Type"], /application\/rss\+xml/);
 
     const links = linksIn(res.body);
-    assert.ok(links.includes("https://studygyaan.in/job/job-1-slug"), "job link missing: " + links.join(" "));
-    assert.ok(links.includes("https://studygyaan.in/update/upd-1"), "update link missing");
-    assert.ok(links.includes("https://studygyaan.in/material/mat-1"), "material id link missing");
-    assert.ok(!links.includes("https://studygyaan.in/material/notes-1"), "material slug link must not exist");
-    assert.ok(!links.some(l => l.includes("/test/mt-1")), "draft mock test must be excluded");
+    assert.ok(hasLink(links, "https://studygyaan.in/job/job-1-slug"), "job link missing: " + links.join(" "));
+    assert.ok(hasLink(links, "https://studygyaan.in/update/upd-1"), "update link missing");
+    assert.ok(hasLink(links, "https://studygyaan.in/material/mat-1"), "material id link missing");
+    assert.ok(!hasLink(links, "https://studygyaan.in/material/notes-1"), "material slug link must not exist");
+    assert.ok(!hasLink(links, "https://studygyaan.in/test/mt-1"), "draft mock test must be excluded");
 
     assert.ok(res.body.includes('href="https://studygyaan.in/feed"'), "atom:link self-reference must be /feed");
     assert.ok(!res.body.includes('href="https://studygyaan.in/rss"'), "atom:link must not point at dead /rss");
@@ -199,7 +214,7 @@ test("rssFeed survives a malformed document without 500", async () => {
     await newsFeed.rssFeed({ headers: { "user-agent": "curl" }, query: {} }, res);
 
     assert.equal(res.statusCode, 200, "feed must not 500 because of one bad document");
-    assert.ok(res.body.includes("/job/good-1-slug"), "healthy item must still be present");
+    assert.ok(hasLink(res.body, "https://studygyaan.in/job/good-1-slug"), "healthy item must still be present");
 });
 
 test("rssFeed serves 200 even when every collection is empty", async () => {
