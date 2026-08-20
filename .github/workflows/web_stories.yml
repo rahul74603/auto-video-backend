@@ -1,5 +1,9 @@
 name: Auto Web Stories Scheduler
 
+# NOTE: this workflow used to be invalid YAML — the automation guard step was
+# placed directly under `jobs:` instead of inside a job. It is now a proper
+# two-job workflow with a real output.
+
 on:
   schedule:
     - cron: '30 4 * * *'  # सुबह 10:00 AM IST (Mock Test Story)
@@ -12,8 +16,19 @@ on:
         required: true
         default: 'blog'
 
+permissions:
+  contents: read
+
 jobs:
   # 🛑 Automation guard
+  check-automation:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.automation_check.outputs.enabled }}
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
       - name: 🛑 Check Automation Switch (web_stories)
         id: automation_check
         env:
@@ -21,7 +36,8 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         working-directory: ai_backend
         run: |
-          npm install --ignore-scripts --legacy-peer-deps axios firebase-admin 2>&1 | tail -n 5 || true
+          npm install --no-save --ignore-scripts --legacy-peer-deps axios firebase-admin 2>&1 | tail -n 5 || true
+          STATUS=0
           node check_automation.js web_stories || STATUS=$?
           if [ "$STATUS" = "78" ]; then
             echo "enabled=false" >> $GITHUB_OUTPUT
@@ -31,14 +47,14 @@ jobs:
           fi
 
   run-story-generator:
+    needs: check-automation
+    if: needs.check-automation.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        if: steps.automation_check.outputs.enabled == 'true'
         uses: actions/checkout@v3
 
       - name: Setup Node.js
-        if: steps.automation_check.outputs.enabled == 'true'
         uses: actions/setup-node@v3
         with:
           node-version: '20'
