@@ -169,7 +169,42 @@ jobs:
           if [ -n "${{ steps.cfg.outputs.doc }}" ]; then ARGS="$ARGS --doc=${{ steps.cfg.outputs.doc }}"; fi
 
           echo "▶️ node video_dispatcher.js $ARGS"
-          node video_dispatcher.js $ARGS
+
+          # Tee the output so it can be surfaced in the run summary. Log files
+          # in Actions live behind a signed blob URL that is often unreachable
+          # from other tools, so the summary is the reliable place to read it.
+          set -o pipefail
+          node video_dispatcher.js $ARGS 2>&1 | tee /tmp/dispatch.log
+          echo "exit=$?" > /tmp/dispatch.status
+
+      - name: 📋 Summary (yahan output padho)
+        if: always()
+        run: |
+          {
+            echo "## 🎬 Video Dispatcher — Run Result"
+            echo ""
+            echo "| setting | value |"
+            echo "|---|---|"
+            echo "| kind | \`${{ steps.cfg.outputs.kind }}\` |"
+            echo "| limit | \`${{ steps.cfg.outputs.limit }}\` |"
+            echo "| dry_run | \`${{ steps.cfg.outputs.dry }}\` |"
+            echo "| privacy | \`${{ steps.cfg.outputs.privacy }}\` |"
+            echo ""
+            echo "### Dispatcher output"
+            echo ""
+            echo '```'
+            if [ -f /tmp/dispatch.log ]; then cat /tmp/dispatch.log; else echo "(no output captured)"; fi
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: 📎 Upload log as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dispatcher-log
+          path: /tmp/dispatch.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: ❌ Failure notice
         if: failure()
