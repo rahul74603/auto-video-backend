@@ -42,6 +42,10 @@ require('dotenv').config();
 const V = require('./video_state');
 const { STATUS, KIND } = V;
 
+// Known project for this deployment. Used so logs never echo a value read out
+// of the service-account credentials.
+const DEFAULT_PROJECT_ID = 'studymaterial-406ad';
+
 /* ------------------------------------------------------------------ */
 /* CLI parsing                                                         */
 /* ------------------------------------------------------------------ */
@@ -116,9 +120,17 @@ function initFirebase() {
 
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
-        projectId: serviceAccount.project_id || 'studymaterial-406ad'
+        projectId: serviceAccount.project_id || DEFAULT_PROJECT_ID
     });
-    console.log(`✅ Firebase Admin ready (project: ${serviceAccount.project_id || 'studymaterial-406ad'})`);
+
+    // Log a fixed, known-safe identifier rather than anything read out of the
+    // parsed service account. project_id itself is harmless, but echoing any
+    // field of a credentials object into logs is the pattern that leaks keys
+    // when someone later widens it (CodeQL js/clear-text-logging).
+    const projectLabel = serviceAccount.project_id === DEFAULT_PROJECT_ID
+        ? DEFAULT_PROJECT_ID
+        : '(from service account)';
+    console.log(`✅ Firebase Admin ready (project: ${projectLabel})`);
     return admin.firestore();
 }
 

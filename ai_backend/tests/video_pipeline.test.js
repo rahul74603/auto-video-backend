@@ -670,3 +670,44 @@ test("video_maker passes the untrusted dispatch payload through env", () => {
   assert.match(src, /JOB_TITLE:\s+\$\{\{ github\.event\.client_payload\.jobData\.title \}\}/);
   assert.match(src, /echo "Title\s*:\s*\$JOB_TITLE"/);
 });
+
+/* ------------------------------------------------------------------ */
+/* Security: no credential material in logs                            */
+/* ------------------------------------------------------------------ */
+
+test("no field of a parsed credentials object is written to the log", () => {
+  const fs = require("fs");
+  const path = require("path");
+
+  // CodeQL js/clear-text-logging: anything derived from a parsed secret is
+  // tainted. Even a harmless field like project_id should not be echoed,
+  // because that is the pattern that leaks real keys once someone widens it.
+  const files = ["video_dispatcher.js", "video_state.js", "tts_engine.js", "tts_selftest.js",
+                 "autoVideo.js", "mock_test_video.js"];
+  const tainted = /\b(serviceAccount|ttsCreds|creds|credentials|token)\b\s*\.\s*\w+/;
+
+  const offenders = [];
+  for (const file of files) {
+    const src = fs.readFileSync(path.join(__dirname, "..", file), "utf8");
+    src.split("\n").forEach((line, i) => {
+      if (!/console\.(log|error|warn)/.test(line)) return;
+      if (line.trim().startsWith("//") || line.trim().startsWith("*")) return;
+      if (tainted.test(line)) offenders.push(`${file}:${i + 1} ${line.trim()}`);
+    });
+  }
+
+  assert.deepEqual(
+    offenders, [],
+    "these log lines read a field off a credentials object:\n" + offenders.join("\n")
+  );
+});
+
+test("secret presence may be logged, but never the secret value", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "tts_selftest.js"), "utf8");
+
+  // Reporting Boolean(...) is fine; interpolating the variable itself is not.
+  assert.match(src, /TTS_KEY_JSON present\s*:\s*\$\{Boolean\(process\.env\.TTS_KEY_JSON\)\}/);
+  assert.doesNotMatch(src, /console\.log\([^)]*\$\{process\.env\.TTS_KEY_JSON\}/);
+});
