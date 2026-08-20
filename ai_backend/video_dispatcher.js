@@ -380,6 +380,20 @@ async function main() {
     const results = [];
     let produced = 0;
 
+    // YouTube allows ~5 uploads/day on the default API quota. Stop before
+    // burning runner time on renders that would fail at the upload step (and
+    // would consume each document's retry budget for no reason).
+    const maxPerDay = V.dailyLimit();
+    let uploadedToday = args.dryRun ? 0 : await V.getDailyCount(db);
+    if (!args.dryRun && uploadedToday >= maxPerDay) {
+        console.log(`\n🛑 Daily YouTube budget reached (${uploadedToday}/${maxPerDay}).`);
+        console.log('   Baaki content agle din automatically process ho jayega.');
+        console.log('   (VIDEO_DAILY_LIMIT repo variable se badal sakte ho)');
+        console.log(`\n${'='.repeat(60)}`);
+        return 0;
+    }
+    if (!args.dryRun) console.log(`📊 Today's uploads: ${uploadedToday}/${maxPerDay}`);
+
     // A dry run renders nothing, so the limit must not stop it from reporting.
     // Surveying every pipeline is the whole point of --dry-run.
     const surveyOnly = args.dryRun === true;
@@ -443,6 +457,15 @@ async function main() {
             const outcome = await processCandidate(candidate, ctx);
             results.push(outcome);
             if (outcome.status !== 'skipped') produced += 1;
+
+            if (outcome.status === 'completed') {
+                await V.recordUpload(db, admin);
+                uploadedToday += 1;
+                if (uploadedToday >= maxPerDay) {
+                    console.log(`\n🛑 Daily YouTube budget reached (${uploadedToday}/${maxPerDay}) — rukte hain.`);
+                    break;
+                }
+            }
         }
     }
 

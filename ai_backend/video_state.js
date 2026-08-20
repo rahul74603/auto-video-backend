@@ -408,3 +408,74 @@ module.exports = {
     releaseClaim,
     safeUpdate
 };
+
+/* ------------------------------------------------------------------ */
+/* Daily YouTube quota guard                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * YouTube Data API v3 gives 10,000 quota units per day by default, and a single
+ * upload costs roughly 1,750 (videos.insert alone is 1,600). That caps the
+ * channel at about five uploads per day.
+ *
+ * Without a guard the scheduler would keep rendering after the quota is gone:
+ * every render burns several minutes of CPU and then fails at the upload step,
+ * and each failure counts toward the document's retry budget — so a genuinely
+ * fine job could get marked permanently failed just because the day was full.
+ *
+ * The counter lives in Firestore so it is shared across runs.
+ */
+const QUOTA_DOC = 'system_settings/video_quota';
+const DEFAULT_DAILY_VIDEO_LIMIT = 5;
+
+function todayKey(now = new Date()) {
+    // Bucket by IST day so the reset lines up with the site's audience.
+    const ist = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+    return ist.toISOString().slice(0, 10);
+}
+
+/** How many videos have already been uploaded today. */
+async function getDailyCount(db, now = new Date()) {
+    try {
+        const snap = await db.doc(QUOTA_DOC).get();
+        if (!snap.exists) return 0;
+        const data = snap.data() || {};
+        return data.date === todayKey(now) ? (Number(data.count) || 0) : 0;
+    } catch (err) {
+        console.log(`⚠️ quota read failed (${shortError(err, 120)}) — treating as 0`);
+        return 0;
+    }
+}
+
+/** Record one successful upload against today's budget. */
+async function recordUpload(db, admin, now = new Date()) {
+    try {
+        const ref = db.doc(QUOTA_DOC);
+        await db.runTransaction(async (tx) => {
+            const snap = await tx.get(ref);
+            const data = snap.exists ? (snap.data() || {}) : {};
+            const key = todayKey(now);
+            const count = data.date === key ? (Number(data.count) || 0) : 0;
+            tx.set(ref, {
+                date: key,
+                count: count + 1,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        });
+    } catch (err) {
+        // Never fail a completed video just because the counter did not save.
+        console.log(`⚠️ quota update skipped — ${shortError(err, 120)}`);
+    }
+}
+
+function dailyLimit() {
+    const raw = Number(process.env.VIDEO_DAILY_LIMIT);
+    return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_DAILY_VIDEO_LIMIT;
+}
+
+module.exports.QUOTA_DOC = QUOTA_DOC;
+module.exports.DEFAULT_DAILY_VIDEO_LIMIT = DEFAULT_DAILY_VIDEO_LIMIT;
+module.exports.todayKey = todayKey;
+module.exports.getDailyCount = getDailyCount;
+module.exports.recordUpload = recordUpload;
+module.exports.dailyLimit = dailyLimit;

@@ -409,87 +409,98 @@ videoError  = <chhota saaf message>
 
 ---
 
-## STEP 7 — LIVE karo (sirf jab teeno test pass ho jaayen)
+## STEP 7 — LIVE karo ✅
 
-Do kaam:
+Teeno pipelines test ho chuke hain. Ab live karne ke liye **sirf 2 kaam**:
 
-**1. Schedule chaalu karo** — `.github/workflows/video_dispatcher.yml` kholo,
-line ~29-30 par ye do line se `#` hatao:
+### 1. Latest code lo aur workflow install karo
 
-```yaml
-  # schedule:
-  #   - cron: '*/15 * * * *'
-```
+```powershell
+git pull --rebase origin arena/01a01b18-auto-video-backend
 
-banao:
+Copy-Item ai_backend\github_workflows\video_dispatcher.yml .github\workflows\ -Force
 
-```yaml
-  schedule:
-    - cron: '*/15 * * * *'
-```
-
-**2. Privacy public karo** — usi file me:
-
-```yaml
-      privacy:
-        default: 'unlisted'     # <-- isko 'public' kar do
-```
-
-Phir:
-
-```bash
 git add .github/workflows/video_dispatcher.yml
-git commit -m "Enable video dispatcher schedule and public uploads"
+git commit -m "Go live: enable video dispatcher schedule"
 git push origin arena/01a01b18-auto-video-backend
 ```
 
-Ab har 15 minute me automatically check hoga aur naya published content
-mila to video ban jayega — **bina Firebase billing ke**.
+### 2. PR merge karo (ye zaroori hai)
+
+**https://github.com/rahul74603/auto-video-backend/pull/11** → **Merge pull request**
+
+> **Cron sirf default branch (`main`) se chalta hai.** Bina merge kiye schedule
+> kabhi trigger nahi hoga — ye GitHub ka rule hai, iska koi workaround nahi.
+
+Merge ke baad system automatic ho jayega.
 
 ---
 
-## Rozmarra ke useful commands
+## Live hone ke baad kya hoga
 
-```bash
-# Local par dekho kya pending hai (kuch banega nahi)
-cd ai_backend
-npm ci
-node video_dispatcher.js --dry-run --kind=all
+```
+Aap website par JOB / FAST TRACK publish karo
+        ↓  (10 minute ke andar)
+GitHub Actions Firestore check karta hai
+        ↓
+Short video ban kar YouTube par LIVE
+        ↓
+Facebook + Telegram par bhi automatic
+```
 
-# Tests chalao
-node --test tests/video_pipeline.test.js tests/video_dispatcher_integration.test.js
+**Mock test** bhi isi loop me hai — naya mock test banao, video apne aap ban jayegi.
+
+| Cheez | Value |
+|---|---|
+| Kitni jaldi | har 10 minute me check |
+| Ek run me | 1 video |
+| Roz max | 5 videos (YouTube quota limit) |
+| Kya chahiye | kuch nahi — publish karo, bas |
+
+### ⚠️ YouTube ka daily limit
+
+YouTube Data API roz **10,000 quota units** deta hai, aur ek upload me ~1,750
+lagte hain. Isliye **roz ~5 video** hi ban sakti hain.
+
+System ye khud sambhalta hai: 5 ke baad rukta hai aur baaki content **agle din**
+apne aap process ho jata hai. Kuch miss nahi hota.
+
+Limit badalni ho (agar YouTube se zyada quota mila ho):
+**Settings → Secrets and variables → Actions → Variables** → `VIDEO_DAILY_LIMIT`
+
+---
+
+## Sab band karna ho (emergency)
+
+Code chhedne ki zaroorat nahi — Firestore me admin switch hai:
+
+`system_settings/automation` →
+- `emergencyPause: true` — sab kuch band
+- `features.video_maker: false` — sirf JOB + FAST TRACK video band
+- `features.mock_test: false` — sirf mock test video band
+
+Wapas chalu karne ke liye value badal do. Agle run se asar dikhega.
+
+---
+
+## Ek video ko video banne se rokna ho
+
+Us Firestore document me koi ek field daal do:
+
+```
+videoExcluded: true
 ```
 
 ---
 
-## Kuch fail ho jaye to
+## Cleanup (optional)
 
-**Ek failed document dobara try karana hai?**
-Firestore me us document se ye fields hata do / badal do:
+Testing wali temporary files hata sakte ho:
 
+```powershell
+git rm .github/workflows/video_dispatcher_branch_test.yml ai_backend/.videotest vtest.ps1
+git commit -m "Remove testing helpers"
+git push origin arena/01a01b18-auto-video-backend
 ```
-videoStatus   -> delete
-videoAttempts -> 0
-videoError    -> delete
-```
 
-3 baar fail hone ke baad system khud retry band kar deta hai (taaki
-Actions minutes waste na hon).
-
-**Sab kuch band karna hai (emergency)?**
-Firestore → `system_settings/automation` → `emergencyPause: true`
-
-**Sirf video band karna hai?**
-Usi doc me → `features.video_maker: false` (JOB + FAST TRACK)
-aur `features.mock_test: false` (Mock Test)
-
----
-
-## Yaad rakhne layak
-
-- Firebase **Spark plan** par pura system chalega — billing enable karne ki zaroorat nahi.
-- Sirf **Firestore** use hota hai, koi Cloud Function nahi.
-- Ek run me **sirf 1 video** banta hai (Actions minutes bachane ke liye).
-- Purana `repository_dispatch` path bhi chalu hai — duplicate video nahi banega,
-  kyunki dono raste render se pehle document ko "claim" karte hain.
-- GitHub Actions ke minutes **unlimited nahi** hain (private repo par monthly quota hota hai).
+Ya rehne do — inse koi nuksan nahi, aur aage debugging me kaam aayenge.

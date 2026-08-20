@@ -465,22 +465,16 @@ test("the dispatcher defaults to exactly one video per scheduled run", () => {
   assert.equal(dispatcher.parseArgs(["--limit=1"]).limit, 1);
 });
 
-test("the dispatcher workflow ships in a safe, non-production state", () => {
+test("the branch-test workflow can never publish publicly", () => {
   const fs = require("fs");
   const path = require("path");
-  const wf = path.join(__dirname, "..", "github_workflows", "video_dispatcher.yml");
+  const wf = path.join(__dirname, "..", "github_workflows", "video_dispatcher_branch_test.yml");
   const src = fs.readFileSync(wf, "utf8");
 
-  // The cron schedule must be commented out so installing the file cannot
-  // immediately start public production uploads.
-  const activeCron = src
-    .split("\n")
-    .filter((line) => line.includes("cron:") && !line.trim().startsWith("#"));
-  assert.equal(activeCron.length, 0, "schedule must be disabled until the user opts in");
-
-  // Manual runs must default to dry-run and unlisted.
-  assert.match(src, /dry_run:[\s\S]{0,220}default:\s*'true'/);
-  assert.match(src, /privacy:[\s\S]{0,220}default:\s*'unlisted'/);
+  // This helper exists only for controlled testing on a branch: it must refuse
+  // public uploads outright, so a stray test can never hit the real audience.
+  assert.match(src, /privacy=public is not allowed here/);
+  assert.match(src, /unlisted\|private\)\s*;;/);
 });
 
 /* ------------------------------------------------------------------ */
@@ -521,4 +515,102 @@ test("the public side-channels are still reached on a real public run", () => {
   const mock = fs.readFileSync(path.join(__dirname, "..", "mock_test_video.js"), "utf8");
   assert.match(mock, /await uploadToFacebook\(finalVideoPath, seoDescription\)/);
   assert.match(mock, /api\.telegram\.org\/bot\$\{TELEGRAM_BOT_TOKEN\}\/sendMessage/);
+});
+
+/* ------------------------------------------------------------------ */
+/* Daily YouTube quota guard                                           */
+/* ------------------------------------------------------------------ */
+
+test("the day bucket rolls over on IST, not UTC", () => {
+  // 19:00 UTC on the 1st is already the 2nd in IST (UTC+5:30).
+  assert.equal(V.todayKey(new Date("2026-08-01T19:00:00Z")), "2026-08-02");
+  assert.equal(V.todayKey(new Date("2026-08-01T17:00:00Z")), "2026-08-01");
+});
+
+test("the default daily limit stays inside YouTube's quota", () => {
+  // videos.insert costs 1600 of the 10,000 daily units; ~1750 with extras.
+  assert.ok(V.DEFAULT_DAILY_VIDEO_LIMIT * 1750 <= 10000);
+  delete process.env.VIDEO_DAILY_LIMIT;
+  assert.equal(V.dailyLimit(), V.DEFAULT_DAILY_VIDEO_LIMIT);
+});
+
+test("VIDEO_DAILY_LIMIT can override the budget, invalid values are ignored", () => {
+  process.env.VIDEO_DAILY_LIMIT = "3";
+  assert.equal(V.dailyLimit(), 3);
+  process.env.VIDEO_DAILY_LIMIT = "junk";
+  assert.equal(V.dailyLimit(), V.DEFAULT_DAILY_VIDEO_LIMIT);
+  process.env.VIDEO_DAILY_LIMIT = "0";
+  assert.equal(V.dailyLimit(), V.DEFAULT_DAILY_VIDEO_LIMIT);
+  delete process.env.VIDEO_DAILY_LIMIT;
+});
+
+test("yesterday's count does not consume today's budget", async () => {
+  const stale = { date: "2020-01-01", count: 99 };
+  const db = { doc: () => ({ get: async () => ({ exists: true, data: () => stale }) }) };
+  assert.equal(await V.getDailyCount(db), 0);
+});
+
+test("today's count is returned as-is", async () => {
+  const key = V.todayKey();
+  const db = { doc: () => ({ get: async () => ({ exists: true, data: () => ({ date: key, count: 4 }) }) }) };
+  assert.equal(await V.getDailyCount(db), 4);
+});
+
+test("an unreadable quota document does not block video generation", async () => {
+  const db = { doc: () => ({ get: async () => { throw new Error("permission denied"); } }) };
+  assert.equal(await V.getDailyCount(db), 0);
+});
+
+test("recordUpload increments today's counter", async () => {
+  const written = [];
+  const ref = {};
+  const db = {
+    doc: () => ref,
+    runTransaction: async (fn) => fn({
+      get: async () => ({ exists: true, data: () => ({ date: V.todayKey(), count: 2 }) }),
+      set: (_r, payload) => written.push(payload)
+    })
+  };
+  await V.recordUpload(db, fakeAdmin());
+  assert.equal(written[0].count, 3);
+  assert.equal(written[0].date, V.todayKey());
+});
+
+test("recordUpload restarts the count on a new day", async () => {
+  const written = [];
+  const db = {
+    doc: () => ({}),
+    runTransaction: async (fn) => fn({
+      get: async () => ({ exists: true, data: () => ({ date: "2020-01-01", count: 99 }) }),
+      set: (_r, payload) => written.push(payload)
+    })
+  };
+  await V.recordUpload(db, fakeAdmin());
+  assert.equal(written[0].count, 1);
+});
+
+test("a failing quota write never breaks a completed video", async () => {
+  const db = { doc: () => ({}), runTransaction: async () => { throw new Error("offline"); } };
+  await V.recordUpload(db, fakeAdmin());  // must not throw
+});
+
+/* ------------------------------------------------------------------ */
+/* Production workflow configuration                                   */
+/* ------------------------------------------------------------------ */
+
+test("the production dispatcher is scheduled and publishes publicly", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "github_workflows", "video_dispatcher.yml"), "utf8"
+  );
+
+  // Schedule must be live (uncommented) so publishing needs no button.
+  const activeCron = src.split("\n").filter((l) => /^\s*-\s*cron:/.test(l));
+  assert.equal(activeCron.length, 1, "exactly one active cron expected");
+  assert.match(activeCron[0], /\*\/10 \* \* \* \*/);
+
+  // Manual runs default to a real, public render.
+  assert.match(src, /dry_run:[\s\S]{0,220}default:\s*'false'/);
+  assert.match(src, /privacy:[\s\S]{0,220}default:\s*''/);
 });
