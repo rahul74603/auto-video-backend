@@ -62,9 +62,11 @@ const DEFAULT_MAX_ATTEMPTS = 3;
 // before the poller also picks the document up (avoids duplicate renders).
 const DEFAULT_LEGACY_GRACE_MS = 30 * 60 * 1000; // 30 minutes
 
-// Backlog guard: never auto-render videos for content published long before the
-// dispatcher existed (protects Action minutes + avoids YouTube spam).
-const DEFAULT_MAX_AGE_DAYS = 7;
+// Freshness guard: auto-render ONLY content published within the last day.
+// Older content — including legacy backlog and stale queued/failed docs — is
+// never auto-rendered. Publishing fresh content is what triggers a video.
+// Force a specific old doc manually with --doc=<id> --max-age-days=0.
+const DEFAULT_MAX_AGE_DAYS = 1;
 
 const JOB_BLOCKED_STATUSES = ['draft', 'pending', 'archived', 'rejected', 'unpublished', 'deleted', 'expired'];
 const NON_JOB_TYPES = ['MATERIAL', 'AFFILIATE', 'FAST_TRACK', 'BLOG', 'NOTE', 'PDF', 'STORY'];
@@ -186,7 +188,7 @@ function baseEligibility(data, opts = {}) {
     if (legacyDispatchInFlight(data, legacyGraceMs)) {
         return { eligible: false, reason: 'legacy Cloud Function dispatch still in grace period' };
     }
-    if (maxAgeDays > 0 && !data.videoStatus) {
+    if (maxAgeDays > 0) {
         const created = publishedAtMs(data);
         if (!created) {
             // No parseable timestamp at all: treat as backlog, not as fresh.

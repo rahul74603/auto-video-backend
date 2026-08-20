@@ -193,12 +193,31 @@ test("the backlog window can be disabled for forced/manual runs", () => {
   assert.equal(V.evaluateJob(data, { maxAgeDays: 0 }).eligible, true);
 });
 
-test("content already in the state machine ignores the backlog window", () => {
+test("stale backlog content is never auto-rendered, even if it entered the state machine", () => {
   const data = {
     type: "JOB", title: "Old but queued", createdAt: now() - 60 * DAY,
     videoStatus: V.STATUS.FAILED, videoAttempts: 1
   };
+  const verdict = V.evaluateJob(data);
+  assert.equal(verdict.eligible, false);
+  assert.match(verdict.reason, /backlog window/);
+});
+
+test("recently published content still retries inside the fresh window", () => {
+  const data = {
+    type: "JOB", title: "Fresh retry", createdAt: now() - 2 * HOUR,
+    videoStatus: V.STATUS.FAILED, videoAttempts: 1
+  };
   assert.equal(V.evaluateJob(data).eligible, true);
+});
+
+test("default freshness window is 1 day — fresh content eligible, older skipped", () => {
+  const fresh = { type: "JOB", title: "Just published", createdAt: now() - 12 * HOUR };
+  const stale = { type: "JOB", title: "Two days old", createdAt: now() - 2 * DAY };
+  assert.equal(V.evaluateJob(fresh).eligible, true);
+  const verdict = V.evaluateJob(stale);
+  assert.equal(verdict.eligible, false);
+  assert.match(verdict.reason, /backlog window/);
 });
 
 test("content with no parseable timestamp is treated as backlog (freshness guard)", () => {
@@ -263,6 +282,26 @@ test("dispatcher defaults to all pipelines with a limit of one video", () => {
   assert.equal(args.limit, 1);
   assert.equal(args.dryRun, false);
   assert.deepEqual(dispatcher.resolveKinds(args.kind), [V.KIND.JOB, V.KIND.FAST_TRACK, V.KIND.MOCK_TEST]);
+});
+
+test("blank VIDEO_MAX_AGE_DAYS env falls back to the default (never 0 = guard off)", () => {
+  const prev = process.env.VIDEO_MAX_AGE_DAYS;
+  process.env.VIDEO_MAX_AGE_DAYS = "";
+  try {
+    assert.equal(dispatcher.parseArgs([]).maxAgeDays, V.DEFAULT_MAX_AGE_DAYS);
+  } finally {
+    if (prev === undefined) delete process.env.VIDEO_MAX_AGE_DAYS; else process.env.VIDEO_MAX_AGE_DAYS = prev;
+  }
+});
+
+test("numeric VIDEO_MAX_AGE_DAYS env is honored", () => {
+  const prev = process.env.VIDEO_MAX_AGE_DAYS;
+  process.env.VIDEO_MAX_AGE_DAYS = "14";
+  try {
+    assert.equal(dispatcher.parseArgs([]).maxAgeDays, 14);
+  } finally {
+    if (prev === undefined) delete process.env.VIDEO_MAX_AGE_DAYS; else process.env.VIDEO_MAX_AGE_DAYS = prev;
+  }
 });
 
 test("dispatcher CLI flags are parsed", () => {

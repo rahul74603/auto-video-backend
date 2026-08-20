@@ -72,13 +72,15 @@ Legacy fields still written for backward compatibility:
 | MOCK TEST | `mock_tests` | `mockVideoMade != true` · has questions · has title/subject |
 
 Always skipped: already completed, currently locked by a live worker, failed 3×,
-`videoExcluded` / `skipVideo` / `noVideo` set by an admin, or content older than
-the 7-day backlog window (protects Action minutes and prevents mass back-publishing).
+`videoExcluded` / `skipVideo` / `noVideo` set by an admin, or content published
+older than the **1-day freshness window** (only freshly published content is
+auto-rendered — legacy backlog and stale queued/failed docs are never picked up).
 Docs with **no parseable timestamp** (`publishedAt` / `createdAt` / `updatedAt` all
 missing or unparseable, e.g. `25-08-2026` style strings) are treated as backlog —
 age unknown means *not fresh*, never *eligible forever*. Force such a doc manually
 with `--doc=<id> --max-age-days=0`. The window is tunable at runtime via the
-`VIDEO_MAX_AGE_DAYS` env var / repo variable or `--max-age-days` CLI flag.
+`VIDEO_MAX_AGE_DAYS` env var / repo variable or `--max-age-days` CLI flag
+(a blank/unset value falls back to the built-in default, never to 0).
 
 ---
 

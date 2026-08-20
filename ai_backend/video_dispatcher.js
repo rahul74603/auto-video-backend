@@ -50,6 +50,19 @@ const DEFAULT_PROJECT_ID = 'studymaterial-406ad';
 /* CLI parsing                                                         */
 /* ------------------------------------------------------------------ */
 
+/**
+ * VIDEO_MAX_AGE_DAYS from the environment, with a safe default.
+ * GitHub Actions passes an unset repo variable as an empty string (""), and
+ * Number("") === 0 would silently DISABLE the freshness guard — so a blank
+ * value must fall back to the built-in default instead.
+ */
+function envMaxAgeDays() {
+    const raw = process.env.VIDEO_MAX_AGE_DAYS;
+    if (raw === undefined || raw === null || String(raw).trim() === '') return V.DEFAULT_MAX_AGE_DAYS;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : V.DEFAULT_MAX_AGE_DAYS;
+}
+
 function parseArgs(argv) {
     const args = {
         kind: 'all',
@@ -57,9 +70,7 @@ function parseArgs(argv) {
         scanLimit: Number(process.env.VIDEO_SCAN_LIMIT || 150),
         dryRun: false,
         doc: '',
-        maxAgeDays: process.env.VIDEO_MAX_AGE_DAYS === undefined
-            ? V.DEFAULT_MAX_AGE_DAYS
-            : Number(process.env.VIDEO_MAX_AGE_DAYS)
+        maxAgeDays: envMaxAgeDays()
     };
     for (const raw of argv) {
         const [key, value] = raw.replace(/^--/, '').split('=');
@@ -500,6 +511,7 @@ async function main() {
 
 module.exports = {
     parseArgs,
+    envMaxAgeDays,
     resolveKinds,
     buildJobPayload,
     buildFastTrackPayload,
