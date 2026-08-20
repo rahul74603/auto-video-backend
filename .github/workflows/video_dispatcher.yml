@@ -17,17 +17,22 @@ name: 🎬 Video Dispatcher (Firestore Poller)
 
 on:
   # ---------------------------------------------------------------------------
-  # ⚠️ AUTOMATIC SCHEDULE IS DISABLED ON PURPOSE.
+  # ✅ LIVE. Runs every 10 minutes.
   #
-  # While this block is commented out the dispatcher ONLY runs when you press
-  # "Run workflow", so installing this file cannot start production uploads.
+  # Publish a JOB or FAST TRACK on the website and the next run picks it up and
+  # renders the Short automatically — no button, no Firebase Cloud Function.
+  # Mock tests are handled by the same loop.
   #
-  # ▶️ TO GO LIVE (after your unlisted tests pass): delete the two `#` below.
-  #    Every 15 minutes balances "a published job must not be missed" against
-  #    GitHub Actions minute usage.
+  # GitHub's scheduler is best-effort and can lag under load, so a publish is
+  # normally live within ~10-20 minutes. Nothing is ever missed: unprocessed
+  # content simply waits for the next run.
+  #
+  # This repository is public, so scheduled Actions minutes are free.
+  # To pause everything, use the admin switch in Firestore
+  # (system_settings/automation) rather than editing this file.
   # ---------------------------------------------------------------------------
-  # schedule:
-  #   - cron: '*/15 * * * *'
+  schedule:
+    - cron: '*/10 * * * *'
   workflow_dispatch:
     inputs:
       kind:
@@ -41,15 +46,15 @@ on:
       dry_run:
         description: 'Only report what would be processed, render nothing (true/false)'
         required: false
-        default: 'true'
+        default: 'false'
       doc:
         description: 'Optional single Firestore document id to force-process'
         required: false
         default: ''
       privacy:
-        description: 'YouTube privacy (unlisted while testing — set to public only when you are ready to go live)'
+        description: 'YouTube privacy — leave blank for public; set unlisted to test safely'
         required: false
-        default: 'unlisted'
+        default: ''
 
 # Only one dispatcher run at a time — the Firestore claim is the real lock, this
 # just avoids burning runner minutes on overlapping polls.
