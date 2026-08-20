@@ -15,14 +15,14 @@
 run=3
 
 # all | job | fast_track | mock_test
-kind=all
+kind=fast_track
 
 # ek run me maximum kitni videos
 limit=1
 
 # true  = sirf batayega kya process hoga, kuch banega nahi
 # false = asli video banegi aur upload hogi
-dry_run=true
+dry_run=false
 
 # unlisted = YouTube par chhupi rahegi (testing ke liye)
 # NOTE: is test workflow me 'public' allowed nahi hai Ã¢â‚¬â€ live jaane ke liye
