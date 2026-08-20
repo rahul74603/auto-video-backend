@@ -188,7 +188,13 @@ function baseEligibility(data, opts = {}) {
     }
     if (maxAgeDays > 0 && !data.videoStatus) {
         const created = publishedAtMs(data);
-        if (created && (Date.now() - created) > maxAgeDays * 24 * 60 * 60 * 1000) {
+        if (!created) {
+            // No parseable timestamp at all: treat as backlog, not as fresh.
+            // Legacy/imported docs without dates are exactly the "published long
+            // before the dispatcher existed" content this guard exists to skip.
+            return { eligible: false, reason: `unknown publish age (no parseable timestamp) — force with --max-age-days=0` };
+        }
+        if ((Date.now() - created) > maxAgeDays * 24 * 60 * 60 * 1000) {
             return { eligible: false, reason: `older than ${maxAgeDays}d backlog window` };
         }
     }

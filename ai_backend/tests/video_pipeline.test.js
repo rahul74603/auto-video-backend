@@ -201,6 +201,37 @@ test("content already in the state machine ignores the backlog window", () => {
   assert.equal(V.evaluateJob(data).eligible, true);
 });
 
+test("content with no parseable timestamp is treated as backlog (freshness guard)", () => {
+  const data = { type: "JOB", title: "Legacy doc without dates" };
+  const verdict = V.evaluateJob(data);
+  assert.equal(verdict.eligible, false);
+  assert.match(verdict.reason, /unknown publish age/);
+});
+
+test("dates in DD-MM-YYYY / DD/MM/YYYY strings do not pose as fresh content", () => {
+  const data = { type: "JOB", title: "Scraped job, ambiguous date", publishedAt: "25-08-2026" };
+  const verdict = V.evaluateJob(data);
+  assert.equal(verdict.eligible, false);
+  assert.match(verdict.reason, /unknown publish age/);
+});
+
+test("forced/manual runs can still render timestamp-less content", () => {
+  const data = { type: "JOB", title: "Legacy doc without dates" };
+  assert.equal(V.evaluateJob(data, { maxAgeDays: 0 }).eligible, true);
+});
+
+test("an unparseable publishedAt falls back to createdAt, not a fresh updatedAt", () => {
+  const data = {
+    type: "JOB", title: "Old job touched by an admin",
+    publishedAt: "25/08/2026",            // unparseable → ignored
+    createdAt: now() - 60 * DAY,          // truth: 60 days old
+    updatedAt: now()                      // recent edit must NOT mask age
+  };
+  const verdict = V.evaluateJob(data);
+  assert.equal(verdict.eligible, false);
+  assert.match(verdict.reason, /backlog window/);
+});
+
 /* ------------------------------------------------------------------ */
 /* Timestamp handling                                                  */
 /* ------------------------------------------------------------------ */
