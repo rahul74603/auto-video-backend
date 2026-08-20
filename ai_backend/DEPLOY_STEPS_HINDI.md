@@ -5,6 +5,42 @@ Terminal kholne ke liye: **Ctrl + `** (backtick) ya menu → Terminal → New Te
 
 ---
 
+## ⚠️ Pehle ye padho — "bad object" error aa raha hai?
+
+Agar `git fetch origin` par ye error aaye:
+
+```
+fatal: bad object refs/remotes/origin/arena/019ff08f-auto-video-backend
+error: ... did not send all necessary objects
+```
+
+Iska matlab: aapke local repo me **purani session ki branch ka tuta hua ref**
+pada hai. Wo ref ek aise commit ko point kar raha hai jo ab exist nahi karta,
+isliye Git aage badhne se mana kar deta hai — aur nayi branch bhi download
+nahi hoti (`pathspec ... did not match` isi ki wajah se aata hai).
+
+**Fix (aapka code/`.env` kuch nahi jayega):**
+
+```bash
+git update-ref -d refs/remotes/origin/arena/019ff08f-auto-video-backend
+git prune
+git fetch origin
+```
+
+Agar phir bhi wahi error aaye to saare stale refs ek saath saaf karo:
+
+```bash
+git remote prune origin
+git fetch origin --prune
+```
+
+Ab STEP 1 se aage badho.
+
+> Aapki `.env`, `credentials.json`, `service_account.json` gitignored hain —
+> ye commands unhe kabhi nahi chhuengi.
+
+---
+
 ## STEP 1 — Code local PC par laao
 
 Agar repo pehle se aapke PC par hai:
