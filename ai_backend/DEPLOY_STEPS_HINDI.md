@@ -170,7 +170,83 @@ Aapke account ke paas permission hai, isliye ye push **chal jayega**.
 
 ---
 
-## STEP 3.5 — ⚠️ PR merge karo (warna Actions me nahi dikhega)
+## STEP 3.5 — Bina merge kiye test karna (RECOMMENDED)
+
+GitHub Actions tab me "Run workflow" button sirf un workflows ka aata hai jo
+**default branch (`main`)** par hon. Isliye jab tak PR merge nahi hota,
+"🎬 Video Dispatcher" ka button nahi dikhega.
+
+**Lekin merge ki zaroorat nahi.** `push` trigger kisi bhi branch par chalta hai,
+isliye maine ek temporary test workflow bana diya hai jo control file push karne
+par chalta hai.
+
+### Kaise use karein
+
+`ai_backend/.videotest` file kholo, values badlo, aur push kar do:
+
+```
+run=2                 <-- har naye test me ye number badhao
+kind=job              <-- all | job | fast_track | mock_test
+limit=1
+dry_run=true          <-- true = kuch banega nahi, sirf report
+privacy=unlisted
+doc=                  <-- optional: ek hi document test karna ho to uski id
+```
+
+```powershell
+git add ai_backend/.videotest
+git commit -m "test: job dry run"
+git push origin arena/01a01b18-auto-video-backend
+```
+
+Ab GitHub → **Actions** → "🧪 Video Dispatcher — Branch Test" me run dikhega.
+
+### Teeno pipeline ek-ek karke
+
+**1. Pehle dry run (kuch upload nahi hoga):**
+```
+run=1
+kind=all
+dry_run=true
+```
+
+**2. JOB:**
+```
+run=2
+kind=job
+dry_run=false
+privacy=unlisted
+```
+
+**3. FAST TRACK:**
+```
+run=3
+kind=fast_track
+dry_run=false
+privacy=unlisted
+```
+
+**4. MOCK TEST:**
+```
+run=4
+kind=mock_test
+dry_run=false
+privacy=unlisted
+```
+
+Har baar `git add` → `commit` → `push`.
+
+> **Safety:** is test workflow me `privacy=public` **allowed nahi hai** — public
+> jaane ke liye PR merge karke asli dispatcher use karna hoga. `kind` ya
+> `dry_run` me typo hoga to workflow saaf error dega, chupchaap galat pipeline
+> nahi chalayega.
+
+> Ye workflow sirf tab chalta hai jab `.videotest` file badle — normal code
+> push par kabhi trigger nahi hoga.
+
+---
+
+## STEP 3.6 — PR merge (baad me, jab test pass ho jaayen)
 
 **Zaroori baat:** GitHub Actions tab me sirf wahi workflows dikhte hain jo
 **default branch (`main`)** par maujood hon. Abhi `video_dispatcher.yml` sirf
@@ -197,6 +273,14 @@ Poller)" dikhega aur "Run workflow" button aa jayega.
 > Merge karna surakshit hai: dispatcher ka schedule band hai aur manual
 > defaults `dry_run=true` + `privacy=unlisted` hain. Merge se koi video
 > apne aap nahi banega.
+
+**Merge ke baad ye 2 temporary files delete kar dena:**
+
+```powershell
+git rm .github/workflows/video_dispatcher_branch_test.yml ai_backend/.videotest
+git commit -m "Remove temporary branch-test workflow"
+git push
+```
 
 ---
 

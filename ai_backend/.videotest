@@ -1,0 +1,33 @@
+# =============================================================================
+# Video dispatcher test control file
+# =============================================================================
+# Is file ko edit karke push karo — 🧪 Video Dispatcher Branch Test workflow
+# chal jayega. Merge ki zaroorat nahi.
+#
+#   git add ai_backend/.videotest
+#   git commit -m "test: job dry run"
+#   git push origin arena/01a01b18-auto-video-backend
+#
+# Har naye test ke liye neeche "run" number badal do (taaki file change ho
+# aur GitHub naya run trigger kare).
+# =============================================================================
+
+run=1
+
+# all | job | fast_track | mock_test
+kind=all
+
+# ek run me maximum kitni videos
+limit=1
+
+# true  = sirf batayega kya process hoga, kuch banega nahi
+# false = asli video banegi aur upload hogi
+dry_run=true
+
+# unlisted = YouTube par chhupi rahegi (testing ke liye)
+# NOTE: is test workflow me 'public' allowed nahi hai — live jaane ke liye
+#       PR merge karke asli dispatcher use karo
+privacy=unlisted
+
+# optional: sirf ek particular Firestore document test karna ho to uski id
+doc=
