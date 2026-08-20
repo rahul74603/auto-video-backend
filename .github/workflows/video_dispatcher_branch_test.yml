@@ -180,10 +180,16 @@ jobs:
           TELEGRAM_CHANNEL_LINK:   ${{ secrets.TELEGRAM_CHANNEL_LINK }}
           TELEGRAM_CHANNEL_NAME:   ${{ secrets.TELEGRAM_CHANNEL_NAME }}
           VIDEO_PRIVACY_STATUS:    ${{ steps.cfg.outputs.privacy }}
+          # Values originate from a repo file, but keep them out of the script
+          # body anyway so nothing user-editable is ever evaluated as shell.
+          CFG_KIND:  ${{ steps.cfg.outputs.kind }}
+          CFG_LIMIT: ${{ steps.cfg.outputs.limit }}
+          CFG_DRY:   ${{ steps.cfg.outputs.dry }}
+          CFG_DOC:   ${{ steps.cfg.outputs.doc }}
         run: |
-          ARGS="--kind=${{ steps.cfg.outputs.kind }} --limit=${{ steps.cfg.outputs.limit }}"
-          if [ "${{ steps.cfg.outputs.dry }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
-          if [ -n "${{ steps.cfg.outputs.doc }}" ]; then ARGS="$ARGS --doc=${{ steps.cfg.outputs.doc }}"; fi
+          ARGS="--kind=$CFG_KIND --limit=$CFG_LIMIT"
+          if [ "$CFG_DRY" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ -n "$CFG_DOC" ]; then ARGS="$ARGS --doc=$CFG_DOC"; fi
 
           echo "▶️ node video_dispatcher.js $ARGS"
 
@@ -196,16 +202,21 @@ jobs:
 
       - name: 📋 Summary (yahan output padho)
         if: always()
+        env:
+          CFG_KIND:    ${{ steps.cfg.outputs.kind }}
+          CFG_LIMIT:   ${{ steps.cfg.outputs.limit }}
+          CFG_DRY:     ${{ steps.cfg.outputs.dry }}
+          CFG_PRIVACY: ${{ steps.cfg.outputs.privacy }}
         run: |
           {
             echo "## 🎬 Video Dispatcher — Run Result"
             echo ""
             echo "| setting | value |"
             echo "|---|---|"
-            echo "| kind | \`${{ steps.cfg.outputs.kind }}\` |"
-            echo "| limit | \`${{ steps.cfg.outputs.limit }}\` |"
-            echo "| dry_run | \`${{ steps.cfg.outputs.dry }}\` |"
-            echo "| privacy | \`${{ steps.cfg.outputs.privacy }}\` |"
+            echo "| kind | \`$CFG_KIND\` |"
+            echo "| limit | \`$CFG_LIMIT\` |"
+            echo "| dry_run | \`$CFG_DRY\` |"
+            echo "| privacy | \`$CFG_PRIVACY\` |"
             echo ""
             echo "### Dispatcher output"
             echo ""

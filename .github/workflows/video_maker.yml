@@ -69,16 +69,26 @@ jobs:
             echo "enabled=true" >> $GITHUB_OUTPUT
           fi
 
+      # SECURITY: client_payload comes from whoever sends the repository_dispatch,
+      # so it is untrusted. Never interpolate it into a shell script — pass it
+      # through env vars, which the shell treats as data, not code.
       - name: 🔍 Debug Data
         if: steps.automation_check.outputs.enabled == 'true'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_TYPE: ${{ github.event.action }}
+          JOB_TITLE:  ${{ github.event.client_payload.jobData.title }}
+          JOB_SLUG:   ${{ github.event.client_payload.jobData.slug }}
+          JOB_CAT:    ${{ github.event.client_payload.jobData.category }}
+          JOB_TYPE:   ${{ github.event.client_payload.jobData.type }}
         run: |
           echo "================================"
-          echo "Event : ${{ github.event_name }}"
-          echo "Type  : ${{ github.event.action }}"
-          echo "Title : ${{ github.event.client_payload.jobData.title }}"
-          echo "Slug  : ${{ github.event.client_payload.jobData.slug }}"
-          echo "Cat   : ${{ github.event.client_payload.jobData.category }}"
-          echo "JobType: ${{ github.event.client_payload.jobData.type }}"
+          echo "Event  : $EVENT_NAME"
+          echo "Type   : $EVENT_TYPE"
+          echo "Title  : $JOB_TITLE"
+          echo "Slug   : $JOB_SLUG"
+          echo "Cat    : $JOB_CAT"
+          echo "JobType: $JOB_TYPE"
           echo "================================"
 
       - name: 🎬 Generate Video
@@ -99,13 +109,18 @@ jobs:
 
       - name: ✅ Success
         if: success()
+        env:
+          JOB_TITLE: ${{ github.event.client_payload.jobData.title }}
+          JOB_TYPE:  ${{ github.event.client_payload.jobData.type }}
         run: |
           echo "🎉 Video YouTube पर Live!"
-          echo "Title: ${{ github.event.client_payload.jobData.title }}"
-          echo "Type:  ${{ github.event.client_payload.jobData.type }}"
+          echo "Title: $JOB_TITLE"
+          echo "Type:  $JOB_TYPE"
 
       - name: ❌ Failed
         if: failure()
+        env:
+          JOB_TITLE: ${{ github.event.client_payload.jobData.title }}
         run: |
           echo "💥 Video fail!"
-          echo "Title: ${{ github.event.client_payload.jobData.title }}"
+          echo "Title: $JOB_TITLE"

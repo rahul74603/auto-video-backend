@@ -149,11 +149,17 @@ jobs:
           TELEGRAM_CHANNEL_NAME: ${{ secrets.TELEGRAM_CHANNEL_NAME }}
           # --- Run tuning ---
           VIDEO_PRIVACY_STATUS:  ${{ github.event.inputs.privacy }}
+          # workflow_dispatch inputs are user supplied, so they are passed as
+          # env vars (data) instead of being interpolated into the script (code).
+          IN_KIND:  ${{ github.event.inputs.kind }}
+          IN_LIMIT: ${{ github.event.inputs.limit }}
+          IN_DRY:   ${{ github.event.inputs.dry_run }}
+          IN_DOC:   ${{ github.event.inputs.doc }}
         run: |
-          KIND="${{ github.event.inputs.kind }}"
-          LIMIT="${{ github.event.inputs.limit }}"
-          DRY="${{ github.event.inputs.dry_run }}"
-          DOC="${{ github.event.inputs.doc }}"
+          KIND="$IN_KIND"
+          LIMIT="$IN_LIMIT"
+          DRY="$IN_DRY"
+          DOC="$IN_DOC"
 
           ARGS="--kind=${KIND:-all} --limit=${LIMIT:-1}"
           if [ "$DRY" = "true" ]; then ARGS="$ARGS --dry-run"; fi
