@@ -65,3 +65,27 @@ Cloud Function fallback. It replaces a token that used to be committed in plain
 text inside `fast_track.yml`.
 
 Everything else uses secrets that already exist in the repository.
+
+## 🔄 Sync tooling (2026-08-20)
+
+Ab ek generic sync script hai jo staging (`ai_backend/github_workflows/`) se
+live (`.github/workflows/`) me sirf un files ko copy karta hai jo **dono jagah
+maujood hain aur alag hain** (staging wins):
+
+```powershell
+# dry run — kya copy hoga dikhao
+powershell -ExecutionPolicy Bypass -File tools\sync-workflows.ps1 -DryRun
+
+# apply
+powershell -ExecutionPolicy Bypass -File tools\sync-workflows.ps1
+```
+
+### Is branch me naya kya hai
+
+| File | Change |
+|---|---|
+| `video_dispatcher.yml` | `VIDEO_MAX_AGE_DAYS: ${{ vars.VIDEO_MAX_AGE_DAYS }}` repo-variable passthrough (freshness guard tunable). |
+| `deploy.yml` | **NEW staging copy** — deploy list me `functions:rssFeed` aur `functions:generateSitemapCourses` add. Inke bina `/feed` RSS stale/broken function pe point karta tha (live 500). |
+
+Sync ke baad commit + push karo, phir GitHub Actions → **"Deploy Firebase
+Functions Only"** → Run workflow — isse `/feed` ki live 500 theek hogi.

@@ -140,6 +140,9 @@ jobs:
           # Optional: set repo variable TTS_ENGINE=edge to skip Google TTS entirely
           # while billing is disabled (avoids one failed API call per render).
           TTS_ENGINE:            ${{ vars.TTS_ENGINE }}
+          # Optional: backlog window (days) for auto-rendering old content.
+          # Defaults to 7 (built into video_state.js). Set 0 to disable for a run.
+          VIDEO_MAX_AGE_DAYS:    ${{ vars.VIDEO_MAX_AGE_DAYS }}
           # --- Optional distribution (missing values are skipped gracefully) ---
           FB_PAGE_ID:            ${{ secrets.FB_PAGE_ID }}
           FB_PAGE_TOKEN:         ${{ secrets.FB_PAGE_TOKEN }}

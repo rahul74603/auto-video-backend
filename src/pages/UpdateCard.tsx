@@ -88,7 +88,7 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ category, pageTitle, descri
                     <h3 className="text-lg font-black text-slate-800 leading-snug group-hover:text-blue-600 transition-colors line-clamp-2">{item.title}</h3>
                   </div>
                   <button 
-                    onClick={() => navigate(`/fast-track/${item.id}`)}
+                    onClick={() => navigate(`/update/${item.slug || item.id}`)}
                     className="w-full bg-white text-[#0052CC] border-2 border-slate-100 py-3 rounded-xl font-black text-xs hover:bg-[#0052CC] hover:text-white hover:border-[#0052CC] transition-all flex items-center justify-center gap-2"
                   >
                     View Details <ArrowRight size={16} />

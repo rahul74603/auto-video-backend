@@ -151,7 +151,8 @@ exports.generateSitemap = onRequest({
     try {
         let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
         // ✅ Fix: Changed "/mocktest" to "/test" below
-        const staticPages = ["", "/govt-jobs", "/free-study-material", "/e-books", "/premium-notes", "/contact-us", "/about-us", "/privacy-policy", "/terms-conditions", "/blog", "/test", "/web-stories", "/fasttrack"];
+        // ✅ Fix: removed "/fasttrack" (301 → /govt-jobs; sitemap must list final URLs only)
+        const staticPages = ["", "/govt-jobs", "/free-study-material", "/e-books", "/premium-notes", "/contact-us", "/about-us", "/privacy-policy", "/terms-conditions", "/blog", "/test", "/web-stories"];
         const now = new Date().toISOString();
 
         staticPages.forEach(p => {
@@ -159,7 +160,8 @@ exports.generateSitemap = onRequest({
         });
 
         // ✅ Fix: Changed route for mock_tests from "mocktest" to "test" below
-        const collections = [{ name: "blogs", route: "blog" }, { name: "mock_tests", route: "test" }, { name: "web_stories", route: "web-stories" }, { name: "fasttrack", route: "fasttrack" }];
+        // ✅ Fix: fast_track (real collection) → canonical /update route
+        const collections = [{ name: "blogs", route: "blog" }, { name: "mock_tests", route: "test" }, { name: "web_stories", route: "web-stories" }, { name: "fast_track", route: "update" }];
 
         for (const config of collections) {
             const snap = await db.collection(config.name).select("updatedAt").get();

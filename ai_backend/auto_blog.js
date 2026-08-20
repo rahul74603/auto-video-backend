@@ -469,7 +469,7 @@ async function fetchAllAvailableResources(category, keywords) {
                 const jobSlug = data.slug || doc.id;
                 resources.jobs.push({
                     title: data.title || "Government Job",
-                    url: `https://studygyaan.in/jobs/${jobSlug}`,
+                    url: `https://studygyaan.in/job/${jobSlug}`,
                     docId: doc.id,
                     category: data.category || "General",
                     type: "job"
@@ -484,7 +484,7 @@ async function fetchAllAvailableResources(category, keywords) {
                     const jobSlug = data.slug || doc.id;
                     resources.jobs.push({
                         title: data.title || "Government Job",
-                        url: `https://studygyaan.in/jobs/${jobSlug}`,
+                        url: `https://studygyaan.in/job/${jobSlug}`,
                         docId: doc.id,
                         type: "job"
                     });
@@ -504,7 +504,7 @@ async function fetchAllAvailableResources(category, keywords) {
                     const testSlug = data.slug || doc.id;
                     resources.mockTests.push({
                         title: data.title || data.testName || "Practice Test",
-                        url: `https://studygyaan.in/mock-tests/${testSlug}`,
+                        url: `https://studygyaan.in/test/${testSlug}`,
                         docId: doc.id,
                         type: "mockTest"
                     });

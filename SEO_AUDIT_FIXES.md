@@ -180,3 +180,35 @@ Par **server_seo_renderer.js** me nahi hai — Ahrefs JS render nahi karta, sirf
 - Example: "Orphan page" me kaun se 1,170 URLs hain? 404 me kaun se 2 URLs hain?
 
 Batao kis Issue se start karein? Main code wale fixes abhi kar deta hoon — 404, orphan, sitemap, meta, structured data.
+
+---
+
+## ✅ Update — RSS/sitemap dead URL fix (2026-08-20)
+
+Maine upar ke audit ke baad ek aur scan kiya: RSS feed (`/feed` → `rssFeed` function)
+aur blog resources **dead URLs emit** kar rahe the — Google News/RSS readers ko
+404 wale links de rahe the. Ye fix ho gaya (PR #13):
+
+| File | Purani (dead) URL | Sahi URL |
+|---|---|---|
+| `newsFeed.js` | `/result/<id>`, `/admit-card/<id>`, `/answer-key/<id>` | collections hi hata diye — ye `fast_track` categories hain, `/update/<id>` hi canonical hai |
+| `newsFeed.js` | `/free-study-material/<slug>` | `/material/<id>` (detail page sirf doc ID resolve karta hai) |
+| `auto_blog.js` | `/jobs/<slug>`, `/mock-tests/<slug>` | `/job/<slug>`, `/test/<slug>` |
+| `UpdateCard.tsx` | `/fast-track/<id>` (route exist hi nahi karta) | `/update/<slug-or-id>` |
+| `daily_alert.js` | `/fasttrack/<id>` + collection `fasttrack` (galat naam) | `/update/<id>` + collection `fast_track` |
+
+**Live `/feed` 500 ka root cause:** `deploy.yml` ki deploy list me
+`functions:rssFeed` tha hi nahi — `/feed.xml` rewrite ek stale/broken `rssFeed`
+function pe point karta tha. Fix staging copy me hai:
+`ai_backend/github_workflows/deploy.yml` (deploy list me `rssFeed` +
+`generateSitemapCourses` add). **Machine pe apply karne ke liye:**
+`powershell -File tools\sync-workflows.ps1`, phir `git push`, phir
+GitHub Actions → "Deploy Firebase Functions Only" → Run workflow.
+
+Sath me `rssFeed` handler ab **per-item isolated** hai (ek kharab document
+poora feed 500 nahi kar sakta) aur `index.js` wrapper me
+`SERVICE_ACCOUNT_JSON` + `GEMINI_API_KEY` secrets add kiye.
+
+**Tests:** `ai_backend/tests/news_feed.test.js` (11 tests — canonical URLs,
+bad-doc resilience, empty-feed 200) + root `tests/routeUrlConsistency.test.ts`
+(5 guard tests — App.tsx routes vs generator output, dead-pattern scan).
