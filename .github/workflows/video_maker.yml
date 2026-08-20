@@ -1,13 +1,24 @@
 name: 🎬 Auto Video Generator
 
+# LEGACY / EXTERNAL TRIGGER PATH — kept fully working.
+#   Firebase Cloud Function (or any external caller)
+#   → repository_dispatch → this workflow → autoVideo.js → FFmpeg → YouTube
+#
+# The new billing-independent path is .github/workflows/video_dispatcher.yml.
+# Both call ai_backend/video_state.js `claim()` before rendering, so if the old
+# Firebase trigger starts working again it can never create a duplicate video.
+
 on:
   repository_dispatch:
     types: [generate_video, generate_job_video, generate_fasttrack_video]
 
-# ✅ यही FIX है - दोनों simultaneously चल सकें
+# One render per content item; different items still run in parallel.
 concurrency:
-  group: video-${{ github.event.client_payload.jobData.slug }}
+  group: video-${{ github.event.client_payload.jobData.slug || github.event.client_payload.jobData.id || github.run_id }}
   cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   render-video:
@@ -22,23 +33,41 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ai_backend/package-lock.json
+
+      - name: 🔧 System Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libjpeg-dev \
+            libgif-dev \
+            librsvg2-dev
+
+      - name: 📦 NPM Install (npm ci — package-lock.json preserved)
+        run: npm ci
+
       - name: 🛑 Check Automation Switch (video_maker)
         id: automation_check
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
         run: |
-          npm install --ignore-scripts --legacy-peer-deps firebase-admin axios 2>&1 | tail -n 3 || true
+          STATUS=0
           node check_automation.js video_maker || STATUS=$?
           if [ "$STATUS" = "78" ]; then
             echo "enabled=false" >> $GITHUB_OUTPUT
             echo "⏸️ video_maker paused — skipping workflow"
-            exit 0
           else
             echo "enabled=true" >> $GITHUB_OUTPUT
           fi
-
 
       - name: 🔍 Debug Data
         if: steps.automation_check.outputs.enabled == 'true'
@@ -52,31 +81,8 @@ jobs:
           echo "JobType: ${{ github.event.client_payload.jobData.type }}"
           echo "================================"
 
-      - name: 📦 Setup Node.js
-        if: steps.automation_check.outputs.enabled == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: 🔧 System Dependencies
-        if: steps.automation_check.outputs.enabled == 'true'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            build-essential \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libjpeg-dev \
-            libgif-dev \
-            librsvg2-dev
-
-      - name: 📦 NPM Install
-        if: steps.automation_check.outputs.enabled == 'true'
-        run: |
-          rm -rf node_modules package-lock.json
-          npm install
-
       - name: 🎬 Generate Video
+        if: steps.automation_check.outputs.enabled == 'true'
         env:
           JOB_DATA:              ${{ toJson(github.event.client_payload.jobData) }}
           GMAIL_CREDENTIALS:     ${{ secrets.GMAIL_CREDENTIALS }}
