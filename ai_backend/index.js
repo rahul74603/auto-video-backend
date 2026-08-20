@@ -472,7 +472,12 @@ exports.triggerFastTrackUpdates = require("./fast_track_updates").triggerFastTra
 exports.onFastTrackApprovedSendTelegram = require("./fast_track_updates").onFastTrackApprovedSendTelegram;
 
 // 3. News, RSS & SEO
-exports.rssFeed = onRequest({ memory: "1GiB" }, (req, res) => require("./newsFeed").rssFeed(req, res));
+// secrets: SERVICE_ACCOUNT_JSON (admin init) + GEMINI_API_KEY (AI title rewrite)
+// are both already used by other deployed functions, so they exist in Secret Manager.
+exports.rssFeed = onRequest(
+    { memory: "1GiB" },
+    (req, res) => require("./newsFeed").rssFeed(req, res)
+);
 const proxySeoFunction = (name) => onRequest({ memory: "512MiB", timeoutSeconds: 300 }, (req, res) => {
     return require("./seo_functions")[name](req, res);
 });

@@ -1,5 +1,4 @@
 require("dotenv").config();
-const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
@@ -59,15 +58,20 @@ function getIsoDate(timeSource) {
 // =========================================================
 // 🗺️ COLLECTION CONFIG
 // =========================================================
+// Routes MUST match the frontend router (src/App.tsx):
+//   /job/:id  /blog/:id  /test/:id  /update/:id  /material/:id  /course/:id
+// Result / Admit Card / Answer Key pages are CategoryPage views over the
+// `fast_track` collection (they link to /update/<id>), so those legacy
+// collection rows were removed — they had no data source on the site and
+// generated dead /result/, /admit-card/, /answer-key/ URLs.
+// `useIdOnly` matters where the detail page resolves the doc ID only
+// (MaterialDetails.getById — no slug lookup).
 const COLLECTION_CONFIG = [
-    { name: 'jobs',            route: 'job',                timeField: 'createdAt', label: 'Sarkari Naukri',  priority: 10 },
-    { name: 'fast_track',      route: 'update',             timeField: 'createdAt', label: 'Fast Track',      priority: 9  },
-    { name: 'results',         route: 'result',             timeField: 'createdAt', label: 'Result',          priority: 8  },
-    { name: 'admit_cards',     route: 'admit-card',         timeField: 'createdAt', label: 'Admit Card',      priority: 7  },
-    { name: 'answer_keys',     route: 'answer-key',         timeField: 'createdAt', label: 'Answer Key',      priority: 6  },
-    { name: 'blogs',           route: 'blog',               timeField: 'createdAt', label: 'Blog',            priority: 5  },
-    { name: 'mock_tests',      route: 'test',               timeField: 'createdAt', label: 'Mock Test',       priority: 4  },
-    { name: 'study_materials', route: 'free-study-material',timeField: 'createdAt', label: 'Study Material',  priority: 3  }
+    { name: 'jobs',            route: 'job',     useIdOnly: false, timeField: 'createdAt', label: 'Sarkari Naukri',  priority: 10 },
+    { name: 'fast_track',      route: 'update',  useIdOnly: false, timeField: 'createdAt', label: 'Fast Track',      priority: 9  },
+    { name: 'blogs',           route: 'blog',    useIdOnly: false, timeField: 'createdAt', label: 'Blog',            priority: 5  },
+    { name: 'mock_tests',      route: 'test',    useIdOnly: false, timeField: 'createdAt', label: 'Mock Test',       priority: 4  },
+    { name: 'study_materials', route: 'material',useIdOnly: true,  timeField: 'createdAt', label: 'Study Material',  priority: 3  }
 ];
 
 // =========================================================
@@ -188,6 +192,7 @@ async function fetchCollection(config) {
                     ...data,
                     _timeField: data[config.timeField],
                     _route:     config.route,
+                    _useIdOnly: config.useIdOnly === true,
                     _label:     config.label,
                     _priority:  config.priority
                 });
@@ -210,6 +215,7 @@ async function fetchCollection(config) {
                         ...data,
                         _timeField: data[config.timeField],
                         _route:     config.route,
+                        _useIdOnly: config.useIdOnly === true,
                         _label:     config.label,
                         _priority:  config.priority
                     });
@@ -229,7 +235,8 @@ async function fetchCollection(config) {
 // 📝 RSS ITEM BUILDER
 // =========================================================
 function buildRssItem(item) {
-    const slugOrId  = item.slug || item.id;
+    // study_materials detail page resolves the doc ID only (no slug lookup)
+    const slugOrId  = item._useIdOnly ? item.id : (item.slug || item.id);
     const itemUrl   = `https://studygyaan.in/${item._route}/${slugOrId}`;
     const safeUrl   = escapeXml(itemUrl);
     const pubDate   = getUtcDate(item._timeField);
@@ -302,8 +309,10 @@ function buildRssItem(item) {
 // =========================================================
 // 🚀 MAIN RSS FEED FUNCTION
 // =========================================================
-exports.rssFeed = functions.https.onRequest(async (req, res) => {
-
+// Plain (req, res) handler — index.js wraps it with the v2 onRequest
+// function definition. A broken single document must never take the
+// whole feed down, so item building is isolated per item.
+exports.rssFeed = async (req, res) => {
     // ✅ CORS Headers
     res.set('Access-Control-Allow-Origin', '*');
 
@@ -403,7 +412,7 @@ exports.rssFeed = functions.https.onRequest(async (req, res) => {
 <channel>
   <title>StudyGyaan | Sarkari Naukri, Result, Admit Card &amp; Exam Preparation</title>
   <link>https://studygyaan.in</link>
-  <atom:link href="https://studygyaan.in/rss" rel="self" type="application/rss+xml"/>
+  <atom:link href="https://studygyaan.in/feed" rel="self" type="application/rss+xml"/>
   <description>Latest Govt Jobs, Results, Admit Cards, Answer Keys &amp; Free Study Material - India's Fastest Update Portal</description>
   <language>hi-IN</language>
   <lastBuildDate>${buildDate}</lastBuildDate>
@@ -420,7 +429,11 @@ exports.rssFeed = functions.https.onRequest(async (req, res) => {
   </image>`;
 
         finalItems.forEach(item => {
-            xml += buildRssItem(item);
+            try {
+                xml += buildRssItem(item);
+            } catch (itemErr) {
+                console.error(`⚠️ Skipping bad RSS item ${item && item.id}:`, itemErr.message);
+            }
         });
 
         xml += `\n</channel>\n</rss>`;
@@ -434,7 +447,10 @@ exports.rssFeed = functions.https.onRequest(async (req, res) => {
         console.log(`✅ RSS served: ${finalItems.length} items`);
 
     } catch (error) {
-        console.error("❌ RSS Error:", error.message);
-        res.status(500).send("Internal Server Error");
+        console.error("❌ RSS Error:", error.message, error.stack);
+        res.status(500).send(`Internal Server Error: ${error.message}`);
     }
-});
+};
+
+// Test-only access to internals (routes must stay in sync with src/App.tsx)
+exports._internals = { COLLECTION_CONFIG, buildRssItem };

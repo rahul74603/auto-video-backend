@@ -6,7 +6,18 @@ const { spawn } = require('child_process');
 const { google } = require('googleapis');
 const admin = require("firebase-admin");
 const FormData = require('form-data');
+const V = require('./video_state');
+const ttsEngine = require('./tts_engine');
 require("dotenv").config();
+
+// ✅ Approved anchor files only — never pick up unrelated MP4s from the folder.
+const APPROVED_ANCHORS = [
+    'male_anchor_1.mp4',
+    'male_anchor_3.mp4',
+    'female_anchor_2.mp4',
+    'female_anchor_4.mp4',
+    'female_anchor_5.mp4'
+];
 
 // =========================================================
 // 🔐 0. FIREBASE INITIALIZATION
@@ -548,9 +559,24 @@ async function createPoster(jobData, jobCat, posterPath) {
 // =========================================================
 // 🎬 5. MAIN VIDEO GENERATOR ENGINE
 // =========================================================
-async function generateAndUploadVideo(jobData) {
-    const textToSpeech = require('@google-cloud/text-to-speech');
+/**
+ * Render + upload one JOB / FAST_TRACK video.
+ *
+ * @param {object} jobData  payload (same shape as the repository_dispatch client_payload.jobData)
+ * @param {object} [options]
+ *        options.managedState  true when the caller (video_dispatcher.js) owns the
+ *                              Firestore videoStatus bookkeeping.
+ *        options.docRef        resolved Firestore DocumentReference (optional).
+ *        options.collection    'jobs' | 'fast_track' (optional).
+ *        options.privacyStatus 'public' | 'unlisted' | 'private' (optional override).
+ * @returns {Promise<{success:boolean, videoId?:string, videoUrl?:string, error?:string, uploadFailed?:boolean}>}
+ */
+async function generateAndUploadVideo(jobData, options = {}) {
     const ffmpegPath   = require('ffmpeg-static');
+
+    // Tracks how far we got, so an upload error is reported as `upload_failed`
+    // rather than a generic render failure (PART 18).
+    let renderCompleted = false;
 
     console.log(`\n${'='.repeat(50)}`);
     console.log(`🎬 Video Engine Start`);
@@ -599,9 +625,13 @@ async function generateAndUploadVideo(jobData) {
             console.log(`⚠️ bg_music folder नहीं मिला: ${bgMusicDir}`);
         }
 
-        const anchorFiles = fs.readdirSync(targetDir).filter(f => f.toLowerCase().endsWith('.mp4'));
+        // ✅ Only approved anchor files (deterministic list, random pick among them)
+        const anchorFiles = APPROVED_ANCHORS.filter(f => fs.existsSync(path.join(targetDir, f)));
         if (anchorFiles.length === 0) {
-            throw new Error(`❌ Anchor videos नहीं मिले: ${targetDir}`);
+            throw new Error(
+                `❌ Approved anchor videos नहीं मिले: ${targetDir} ` +
+                `(expected: ${APPROVED_ANCHORS.join(', ')})`
+            );
         }
 
         const selectedVideoFile = anchorFiles[Math.floor(Math.random() * anchorFiles.length)];
@@ -616,19 +646,12 @@ async function generateAndUploadVideo(jobData) {
         const finalAnchorPath = path.join(targetDir, selectedVideoFile);
         console.log(`🎥 Anchor: ${selectedVideoFile} | Voice: ${selectedVoice}`);
 
+        // TTS credentials are optional now: tts_engine falls back to the free
+        // Edge voices when Google TTS is unavailable (e.g. billing disabled).
         const ttsKeyVar = process.env.TTS_KEY_JSON;
         if (!ttsKeyVar || ttsKeyVar === "test") {
-            throw new Error("❌ TTS_KEY_JSON missing!");
+            console.log('ℹ️ TTS_KEY_JSON नहीं मिला — free Edge TTS use होगा।');
         }
-
-        let ttsCreds;
-        try {
-            ttsCreds = JSON.parse(ttsKeyVar);
-        } catch (e) {
-            throw new Error("❌ TTS_KEY_JSON Invalid JSON.");
-        }
-
-        const ttsClient = new textToSpeech.TextToSpeechClient({ credentials: ttsCreds });
 
         let cleanName = (jobData.title || '').length > 55
             ? jobData.title.substring(0, 55)
@@ -675,13 +698,12 @@ async function generateAndUploadVideo(jobData) {
         const script = scriptArray[Math.floor(Math.random() * scriptArray.length)];
         console.log(`🎙️ Script: ${script.substring(0, 80)}...`);
 
-        const [ttsResponse] = await ttsClient.synthesizeSpeech({
-            input:       { text: script },
-            voice:       { languageCode: 'hi-IN', name: selectedVoice },
-            audioConfig: { audioEncoding: 'MP3', speakingRate: 1.08, pitch: 1.0 }
+        await ttsEngine.synthesize(script, audioPath, {
+            googleVoice:  selectedVoice,
+            gender:       isFemale ? 'female' : (isMale ? 'male' : 'neutral'),
+            speakingRate: 1.08,
+            pitch:        1.0
         });
-        fs.writeFileSync(audioPath, ttsResponse.audioContent, 'binary');
-        console.log('✅ Audio तैयार हो गया!');
 
         const safeAnchorY = await createPoster(jobData, jobCat, posterPath);
         console.log(`📍 Anchor Y position: ${safeAnchorY}`);
@@ -753,6 +775,7 @@ async function generateAndUploadVideo(jobData) {
                     process.stdout.write(`\r${out.split('\n')[0]}`);
                 }
             });
+            ffmpeg.on('error', (spawnErr) => reject(new Error(`FFmpeg spawn failed: ${spawnErr.message}`)));
             ffmpeg.on('close', (code) => {
                 if (code === 0) {
                     console.log('\n✅ Rendering पूरी!');
@@ -762,6 +785,8 @@ async function generateAndUploadVideo(jobData) {
                 }
             });
         });
+
+        renderCompleted = true;
 
         // ✅ SEO Data Generate - BOTH TYPES के लिए full data
         const seoData    = generateSEO(jobData, jobCat);
@@ -779,6 +804,16 @@ async function generateAndUploadVideo(jobData) {
             `${seoData.description}\n\n` +
             `⚡ Powered by StudyGyaan.in`;
 
+        // A non-public upload means this is a controlled test run. Public
+        // side-channels (Facebook, Telegram, the YouTube first comment) must be
+        // skipped, otherwise a test video is broadcast to the real audience
+        // even though YouTube itself is unlisted.
+        const effectivePrivacy = options.privacyStatus || process.env.VIDEO_PRIVACY_STATUS || 'public';
+        const isTestUpload     = effectivePrivacy !== 'public';
+        if (isTestUpload) {
+            console.log(`🧪 Test upload (privacy=${effectivePrivacy}) — Facebook / Telegram / first-comment skip होंगे।`);
+        }
+
         // ✅ YouTube Upload with full SEO
         console.log('📤 YouTube पर Upload हो रहा है...');
         console.log(`🏷️  Uploading ${seoData.tags.length} tags...`);
@@ -795,7 +830,9 @@ async function generateAndUploadVideo(jobData) {
                     defaultAudioLanguage: 'hi'
                 },
                 status: {
-                    privacyStatus:           'public',
+                    // Default stays 'public'. VIDEO_PRIVACY_STATUS=unlisted lets the
+                    // pipeline be tested without spamming the public channel (PART 24).
+                    privacyStatus:           options.privacyStatus || process.env.VIDEO_PRIVACY_STATUS || 'public',
                     selfDeclaredMadeForKids: false,
                     madeForKids:             false
                 }
@@ -821,6 +858,11 @@ async function generateAndUploadVideo(jobData) {
 
         // ✅ Playlist में add करो
         try {
+            // A non-public test upload must not appear in a public playlist.
+            if (isTestUpload) {
+                throw new Error(`Playlist skipped — test upload (privacy=${effectivePrivacy})`);
+            }
+
             const playlistNames = {
                 'Result':     'Results & Updates',
                 'Admit Card': 'Admit Cards',
@@ -873,14 +915,20 @@ async function generateAndUploadVideo(jobData) {
             console.log('⚠️ Playlist error:', plErr.message);
         }
 
-        // ✅ Facebook Upload
-        await uploadToFacebook(videoPath, seoData.description);
+        // ✅ Facebook Upload (public runs only)
+        if (isTestUpload) {
+            console.log('⏭️ Facebook skip — test upload.');
+        } else {
+            await uploadToFacebook(videoPath, seoData.description);
+        }
 
         // ✅ Telegram Notification
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
         const TELEGRAM_CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
 
-        if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+        if (isTestUpload) {
+            console.log('⏭️ Telegram skip — test upload.');
+        } else if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
             const icons = {
                 'Result':     '🏆',
                 'Admit Card': '🎫',
@@ -921,7 +969,10 @@ async function generateAndUploadVideo(jobData) {
             console.log('⚠️ Telegram credentials missing, skipping...');
         }
 
-        // ✅ Auto First Comment
+        // ✅ Auto First Comment (public runs only)
+        if (isTestUpload) {
+            console.log('⏭️ First comment skip — test upload.');
+        } else {
         console.log('⏳ 12 seconds wait (comment के लिए)...');
         await new Promise(r => setTimeout(r, 12000));
 
@@ -951,36 +1002,33 @@ async function generateAndUploadVideo(jobData) {
         } catch (commentErr) {
             console.log('⚠️ Comment error:', commentErr.message);
         }
+        }
 
-        // ✅ Firestore में video URL update करो
-        try {
-            const db = admin.firestore();
-
-            let collection;
-            if (jobData.type === 'JOB') {
-                collection = 'jobs';
-            } else if (jobData.type === 'FAST_TRACK') {
-                collection = 'fast_track';
-            } else {
-                collection = 'fast_track';
-            }
-
-            const docId = jobData.slug || jobData.id;
-
-            console.log(`💾 Firestore update: ${collection}/${docId}`);
-
-            if (docId) {
-                await db.collection(collection).doc(docId).update({
-                    youtubeVideoId:  videoId,
-                    youtubeVideoUrl: videoUrl,
-                    videoCreatedAt:  admin.firestore.FieldValue.serverTimestamp()
+        // ✅ Firestore state update.
+        // When the dispatcher owns the state machine (managedState) it writes the
+        // final videoStatus itself — we skip here to keep a single writer.
+        if (options.managedState) {
+            console.log('💾 Firestore state handled by dispatcher (managedState) — engine skip.');
+        } else {
+            const collection = options.collection || (jobData.type === 'JOB' ? 'jobs' : 'fast_track');
+            try {
+                const db = admin.firestore();
+                const ref = options.docRef || await V.resolveDocRef(db, collection, {
+                    docId: jobData.id,
+                    id:    jobData.id,
+                    slug:  jobData.slug
                 });
-                console.log(`✅ Firestore updated: ${collection}/${docId}`);
-            } else {
-                console.log('⚠️ docId नहीं मिला, Firestore skip किया।');
+
+                if (ref) {
+                    console.log(`💾 Firestore update: ${collection}/${ref.id}`);
+                    await V.markCompleted(db, admin, collection, ref, { videoId, videoUrl });
+                    console.log(`✅ Firestore updated: ${collection}/${ref.id}`);
+                } else {
+                    console.log(`⚠️ ${collection} document नहीं मिला (id=${jobData.id}, slug=${jobData.slug}) — Firestore skip.`);
+                }
+            } catch (dbErr) {
+                console.log('⚠️ Firestore update error:', dbErr.message);
             }
-        } catch (dbErr) {
-            console.log('⚠️ Firestore update error:', dbErr.message);
         }
 
         console.log(`\n${'='.repeat(50)}`);
@@ -992,12 +1040,25 @@ async function generateAndUploadVideo(jobData) {
         console.log(`🔖 Tags Count: ${seoData.tags.length}`);
         console.log(`${'='.repeat(50)}\n`);
 
-        return true;
+        return { success: true, videoId, videoUrl };
 
     } catch (err) {
-        console.error('❌ Video Engine Error:', err.message);
+        // Render succeeded but something after it (YouTube upload) blew up →
+        // report upload_failed so the document is not marked "completed".
+        const uploadFailed = renderCompleted === true;
+        console.error(`❌ Video Engine Error (${uploadFailed ? 'upload stage' : 'render stage'}):`, err.message);
         console.error(err.stack);
-        return false;
+
+        if (!options.managedState) {
+            const collection = options.collection || (jobData.type === 'JOB' ? 'jobs' : 'fast_track');
+            await V.safeUpdate(
+                admin.firestore(), admin, collection,
+                options.docRef || { docId: jobData.id, id: jobData.id, slug: jobData.slug },
+                (ref) => V.markFailed(admin.firestore(), admin, collection, ref, err, { uploadFailed })
+            );
+        }
+
+        return { success: false, error: V.shortError(err), uploadFailed };
     } finally {
         [audioPath, posterPath, videoPath].forEach(f => {
             try {
@@ -1010,43 +1071,120 @@ async function generateAndUploadVideo(jobData) {
     }
 }
 
-module.exports = { generateAndUploadVideo };
+module.exports = { generateAndUploadVideo, APPROVED_ANCHORS };
 
 // =========================================================
-// ✅ GitHub Actions Execution Block
+// ✅ GitHub Actions Execution Block (repository_dispatch path)
 // =========================================================
+/**
+ * Claim the source document before rendering so the legacy Cloud Function path
+ * and the new scheduled dispatcher can never produce duplicate videos.
+ * If Firestore is unreachable we still render (fail-open) — the old behaviour.
+ */
+async function runFromRepositoryDispatch(jobData) {
+    const collection = jobData.type === 'JOB' ? 'jobs' : 'fast_track';
+    const kind       = jobData.type === 'JOB' ? V.KIND.JOB : V.KIND.FAST_TRACK;
+    const runId      = process.env.GITHUB_RUN_ID
+        ? `dispatch-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT || '1'}`
+        : `dispatch-${Date.now()}`;
+
+    let db   = null;
+    let ref  = null;
+
+    try {
+        db  = admin.firestore();
+        ref = await V.resolveDocRef(db, collection, {
+            docId: jobData.id,
+            id:    jobData.id,
+            slug:  jobData.slug
+        });
+    } catch (err) {
+        console.log(`⚠️ Firestore unavailable for claim (${V.shortError(err, 140)}) — rendering without claim.`);
+    }
+
+    if (!ref) {
+        console.log(`⚠️ ${collection} document नहीं मिला (id=${jobData.id}, slug=${jobData.slug}) — claim skip, rendering anyway.`);
+        const result = await generateAndUploadVideo(jobData);
+        return result.success === true;
+    }
+
+    let claimed = false;
+    try {
+        const claim = await V.claim(db, admin, kind, ref, {
+            runId,
+            worker: 'repository-dispatch',
+            // Legacy trigger just fired for this doc — that is exactly why we are here.
+            legacyGraceMs: 0,
+            // Manual/legacy dispatch should not be blocked by the backlog window.
+            maxAgeDays: 0
+        });
+        claimed = claim.claimed;
+        if (!claimed) {
+            console.log(`⏭️ Skipping duplicate video for ${collection}/${ref.id} — ${claim.reason}`);
+            return true; // not an error: another worker already handled it
+        }
+        console.log(`🔒 Claimed ${collection}/${ref.id} (attempt ${claim.attempts})`);
+    } catch (err) {
+        console.log(`⚠️ Claim failed (${V.shortError(err, 140)}) — rendering without claim.`);
+    }
+
+    const result = await generateAndUploadVideo(jobData, {
+        managedState: claimed,
+        collection,
+        docRef: ref
+    });
+
+    if (claimed) {
+        if (result.success) {
+            await V.safeUpdate(db, admin, collection, ref, (r) =>
+                V.markCompleted(db, admin, collection, r, {
+                    videoId:  result.videoId,
+                    videoUrl: result.videoUrl
+                })
+            );
+        } else {
+            await V.safeUpdate(db, admin, collection, ref, (r) =>
+                V.markFailed(db, admin, collection, r, result.error, { uploadFailed: result.uploadFailed })
+            );
+        }
+    }
+
+    return result.success === true;
+}
+
 if (require.main === module) {
     const payloadStr = process.env.JOB_DATA;
 
     if (payloadStr) {
+        let jobData;
         try {
-            const jobData = JSON.parse(payloadStr);
-
-            console.log(`\n🚀 GitHub Actions Mode`);
-            console.log(`📌 Title : ${jobData.title}`);
-            console.log(`📂 Type  : ${jobData.type}`);
-            console.log(`🏷️  Cat   : ${jobData.category}\n`);
-
-            generateAndUploadVideo(jobData)
-                .then(success => {
-                    if (success) {
-                        console.log("✅ Video Process Complete!");
-                        process.exit(0);
-                    } else {
-                        console.log("❌ Video Process Failed!");
-                        process.exit(1);
-                    }
-                })
-                .catch(err => {
-                    console.error("❌ Fatal Error:", err.message);
-                    console.error(err.stack);
-                    process.exit(1);
-                });
+            jobData = JSON.parse(payloadStr);
         } catch (e) {
             console.error("❌ JSON Parse Error:", e.message);
             console.error("Raw payload:", payloadStr.substring(0, 200));
             process.exit(1);
         }
+
+        console.log(`\n🚀 GitHub Actions Mode`);
+        console.log(`📌 Title : ${jobData.title}`);
+        console.log(`📂 Type  : ${jobData.type}`);
+        console.log(`🏷️  Cat   : ${jobData.category}\n`);
+
+        runFromRepositoryDispatch(jobData)
+            .then(success => {
+                if (success) {
+                    console.log("✅ Video Process Complete!");
+                    process.exit(0);
+                } else {
+                    console.log("❌ Video Process Failed!");
+                    process.exit(1);
+                }
+            })
+            .catch(err => {
+                console.error("❌ Fatal Error:", err.message);
+                console.error(err.stack);
+                process.exit(1);
+            });
     } else {
         console.error("❌ JOB_DATA environment variable नहीं मिला!");
         process.exit(1);
