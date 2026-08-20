@@ -46,6 +46,20 @@ if (-not (Test-Path $File)) {
 # Default: 'all' => dry run, ek specific pipeline => asli video.
 $isDry = if ($PSBoundParameters.ContainsKey('DryRun')) { [bool]$DryRun } else { $Kind -eq "all" }
 
+# --- pehle remote se sync karo -----------------------------------------------
+# Warna push 'non-fast-forward' se reject ho jata hai (jab is chat se koi commit
+# push hua ho), aur run number bhi purana reh jata hai.
+$branch = (git rev-parse --abbrev-ref HEAD).Trim()
+Write-Host ""
+Write-Host "Syncing with remote..." -ForegroundColor Cyan
+git pull --rebase origin $branch 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "X Pull fail - pehle ye chalao:" -ForegroundColor Red
+    Write-Host "    git pull --rebase origin $branch" -ForegroundColor Yellow
+    Write-Host "  (agar conflict ho: git rebase --abort, phir batao)" -ForegroundColor Yellow
+    exit 1
+}
+
 # --- run number badhao (taaki file badle aur GitHub naya run trigger kare) ---
 $old = Get-Content $File
 $runLine = $old | Where-Object { $_ -match "^\s*run\s*=" } | Select-Object -Last 1
@@ -87,8 +101,6 @@ if ($isDry) {
 Write-Host ""
 
 # --- commit + push -----------------------------------------------------------
-$branch = (git rev-parse --abbrev-ref HEAD).Trim()
-
 git add $File
 git commit -m "test: $Kind (run $runNum, dry_run=$($isDry.ToString().ToLower()))" | Out-Null
 if ($LASTEXITCODE -ne 0) {
@@ -99,7 +111,9 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Pushing..." -ForegroundColor Cyan
 git push origin $branch
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "X Push fail" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "X Push fail. Ye chalao phir dobara try karo:" -ForegroundColor Red
+    Write-Host "    git pull --rebase origin $branch" -ForegroundColor Yellow
     exit 1
 }
 
