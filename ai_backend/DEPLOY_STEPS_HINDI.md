@@ -118,35 +118,44 @@ mock_test_maker.yml  video_dispatcher.yml  video_maker.yml
 ## STEP 2 — Workflow files install karo (ek command)
 
 Ye kaam bot nahi kar saka (GitHub App ke paas `workflows` permission nahi thi),
-isliye aapko apne account se karna hai. Repo root se chalao:
+isliye aapko apne account se karna hai.
+
+### 🪟 Windows PowerShell (aap yahi use kar rahe ho)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ai_backend\github_workflows\install.ps1
+```
+
+> `bash: command not recognized` aaye to yahi PowerShell wali script use karo —
+> Windows par Git ke saath `bash` hamesha install nahi hota.
+
+### 🐧 Git Bash / Linux / Mac
 
 ```bash
 bash ai_backend/github_workflows/install.sh
 ```
 
-Output aisa aayega:
+Dono ka output same hoga:
 
 ```
-📋 Installing video workflow files...
-   ✅ .github/workflows/video_dispatcher.yml
-   ✅ .github/workflows/video_maker.yml
-   ✅ .github/workflows/mock_test_maker.yml
-   ✅ .github/workflows/fast_track.yml
-🔍 Verifying...
-   ✅ dispatcher schedule disabled (manual-only) — safe to install
+Installing video workflow files...
+  OK  .github\workflows\video_dispatcher.yml
+  OK  .github\workflows\video_maker.yml
+  OK  .github\workflows\mock_test_maker.yml
+  OK  .github\workflows\fast_track.yml
+Verifying...
+  OK  dispatcher schedule disabled (manual-only) - safe to install
 ```
 
-**Windows PowerShell** me `bash` na chale to:
+### Ya bilkul manual (script chalana hi na ho to)
 
 ```powershell
-Copy-Item ai_backend\github_workflows\video_dispatcher.yml .github\workflows\
-Copy-Item ai_backend\github_workflows\video_maker.yml      .github\workflows\
-Copy-Item ai_backend\github_workflows\mock_test_maker.yml  .github\workflows\
-Copy-Item ai_backend\github_workflows\fast_track.yml       .github\workflows\
+Copy-Item ai_backend\github_workflows\video_dispatcher.yml .github\workflows\ -Force
+Copy-Item ai_backend\github_workflows\video_maker.yml      .github\workflows\ -Force
+Copy-Item ai_backend\github_workflows\mock_test_maker.yml  .github\workflows\ -Force
+Copy-Item ai_backend\github_workflows\fast_track.yml       .github\workflows\ -Force
 git add .github/workflows
 ```
-
-> Tip: VS Code me **Git Bash** default terminal bana lo, phir saare `bash` commands chalenge.
 
 ---
 

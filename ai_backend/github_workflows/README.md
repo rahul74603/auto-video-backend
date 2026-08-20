@@ -9,7 +9,15 @@ included in the pushed commit.
 
 ## Install (one command)
 
-From the repository root:
+From the repository root.
+
+**Windows PowerShell:**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ai_backend\github_workflows\install.ps1
+```
+
+**Git Bash / Linux / Mac:**
 
 ```bash
 bash ai_backend/github_workflows/install.sh
