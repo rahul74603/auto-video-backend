@@ -380,8 +380,12 @@ async function main() {
     const results = [];
     let produced = 0;
 
+    // A dry run renders nothing, so the limit must not stop it from reporting.
+    // Surveying every pipeline is the whole point of --dry-run.
+    const surveyOnly = args.dryRun === true;
+
     for (const kind of kinds) {
-        if (produced >= args.limit) {
+        if (!surveyOnly && produced >= args.limit) {
             console.log(`\n🛑 Limit of ${args.limit} video(s) reached — remaining kinds deferred to the next run.`);
             break;
         }
@@ -417,12 +421,21 @@ async function main() {
             continue;
         }
 
+        // In a dry run show what the next few real runs would pick up, in order.
+        let shownForKind = 0;
+
         for (const candidate of candidates) {
-            if (produced >= args.limit) break;
+            if (!surveyOnly && produced >= args.limit) break;
 
             if (args.dryRun) {
+                if (shownForKind >= args.limit) {
+                    const rest = candidates.length - shownForKind;
+                    if (rest > 0) console.log(`   …and ${rest} more ${kind} pending (queued for later runs)`);
+                    break;
+                }
                 console.log(`🧪 [dry-run] would process ${kind} ${candidate.id} — ${candidate.data.title || candidate.data.subject || '(untitled)'}`);
                 results.push({ status: 'dry-run', kind, id: candidate.id });
+                shownForKind += 1;
                 produced += 1;
                 continue;
             }

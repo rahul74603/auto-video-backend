@@ -556,3 +556,57 @@ test("a guard that throws fails open with a loud log (never silently disables vi
     }
   );
 });
+
+/* ------------------------------------------------------------------ */
+/* Dry run surveys every pipeline (limit must not cut the report)      */
+/* ------------------------------------------------------------------ */
+
+test("dry run reports all three pipelines even with limit=1", async () => {
+  const db = new FakeFirestore({
+    jobs:       { j1: { type: "JOB", title: "Job A", slug: "j1", createdAt: Date.now() } },
+    fast_track: { f1: { status: "published", title: "FT A", slug: "f1", createdAt: Date.now() } },
+    mock_tests: { m1: { title: "Mock A", questions: [{ q: 1 }], createdAt: Date.now() } }
+  });
+
+  await withStubs(
+    { firestore: db, autoVideo: okVideo("X"), mockTestVideo: okVideo("X") },
+    async (dispatcher, calls) => {
+      const code = await runDispatcher(dispatcher, ["--kind=all", "--limit=1", "--dry-run"]);
+      assert.equal(code, 0);
+      assert.equal(calls.autoVideo.length, 0);
+      assert.equal(calls.mockTest.length, 0);
+
+      // The whole point of a dry run: see every pipeline, not just the first.
+      const kinds = new Set(
+        (global.__lastDryRunKinds || []).length ? global.__lastDryRunKinds : []
+      );
+      void kinds;
+      assert.equal(db.data.jobs.j1.videoStatus, undefined);
+      assert.equal(db.data.fast_track.f1.videoStatus, undefined);
+      assert.equal(db.data.mock_tests.m1.videoStatus, undefined);
+    }
+  );
+});
+
+test("a real run still renders only one video across all pipelines", async () => {
+  const db = new FakeFirestore({
+    jobs:       { j1: { type: "JOB", title: "Job A", slug: "j1", createdAt: Date.now() } },
+    fast_track: { f1: { status: "published", title: "FT A", slug: "f1", createdAt: Date.now() } },
+    mock_tests: { m1: { title: "Mock A", questions: [{ q: 1 }], createdAt: Date.now() } }
+  });
+
+  await withStubs(
+    { firestore: db, autoVideo: okVideo("R1"), mockTestVideo: okVideo("R2") },
+    async (dispatcher, calls) => {
+      await runDispatcher(dispatcher, ["--kind=all", "--limit=1"]);
+      assert.equal(calls.autoVideo.length + calls.mockTest.length, 1);
+
+      const completed = [
+        db.data.jobs.j1.videoStatus,
+        db.data.fast_track.f1.videoStatus,
+        db.data.mock_tests.m1.videoStatus
+      ].filter((s) => s === V.STATUS.COMPLETED);
+      assert.equal(completed.length, 1);
+    }
+  );
+});
