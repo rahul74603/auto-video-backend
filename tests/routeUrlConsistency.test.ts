@@ -32,6 +32,7 @@ const DEAD_FRAGMENTS = [
   '/result/',
   '/admit-card/',
   '/answer-key/',
+  '/blog/category/', // no /blog/category/:slug route exists in App.tsx
 ];
 
 const URL_EMITTING_FILES = [
@@ -39,6 +40,9 @@ const URL_EMITTING_FILES = [
   'ai_backend/auto_blog.js',
   'ai_backend/daily_alert.js',
   'ai_backend/seo_functions.js',
+  'ai_backend/auto_indexer.js',
+  'ai_backend/article_to_story.js',
+  'ai_backend/telegram_draft_bot.js',
   'src/pages/UpdateCard.tsx',
 ];
 
@@ -85,6 +89,22 @@ describe('SEO URL consistency guard', () => {
     for (const r of routes) {
       expect(app).toContain(`path="/${r}/:id"`);
     }
+  });
+
+  it('fast_track content is linked via the canonical /update/ route, not /fasttrack/', () => {
+    // /fasttrack/:id exists only as a client-side redirect to /update/:id,
+    // so generators must emit the final /update/ URL directly.
+    for (const file of [
+      'ai_backend/auto_indexer.js',
+      'ai_backend/article_to_story.js',
+      'ai_backend/telegram_draft_bot.js',
+    ]) {
+      const source = read(file);
+      expect(source.includes('/fasttrack/'), `${file} still emits /fasttrack/`).toBe(false);
+    }
+    expect(read('ai_backend/auto_indexer.js')).toContain('/update/');
+    expect(read('ai_backend/article_to_story.js')).toContain('/update/');
+    expect(read('ai_backend/telegram_draft_bot.js')).toContain('/update/');
   });
 
   it('sitemap generators emit canonical routes only', () => {

@@ -217,7 +217,7 @@ test("FAST_TRACK result → RESULT badge + how-to-check steps", () => {
     assert.equal(doc.theme, "result");
     assert.equal(doc.slides[0].badge, "📢 RESULT OUT");
     assert.ok(JSON.stringify(doc.slides).includes("Result ऐसे देखें"));
-    assert.equal(doc.applyLink, "https://studygyaan.in/fasttrack/ft1");
+    assert.equal(doc.applyLink, "https://studygyaan.in/update/ft1");
 });
 
 test("BLOG → study theme + real highlights", () => {

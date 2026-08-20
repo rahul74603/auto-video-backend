@@ -228,7 +228,7 @@ function handleWebhook(db, FieldValue, http, creds) {
                 const result = await publishDraftRecord(db, FieldValue, draft, draftId);
                 const publicUrl = result.collection === "jobs"
                     ? `${SITE}/job/${result.payload.slug || result.docId}`
-                    : `${SITE}/fasttrack/${result.docId}`;
+                    : `${SITE}/update/${(result.payload && result.payload.slug) || result.docId}`;
                 await answer(cq.id, "🎉 PUBLISHED! Site live ho gaya.");
                 if (cq.message) {
                     await editMessage(creds.chatId, cq.message.message_id,

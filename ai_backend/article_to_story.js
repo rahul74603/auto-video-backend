@@ -97,7 +97,7 @@ function buildStoryId(articleSlug, docId) {
 function articleUrlFor(collectionName, data, docId) {
     const slug = cleanOne(data && data.slug, 120) || "";
     if (collectionName === "jobs") return `${SITE}/job/${slug || docId}`;
-    if (collectionName === "fast_track") return `${SITE}/fasttrack/${slug || docId}`;
+    if (collectionName === "fast_track") return `${SITE}/update/${slug || docId}`;
     return `${SITE}/blog/${slug || docId}`;
 }
 

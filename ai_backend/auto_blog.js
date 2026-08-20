@@ -820,8 +820,7 @@ function generateAllSchemas(data) {
         "itemListElement": [
             { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://studygyaan.in" },
             { "@type": "ListItem", "position": 2, "name": "Blog", "item": "https://studygyaan.in/blog" },
-            { "@type": "ListItem", "position": 3, "name": data.category.replace(/_/g, ' '), "item": `https://studygyaan.in/blog/category/${data.category.toLowerCase()}` },
-            { "@type": "ListItem", "position": 4, "name": data.title, "item": data.url }
+            { "@type": "ListItem", "position": 3, "name": data.title, "item": data.url }
         ]
     };
 
