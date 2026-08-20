@@ -9,17 +9,22 @@ included in the pushed commit.
 
 ## Install (one command)
 
-```bash
-cp ai_backend/github_workflows/video_dispatcher.yml \
-   ai_backend/github_workflows/video_maker.yml \
-   ai_backend/github_workflows/mock_test_maker.yml \
-   ai_backend/github_workflows/fast_track.yml \
-   .github/workflows/
+From the repository root:
 
-git add .github/workflows/
-git commit -m "Add billing-independent video dispatcher workflow"
-git push
+```bash
+bash ai_backend/github_workflows/install.sh
 ```
+
+The script copies the four files, verifies each copy is byte-identical, confirms
+the dispatcher is still in its safe (schedule-disabled) state, and stages them.
+Then commit and push:
+
+```bash
+git commit -m "Install billing-independent video dispatcher workflows"
+git push origin arena/01a01b18-auto-video-backend
+```
+
+Step-by-step Hindi walkthrough: **`ai_backend/DEPLOY_STEPS_HINDI.md`**
 
 ## What each file does
 
