@@ -10,6 +10,7 @@ const textToSpeech = require('@google-cloud/text-to-speech');
 const ffmpegPath = require('ffmpeg-static');
 const FormData = require('form-data');
 const V = require('./video_state');
+const ttsEngine = require('./tts_engine');
 require("dotenv").config();
 
 // =========================================================
@@ -713,13 +714,15 @@ function createMockSlide(questionObj, qNumber, totalQuestions, mode, subject, ou
 // =========================================================
 // 🗣️ 6. TTS ENGINE
 // =========================================================
+// Uses tts_engine, which prefers Google Cloud TTS and automatically falls back
+// to the free Microsoft Edge voices when Google is unavailable (billing off).
+// The unused ttsClient parameter is kept so existing call sites stay unchanged.
 async function generateAudio(text, outputPath, ttsClient) {
-    const [response] = await ttsClient.synthesizeSpeech({
-        input: { text: text },
-        voice: { languageCode: 'hi-IN', name: 'hi-IN-Neural2-B' },
-        audioConfig: { audioEncoding: 'MP3', speakingRate: 1.0 },
+    await ttsEngine.synthesize(text, outputPath, {
+        googleVoice: 'hi-IN-Neural2-B',
+        gender: 'neutral',
+        speakingRate: 1.0
     });
-    fs.writeFileSync(outputPath, response.audioContent, 'binary');
 }
 
 // =========================================================
@@ -902,9 +905,11 @@ async function generateMockTestVideo(options = {}) {
 
         console.log(`📚 Subject: ${subject} | Questions: ${totalQuestions}`);
 
-        const ttsKeyVar = process.env.TTS_KEY_JSON;
-        if (!ttsKeyVar) throw new Error("❌ TTS_KEY_JSON नहीं मिला!");
-        const ttsClient = new textToSpeech.TextToSpeechClient({ credentials: JSON.parse(ttsKeyVar) });
+        // Optional now — tts_engine falls back to free Edge voices without it.
+        if (!process.env.TTS_KEY_JSON) {
+            console.log('ℹ️ TTS_KEY_JSON नहीं मिला — free Edge TTS use होगा।');
+        }
+        const ttsClient = null;
 
         const concatListPath = path.join(tempDir, `concat_${Date.now()}.txt`);
         let concatContent = "";

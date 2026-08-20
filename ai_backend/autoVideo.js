@@ -7,6 +7,7 @@ const { google } = require('googleapis');
 const admin = require("firebase-admin");
 const FormData = require('form-data');
 const V = require('./video_state');
+const ttsEngine = require('./tts_engine');
 require("dotenv").config();
 
 // ✅ Approved anchor files only — never pick up unrelated MP4s from the folder.
@@ -571,7 +572,6 @@ async function createPoster(jobData, jobCat, posterPath) {
  * @returns {Promise<{success:boolean, videoId?:string, videoUrl?:string, error?:string, uploadFailed?:boolean}>}
  */
 async function generateAndUploadVideo(jobData, options = {}) {
-    const textToSpeech = require('@google-cloud/text-to-speech');
     const ffmpegPath   = require('ffmpeg-static');
 
     // Tracks how far we got, so an upload error is reported as `upload_failed`
@@ -646,19 +646,12 @@ async function generateAndUploadVideo(jobData, options = {}) {
         const finalAnchorPath = path.join(targetDir, selectedVideoFile);
         console.log(`🎥 Anchor: ${selectedVideoFile} | Voice: ${selectedVoice}`);
 
+        // TTS credentials are optional now: tts_engine falls back to the free
+        // Edge voices when Google TTS is unavailable (e.g. billing disabled).
         const ttsKeyVar = process.env.TTS_KEY_JSON;
         if (!ttsKeyVar || ttsKeyVar === "test") {
-            throw new Error("❌ TTS_KEY_JSON missing!");
+            console.log('ℹ️ TTS_KEY_JSON नहीं मिला — free Edge TTS use होगा।');
         }
-
-        let ttsCreds;
-        try {
-            ttsCreds = JSON.parse(ttsKeyVar);
-        } catch (e) {
-            throw new Error("❌ TTS_KEY_JSON Invalid JSON.");
-        }
-
-        const ttsClient = new textToSpeech.TextToSpeechClient({ credentials: ttsCreds });
 
         let cleanName = (jobData.title || '').length > 55
             ? jobData.title.substring(0, 55)
@@ -705,13 +698,12 @@ async function generateAndUploadVideo(jobData, options = {}) {
         const script = scriptArray[Math.floor(Math.random() * scriptArray.length)];
         console.log(`🎙️ Script: ${script.substring(0, 80)}...`);
 
-        const [ttsResponse] = await ttsClient.synthesizeSpeech({
-            input:       { text: script },
-            voice:       { languageCode: 'hi-IN', name: selectedVoice },
-            audioConfig: { audioEncoding: 'MP3', speakingRate: 1.08, pitch: 1.0 }
+        await ttsEngine.synthesize(script, audioPath, {
+            googleVoice:  selectedVoice,
+            gender:       isFemale ? 'female' : (isMale ? 'male' : 'neutral'),
+            speakingRate: 1.08,
+            pitch:        1.0
         });
-        fs.writeFileSync(audioPath, ttsResponse.audioContent, 'binary');
-        console.log('✅ Audio तैयार हो गया!');
 
         const safeAnchorY = await createPoster(jobData, jobCat, posterPath);
         console.log(`📍 Anchor Y position: ${safeAnchorY}`);

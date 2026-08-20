@@ -102,7 +102,9 @@ jobs:
           TTS_KEY_JSON:         ${{ secrets.TTS_KEY_JSON }}
         run: |
           missing=0
-          for name in SERVICE_ACCOUNT_JSON GMAIL_CREDENTIALS YOUTUBE_TOKEN TTS_KEY_JSON; do
+          # TTS_KEY_JSON is NOT required: tts_engine falls back to the free
+          # Edge voices when Google TTS is unavailable (billing disabled).
+          for name in SERVICE_ACCOUNT_JSON GMAIL_CREDENTIALS YOUTUBE_TOKEN; do
             if [ -z "${!name}" ]; then
               echo "::error::Required secret $name is not configured"
               missing=1
@@ -110,6 +112,12 @@ jobs:
               echo "✅ $name present"
             fi
           done
+          if [ -z "$TTS_KEY_JSON" ]; then
+            echo "ℹ️ TTS_KEY_JSON absent — free Edge TTS will be used"
+          else
+            echo "✅ TTS_KEY_JSON present"
+          fi
+
           if [ "$missing" = "1" ]; then
             echo "::error::Configure the missing secrets in Settings → Secrets and variables → Actions"
             exit 1
@@ -124,6 +132,9 @@ jobs:
           YOUTUBE_TOKEN:         ${{ secrets.YOUTUBE_TOKEN }}
           YOUTUBE_TOKEN_SELF_TEST: ${{ secrets.YOUTUBE_TOKEN_SELF_TEST }}
           TTS_KEY_JSON:          ${{ secrets.TTS_KEY_JSON }}
+          # Optional: set repo variable TTS_ENGINE=edge to skip Google TTS entirely
+          # while billing is disabled (avoids one failed API call per render).
+          TTS_ENGINE:            ${{ vars.TTS_ENGINE }}
           # --- Optional distribution (missing values are skipped gracefully) ---
           FB_PAGE_ID:            ${{ secrets.FB_PAGE_ID }}
           FB_PAGE_TOKEN:         ${{ secrets.FB_PAGE_TOKEN }}
