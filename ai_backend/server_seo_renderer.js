@@ -160,6 +160,8 @@ function buildSchema(meta, data, type) {
     // Ensure required fields: title, description, hiringOrganization, jobLocation, datePosted
     const orgName = (data.organization || "Government Organization").toString().slice(0, 100) || "Government Organization";
     const location = (data.location || "India").toString().slice(0, 100);
+    const cleanLocation = location.replace(/\s+/g, " ").trim() || "India";
+    const locality = cleanLocation.split(",")[0].trim() || "India";
     const description = buildVisibleText(data, type).slice(0, 5000) || meta.description;
     
     // validThrough must be future date, if expired don't send (causes validation error)

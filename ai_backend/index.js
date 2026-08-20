@@ -426,10 +426,6 @@ ${enhancedIntent.prompt}
   }
 });
 
-const handleMetaTags = require("./server_seo_renderer").createServerSeoHandler({
-  db,
-  renderWebStory: (req, res) => require("./web_stories").renderWebStory(req, res)
-});
 /* ================= FINAL EXPORTS (TIMEOUT FIX & VISIBLE) ================= */
 
 // 0. API Core & Meta Tags (Working)
@@ -441,7 +437,9 @@ exports.api = onRequest({
   cors: true
 }, app);
 
-exports.serverSideMetaTags = onRequest({ memory: "1GiB" }, (req, res) => handleMetaTags(req, res));
+// Spark-safe HTTP SEO functions live in seo_export.js (package.json "main")
+// so CI can deploy them without discovering secrets/schedules/extensions.
+Object.assign(exports, require("./seo_export"));
 
 // 📲 Telegram APPROVE BUTTONS — AI draft card ke ✅/❌ clicks yahi handle hote hain
 exports.telegramDraftWebhook = onRequest({
@@ -471,28 +469,7 @@ exports.fetchFastTrackUpdates = require("./fast_track_updates").fetchFastTrackUp
 exports.triggerFastTrackUpdates = require("./fast_track_updates").triggerFastTrackUpdates;
 exports.onFastTrackApprovedSendTelegram = require("./fast_track_updates").onFastTrackApprovedSendTelegram;
 
-// 3. News, RSS & SEO
-// secrets: SERVICE_ACCOUNT_JSON (admin init) + GEMINI_API_KEY (AI title rewrite)
-// are both already used by other deployed functions, so they exist in Secret Manager.
-exports.rssFeed = onRequest(
-    { memory: "1GiB" },
-    (req, res) => require("./newsFeed").rssFeed(req, res)
-);
-const proxySeoFunction = (name) => onRequest({ memory: "512MiB", timeoutSeconds: 300 }, (req, res) => {
-    return require("./seo_functions")[name](req, res);
-});
-exports.generateSitemapIndex = proxySeoFunction("generateSitemapIndex");
-exports.generateSitemapMain = proxySeoFunction("generateSitemapMain");
-exports.generateSitemapBlogs = proxySeoFunction("generateSitemapBlogs");
-exports.generateSitemapJobs = proxySeoFunction("generateSitemapJobs");
-exports.generateSitemapTests = proxySeoFunction("generateSitemapTests");
-exports.generateSitemapStories = proxySeoFunction("generateSitemapStories");
-exports.generateSitemapUpdates = proxySeoFunction("generateSitemapUpdates");
-exports.generateSitemapNews = proxySeoFunction("generateSitemapNews");
-exports.generateSitemapCourses = proxySeoFunction("generateSitemapCourses");
-// Legacy all-in-one sitemap remains available at /sitemap-all.xml only.
-exports.generateSitemap = proxySeoFunction("generateSitemap");
-exports.generateRss = proxySeoFunction("generateRss");
+// 3. News, RSS & SEO HTTP functions are exported from seo_export.js above.
 
 // 4. Web Stories
 exports.renderWebStory = onRequest({ cors: true }, (req, res) => {

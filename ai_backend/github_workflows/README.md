@@ -85,7 +85,8 @@ powershell -ExecutionPolicy Bypass -File tools\sync-workflows.ps1
 | File | Change |
 |---|---|
 | `video_dispatcher.yml` | `VIDEO_MAX_AGE_DAYS: ${{ vars.VIDEO_MAX_AGE_DAYS }}` repo-variable passthrough (freshness guard tunable). |
-| `deploy.yml` | **NEW staging copy** — deploy list me `functions:rssFeed` aur `functions:generateSitemapCourses` add. Inke bina `/feed` RSS stale/broken function pe point karta tha (live 500). |
+| `deploy.yml` | Spark-safe SEO deploy. `ai_backend/package.json` `"main"` is `seo_export.js` (HTTP sitemap/RSS/meta-tags only). Listing `functions:api` (secrets) is what made CI fail with **Extensions require the Blaze plan**. |
 
 Sync ke baad commit + push karo, phir GitHub Actions → **"Deploy Firebase
-Functions Only"** → Run workflow — isse `/feed` ki live 500 theek hogi.
+Functions Only"** → Run workflow — `/feed` aur sitemaps Spark plan par deploy
+ho jayenge, bina Blaze upgrade ke.

@@ -28,8 +28,9 @@ test("renderer outputs exactly one self-referencing canonical and server content
   };
   const html = injectSeo(template, meta, data, "job");
   assert.equal((html.match(/rel="canonical"/g) || []).length, 1);
-  assert.match(html, /<h1>Example Job 2026<\/h1>/);
+  assert.match(html, /<h1>Example Job 2026/);
   assert.match(html, /"@type":"JobPosting"/);
+  assert.match(html, /"addressLocality":"Indore"/);
   assert.match(html, /\/assets\/app\.js/);
 });
 

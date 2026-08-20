@@ -17,6 +17,8 @@ npm test
 npm run check
 ```
 
+`ai_backend/package.json` `"main"` is `seo_export.js` so the GitHub **Deploy Firebase Functions Only** workflow can update sitemaps/RSS/meta-tags on the Spark plan. Full automation functions stay in `index.js`; point `"main"` back at `index.js` only when you intentionally deploy those (requires Blaze).
+
 ## AI Article Studio
 
 **Source-grounded Job & Fast Track writers · Fact & Quality review · Draft-first · Author: StudyGyaan Editorial Team**

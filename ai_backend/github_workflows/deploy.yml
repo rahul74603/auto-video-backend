@@ -4,9 +4,15 @@ name: Deploy Firebase Functions Only
 # into .github/workflows/, so fixes land here and tools/sync-workflows.ps1
 # copies them to .github/workflows/ on a local machine.
 #
-# Fix included: functions:rssFeed (the /feed RSS rewrite target) and
-# functions:generateSitemapCourses were missing from the deploy list, so
-# /feed kept serving a stale or broken rssFeed function (live 500).
+# Spark / non-Blaze: ai_backend/package.json "main" is seo_export.js, which
+# exports only these HTTP SEO functions (no secrets, schedules, Firestore
+# triggers, or Extension SDK instances). firebase-tools discovers every
+# export in "main", so pointing it at index.js made CI enable
+# firebaseextensions + secretmanager and fail with:
+#   Error: Extensions require the Blaze plan
+#
+# Do NOT add functions:api (or any function with `secrets:`) to this list
+# while the project is on Spark.
 
 on:
   workflow_dispatch:
@@ -44,6 +50,6 @@ jobs:
 
       - name: Deploy selected Firebase Functions safely
         run: |
-          firebase deploy --only "functions:api,functions:serverSideMetaTags,functions:rssFeed,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemapCourses,functions:generateSitemap,functions:generateRss" --project studymaterial-406ad --non-interactive
+          firebase deploy --only "functions:serverSideMetaTags,functions:rssFeed,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemapCourses,functions:generateSitemap,functions:generateRss" --project studymaterial-406ad --non-interactive
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
