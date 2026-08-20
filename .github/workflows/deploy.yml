@@ -1,5 +1,13 @@
 name: Deploy Firebase Functions Only
 
+# ⚠️ Staging copy of .github/workflows/deploy.yml — the bot token cannot push
+# into .github/workflows/, so fixes land here and tools/sync-workflows.ps1
+# copies them to .github/workflows/ on a local machine.
+#
+# Fix included: functions:rssFeed (the /feed RSS rewrite target) and
+# functions:generateSitemapCourses were missing from the deploy list, so
+# /feed kept serving a stale or broken rssFeed function (live 500).
+
 on:
   workflow_dispatch:
 
@@ -36,6 +44,6 @@ jobs:
 
       - name: Deploy selected Firebase Functions safely
         run: |
-          firebase deploy --only "functions:api,functions:serverSideMetaTags,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemap,functions:generateRss" --project studymaterial-406ad --non-interactive
+          firebase deploy --only "functions:api,functions:serverSideMetaTags,functions:rssFeed,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemapCourses,functions:generateSitemap,functions:generateRss" --project studymaterial-406ad --non-interactive
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
