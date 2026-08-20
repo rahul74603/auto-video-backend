@@ -170,6 +170,36 @@ Aapke account ke paas permission hai, isliye ye push **chal jayega**.
 
 ---
 
+## STEP 3.5 — ⚠️ PR merge karo (warna Actions me nahi dikhega)
+
+**Zaroori baat:** GitHub Actions tab me sirf wahi workflows dikhte hain jo
+**default branch (`main`)** par maujood hon. Abhi `video_dispatcher.yml` sirf
+`arena/01a01b18-auto-video-backend` branch par hai, isliye:
+
+- Actions list me "🎬 Video Dispatcher" **nahi** dikhega
+- "Run workflow" button bhi nahi milega
+
+Iska hal — PR merge karo:
+
+**PR link:** https://github.com/rahul74603/auto-video-backend/pull/11
+
+GitHub par PR kholo → **Merge pull request** dabao.
+
+Ya command se:
+
+```powershell
+gh pr merge 11 --repo rahul74603/auto-video-backend --squash
+```
+
+Merge ke baad Actions tab refresh karo — ab "🎬 Video Dispatcher (Firestore
+Poller)" dikhega aur "Run workflow" button aa jayega.
+
+> Merge karna surakshit hai: dispatcher ka schedule band hai aur manual
+> defaults `dry_run=true` + `privacy=unlisted` hain. Merge se koi video
+> apne aap nahi banega.
+
+---
+
 ## STEP 4 — GitHub Secrets check karo
 
 GitHub → repo → **Settings → Secrets and variables → Actions**
