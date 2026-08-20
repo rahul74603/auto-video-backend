@@ -5,75 +5,75 @@ Terminal kholne ke liye: **Ctrl + `** (backtick) ya menu → Terminal → New Te
 
 ---
 
-## ⚠️ Pehle ye padho — "bad object" / "reference broken" error?
+## ⚠️ Pehle ye padho — Git refs kharab hain?
 
-Agar `git fetch origin` par ye error aaye:
-
-```
-fatal: bad object refs/remotes/origin/arena/019ff08f-auto-video-backend
-error: ... did not send all necessary objects
-```
-
-aur `git update-ref -d` bhi fail ho jaye:
+Agar in me se koi bhi error dikhe:
 
 ```
+fatal: bad object refs/remotes/origin/arena/<id>
 error: cannot lock ref ...: reference broken
+error: ... cannot lock ref '...-auto-video-backend?': Invalid argument
 ```
 
-**Kyun ho raha hai:** purani session ki branch ka remote-tracking ref corrupt
-hai. Git har fetch par saare refs verify karta hai — ek bhi kharab mila to
-poora fetch ruk jata hai, isliye nayi branch download hi nahi hoti (aur
-`pathspec did not match` isi ka side-effect hai).
+### 🚨 Ek zaroori chetavani
 
-`update-ref -d` isliye nahi chalta kyunki wo command ref ko *padh* kar delete
-karti hai — aur ref padhne layak hi nahi bacha. File **directly** hatani padegi.
+**PowerShell me `Set-Content` se `.git\packed-refs` mat likhna.**
+`Set-Content` Windows-style CRLF (`\r\n`) line endings likhta hai, lekin Git ko
+LF (`\n`) chahiye. Uske baad har ref ke naam ke aakhir me ek chhupa hua `\r`
+jud jata hai, jo terminal me `?` bankar dikhta hai:
 
-### Sabse aasan tarika — ye ek command
-
-```powershell
-powershell -ExecutionPolicy Bypass -File ai_backend\github_workflows\fix-broken-ref.ps1
+```
+cannot lock ref 'refs/remotes/origin/arena/019f7868-auto-video-backend?'
+Unable to create '...019f7868-auto-video-backend?.lock': Invalid argument
 ```
 
-> Ye script tabhi chalegi jab repo already pull ho chuka ho. Agar abhi tak
-> files nahi aayi, to neeche wala manual tarika use karo.
+Windows filename me `?` allowed nahi hai, isliye Git `.lock` file bana hi nahi
+pata aur har fetch/prune fail ho jata hai.
 
-### Manual tarika (copy-paste, PowerShell)
+**Agar ye galti ho chuki hai**, packed-refs ko LF me wapas likho:
 
 ```powershell
-# 1. corrupt ref file directly delete karo
-Remove-Item ".git\refs\remotes\origin\arena\019ff08f-auto-video-backend" -Force -ErrorAction SilentlyContinue
-
-# 2. khaali (0-byte) ref files bhi saaf karo
-Get-ChildItem ".git\refs\remotes" -Recurse -File | Where-Object { $_.Length -eq 0 } | Remove-Item -Force
-
-# 3. packed-refs se bhi purani entry hatao   <-- ye step zaroori hai
-(Get-Content ".git\packed-refs") | Where-Object { $_ -notmatch "019ff08f" } | Set-Content ".git\packed-refs"
-
-# 4. ab fetch
+$p = ".git\packed-refs"
+$t = [IO.File]::ReadAllText($p) -replace "`r`n", "`n" -replace "`r", "`n"
+[IO.File]::WriteAllText($p, $t)
 git remote prune origin
 git fetch origin --prune
 ```
 
-> **Step 3 sabse important hai.** Ref do jagah store hota hai —
-> `.git/refs/...` (loose file) aur `.git/packed-refs`. Sirf file delete karoge
-> to Git agli fetch par packed-refs se wapas bana dega aur error laut aayegi.
+> `[IO.File]::WriteAllText` LF preserve karta hai — `Set-Content` nahi karta.
 
-### Agar phir bhi na chale — fresh clone (100% kaam karega)
+---
+
+### ✅ Sabse aasan aur pakka hal — fresh clone
+
+Refs zyada uljh jaayen to unhe sudharne me time lagta hai. Naya clone 1 minute
+me ho jata hai aur guaranteed kaam karta hai:
 
 ```powershell
-cd C:\Users\Rahul
-git clone https://github.com/rahul74603/auto-video-backend.git avb-new
-cd avb-new
+cd $HOME
+git clone https://github.com/rahul74603/auto-video-backend.git auto-video-backend-new
+cd auto-video-backend-new
 git checkout arena/01a01b18-auto-video-backend
 
-# apna purana .env wapas copy karo (ye git me nahi hota)
-copy ..\auto-video-backend\ai_backend\.env ai_backend\.env
+# purane folder se apni secret files copy karo (ye git me nahi hoti)
+copy ..\auto-video-backend\ai_backend\.env                  ai_backend\.env
+copy ..\auto-video-backend\ai_backend\credentials.json      ai_backend\credentials.json
+copy ..\auto-video-backend\ai_backend\service_account.json  ai_backend\service_account.json
 ```
 
-Purana folder rakh sakte ho backup ke liye.
+Phir VS Code me naya folder kholo: `code $HOME\auto-video-backend-new`
 
-> Ye saare commands sirf Git ke *pointers* ko chhoote hain. Aapki `.env`,
-> `credentials.json`, `service_account.json` gitignored hain — wo safe hain.
+**Purana folder delete mat karo** — backup ke liye rehne do.
+
+Ye sab automatically karne ke liye ek script bhi hai (naye clone ke andar
+milegi, ya purane folder me pull hone ke baad):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ai_backend\github_workflows\fresh-setup.ps1
+```
+
+> Aapki `.env`, `credentials.json`, `service_account.json` gitignored hain —
+> clone me apne aap nahi aatin, isliye upar wale copy commands zaroori hain.
 
 ---
 

@@ -99,10 +99,27 @@ if ((Test-Path ".git\packed-refs") -and $broken.Count -gt 0) {
         if ($drop) { $dropped++; Write-Host "  removed from packed-refs: $line" -ForegroundColor Green }
         else       { $kept += $line }
     }
-    if ($dropped -gt 0) { Set-Content ".git\packed-refs" -Value $kept -Encoding ASCII }
-    else                { Write-Host "  packed-refs me kuch nahi mila." }
+    if ($dropped -gt 0) {
+        # IMPORTANT: Git needs LF endings. Set-Content would write CRLF, which
+        # appends a stray \r to every ref name and breaks fetch/prune on Windows
+        # ("cannot lock ref '...?'": Invalid argument).
+        [IO.File]::WriteAllText(".git\packed-refs", (($kept -join "`n") + "`n"))
+    }
+    else { Write-Host "  packed-refs me kuch nahi mila." }
 } else {
     Write-Host "  packed-refs check skip." 
+}
+
+Write-Host ""
+Write-Host "=== Step 3b: packed-refs ke line endings LF me normalise ===" -ForegroundColor Cyan
+if (Test-Path ".git\packed-refs") {
+    $raw = [IO.File]::ReadAllText(".git\packed-refs")
+    if ($raw -match "`r") {
+        [IO.File]::WriteAllText(".git\packed-refs", ($raw -replace "`r`n", "`n" -replace "`r", "`n"))
+        Write-Host "  CRLF mila -> LF me theek kar diya" -ForegroundColor Green
+    } else {
+        Write-Host "  line endings pehle se sahi (LF)" -ForegroundColor Green
+    }
 }
 
 Write-Host ""
