@@ -1,0 +1,89 @@
+name: Auto Web Stories Scheduler
+
+# NOTE: this workflow used to be invalid YAML — the automation guard step was
+# placed directly under `jobs:` instead of inside a job. It is now a proper
+# two-job workflow with a real output.
+
+on:
+  schedule:
+    - cron: '30 4 * * *'  # सुबह 10:00 AM IST (Mock Test Story)
+    - cron: '30 6 * * *'  # दोपहर 12:00 PM IST (Blog Story Noon)
+    - cron: '30 15 * * *' # रात 9:00 PM IST (Blog Story Night)
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'क्या रन करना है? (blog या mocktest लिखें)'
+        required: true
+        default: 'blog'
+
+permissions:
+  contents: read
+
+jobs:
+  # 🛑 Automation guard
+  check-automation:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.automation_check.outputs.enabled }}
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🛑 Check Automation Switch (web_stories)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        working-directory: ai_backend
+        run: |
+          npm install --no-save --ignore-scripts --legacy-peer-deps axios firebase-admin 2>&1 | tail -n 5 || true
+          STATUS=0
+          node check_automation.js web_stories || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ web_stories paused — skipping workflow"
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
+  run-story-generator:
+    needs: check-automation
+    if: needs.check-automation.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: |
+          npm install --legacy-peer-deps
+          if [ -d "ai_backend" ]; then cd ai_backend && npm install --legacy-peer-deps || true; fi
+
+      - name: Trigger Mock Test Story (10 AM IST या Manual)
+        if: github.event.schedule == '30 4 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'mocktest')
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node ai_backend/auto_stories.js mocktest
+
+      - name: Trigger Blog Story Noon (12 PM IST या Manual)
+        if: github.event.schedule == '30 6 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'blog')
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node ai_backend/auto_stories.js blog
+
+      - name: Trigger Blog Story Night (9 PM IST)
+        if: github.event.schedule == '30 15 * * *'
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node ai_backend/auto_stories.js blog

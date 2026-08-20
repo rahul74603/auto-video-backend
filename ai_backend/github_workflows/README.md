@@ -90,3 +90,28 @@ powershell -ExecutionPolicy Bypass -File tools\sync-workflows.ps1
 Sync ke baad commit + push karo, phir GitHub Actions → **"Deploy Firebase
 Functions Only"** → Run workflow — `/feed` aur sitemaps Spark plan par deploy
 ho jayenge, bina Blaze upgrade ke.
+
+## 🔧 Workflow repairs (2026-08-20) — broken automation guard
+
+Chaaro workflows me automation-guard step `jobs:` ke andar seedha daal diya gaya
+tha (invalid YAML), isliye `automation_check` kabhi run nahi hota tha aur har
+downstream `if: steps.automation_check...` false ho jaata tha — workflow
+silently kuch nahi karta tha. Ab sab proper **two-job** workflows hain
+(`check-automation` → main job, real output ke saath).
+
+| File | Fix |
+|---|---|
+| `autpdf.yml` | Guard ab apne job me hai; `pdf-engine` `needs.check-automation.outputs.enabled == 'true'` par chalta hai. |
+| `daily_job_alert.yml` | Same two-job fix; `run-api` guard output par chalta hai. |
+| `web_stories.yml` | Same two-job fix; teeno scheduled steps (mocktest / blog noon / blog night) preserve kiye gaye. |
+| `long_video_maker.yml` | Poora commented-out tha. Ab valid YAML + two-job guard. **Schedule intentionally commented hai** (manual trigger only) jab tak `long_video.js` TTS path de-risk nahi hota. |
+
+Apply karne ke liye (staging → live, sirf dono jagah maujood files):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\sync-workflows.ps1
+# ya direct copy:
+# cp ai_backend/github_workflows/{autpdf,daily_job_alert,web_stories,long_video_maker}.yml .github/workflows/
+```
+
+Chaaron files valid YAML hain (YAML parser se verify).
