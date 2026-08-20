@@ -284,6 +284,38 @@ git push
 
 ---
 
+## ⚠️ Google TTS aur billing — zaroori jaankari
+
+Google Cloud Text-to-Speech **billing maangta hai**, free tier ke liye bhi.
+Billing band hone par error aata tha:
+
+```
+7 PERMISSION_DENIED: This API method requires billing to be enabled.
+```
+
+**Iska hal ho chuka hai.** Ab system Microsoft Edge ki free Hindi voices use
+karta hai — na API key, na billing, na account.
+
+| Situation | Kya hota hai |
+|---|---|
+| Billing band (abhi) | **Edge voices** — video normally banti hai |
+| Billing chaalu kiya | **Google** apne aap wapas, code change nahi |
+| `TTS_ENGINE=edge` set | Google call skip, seedhe Edge (thoda tez) |
+
+Anchor ka gender match hota hai: female → Swara, male → Madhur.
+
+### Optional speed-up
+
+Har render me Google ko ek bekaar call jaane se rokne ke liye:
+
+**Settings → Secrets and variables → Actions → Variables tab → New variable**
+- Name: `TTS_ENGINE`
+- Value: `edge`
+
+Billing wapas chaalu karo to bas ye variable delete kar dena.
+
+---
+
 ## STEP 4 — GitHub Secrets check karo
 
 GitHub → repo → **Settings → Secrets and variables → Actions**
