@@ -804,6 +804,16 @@ async function generateAndUploadVideo(jobData, options = {}) {
             `${seoData.description}\n\n` +
             `⚡ Powered by StudyGyaan.in`;
 
+        // A non-public upload means this is a controlled test run. Public
+        // side-channels (Facebook, Telegram, the YouTube first comment) must be
+        // skipped, otherwise a test video is broadcast to the real audience
+        // even though YouTube itself is unlisted.
+        const effectivePrivacy = options.privacyStatus || process.env.VIDEO_PRIVACY_STATUS || 'public';
+        const isTestUpload     = effectivePrivacy !== 'public';
+        if (isTestUpload) {
+            console.log(`🧪 Test upload (privacy=${effectivePrivacy}) — Facebook / Telegram / first-comment skip होंगे।`);
+        }
+
         // ✅ YouTube Upload with full SEO
         console.log('📤 YouTube पर Upload हो रहा है...');
         console.log(`🏷️  Uploading ${seoData.tags.length} tags...`);
@@ -848,10 +858,8 @@ async function generateAndUploadVideo(jobData, options = {}) {
 
         // ✅ Playlist में add करो
         try {
-            // During a non-public test run, skip the public playlist — otherwise an
-            // "unlisted" test video would still be surfaced through the playlist.
-            const effectivePrivacy = options.privacyStatus || process.env.VIDEO_PRIVACY_STATUS || 'public';
-            if (effectivePrivacy !== 'public') {
+            // A non-public test upload must not appear in a public playlist.
+            if (isTestUpload) {
                 throw new Error(`Playlist skipped — test upload (privacy=${effectivePrivacy})`);
             }
 
@@ -907,14 +915,20 @@ async function generateAndUploadVideo(jobData, options = {}) {
             console.log('⚠️ Playlist error:', plErr.message);
         }
 
-        // ✅ Facebook Upload
-        await uploadToFacebook(videoPath, seoData.description);
+        // ✅ Facebook Upload (public runs only)
+        if (isTestUpload) {
+            console.log('⏭️ Facebook skip — test upload.');
+        } else {
+            await uploadToFacebook(videoPath, seoData.description);
+        }
 
         // ✅ Telegram Notification
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
         const TELEGRAM_CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
 
-        if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+        if (isTestUpload) {
+            console.log('⏭️ Telegram skip — test upload.');
+        } else if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
             const icons = {
                 'Result':     '🏆',
                 'Admit Card': '🎫',
@@ -955,7 +969,10 @@ async function generateAndUploadVideo(jobData, options = {}) {
             console.log('⚠️ Telegram credentials missing, skipping...');
         }
 
-        // ✅ Auto First Comment
+        // ✅ Auto First Comment (public runs only)
+        if (isTestUpload) {
+            console.log('⏭️ First comment skip — test upload.');
+        } else {
         console.log('⏳ 12 seconds wait (comment के लिए)...');
         await new Promise(r => setTimeout(r, 12000));
 
@@ -984,6 +1001,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
             console.log('💬 First comment post हो गया!');
         } catch (commentErr) {
             console.log('⚠️ Comment error:', commentErr.message);
+        }
         }
 
         // ✅ Firestore state update.

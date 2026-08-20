@@ -1072,6 +1072,15 @@ async function generateMockTestVideo(options = {}) {
         console.log(`📢 Title: ${ytTitle}`);
         console.log(`📊 Tags: ${seoTags.length} generated`);
 
+        // A non-public upload is a controlled test: skip the public
+        // side-channels (Facebook, Telegram, pinned comment) so a test video is
+        // never broadcast to the real audience.
+        const effectivePrivacy = options.privacyStatus || process.env.VIDEO_PRIVACY_STATUS || 'public';
+        const isTestUpload     = effectivePrivacy !== 'public';
+        if (isTestUpload) {
+            console.log(`🧪 Test upload (privacy=${effectivePrivacy}) — Facebook / Telegram / pinned-comment skip होंगे।`);
+        }
+
         // YOUTUBE UPLOAD
         const youtube = await getYouTubeClient();
         let ytVideoId = "";
@@ -1097,8 +1106,7 @@ async function generateMockTestVideo(options = {}) {
             // PLAYLIST
             try {
                 // Skip the public playlist for non-public test uploads.
-                const effectivePrivacy = options.privacyStatus || process.env.VIDEO_PRIVACY_STATUS || 'public';
-                if (effectivePrivacy !== 'public') {
+                if (isTestUpload) {
                     throw new Error(`Playlist skipped — test upload (privacy=${effectivePrivacy})`);
                 }
 
@@ -1143,7 +1151,10 @@ async function generateMockTestVideo(options = {}) {
                 console.log('⚠️ Playlist skip:', pErr.message);
             }
 
-            // PINNED COMMENT
+            // PINNED COMMENT (public runs only)
+            if (isTestUpload) {
+                console.log('⏭️ Pinned comment skip — test upload.');
+            } else {
             console.log('⏳ 15 seconds wait for comment...');
             await new Promise(resolve => setTimeout(resolve, 15000));
 
@@ -1173,6 +1184,7 @@ async function generateMockTestVideo(options = {}) {
             } catch (cErr) {
                 console.log('⚠️ Comment skip:', cErr.message);
             }
+            }
 
         } catch (ytErr) {
             // ❌ YouTube is the mandatory destination — record it, do not silently succeed.
@@ -1180,13 +1192,19 @@ async function generateMockTestVideo(options = {}) {
             console.error('❌ YouTube upload failed:', ytErr.message);
         }
 
-        // FACEBOOK (optional — never fails the run)
-        await uploadToFacebook(finalVideoPath, seoDescription);
+        // FACEBOOK (optional, public runs only — never fails the run)
+        if (isTestUpload) {
+            console.log('⏭️ Facebook skip — test upload.');
+        } else {
+            await uploadToFacebook(finalVideoPath, seoDescription);
+        }
 
         // TELEGRAM
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
         const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-        if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
+        if (isTestUpload) {
+            console.log('⏭️ Telegram skip — test upload.');
+        } else if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
             const tgMsg = `New Mock Test Live!\n\nSubject: ${subject}\nQuestions: ${totalQuestions}\nTitle: ${ytTitle}\n${ytVideoId ? `Watch: https://youtu.be/${ytVideoId}\n` : ''}\nTop Tags: ${seoTags.slice(0, 5).join(', ')}\n\nAuto-uploaded by StudyGyaan Bot!`;
             await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
                 chat_id: TELEGRAM_CHAT_ID,

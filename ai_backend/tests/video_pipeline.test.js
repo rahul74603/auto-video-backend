@@ -482,3 +482,43 @@ test("the dispatcher workflow ships in a safe, non-production state", () => {
   assert.match(src, /dry_run:[\s\S]{0,220}default:\s*'true'/);
   assert.match(src, /privacy:[\s\S]{0,220}default:\s*'unlisted'/);
 });
+
+/* ------------------------------------------------------------------ */
+/* Test uploads must not reach the public audience                     */
+/* ------------------------------------------------------------------ */
+
+test("a non-public upload skips Facebook, Telegram and the first comment", () => {
+  const fs = require("fs");
+  const path = require("path");
+
+  for (const file of ["autoVideo.js", "mock_test_video.js"]) {
+    const src = fs.readFileSync(path.join(__dirname, "..", file), "utf8");
+
+    // The run must classify itself as a test when privacy is not public.
+    assert.match(
+      src,
+      /const isTestUpload\s*=\s*effectivePrivacy !== 'public'/,
+      `${file} must derive isTestUpload from the effective privacy`
+    );
+
+    // Each public side-channel must be gated on that flag.
+    assert.match(src, /Facebook skip — test upload/, `${file} must skip Facebook on a test run`);
+    assert.match(src, /Telegram skip — test upload/, `${file} must skip Telegram on a test run`);
+    assert.match(src, /comment skip — test upload/i, `${file} must skip the public comment on a test run`);
+  }
+});
+
+test("the public side-channels are still reached on a real public run", () => {
+  const fs = require("fs");
+  const path = require("path");
+
+  // The calls must remain present (gated, not deleted), so production is intact.
+  const auto = fs.readFileSync(path.join(__dirname, "..", "autoVideo.js"), "utf8");
+  assert.match(auto, /await uploadToFacebook\(videoPath, seoData\.description\)/);
+  assert.match(auto, /api\.telegram\.org\/bot\$\{TELEGRAM_BOT_TOKEN\}\/sendMessage/);
+  assert.match(auto, /youtube\.commentThreads\.insert/);
+
+  const mock = fs.readFileSync(path.join(__dirname, "..", "mock_test_video.js"), "utf8");
+  assert.match(mock, /await uploadToFacebook\(finalVideoPath, seoDescription\)/);
+  assert.match(mock, /api\.telegram\.org\/bot\$\{TELEGRAM_BOT_TOKEN\}\/sendMessage/);
+});
