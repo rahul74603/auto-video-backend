@@ -1,7 +1,7 @@
 # =============================================================================
 # Video dispatcher test control file
 # =============================================================================
-# Is file ko edit karke push karo â€” ðŸ§ª Video Dispatcher Branch Test workflow
+# Is file ko edit karke push karo Ã¢â‚¬â€ Ã°Å¸Â§Âª Video Dispatcher Branch Test workflow
 # chal jayega. Merge ki zaroorat nahi.
 #
 #   git add ai_backend/.videotest
@@ -12,7 +12,7 @@
 # aur GitHub naya run trigger kare).
 # =============================================================================
 
-run=2
+run=3
 
 # all | job | fast_track | mock_test
 kind=all
@@ -25,7 +25,7 @@ limit=1
 dry_run=true
 
 # unlisted = YouTube par chhupi rahegi (testing ke liye)
-# NOTE: is test workflow me 'public' allowed nahi hai â€” live jaane ke liye
+# NOTE: is test workflow me 'public' allowed nahi hai Ã¢â‚¬â€ live jaane ke liye
 #       PR merge karke asli dispatcher use karo
 privacy=unlisted
 
