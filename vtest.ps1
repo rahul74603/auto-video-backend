@@ -28,7 +28,21 @@ param(
     [int]$Limit = 1
 )
 
-$ErrorActionPreference = "Stop"
+# NOTE: 'Stop' nahi use karna. git apna normal progress stderr par likhta hai
+# ("From https://github.com/..."), aur ErrorActionPreference=Stop uske saath
+# milkar NativeCommandError phenk deta hai — chahe git safal hi kyun na ho.
+# Isliye har git call ke baad $LASTEXITCODE khud check karte hain.
+$ErrorActionPreference = "Continue"
+
+function Test-GitOk {
+    param([string]$What)
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Host "X $What fail (exit $LASTEXITCODE)" -ForegroundColor Red
+        return $false
+    }
+    return $true
+}
 
 # --- sanity ------------------------------------------------------------------
 if (-not (Test-Path ".git")) {
@@ -38,7 +52,7 @@ if (-not (Test-Path ".git")) {
 $File = "ai_backend\.videotest"
 if (-not (Test-Path $File)) {
     Write-Host "X $File nahi mila. Pehle pull karo:" -ForegroundColor Red
-    Write-Host "    git pull origin arena/01a01b18-auto-video-backend" -ForegroundColor Yellow
+    Write-Host "    git pull --rebase origin arena/01a01b18-auto-video-backend" -ForegroundColor Yellow
     exit 1
 }
 
@@ -46,19 +60,25 @@ if (-not (Test-Path $File)) {
 # Default: 'all' => dry run, ek specific pipeline => asli video.
 $isDry = if ($PSBoundParameters.ContainsKey('DryRun')) { [bool]$DryRun } else { $Kind -eq "all" }
 
+$branch = (& git rev-parse --abbrev-ref HEAD)
+if (-not (Test-GitOk "branch detect")) { exit 1 }
+$branch = $branch.Trim()
+
 # --- pehle remote se sync karo -----------------------------------------------
 # Warna push 'non-fast-forward' se reject ho jata hai (jab is chat se koi commit
 # push hua ho), aur run number bhi purana reh jata hai.
-$branch = (git rev-parse --abbrev-ref HEAD).Trim()
 Write-Host ""
 Write-Host "Syncing with remote..." -ForegroundColor Cyan
-git pull --rebase origin $branch 2>&1 | Out-Null
+
+& git pull --rebase --quiet origin $branch
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "X Pull fail - pehle ye chalao:" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "X Sync fail. Ye chalao:" -ForegroundColor Red
     Write-Host "    git pull --rebase origin $branch" -ForegroundColor Yellow
-    Write-Host "  (agar conflict ho: git rebase --abort, phir batao)" -ForegroundColor Yellow
+    Write-Host "  (agar conflict ho to: git rebase --abort, phir batao)" -ForegroundColor Yellow
     exit 1
 }
+Write-Host "  up to date" -ForegroundColor Green
 
 # --- run number badhao (taaki file badle aur GitHub naya run trigger kare) ---
 $old = Get-Content $File
@@ -101,15 +121,17 @@ if ($isDry) {
 Write-Host ""
 
 # --- commit + push -----------------------------------------------------------
-git add $File
-git commit -m "test: $Kind (run $runNum, dry_run=$($isDry.ToString().ToLower()))" | Out-Null
+& git add $File
+if (-not (Test-GitOk "git add")) { exit 1 }
+
+& git commit --quiet -m "test: $Kind (run $runNum, dry_run=$($isDry.ToString().ToLower()))"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "X Commit fail - shayad file me koi change nahi hua." -ForegroundColor Red
     exit 1
 }
 
 Write-Host "Pushing..." -ForegroundColor Cyan
-git push origin $branch
+& git push --quiet origin $branch
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "X Push fail. Ye chalao phir dobara try karo:" -ForegroundColor Red
