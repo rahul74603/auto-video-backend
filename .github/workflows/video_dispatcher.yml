@@ -1,0 +1,173 @@
+name: 🎬 Video Dispatcher (Firestore Poller)
+
+# =============================================================================
+# Firebase-billing-INDEPENDENT video trigger.
+#
+#   Website/admin publishes  →  Firestore
+#   →  this scheduled workflow polls Firestore with SERVICE_ACCOUNT_JSON
+#   →  claims a pending JOB / FAST_TRACK / MOCK_TEST document (atomic)
+#   →  runs the existing FFmpeg renderers (autoVideo.js / mock_test_video.js)
+#   →  YouTube / Facebook / Telegram
+#   →  writes videoStatus back to Firestore
+#
+# No Cloud Function is involved, so this keeps working on the Spark plan.
+# The legacy repository_dispatch path (video_maker.yml) still works and both
+# paths claim the same document, so duplicates are impossible.
+# =============================================================================
+
+on:
+  # ---------------------------------------------------------------------------
+  # ✅ LIVE. Runs every 10 minutes.
+  #
+  # Publish a JOB or FAST TRACK on the website and the next run picks it up and
+  # renders the Short automatically — no button, no Firebase Cloud Function.
+  # Mock tests are handled by the same loop.
+  #
+  # GitHub's scheduler is best-effort and can lag under load, so a publish is
+  # normally live within ~10-20 minutes. Nothing is ever missed: unprocessed
+  # content simply waits for the next run.
+  #
+  # This repository is public, so scheduled Actions minutes are free.
+  # To pause everything, use the admin switch in Firestore
+  # (system_settings/automation) rather than editing this file.
+  # ---------------------------------------------------------------------------
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: 'Which pipeline to run (all | job | fast_track | mock_test)'
+        required: false
+        default: 'all'
+      limit:
+        description: 'Max videos to produce in this run'
+        required: false
+        default: '1'
+      dry_run:
+        description: 'Only report what would be processed, render nothing (true/false)'
+        required: false
+        default: 'false'
+      doc:
+        description: 'Optional single Firestore document id to force-process'
+        required: false
+        default: ''
+      privacy:
+        description: 'YouTube privacy — leave blank for public; set unlisted to test safely'
+        required: false
+        default: ''
+
+# Only one dispatcher run at a time — the Firestore claim is the real lock, this
+# just avoids burning runner minutes on overlapping polls.
+concurrency:
+  group: video-dispatcher
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    defaults:
+      run:
+        working-directory: ai_backend
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ai_backend/package-lock.json
+
+      - name: 🔧 System Dependencies (canvas + FFmpeg build deps)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libjpeg-dev \
+            libgif-dev \
+            librsvg2-dev
+
+      - name: 📦 Install dependencies (npm ci — lockfile preserved)
+        run: npm ci
+
+      - name: 🩺 Verify secrets are present (values never printed)
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          GMAIL_CREDENTIALS:    ${{ secrets.GMAIL_CREDENTIALS }}
+          YOUTUBE_TOKEN:        ${{ secrets.YOUTUBE_TOKEN }}
+          TTS_KEY_JSON:         ${{ secrets.TTS_KEY_JSON }}
+        run: |
+          missing=0
+          # TTS_KEY_JSON is NOT required: tts_engine falls back to the free
+          # Edge voices when Google TTS is unavailable (billing disabled).
+          for name in SERVICE_ACCOUNT_JSON GMAIL_CREDENTIALS YOUTUBE_TOKEN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Required secret $name is not configured"
+              missing=1
+            else
+              echo "✅ $name present"
+            fi
+          done
+          if [ -z "$TTS_KEY_JSON" ]; then
+            echo "ℹ️ TTS_KEY_JSON absent — free Edge TTS will be used"
+          else
+            echo "✅ TTS_KEY_JSON present"
+          fi
+
+          if [ "$missing" = "1" ]; then
+            echo "::error::Configure the missing secrets in Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+
+      - name: 🎬 Run Video Dispatcher
+        env:
+          # --- Firestore (only Firebase service used — works on Spark) ---
+          SERVICE_ACCOUNT_JSON:  ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          # --- Rendering + upload ---
+          GMAIL_CREDENTIALS:     ${{ secrets.GMAIL_CREDENTIALS }}
+          YOUTUBE_TOKEN:         ${{ secrets.YOUTUBE_TOKEN }}
+          YOUTUBE_TOKEN_SELF_TEST: ${{ secrets.YOUTUBE_TOKEN_SELF_TEST }}
+          TTS_KEY_JSON:          ${{ secrets.TTS_KEY_JSON }}
+          # Optional: set repo variable TTS_ENGINE=edge to skip Google TTS entirely
+          # while billing is disabled (avoids one failed API call per render).
+          TTS_ENGINE:            ${{ vars.TTS_ENGINE }}
+          # --- Optional distribution (missing values are skipped gracefully) ---
+          FB_PAGE_ID:            ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_TOKEN:         ${{ secrets.FB_PAGE_TOKEN }}
+          TELEGRAM_BOT_TOKEN:    ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:      ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHANNEL_LINK: ${{ secrets.TELEGRAM_CHANNEL_LINK }}
+          TELEGRAM_CHANNEL_NAME: ${{ secrets.TELEGRAM_CHANNEL_NAME }}
+          # --- Run tuning ---
+          VIDEO_PRIVACY_STATUS:  ${{ github.event.inputs.privacy }}
+          # workflow_dispatch inputs are user supplied, so they are passed as
+          # env vars (data) instead of being interpolated into the script (code).
+          IN_KIND:  ${{ github.event.inputs.kind }}
+          IN_LIMIT: ${{ github.event.inputs.limit }}
+          IN_DRY:   ${{ github.event.inputs.dry_run }}
+          IN_DOC:   ${{ github.event.inputs.doc }}
+        run: |
+          KIND="$IN_KIND"
+          LIMIT="$IN_LIMIT"
+          DRY="$IN_DRY"
+          DOC="$IN_DOC"
+
+          ARGS="--kind=${KIND:-all} --limit=${LIMIT:-1}"
+          if [ "$DRY" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ -n "$DOC" ]; then ARGS="$ARGS --doc=$DOC"; fi
+
+          echo "▶️ node video_dispatcher.js $ARGS"
+          node video_dispatcher.js $ARGS
+
+      - name: ❌ Failure notice
+        if: failure()
+        run: echo "💥 Dispatcher run failed — check the logs above. Firestore videoStatus/videoError holds the per-document reason."

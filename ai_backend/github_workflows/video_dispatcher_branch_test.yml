@@ -1,0 +1,239 @@
+name: 🧪 Video Dispatcher — Branch Test (no merge needed)
+
+# =============================================================================
+# TEMPORARY TESTING WORKFLOW
+#
+# Problem: GitHub only shows `workflow_dispatch` workflows that exist on the
+# DEFAULT branch (main). Until this branch is merged, the normal
+# "🎬 Video Dispatcher" has no "Run workflow" button.
+#
+# Solution: `push` triggers DO run on any branch. This workflow runs when you
+# push a small control file, so you can test all three pipelines on the branch
+# without merging anything.
+#
+# HOW TO USE — edit ai_backend/.videotest and push:
+#
+#   kind=job            # all | job | fast_track | mock_test
+#   limit=1
+#   dry_run=true        # true = render nothing, just report
+#   privacy=unlisted    # unlisted while testing
+#   doc=                # optional single Firestore document id
+#
+# Then:  git add ai_backend/.videotest && git commit -m "test job" && git push
+#
+# ⚠️ DELETE THIS FILE once the PR is merged — the real video_dispatcher.yml
+#    with its "Run workflow" button takes over.
+# =============================================================================
+
+on:
+  push:
+    branches:
+      - 'arena/**'
+    paths:
+      # Runs ONLY when this control file changes, so ordinary code pushes
+      # never accidentally start a video render.
+      - 'ai_backend/.videotest'
+
+concurrency:
+  group: video-dispatcher-branch-test
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    defaults:
+      run:
+        working-directory: ai_backend
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🎛️ Read test settings from ai_backend/.videotest
+        id: cfg
+        run: |
+          FILE=".videotest"
+          # Tolerates "key=value", "key = value" and trailing spaces.
+          get() {
+            grep -E "^[[:space:]]*$1[[:space:]]*=" "$FILE" 2>/dev/null \
+              | tail -n1 | cut -d= -f2- | tr -d '[:space:]'
+          }
+
+          KIND=$(get kind);       KIND=${KIND:-all}
+          LIMIT=$(get limit);     LIMIT=${LIMIT:-1}
+          DRY=$(get dry_run);     DRY=${DRY:-true}
+          PRIVACY=$(get privacy); PRIVACY=${PRIVACY:-unlisted}
+          DOC=$(get doc)
+
+          # Safety: never allow public uploads from this temporary test workflow.
+          if [ "$PRIVACY" = "public" ]; then
+            echo "::error::privacy=public is not allowed here. Merge the PR and use the real dispatcher to go live."
+            exit 1
+          fi
+
+          # Fail loudly on a typo rather than silently running the wrong pipeline.
+          case "$KIND" in
+            all|job|fast_track|mock_test) ;;
+            *) echo "::error::kind='$KIND' invalid. Use: all | job | fast_track | mock_test"; exit 1 ;;
+          esac
+          case "$DRY" in
+            true|false) ;;
+            *) echo "::error::dry_run='$DRY' invalid. Use true or false"; exit 1 ;;
+          esac
+          case "$PRIVACY" in
+            unlisted|private) ;;
+            *) echo "::error::privacy='$PRIVACY' invalid. Use unlisted or private"; exit 1 ;;
+          esac
+          if ! echo "$LIMIT" | grep -qE '^[0-9]+$'; then
+            echo "::error::limit='$LIMIT' must be a number"; exit 1
+          fi
+
+          echo "kind=$KIND"       >> $GITHUB_OUTPUT
+          echo "limit=$LIMIT"     >> $GITHUB_OUTPUT
+          echo "dry=$DRY"         >> $GITHUB_OUTPUT
+          echo "privacy=$PRIVACY" >> $GITHUB_OUTPUT
+          echo "doc=$DOC"         >> $GITHUB_OUTPUT
+
+          echo "═══════════════════════════════"
+          echo " kind    : $KIND"
+          echo " limit   : $LIMIT"
+          echo " dry_run : $DRY"
+          echo " privacy : $PRIVACY"
+          echo " doc     : ${DOC:-<none>}"
+          echo "═══════════════════════════════"
+
+      - name: 📦 Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ai_backend/package-lock.json
+
+      - name: 🔧 System Dependencies (canvas + FFmpeg build deps)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libjpeg-dev \
+            libgif-dev \
+            librsvg2-dev
+
+      - name: 📦 Install dependencies (npm ci)
+        run: npm ci
+
+      - name: 🩺 Verify secrets are present (values never printed)
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          GMAIL_CREDENTIALS:    ${{ secrets.GMAIL_CREDENTIALS }}
+          YOUTUBE_TOKEN:        ${{ secrets.YOUTUBE_TOKEN }}
+          TTS_KEY_JSON:         ${{ secrets.TTS_KEY_JSON }}
+        run: |
+          missing=0
+          # TTS_KEY_JSON is NOT required: tts_engine falls back to the free
+          # Edge voices when Google TTS is unavailable (billing disabled).
+          for name in SERVICE_ACCOUNT_JSON GMAIL_CREDENTIALS YOUTUBE_TOKEN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Required secret $name is not configured"
+              missing=1
+            else
+              echo "✅ $name present"
+            fi
+          done
+          if [ -z "$TTS_KEY_JSON" ]; then
+            echo "ℹ️ TTS_KEY_JSON absent — free Edge TTS will be used"
+          else
+            echo "✅ TTS_KEY_JSON present"
+          fi
+
+          if [ "$missing" = "1" ]; then
+            echo "::error::Add the missing secrets in Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+
+      - name: 🎙️ Hindi TTS self-test (proves audio works without Google billing)
+        env:
+          TTS_KEY_JSON: ${{ secrets.TTS_KEY_JSON }}
+          TTS_ENGINE:   ${{ vars.TTS_ENGINE }}
+        run: node tts_selftest.js
+
+      - name: 🎬 Run Video Dispatcher
+        env:
+          SERVICE_ACCOUNT_JSON:    ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          GMAIL_CREDENTIALS:       ${{ secrets.GMAIL_CREDENTIALS }}
+          YOUTUBE_TOKEN:           ${{ secrets.YOUTUBE_TOKEN }}
+          YOUTUBE_TOKEN_SELF_TEST: ${{ secrets.YOUTUBE_TOKEN_SELF_TEST }}
+          TTS_KEY_JSON:            ${{ secrets.TTS_KEY_JSON }}
+          # Optional: set repo variable TTS_ENGINE=edge to skip Google TTS entirely
+          # while billing is disabled (avoids one failed API call per render).
+          TTS_ENGINE:              ${{ vars.TTS_ENGINE }}
+          FB_PAGE_ID:              ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_TOKEN:           ${{ secrets.FB_PAGE_TOKEN }}
+          TELEGRAM_BOT_TOKEN:      ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:        ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHANNEL_LINK:   ${{ secrets.TELEGRAM_CHANNEL_LINK }}
+          TELEGRAM_CHANNEL_NAME:   ${{ secrets.TELEGRAM_CHANNEL_NAME }}
+          VIDEO_PRIVACY_STATUS:    ${{ steps.cfg.outputs.privacy }}
+          # Values originate from a repo file, but keep them out of the script
+          # body anyway so nothing user-editable is ever evaluated as shell.
+          CFG_KIND:  ${{ steps.cfg.outputs.kind }}
+          CFG_LIMIT: ${{ steps.cfg.outputs.limit }}
+          CFG_DRY:   ${{ steps.cfg.outputs.dry }}
+          CFG_DOC:   ${{ steps.cfg.outputs.doc }}
+        run: |
+          ARGS="--kind=$CFG_KIND --limit=$CFG_LIMIT"
+          if [ "$CFG_DRY" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ -n "$CFG_DOC" ]; then ARGS="$ARGS --doc=$CFG_DOC"; fi
+
+          echo "▶️ node video_dispatcher.js $ARGS"
+
+          # Tee the output so it can be surfaced in the run summary. Log files
+          # in Actions live behind a signed blob URL that is often unreachable
+          # from other tools, so the summary is the reliable place to read it.
+          set -o pipefail
+          node video_dispatcher.js $ARGS 2>&1 | tee /tmp/dispatch.log
+          echo "exit=$?" > /tmp/dispatch.status
+
+      - name: 📋 Summary (yahan output padho)
+        if: always()
+        env:
+          CFG_KIND:    ${{ steps.cfg.outputs.kind }}
+          CFG_LIMIT:   ${{ steps.cfg.outputs.limit }}
+          CFG_DRY:     ${{ steps.cfg.outputs.dry }}
+          CFG_PRIVACY: ${{ steps.cfg.outputs.privacy }}
+        run: |
+          {
+            echo "## 🎬 Video Dispatcher — Run Result"
+            echo ""
+            echo "| setting | value |"
+            echo "|---|---|"
+            echo "| kind | \`$CFG_KIND\` |"
+            echo "| limit | \`$CFG_LIMIT\` |"
+            echo "| dry_run | \`$CFG_DRY\` |"
+            echo "| privacy | \`$CFG_PRIVACY\` |"
+            echo ""
+            echo "### Dispatcher output"
+            echo ""
+            echo '```'
+            if [ -f /tmp/dispatch.log ]; then cat /tmp/dispatch.log; else echo "(no output captured)"; fi
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: 📎 Upload log as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dispatcher-log
+          path: /tmp/dispatch.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: ❌ Failure notice
+        if: failure()
+        run: echo "💥 Run failed — check the logs above. Firestore videoStatus/videoError holds the per-document reason."
