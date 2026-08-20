@@ -102,3 +102,6 @@ firebase-debug.log*
 
 firebase-debug.log
 *.log
+# Galti se bana nested clone (kabhi commit nahi karna)
+/auto-video-backend/
+/auto-video-backend-new/
