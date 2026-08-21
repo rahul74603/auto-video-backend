@@ -12,7 +12,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 18
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -31,14 +31,14 @@ jobs:
       - name: Package app shell for social-bot SEO
         run: cp dist/index.html ai_backend/index.html
 
-      - name: Sanitize firebase.json (remove all non-functions keys)
+      - name: Sanitize configs (remove extensions keys)
         run: node scripts/sanitize-firebase-json.cjs
 
-      - name: Show final firebase.json
-        run: cat firebase.json
+      - name: Show final configs
+        run: cat firebase.json && echo "" && node -e "console.log('pkg keys:', Object.keys(require('./ai_backend/package.json')))"
 
-      - name: Install Firebase CLI v12.4.0
-        run: npm install -g firebase-tools@13
+      - name: Install Firebase CLI v12.9.1
+        run: npm install -g firebase-tools@12.9.1
 
       - name: Show firebase-tools version
         run: firebase --version
@@ -48,3 +48,4 @@ jobs:
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
           CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+          CLOUDSDK_DISABLE_AUTO_API_ENABLEMENT: "true"
