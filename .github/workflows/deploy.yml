@@ -31,27 +31,19 @@ jobs:
       - name: Package app shell for social-bot SEO
         run: cp dist/index.html ai_backend/index.html
 
-      - name: Write clean firebase.json (functions-only)
-        run: |
-          cat > firebase.json << 'FBJSON'
-          {
-            "functions": [
-              {
-                "source": "ai_backend",
-                "codebase": "default",
-                "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log", "*.local"]
-              }
-            ]
-          }
-          FBJSON
-          echo "=== firebase.json ==="
-          cat firebase.json
+      - name: Clean firebase.json (functions-only)
+        run: node scripts/clean-firebase-json.cjs
 
-      - name: Patch firebase-functions v7 to force empty extensions manifest
+      - name: Patch firebase-functions v7 (remove extensions build-spec key)
+        run: node scripts/patch-firebase-functions.cjs
+
+      - name: Verify patch
         run: |
-          sed -i 's|\textensions$|\textensions: {}, // patched empty for CLI compatibility|' ai_backend/node_modules/firebase-functions/lib/runtime/loader.js
-          echo "=== Patched section (should show extensions: {}) ==="
-          grep -n -B1 -A2 "specVersion" ai_backend/node_modules/firebase-functions/lib/runtime/loader.js | head -15
+          if grep -qP '^\s*extensions\s*,?\s*$' ai_backend/node_modules/firebase-functions/lib/runtime/loader.js; then
+            echo "❌ extensions prop still in loader.js"; exit 1;
+          else
+            echo "✅ extensions-free confirmed.";
+          fi
 
       - name: Install Firebase CLI v12.9.1
         run: npm install -g firebase-tools@12.9.1
