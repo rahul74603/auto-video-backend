@@ -25,7 +25,8 @@ if (!admin.apps.length) {
         admin.initializeApp(config);
     }
 }
-const bucket = admin.storage().bucket();
+// bucket hata diya — Firebase Storage Spark pe band, ab cpanel_storage.js use hota hai
+const { uploadBuffer } = require('./cpanel_storage');
 
 /* ========================================== */
 /* 🎨 AI IMAGE GENERATOR LOGIC (IMAGEN 3 + OG Fallback) */
@@ -59,18 +60,9 @@ async function generateBrandedImage(title, docId) {
         if (!base64Image) throw new Error('No image in response');
 
         const buffer = Buffer.from(base64Image, 'base64');
-        const fileName = `thumbnails/${docId}_${Date.now()}_imagen.jpg`;
-        const file = bucket.file(fileName);
-
-        await file.save(buffer, {
-            metadata: { 
-                contentType: 'image/jpeg', 
-                cacheControl: 'public, max-age=31536000' 
-            }
-        });
-        await file.makePublic();
-        const imageUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
-        console.log(`✅ [Best-of-2] Imagen 3 Success: ${imageUrl}`);
+        const fileName = `uploads/thumbnails/${docId}_${Date.now()}_imagen.jpg`;
+        const imageUrl = await uploadBuffer(buffer, fileName);
+        console.log(`✅ [Best-of-2] Imagen 3 Success (cPanel): ${imageUrl}`);
         return imageUrl;
 
     } catch (error) {
@@ -93,18 +85,9 @@ async function generateBrandedImage(title, docId) {
                 .jpeg({ quality: 85 })
                 .toBuffer();
 
-            const fileName = `thumbnails/${docId}_${Date.now()}_og.jpg`;
-            const file = bucket.file(fileName);
-
-            await file.save(buffer, {
-                metadata: {
-                    contentType: 'image/jpeg',
-                    cacheControl: 'public, max-age=31536000'
-                }
-            });
-            await file.makePublic();
-            const imageUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
-            console.log(`✅ [Best-of-2] OG Fallback Success: ${imageUrl}`);
+            const fileName = `uploads/thumbnails/${docId}_${Date.now()}_og.jpg`;
+            const imageUrl = await uploadBuffer(buffer, fileName);
+            console.log(`✅ [Best-of-2] OG Fallback Success (cPanel): ${imageUrl}`);
             return imageUrl;
 
         } catch (fallbackErr) {
