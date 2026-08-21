@@ -1,4 +1,4 @@
-const functions = require("firebase-functions");
+﻿const functions = require("firebase-functions");
 // onDocumentCreated (Blaze/v2 only) replaced with noop for Spark
 const onDocumentCreated = () => () => {};
 const admin = require("firebase-admin");
@@ -491,7 +491,7 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
 // =========================================================
 // 1️⃣ HTTP TRIGGER - Scraper API
 // =========================================================
-exports.fetchLatestGovtJobs = functions.runWith({"timeoutSeconds":300,"memory":"1GB"}).https.onRequest(async (req, res) => {
+exports.fetchLatestGovtJobs = functions.https.onRequest(async (req, res) => {
 
     if (req.method !== 'POST' && req.method !== 'GET') {
         return res.status(405).send("Method Not Allowed");
@@ -817,3 +817,4 @@ if (require.main === module) {
             process.exit(1);
         });
 }
+

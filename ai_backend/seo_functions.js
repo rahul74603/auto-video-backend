@@ -1,4 +1,4 @@
-const functions = require("firebase-functions");
+﻿const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
 if (!admin.apps.length) {
@@ -62,7 +62,7 @@ function hasUsefulTitle(data = {}) {
 // =========================================================
 // 1. SITEMAP INDEX (Master Sitemap)
 // =========================================================
-exports.generateSitemapIndex = functions.runWith({"timeoutSeconds":60,"memory":"256MB"}).https.onRequest(async (req, res) => {
+exports.generateSitemapIndex = functions.https.onRequest(async (req, res) => {
     try {
         const sitemaps = [
             `${WEBSITE_URL}/sitemap-main.xml`,
@@ -100,7 +100,7 @@ exports.generateSitemapIndex = functions.runWith({"timeoutSeconds":60,"memory":"
 // =========================================================
 // 2. MAIN STATIC PAGES SITEMAP
 // =========================================================
-exports.generateSitemapMain = functions.runWith({"timeoutSeconds":60,"memory":"256MB"}).https.onRequest(async (req, res) => {
+exports.generateSitemapMain = functions.https.onRequest(async (req, res) => {
     try {
         let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
         xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
@@ -127,7 +127,7 @@ exports.generateSitemapMain = functions.runWith({"timeoutSeconds":60,"memory":"2
 // =========================================================
 // 3. BLOGS SITEMAP (With Images - Google Discover के लिए)
 // =========================================================
-exports.generateSitemapBlogs = functions.runWith({"timeoutSeconds":300,"memory":"512MB"}).https.onRequest(async (req, res) => {
+exports.generateSitemapBlogs = functions.https.onRequest(async (req, res) => {
     try {
         const now = new Date().toISOString();
 
@@ -179,7 +179,7 @@ exports.generateSitemapBlogs = functions.runWith({"timeoutSeconds":300,"memory":
 // =========================================================
 // 4. JOBS SITEMAP (With Images)
 // =========================================================
-exports.generateSitemapJobs = functions.runWith({"timeoutSeconds":300,"memory":"512MB"}).https.onRequest(async (req, res) => {
+exports.generateSitemapJobs = functions.https.onRequest(async (req, res) => {
     try {
         const now = new Date().toISOString();
 
@@ -229,7 +229,7 @@ exports.generateSitemapJobs = functions.runWith({"timeoutSeconds":300,"memory":"
 // =========================================================
 // 5. MOCK TESTS SITEMAP
 // =========================================================
-exports.generateSitemapTests = functions.runWith({"timeoutSeconds":300,"memory":"512MB"}).https.onRequest(async (req, res) => {
+exports.generateSitemapTests = functions.https.onRequest(async (req, res) => {
     try {
         const now = new Date().toISOString();
 
@@ -270,7 +270,7 @@ exports.generateSitemapTests = functions.runWith({"timeoutSeconds":300,"memory":
 // =========================================================
 // 6. WEB STORIES SITEMAP (Special Format)
 // =========================================================
-exports.generateSitemapStories = functions.runWith({"timeoutSeconds":300,"memory":"512MB"}).https.onRequest(async (req, res) => {
+exports.generateSitemapStories = functions.https.onRequest(async (req, res) => {
     try {
         const now = new Date().toISOString();
 
@@ -320,7 +320,7 @@ exports.generateSitemapStories = functions.runWith({"timeoutSeconds":300,"memory
 // =========================================================
 // 7. FAST-TRACK UPDATES SITEMAP (canonical /update route)
 // =========================================================
-exports.generateSitemapUpdates = functions.runWith({"timeoutSeconds":300,"memory":"512MB"}).https.onRequest(async (_req, res) => {
+exports.generateSitemapUpdates = functions.https.onRequest(async (_req, res) => {
     try {
         const now = new Date().toISOString();
         let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
@@ -357,7 +357,7 @@ exports.generateSitemapUpdates = functions.runWith({"timeoutSeconds":300,"memory
 // =========================================================
 // 8. COURSES SITEMAP (Premium Notes) — fixes 140 missing + orphan
 // =========================================================
-exports.generateSitemapCourses = functions.runWith({"timeoutSeconds":300,"memory":"512MB"}).https.onRequest(async (req, res) => {
+exports.generateSitemapCourses = functions.https.onRequest(async (req, res) => {
     try {
         const now = new Date().toISOString();
         let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
@@ -394,7 +394,7 @@ exports.generateSitemapCourses = functions.runWith({"timeoutSeconds":300,"memory
 // =========================================================
 // 8B. STUDY MATERIALS SITEMAP
 // =========================================================
-exports.generateSitemapMaterials = functions.runWith({"timeoutSeconds":300,"memory":"512MB"}).https.onRequest(async (req, res) => {
+exports.generateSitemapMaterials = functions.https.onRequest(async (req, res) => {
     try {
         const now = new Date().toISOString();
         let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
@@ -453,7 +453,7 @@ exports.generateSitemapMaterials = functions.runWith({"timeoutSeconds":300,"memo
 // =========================================================
 // 9. GOOGLE NEWS SITEMAP (Last 2 Days Only)
 // =========================================================
-exports.generateSitemapNews = functions.runWith({"timeoutSeconds":120,"memory":"256MB"}).https.onRequest(async (req, res) => {
+exports.generateSitemapNews = functions.https.onRequest(async (req, res) => {
     try {
         // ✅ News sitemap - sirf last 2 din ke articles
         const twoDaysAgo = new Date();
@@ -514,7 +514,7 @@ exports.generateSitemapNews = functions.runWith({"timeoutSeconds":120,"memory":"
 // =========================================================
 // 8. FULL SEO RSS FEED (Google News Approved)
 // =========================================================
-exports.generateRss = functions.runWith({"timeoutSeconds":120,"memory":"256MB"}).https.onRequest(async (req, res) => {
+exports.generateRss = functions.https.onRequest(async (req, res) => {
     try {
         const now = new Date().toUTCString();
         const nowIso = new Date().toISOString();
@@ -601,7 +601,7 @@ exports.generateRss = functions.runWith({"timeoutSeconds":120,"memory":"256MB"})
 // =========================================================
 // 9. MAIN SITEMAP (Complete - All URLs in one file)
 // =========================================================
-exports.generateSitemap = functions.runWith({"timeoutSeconds":540,"memory":"1GB"}).https.onRequest(async (req, res) => {
+exports.generateSitemap = functions.https.onRequest(async (req, res) => {
     try {
         const now = new Date().toISOString();
 
@@ -816,3 +816,4 @@ exports.generateSitemap = functions.runWith({"timeoutSeconds":540,"memory":"1GB"
         res.status(500).send(`<?xml version="1.0"?><error>${error.message}</error>`);
     }
 });
+

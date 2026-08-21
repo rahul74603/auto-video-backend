@@ -1,15 +1,15 @@
-javascript
 /**
  * Pre-deploy sanitizer for Firebase functions deploy on Spark plan.
- * Run this BEFORE `firebase deploy`.
  * Writes a minimal firebase.json with ONLY functions config.
+ * Also removes any package-level "extensions" references that confuse old CLI.
  */
 const fs = require("fs");
 const path = require("path");
 
 const rootDir = path.resolve(__dirname, "..");
-const targetPath = path.join(rootDir, "firebase.json");
 
+// 1. Overwrite root firebase.json with functions-only minimal config
+const rootFbPath = path.join(rootDir, "firebase.json");
 const MINIMAL_CONFIG = {
   functions: [
     {
@@ -25,18 +25,23 @@ const MINIMAL_CONFIG = {
     },
   ],
 };
+fs.writeFileSync(rootFbPath, JSON.stringify(MINIMAL_CONFIG, null, 2) + "\n", "utf8");
+console.log("✅ Root firebase.json sanitized (functions-only).");
 
-fs.writeFileSync(targetPath, JSON.stringify(MINIMAL_CONFIG, null, 2) + "\n", "utf8");
+// 2. Sanitize ai_backend/package.json — remove any "extensions" key
+const pkgPath = path.join(rootDir, "ai_backend", "package.json");
+const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+delete pkg.extensions;
+fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf8");
+console.log("✅ ai_backend/package.json sanitized (extensions key removed).");
 
-const written = JSON.parse(fs.readFileSync(targetPath, "utf8"));
-console.log("firebase.json overwritten successfully.");
-console.log("Top-level keys:", Object.keys(written));
-
+// 3. Verify
+const written = JSON.parse(fs.readFileSync(rootFbPath, "utf8"));
 const forbiddenKeys = ["extensions", "dataconnect", "dataConnect"];
 for (const k of forbiddenKeys) {
   if (k in written) {
-    console.error("FAIL: forbidden key '" + k + "' still present!");
+    console.error("❌ FAIL: forbidden key '" + k + "' in firebase.json!");
     process.exit(1);
   }
 }
-console.log("OK: firebase.json is clean and deploy-safe for Spark plan.");
+console.log("✅ All good. firebase.json keys:", Object.keys(written));

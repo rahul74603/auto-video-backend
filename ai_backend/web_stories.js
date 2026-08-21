@@ -1,4 +1,4 @@
-const functions = require("firebase-functions");
+﻿const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
 if (!admin.apps.length) {
@@ -682,7 +682,7 @@ const renderWebStory = async (req, res) => {
 // ==========================================
 // 🗺️ SITEMAP
 // ==========================================
-const generateStoriesSitemap = functions.runWith({"timeoutSeconds":60,"memory":"256MB"}).https.onRequest(async (req, res) => {
+const generateStoriesSitemap = functions.https.onRequest(async (req, res) => {
     try {
         const snapshot = await db.collection("web_stories")
             .orderBy("createdAt", "desc")
@@ -732,3 +732,4 @@ const generateStoriesSitemap = functions.runWith({"timeoutSeconds":60,"memory":"
 });
 
 module.exports = { renderWebStory, generateStoriesSitemap };
+
