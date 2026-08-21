@@ -1,7 +1,7 @@
 name: Deploy Firebase Functions Only
 
 # 100% Spark-plan-safe deploy for studygyaan.in
-# - firebase-tools v11 use kar rahe (v12/v13 me extensions Blaze check hai jo Spark pe fail karta hai)
+# - firebase-tools v12.9.1 use kar rahe: Node 20 support hai, v13 jaisa Blaze extensions enforcement nahi hai
 # - Deploy se pehle firebase.json ko sanitize karte hain (extensions/dataConnect keys hata dete hain)
 # - Sirf HTTP functions deploy honge (onIndexPing_* triggers Blaze/EventArc maangte hain, unhe chhod diya)
 
@@ -36,7 +36,7 @@ jobs:
       - name: Package app shell for social-bot SEO
         run: cp dist/index.html ai_backend/index.html
 
-      - name: Sanitize firebase.json (remove extensions/dataConnect keys that v11 doesn't understand and v13 Blaze-checks)
+      - name: Sanitize firebase.json (remove extensions/dataConnect keys that cause Blaze errors or "Unexpected key" errors)
         run: |
           node -e "
             const fs = require('fs');
@@ -50,8 +50,8 @@ jobs:
           "
           cat firebase.json
 
-      - name: Install Firebase CLI v11 (last v11 — no extensions support = no Blaze plan error)
-        run: npm install -g firebase-tools@11.30.0
+      - name: Install Firebase CLI v12.9.1 (Node 20 support + no Blaze extensions enforcement)
+        run: npm install -g firebase-tools@12.9.1
 
       - name: Verify firebase-tools version
         run: firebase --version
