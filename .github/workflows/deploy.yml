@@ -1,18 +1,9 @@
 name: Deploy Firebase Functions Only
 
-# ⚠️ Staging copy of .github/workflows/deploy.yml — the bot token cannot push
-# into .github/workflows/, so fixes land here and tools/sync-workflows.ps1
-# copies them to .github/workflows/ on a local machine.
-#
-# Spark / non-Blaze: ai_backend/package.json "main" is seo_export.js, which
-# exports only these HTTP SEO functions (no secrets, schedules, Firestore
-# triggers, or Extension SDK instances). firebase-tools discovers every
-# export in "main", so pointing it at index.js made CI enable
-# firebaseextensions + secretmanager and fail with:
-#   Error: Extensions require the Blaze plan
-#
-# Do NOT add functions:api (or any function with `secrets:`) to this list
-# while the project is on Spark.
+# Spark / non-Blaze safe deploy:
+# - ai_backend/package.json "main" = seo_export.js (no schedules, no Firestore triggers, no Secret Manager bindings)
+# - firebase-tools pinned to v12.9.1 (v13+ Blaze plan extensions deta hai Spark pe)
+# - Deploy list me sirf HTTP functions hain (Blaze-only onIndexPing_* triggers nahi hain)
 
 on:
   workflow_dispatch:
@@ -45,15 +36,16 @@ jobs:
       - name: Package app shell for social-bot SEO
         run: cp dist/index.html ai_backend/index.html
 
-      - name: Install Firebase CLI
+      - name: Install Firebase CLI (v12.9.1 — v13+ Spark pe Blaze plan error deta hai)
         run: npm install -g firebase-tools@12.9.1
-        
-        # ⚠️ onIndexPing_* Firestore v2 triggers EventArc use karte hain jo Blaze plan
-        # maangta hai. Spark pe HTTP endpoints + daily IndexNow kaafi hai.
-        # --except extensions = extensions API check skip (Blaze plan error fix)
+
       - name: Deploy selected Firebase Functions safely
-      
         run: |
-                    firebase deploy --only "functions:serverSideMetaTags,functions:rssFeed,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemapCourses,functions:generateSitemapMaterials,functions:generateSitemap,functions:generateRss,functions:pingIndexNow,functions:bulkIndexNow,functions:recentUrls,functions:recentUrlsTxt" --project studymaterial-406ad --non-interactive
+          firebase deploy \
+            --only "functions:serverSideMetaTags,functions:rssFeed,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemapCourses,functions:generateSitemapMaterials,functions:generateSitemap,functions:generateRss,functions:pingIndexNow,functions:bulkIndexNow,functions:recentUrls,functions:recentUrlsTxt" \
+            --project studymaterial-406ad \
+            --non-interactive \
+            --force
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
