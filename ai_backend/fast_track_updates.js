@@ -1,5 +1,6 @@
-const { onRequest } = require("firebase-functions/v2/https");
-const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const functions = require("firebase-functions");
+// onDocumentWritten (Blaze/v2 only) replaced with noop for Spark
+const onDocumentWritten = () => () => {};
 const admin = require("firebase-admin");
 const axios = require("axios");
 const { google } = require("googleapis");
@@ -482,13 +483,7 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
 // =========================================================
 // 1️⃣ MANUAL API TRIGGER
 // =========================================================
-exports.fetchFastTrackUpdates = onRequest({
-    cors:           false,
-    invoker:        "public",
-    timeoutSeconds: 300,
-    memory:         "1GiB",
-    secrets:        ["GEMINI_API_KEY", "SERVICE_ACCOUNT_JSON", "FAST_TRACK_SECRET"]
-}, async (req, res) => {
+exports.fetchFastTrackUpdates = functions.runWith({"timeoutSeconds":300,"memory":"1GB"}).https.onRequest(async (req, res) => {
 
     const authKey      = req.headers['x-auth-key'];
     const EXPECTED_KEY = process.env.FAST_TRACK_SECRET || "StudyGyaan_FastTrack_786";
@@ -510,11 +505,7 @@ exports.fetchFastTrackUpdates = onRequest({
 // =========================================================
 // 2️⃣ GITHUB ACTIONS STREAMING API
 // =========================================================
-exports.triggerFastTrackUpdates = onRequest({
-    invoker:        "public",
-    timeoutSeconds: 300,
-    memory:         "1GiB"
-}, async (req, res) => {
+exports.triggerFastTrackUpdates = functions.runWith({"timeoutSeconds":300,"memory":"1GB"}).https.onRequest(async (req, res) => {
 
     const authToken   = req.headers['x-auth-token'];
     const incomingKey = req.headers['x-gemini-key'];
@@ -842,12 +833,7 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
 // =========================================================
 // 4️⃣ DYNAMIC SITEMAP
 // =========================================================
-exports.fastTrackSitemap = onRequest({
-    invoker:        "public",
-    timeoutSeconds: 60,
-    memory:         "512MiB",
-    secrets:        ["SERVICE_ACCOUNT_JSON"]
-}, async (req, res) => {
+exports.fastTrackSitemap = functions.runWith({"timeoutSeconds":60,"memory":"512MB"}).https.onRequest(async (req, res) => {
     try {
         const snapshot = await db.collection("fast_track")
             .where("status", "==", "published")

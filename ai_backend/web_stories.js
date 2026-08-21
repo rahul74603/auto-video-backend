@@ -1,4 +1,4 @@
-const { onRequest } = require("firebase-functions/v2/https");
+const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
 if (!admin.apps.length) {
@@ -682,11 +682,7 @@ const renderWebStory = async (req, res) => {
 // ==========================================
 // 🗺️ SITEMAP
 // ==========================================
-const generateStoriesSitemap = onRequest({
-    cors: true,
-    timeoutSeconds: 60,
-    memory: "256MiB"
-}, async (req, res) => {
+const generateStoriesSitemap = functions.runWith({"timeoutSeconds":60,"memory":"256MB"}).https.onRequest(async (req, res) => {
     try {
         const snapshot = await db.collection("web_stories")
             .orderBy("createdAt", "desc")

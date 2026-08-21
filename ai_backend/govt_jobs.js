@@ -1,5 +1,6 @@
-const { onRequest } = require("firebase-functions/v2/https");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const functions = require("firebase-functions");
+// onDocumentCreated (Blaze/v2 only) replaced with noop for Spark
+const onDocumentCreated = () => () => {};
 const admin = require("firebase-admin");
 const axios = require("axios");
 const { google } = require("googleapis");
@@ -490,16 +491,7 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
 // =========================================================
 // 1️⃣ HTTP TRIGGER - Scraper API
 // =========================================================
-exports.fetchLatestGovtJobs = onRequest({
-    cors:           false,
-    invoker:        "public",
-    timeoutSeconds: 300,
-    memory:         "1GiB",
-    secrets: [
-        "GEMINI_API_KEY",
-        "SERVICE_ACCOUNT_JSON"
-    ]
-}, async (req, res) => {
+exports.fetchLatestGovtJobs = functions.runWith({"timeoutSeconds":300,"memory":"1GB"}).https.onRequest(async (req, res) => {
 
     if (req.method !== 'POST' && req.method !== 'GET') {
         return res.status(405).send("Method Not Allowed");
