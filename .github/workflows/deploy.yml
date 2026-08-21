@@ -28,6 +28,9 @@ jobs:
         working-directory: ai_backend
         run: npm ci --legacy-peer-deps
 
+      - name: Patch firebase-functions (remove extensions key for v12 CLI)
+        run: node scripts/patch-firebase-functions.cjs
+
       - name: Package app shell for social-bot SEO
         run: cp dist/index.html ai_backend/index.html
 
