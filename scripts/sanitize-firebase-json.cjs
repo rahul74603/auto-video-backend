@@ -1,4 +1,3 @@
-javascript
 /**
  * Pre-deploy sanitizer for Firebase functions deploy on Spark plan.
  * Run this BEFORE `firebase deploy`.
