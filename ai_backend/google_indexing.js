@@ -28,7 +28,9 @@ async function runSitemapIndexing(options = {}) {
   console.log(`Issues:                  ${JSON.stringify(report.summary.issueCounts)}`);
   console.log(`Inspection verdicts:     ${JSON.stringify(report.summary.searchConsoleVerdicts)}`);
   console.log(`Indexing API accepted:   ${report.indexingApi.accepted || 0} notification(s)`);
-  console.log("IMPORTANT: API acceptance does not mean a page is indexed.");
+  console.log(`IndexNow submitted:      ${report.indexNow?.success || report.indexNow?.succeeded || 0} URL(s)`);
+  console.log(`Sitemap pings sent:      ${(report.sitemap?.pings || report.websub) ? "yes" : "no"}`);
+  console.log("IMPORTANT: API acceptance does not mean a page is indexed — Google must still crawl and render it.");
   console.log(`Full report:             ${report.outputPath}`);
   console.log("=================================================\n");
 

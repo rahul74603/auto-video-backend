@@ -28,8 +28,13 @@ const EXPECTED = Object.freeze([
   "generateSitemapUpdates",
   "generateSitemapNews",
   "generateSitemapCourses",
+  "generateSitemapMaterials",
   "generateSitemap",
   "generateRss",
+  "pingIndexNow",
+  "bulkIndexNow",
+  "recentUrls",
+  "recentUrlsTxt",
 ]);
 
 const fakeAdmin = {

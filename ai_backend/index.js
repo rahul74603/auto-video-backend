@@ -98,6 +98,24 @@ function safeJSONParse(text) {
 
 /* ================= PING ================= */
 
+/**
+ * Best-effort multi-engine indexing ping — publish flow ko kabhi block nahi karta.
+ * 4 IndexNow endpoints (api.indexnow.org, Bing, Seznam, Yandex) + sitemap pings
+ * + WebSub — sab free, koi API key nahi chahiye.
+ */
+function fireAndForgetIndexNow(urls) {
+  try {
+    const list = (Array.isArray(urls) ? urls : [urls]).filter(Boolean).slice(0, 100);
+    if (!list.length) return;
+    const booster = require("./indexing_booster");
+    booster.submitToAllIndexNow(list).catch(() => {});
+    booster.pingAllSitemaps().catch(() => {});
+    booster.publishWebSub().catch(() => {});
+  } catch (e) {
+    // Never block publish
+  }
+}
+
 /* ================= MOCK TEST GENERATOR ================= */
 
 app.post("/generate", async (req, res) => {
@@ -225,12 +243,17 @@ Format:
       negativeMarking: 0.25,
       requestedTopic: topic,
       createdAt: new Date(),
+      status: "published",
     });
+
+    // 🔔 IndexNow ping — Bing/Yandex ko turant notify
+    fireAndForgetIndexNow([`https://studygyaan.in/test/${encodeURIComponent(docRef.id)}`]);
 
     return res.json({
       success: true,
       id: docRef.id,
       count: allQuestions.length,
+      url: `https://studygyaan.in/test/${docRef.id}`,
     });
 
   } catch (error) {
@@ -385,6 +408,9 @@ ${enhancedIntent.prompt}
     });
 
     console.log(`🎯 Manual Blog Saved to DB with ID: ${blogRef.id}`);
+
+    // 🔔 IndexNow ping — Bing/Yandex/Seznam ko turant notify (Google bhi IndexNow pe crawl karta hai)
+    fireAndForgetIndexNow([`https://studygyaan.in/blog/${encodeURIComponent(finalData.slug || blogRef.id)}`]);
 
     // 📢 4. TELEGRAM AUTO-POST
     const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -661,9 +687,13 @@ const autoIndexer = require("./auto_indexer");
 //   IndexNow (Bing family) turant + Google Indexing API (SERVICE_ACCOUNT_JSON secret
 //   se, jo api function pe pehle se configured hai). Draft/archived skip.
 // NOTE: indexing sirf best-effort hai — publish kabhi iske fail se nahi rukta.
+// ⚠️ onDocumentCreated v2 triggers EventArc use karte hain — Blaze plan chahiye.
+// secrets: binding hata diya hai taaki Spark pe bhi deploy ho sake (Google Indexing
+// API SA-JSON ke bina skip ho jayegi; IndexNow bina credentials ke chalta hai).
+// Blaze pe secrets: ["SERVICE_ACCOUNT_JSON"] add kar sakte ho.
 autoIndexer.AUTO_INDEX_COLLECTIONS.forEach((coll) => {
   exports[`onIndexPing_${coll}`] = __onIndexDocCreated(
-    { document: `${coll}/{docId}`, secrets: ["SERVICE_ACCOUNT_JSON"], maxInstances: 5 },
+    { document: `${coll}/{docId}`, maxInstances: 5 },
     autoIndexer.buildCreatedHandler(coll, { fieldValue: admin.firestore.FieldValue })
   );
 });

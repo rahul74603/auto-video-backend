@@ -507,6 +507,18 @@ function registerArticleAgentRoutes(app, db) {
       const { collection, docId: targetId, payload, originDeleted } =
         await publishDraftRecord(db, admin.firestore.FieldValue, draft, draftId);
 
+      // 🔔 🚀 Immediately ping ALL search engines (4 IndexNow endpoints + sitemaps + WebSub)
+      const routePath = collection === "jobs" ? "job" : "update";
+      const pageUrl = `https://studygyaan.in/${routePath}/${encodeURIComponent(payload.slug || targetId)}`;
+      try {
+        const booster = require("../../indexing_booster");
+        booster.submitToAllIndexNow([pageUrl]).catch(() => {});
+        booster.pingAllSitemaps().catch(() => {});
+        booster.publishWebSub().catch(() => {});
+      } catch (e) {
+        console.warn(`[articles:publish] booster ping failed:`, e.message);
+      }
+
       return ok(res, {
         draftId,
         published: true,
@@ -515,6 +527,7 @@ function registerArticleAgentRoutes(app, db) {
         collection,
         docId: targetId,
         slug: payload.slug,
+        url: pageUrl,
         authorName: payload.authorName
       });
     } catch (error) {

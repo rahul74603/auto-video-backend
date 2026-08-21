@@ -79,6 +79,18 @@ function buildGoogleJwt(saJson, deps = {}) {
 
 /** Google Indexing API ko URL notify (SA env na ho to clean skip). */
 async function notifyGoogle(url, deps = {}) {
+  // ⚠️ Google Indexing API SIRF JobPosting ya BroadcastEvent (Livestream)
+  // URLs ke liye allow karta hai. Blog/test/story/course pages pe 403 ya
+  // "invalid URL" aata hai — unko chup-chap skip karo (IndexNow unke liye hai).
+  try {
+    const parsed = new URL(url);
+    if (!parsed.pathname.startsWith("/job/")) {
+      return { engine: "google-indexing", skipped: "non-job-url" };
+    }
+  } catch {
+    return { engine: "google-indexing", skipped: "invalid-url" };
+  }
+
   const fetchImpl = deps.fetch || globalThis.fetch;
   // GOOGLE_INDEXING_SA_JSON ya functions secret SERVICE_ACCOUNT_JSON — dono chalenge
   const saRaw =

@@ -129,6 +129,14 @@
         "function": "generateSitemapCourses"
       },
       {
+        "source": "/sitemap-materials",
+        "function": "generateSitemapMaterials"
+      },
+      {
+        "source": "/sitemap-materials.xml",
+        "function": "generateSitemapMaterials"
+      },
+      {
         "source": "/web-stories-sitemap.xml",
         "function": "generateSitemapStories"
       },
@@ -151,6 +159,22 @@
       {
         "source": "/feed.xml",
         "function": "rssFeed"
+      },
+      {
+        "source": "/recent-urls.txt",
+        "function": "recentUrlsTxt"
+      },
+      {
+        "source": "/recent-urls.json",
+        "function": "recentUrls"
+      },
+      {
+        "source": "/pingIndexNow",
+        "function": "pingIndexNow"
+      },
+      {
+        "source": "/bulkIndexNow",
+        "function": "bulkIndexNow"
       },
       {
         "source": "/test/**",

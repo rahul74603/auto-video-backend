@@ -74,7 +74,7 @@ test("notifyGoogle: SA JSON env nahi to clean skip (kuch tootta nahi)", async ()
   assert.equal(out.skipped, "no-sa-json");
 });
 
-test("notifyGoogle: SA ho to JWT bearer ke saath URL_UPDATED publish hota hai", async () => {
+test("notifyGoogle: SA ho to JWT bearer ke saath URL_UPDATED publish hota hai (sirf /job/ URLs)", async () => {
   let seen = null;
   const fetch = async (url, opts) => {
     seen = { url, opts };
@@ -91,15 +91,28 @@ test("notifyGoogle: SA ho to JWT bearer ke saath URL_UPDATED publish hota hai", 
       }
     }
   };
-  const out = await notifyGoogle(`${SITE_URL}/blog/abc`, {
+  // Google Indexing API only accepts /job/ URLs (JobPosting) — non-job URLs are skipped
+  const out = await notifyGoogle(`${SITE_URL}/job/ssc-gd-2026`, {
     saJson: JSON.stringify({ client_email: "idx@project.iam.gserviceaccount.com", private_key: "k" }),
     jwtLib: fakeJwtLib,
     fetch
   });
-  assert.equal(out.notified, `${SITE_URL}/blog/abc`);
+  assert.equal(out.notified, `${SITE_URL}/job/ssc-gd-2026`);
   assert.equal(seen.url, "https://indexing.googleapis.com/v3/urlNotifications:publish");
   assert.equal(seen.opts.headers.Authorization, "Bearer ya29.fake-token");
-  assert.deepEqual(JSON.parse(seen.opts.body), { url: `${SITE_URL}/blog/abc`, type: "URL_UPDATED" });
+  assert.deepEqual(JSON.parse(seen.opts.body), { url: `${SITE_URL}/job/ssc-gd-2026`, type: "URL_UPDATED" });
+});
+
+test("notifyGoogle: non-job URLs (blog/test/story) ko skip karta hai — Google API sirf JobPosting accept karta hai", async () => {
+  let called = false;
+  const fetch = async () => { called = true; return { ok: true, status: 200, text: async () => "{}" }; };
+  const out = await notifyGoogle(`${SITE_URL}/blog/abc`, {
+    saJson: JSON.stringify({ client_email: "idx@project.iam.gserviceaccount.com", private_key: "k" }),
+    jwtLib: { JWT: class { authorize() { return Promise.resolve({ access_token: "t" }); } } },
+    fetch
+  });
+  assert.equal(out.skipped, "non-job-url");
+  assert.equal(called, false, "non-job URL pe Google API call nahi hona chahiye");
 });
 
 test("notifyIndexing: dono engines fail ho jayein to bhi throw NAHI karta (best-effort)", async () => {

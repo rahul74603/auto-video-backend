@@ -3,6 +3,14 @@
 const fs = require("fs");
 const path = require("path");
 const { buildOgImageUrl } = require("./og_image");
+// 🚀 Indexing Booster — orphan pages fix + multi-engine ping (loaded lazily to avoid circular requires)
+let _booster = null;
+function booster() {
+  if (!_booster) {
+    try { _booster = require("./indexing_booster"); } catch { _booster = null; }
+  }
+  return _booster;
+}
 
 const SITE_URL = "https://studygyaan.in";
 
@@ -415,12 +423,15 @@ function createServerSeoHandler({ db, renderWebStory }) {
         const page = STATIC_PAGES[category];
         const canonical = category ? `${SITE_URL}/${category}` : SITE_URL;
         const data = { title: page.title, description: page.description, content: page.description };
-        const html = injectSeo(template, {
+        let html = injectSeo(template, {
           title: page.title,
           description: page.description,
           canonical,
           image: `${SITE_URL}/og-image.jpg`
         }, data, "website");
+        // 🚀 Inject dynamic internal links (latest published + hub nav) — orphan page fix
+        const b = booster();
+        if (b) html = await b.injectInternalLinksHtml(html, { category, path: rawPath });
         res.set("Cache-Control", "public, max-age=300, s-maxage=900, stale-while-revalidate=1800");
         res.set("Content-Type", "text/html; charset=utf-8");
         return res.status(200).send(html);
@@ -452,7 +463,16 @@ function createServerSeoHandler({ db, renderWebStory }) {
       const meta = createMeta(route, result);
       if (identifier !== meta.slug) return redirect(res, meta.canonical);
 
-      const html = injectSeo(template, meta, result.data, route.type);
+      let html = injectSeo(template, meta, result.data, route.type);
+      // 🚀 Inject dynamic internal links (latest published + related by category)
+      const b = booster();
+      if (b) {
+        html = await b.injectInternalLinksHtml(html, {
+          category: result.data.category || "",
+          collection: route.collection,
+          path: `/${route.canonical}/${meta.slug}`
+        });
+      }
       res.set("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600");
       res.set("Content-Type", "text/html; charset=utf-8");
       return res.status(200).send(html);

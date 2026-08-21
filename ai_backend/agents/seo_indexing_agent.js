@@ -321,6 +321,29 @@ async function saveNotificationState(db, signatures) {
   });
 }
 
+// 🚀 Use indexing_booster for multi-endpoint IndexNow (4 endpoints + pings + WebSub)
+// Loaded lazily to avoid circular imports.
+async function notifyIndexNowAll(urls) {
+  try {
+    const booster = require("../indexing_booster");
+    return await booster.submitToAllIndexNow(urls);
+  } catch (e) {
+    // Fallback: simple single-endpoint submit if booster unavailable
+    const list = (Array.isArray(urls) ? urls : [urls]).filter(Boolean).slice(0, 10000);
+    if (!list.length) return { attempted: 0, success: 0, failed: 0 };
+    const INDEXNOW_KEY = process.env.INDEXNOW_KEY || "9629c8c41fa94b898f83a53ecd320743";
+    try {
+      await axios.post("https://api.indexnow.org/indexnow", {
+        host: "studygyaan.in", key: INDEXNOW_KEY,
+        keyLocation: `${DEFAULT_SITE}/${INDEXNOW_KEY}.txt`, urlList: list.slice(0, 1000)
+      }, { headers: { "Content-Type": "application/json; charset=utf-8" }, timeout: 15000, validateStatus: () => true });
+      return { attempted: list.length, success: list.length, failed: 0 };
+    } catch (err) {
+      return { attempted: list.length, success: 0, failed: list.length, error: err.message };
+    }
+  }
+}
+
 async function notifyEligibleJobs(auth, candidates, state) {
   if (!auth || !boolEnv("INDEXING_API_ENABLED", true)) {
     return { enabled: false, attempted: 0, accepted: 0, failed: 0, quotaHit: false, results: [] };
@@ -462,6 +485,25 @@ class SEOIndexingAgent {
     const indexingApi = mode === "auto"
       ? await notifyEligibleJobs(this.auth, cleanEntries, state)
       : { enabled: boolEnv("INDEXING_API_ENABLED", true), attempted: 0, accepted: 0, failed: 0, quotaHit: false, results: [] };
+
+    // IndexNow (Bing/Yandex/Seznam/Naver) — 4 endpoints par submit karo (10k/day free per endpoint)
+    const indexNow = mode === "auto" && boolEnv("INDEXNOW_ENABLED", true)
+      ? await notifyIndexNowAll(cleanEntries.map((e) => e.url))
+      : { enabled: boolEnv("INDEXNOW_ENABLED", true), attempted: 0, success: 0, failed: 0 };
+
+    // Sitemap ping + WebSub (Google/Bing/Yandex ko fresh sitemap batana)
+    let sitemapPings = { attempted: false };
+    let websubResult = { attempted: false };
+    if (mode === "auto" && boolEnv("SITEMAP_PING_ENABLED", true)) {
+      try {
+        const booster = require("../indexing_booster");
+        sitemapPings = await booster.pingAllSitemaps(this.sitemapUrl);
+        websubResult = await booster.publishWebSub(`${DEFAULT_SITE}/feed.xml`);
+      } catch (e) {
+        console.warn("Sitemap ping/WebSub failed:", e.message);
+      }
+    }
+
     if (mode === "auto") await saveNotificationState(this.db, state);
 
     const summary = summarizeAudits(audits);
@@ -472,7 +514,8 @@ class SEOIndexingAgent {
     }
     summary.searchConsoleVerdicts = verdictCounts;
     summary.indexingApiAcceptedNotifications = indexingApi.accepted;
-    summary.warning = "An accepted Indexing API notification is not proof that Google indexed the URL.";
+    summary.indexNowAcceptedNotifications = indexNow.success || indexNow.succeeded || 0;
+    summary.warning = "Accepted indexing notifications are not proof that a search engine indexed the URL.";
 
     const report = {
       runId,
@@ -484,12 +527,15 @@ class SEOIndexingAgent {
         discovered: sitemapEntries.length,
         unique: deduplicated.length,
         audited: selected.length,
-        submission: sitemapSubmission
+        submission: sitemapSubmission,
+        pings: sitemapPings
       },
       summary,
       audits,
       searchConsole,
-      indexingApi
+      indexingApi,
+      indexNow,
+      websub: websubResult
     };
 
     await saveReport(this.db, report);
