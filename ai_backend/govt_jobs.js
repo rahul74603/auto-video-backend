@@ -652,11 +652,29 @@ exports.onJobPublishedNotify = onDocumentCreated({
     }
 
     // ─────────────────────────────────────
-    // STEP 2: Google Indexing
+    // STEP 2: Search Engine Pings (Google Indexing API + IndexNow + Sitemap Ping)
     // ─────────────────────────────────────
     await notifyGoogle(jobUrl).catch(e =>
-        console.log("Indexing skip:", e.message)
+        console.log("Google indexing skip:", e.message)
     );
+
+    // 🚀 Multi-endpoint IndexNow (Bing + Yandex + Seznam + Naver — 4 endpoints)
+    // + Google/Bing/Yandex sitemap pings + WebSub — free, no API key needed
+    try {
+        const booster = require("./indexing_booster");
+        booster.submitToAllIndexNow([jobUrl, "https://studygyaan.in/govt-jobs"]).catch(() => {});
+        booster.pingAllSitemaps().catch(() => {});
+        booster.publishWebSub().catch(() => {});
+        console.log("✅ Multi-engine search ping dispatched");
+    } catch (inErr) {
+        console.warn("⚠️ Booster ping failed (fallback single-endpoint):", inErr.message);
+        // Fallback: single-endpoint submit
+        axios.post(
+            "https://api.indexnow.org/indexnow",
+            { host: "studygyaan.in", key: "9629c8c41fa94b898f83a53ecd320743", keyLocation: "https://studygyaan.in/9629c8c41fa94b898f83a53ecd320743.txt", urlList: [jobUrl] },
+            { headers: { "Content-Type": "application/json; charset=utf-8" }, timeout: 8000, validateStatus: () => true }
+        ).catch(() => {});
+    }
 
     // ─────────────────────────────────────
     // STEP 3: GitHub Actions → Video

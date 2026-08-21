@@ -684,14 +684,29 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
         console.error("❌ STEP 1 Schema error:", schemaErr.message);
     }
 
-    // STEP 2 - Google Indexing
+    // STEP 2 - Search Engine Pings (multi-engine, free, best-effort)
     try {
-        await notifyGoogle(itemUrl);
-        await notifyGoogle("https://studygyaan.in");
-        await notifyGoogle(
-            `https://studygyaan.in/updates?category=${encodeURIComponent(item.category)}`
-        );
-        console.log("✅ STEP 2: Google Indexing done");
+        // Google Indexing API only accepts JobPosting/Livestream URLs — skip for /update/ pages
+        if (itemUrl.includes('/job/')) {
+            await notifyGoogle(itemUrl).catch(() => {});
+        }
+
+        // 🚀 Multi-endpoint IndexNow (Bing + Yandex + Seznam + Naver) — 4 endpoints for redundancy
+        // + sitemap ping (Google/Bing/Yandex) + WebSub feed push — free, no paid API key needed
+        try {
+            const booster = require("./indexing_booster");
+            booster.submitToAllIndexNow([itemUrl, `https://studygyaan.in/updates?category=${encodeURIComponent(item.category)}`, "https://studygyaan.in/govt-jobs"]).catch(() => {});
+            booster.pingAllSitemaps().catch(() => {});
+            booster.publishWebSub().catch(() => {});
+            console.log("✅ STEP 2: Multi-engine search ping dispatched");
+        } catch (boosterErr) {
+            console.warn("⚠️ Booster unavailable, fallback single IndexNow:", boosterErr.message);
+            axios.post(
+                "https://api.indexnow.org/indexnow",
+                { host: "studygyaan.in", key: "9629c8c41fa94b898f83a53ecd320743", keyLocation: "https://studygyaan.in/9629c8c41fa94b898f83a53ecd320743.txt", urlList: [itemUrl] },
+                { headers: { "Content-Type": "application/json; charset=utf-8" }, timeout: 8000, validateStatus: () => true }
+            ).catch(() => {});
+        }
     } catch (indexErr) {
         console.error("❌ STEP 2 Indexing error:", indexErr.message);
     }

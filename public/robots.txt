@@ -9,7 +9,7 @@ Disallow: /admin-stories-secret/
 Disallow: /student-dashboard/
 Disallow: /manual-payment/
 
-# 🤖 Block AI Crawlers
+# 🤖 Block AI Crawlers (content scraping)
 User-agent: GPTBot
 Disallow: /
 
@@ -19,5 +19,13 @@ Disallow: /
 User-agent: Google-Extended
 Disallow: /
 
-# 🗺️ Sitemap Link
+User-agent: ClaudeBot
+Disallow: /
+
+# 🗺️ Sitemap Links (multiple for maximum discovery)
 Sitemap: https://studygyaan.in/sitemap.xml
+Sitemap: https://studygyaan.in/sitemap-all.xml
+Sitemap: https://studygyaan.in/recent-urls.txt
+
+# IndexNow key (ownership verification)
+# Key file: /9629c8c41fa94b898f83a53ecd320743.txt

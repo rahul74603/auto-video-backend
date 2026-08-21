@@ -49,7 +49,14 @@ jobs:
         run: npm install -g firebase-tools
 
       - name: Deploy selected Firebase Functions safely
+        # ⚠️ onIndexPing_* Firestore v2 triggers EventArc use karte hain jo Blaze plan
+        # maangta hai. Agar aap Blaze pe ho to deploy list me ye add karo:
+        #   functions:onIndexPing_jobs,functions:onIndexPing_fast_track,functions:onIndexPing_blogs,
+        #   functions:onIndexPing_web_stories,functions:onIndexPing_mock_tests
+        # Spark plan pe ye HTTP endpoint + daily IndexNow GitHub Action kaafi hai.
+        # --except extensions = extensions API check skip (Spark pe extensions allowed nahi)
         run: |
-          firebase deploy --only "functions:serverSideMetaTags,functions:rssFeed,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemapCourses,functions:generateSitemap,functions:generateRss" --project studymaterial-406ad --non-interactive
+          firebase deploy --only "functions:serverSideMetaTags,functions:rssFeed,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemapCourses,functions:generateSitemapMaterials,functions:generateSitemap,functions:generateRss,functions:pingIndexNow,functions:bulkIndexNow,functions:recentUrls,functions:recentUrlsTxt" --except extensions --project studymaterial-406ad --non-interactive
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
