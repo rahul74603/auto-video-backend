@@ -109,8 +109,17 @@ async function fetchCollections() {
           updatedAt: i < 2 ? now : old,
           imageUrl: `https://cdn.example.com/img${i}.jpg`,
           category: "Education",
-          description: "Mock description for testing the RSS <feed> & stuff",
+          description: `<h2>Overview</h2><p>Mock description ${i} for testing the RSS <b>feed</b> &amp; schema</p>`,
           author: "Rahul Sir",
+          seoTitle: `Mock SEO Title ${i} 2026 - Apply Online`,
+          metaDescription: `Mock meta description number ${i} for SEO testing with enough length here.`,
+          organization: "Staff Selection Commission",
+          lastDate: i % 2 === 0 ? "15 July 2026" : "15-09-2026",
+          totalPosts: `${100 + i} Posts`,
+          faqs: [
+            { question: `Question ${i}?`, answer: `Answer ${i} with <b>html</b>.` },
+            { question: `Dusra sawal ${i}?`, answer: `Dusra jawab ${i}.` },
+          ],
           ...extra,
         },
       }));
@@ -442,6 +451,15 @@ function buildAll(colls) {
 (async () => {
   const colls = await fetchCollections();
   const files = buildAll(colls);
+
+  // 🤖 Bot-SEO meta files (meta.php ke liye) — jobs/updates full schema, baaki preview
+  try {
+    const { buildMetaFiles } = require("./seo_meta.cjs");
+    Object.assign(files, buildMetaFiles(colls));
+  } catch (e) {
+    console.error("⚠️ seo_meta build error (skip):", e.message);
+  }
+
   fs.mkdirSync(OUT_DIR, { recursive: true });
   let totalUrls = 0;
   for (const [name, content] of Object.entries(files)) {
@@ -449,10 +467,19 @@ function buildAll(colls) {
     const kb = (Buffer.byteLength(content) / 1024).toFixed(1);
     console.log(`   ✅ ${name} (${kb} KB)`);
   }
+
+  // meta.php ko bhi upload folder me copy karo
+  try {
+    fs.copyFileSync(path.join(__dirname, "meta.php"), path.join(OUT_DIR, "meta.php"));
+    console.log("   ✅ meta.php (copied)");
+  } catch (e) {
+    console.error("⚠️ meta.php copy error:", e.message);
+  }
+
   try {
     totalUrls = JSON.parse(files["_urls.json"]).length;
   } catch {}
-  console.log(`\n🎉 DONE! ${Object.keys(files).length} files → ${OUT_DIR}`);
+  console.log(`\n🎉 DONE! ${Object.keys(files).length + 1} files → ${OUT_DIR}`);
   console.log(`   Total URLs in sitemaps: ${totalUrls}`);
   process.exit(0);
 })().catch((e) => {
