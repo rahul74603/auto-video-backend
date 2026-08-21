@@ -46,7 +46,7 @@ jobs:
         run: cp dist/index.html ai_backend/index.html
 
       - name: Install Firebase CLI
-        run: npm install -g firebase-tools
+        run: npm install -g firebase-tools@12.9.1
         
         # ⚠️ onIndexPing_* Firestore v2 triggers EventArc use karte hain jo Blaze plan
         # maangta hai. Spark pe HTTP endpoints + daily IndexNow kaafi hai.
@@ -54,6 +54,6 @@ jobs:
       - name: Deploy selected Firebase Functions safely
       
         run: |
-             firebase deploy --only "functions:serverSideMetaTags,functions:rssFeed,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemapCourses,functions:generateSitemapMaterials,functions:generateSitemap,functions:generateRss,functions:pingIndexNow,functions:bulkIndexNow,functions:recentUrls,functions:recentUrlsTxt" --except extensions --project studymaterial-406ad --non-interactive
+                    firebase deploy --only "functions:serverSideMetaTags,functions:rssFeed,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemapCourses,functions:generateSitemapMaterials,functions:generateSitemap,functions:generateRss,functions:pingIndexNow,functions:bulkIndexNow,functions:recentUrls,functions:recentUrlsTxt" --project studymaterial-406ad --non-interactive
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
