@@ -13,7 +13,11 @@ name: Deploy Firebase Functions Only
 #
 # Do NOT add functions:api (or any function with `secrets:`) to this list
 # while the project is on Spark.
-
+        # ⚠️ onIndexPing_* Firestore v2 triggers EventArc use karte hain jo Blaze plan
+        # maangta hai. Agar aap Blaze pe ho to deploy list me ye add karo:
+        #   functions:onIndexPing_jobs,functions:onIndexPing_fast_track,functions:onIndexPing_blogs,
+        #   functions:onIndexPing_web_stories,functions:onIndexPing_mock_tests
+        # Spark plan pe ye HTTP endpoint + daily IndexNow GitHub Action kaafi hai.
 on:
   workflow_dispatch:
 
@@ -50,6 +54,6 @@ jobs:
 
       - name: Deploy selected Firebase Functions safely
         run: |
-          firebase deploy --only "functions:serverSideMetaTags,functions:rssFeed,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemapCourses,functions:generateSitemap,functions:generateRss" --project studymaterial-406ad --non-interactive
+                   firebase deploy --only "functions:serverSideMetaTags,functions:rssFeed,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemapCourses,functions:generateSitemapMaterials,functions:generateSitemap,functions:generateRss,functions:pingIndexNow,functions:bulkIndexNow,functions:recentUrls,functions:recentUrlsTxt" --project studymaterial-406ad --non-interactive
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
