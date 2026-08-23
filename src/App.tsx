@@ -15,6 +15,7 @@ import SEO from './components/SEO';
 // 🚀 CRITICAL PATH - Direct Imports
 // =========================================================
 import Navigation from '@/sections/Navigation';
+import MobileBottomNav from '@/components/MobileBottomNav';
 import { SiteSettingsProvider, PromoBanner } from './sections/Ads';
 
 // =========================================================
@@ -192,8 +193,11 @@ function App() {
                                 <Navigation />
                             </div>
 
+                            {/* 📱 App-style bottom nav (mobile only) */}
+                            <MobileBottomNav />
+
                             {/* ✅ Main Content - Min height (CLS Fix) */}
-                            <main style={{ minHeight: '70vh' }}>
+                            <main style={{ minHeight: '70vh' }} className="pb-16 md:pb-0">
                                 <Suspense fallback={<PageLoader />}>
                                     <Routes>
 
