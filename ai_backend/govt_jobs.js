@@ -347,9 +347,27 @@ ${String(scrapedContent).slice(0, 15000)}
 }
 
 // =========================================================
-// 🌐 WEB SCRAPER
+// 🌐 WEB SCRAPER (429 rate-limit pe smart retry + polite delay)
 // =========================================================
 async function scrapeJobPage(url) {
+    const RETRY_WAITS = [15000, 35000, 60000]; // 429/5xx pe: 15s → 35s → 60s
+    let lastErr;
+    for (let attempt = 0; attempt <= RETRY_WAITS.length; attempt++) {
+        try {
+            return await scrapeJobPageOnce(url);
+        } catch (err) {
+            lastErr = err;
+            const status = err.response && err.response.status;
+            const retryable = status === 429 || status === 503 || status === 502;
+            if (!retryable || attempt === RETRY_WAITS.length) throw err;
+            console.log(`   ⏳ HTTP ${status} — ${RETRY_WAITS[attempt] / 1000}s ruk ke retry (${attempt + 1}/${RETRY_WAITS.length})...`);
+            await sleep(RETRY_WAITS[attempt]);
+        }
+    }
+    throw lastErr;
+}
+
+async function scrapeJobPageOnce(url) {
     const { data: html } = await axios.get(url, {
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -447,6 +465,7 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
 
         try {
             console.log(`📡 Scraping: ${jobLink}`);
+            await sleep(8000); // 🕊️ polite delay — source site 429 na de
             const scrapedContent = await scrapeJobPage(jobLink);
 
             console.log(`🤖 AI Processing: ${titleText}`);
