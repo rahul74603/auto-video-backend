@@ -97,6 +97,50 @@ function buildMetaFiles(colls) {
   const updates = {};
   const pages = {};
 
+  // 🔗 INTERNAL LINKING POOLS — har bot-page ke end me related links jayenge
+  // (Googlebot ko crawl-path milta hai → "Discovered/Crawled not indexed" fix)
+  const jobPool = (colls.jobs || [])
+    .filter(({ data }) => isIndexableDocument(data) && hasUsefulTitle(data) && (data.type || "").toUpperCase() !== "COURSE")
+    .map(({ id, data }) => {
+      const vt = parseLastDate(data.lastDate);
+      return {
+        slug: data.slug || id,
+        title: stripHtml(data.title),
+        category: String(data.category || "").toLowerCase(),
+        expired: Boolean(vt && Date.parse(`${vt}T23:59:59+05:30`) < Date.now()),
+      };
+    });
+  const activeJobPool = jobPool.filter((j) => !j.expired);
+
+  const updatePool = (colls.fast_track || [])
+    .filter(({ data }) => isIndexableDocument(data) && hasUsefulTitle(data))
+    .slice(0, 40)
+    .map(({ id, data }) => ({
+      slug: data.slug || id,
+      title: stripHtml(data.title),
+      category: String(data.category || "").toLowerCase(),
+    }));
+
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  function pickRelated(pool, selfSlug, category, n) {
+    const others = pool.filter((p) => p.slug !== selfSlug);
+    const same = others.filter((p) => category && p.category === category);
+    const rest = others.filter((p) => !same.includes(p));
+    return [...same, ...rest].slice(0, n);
+  }
+
+  function relatedHtml(selfSlug, category) {
+    const relJobs = pickRelated(activeJobPool, selfSlug, category, 5);
+    const relUpdates = pickRelated(updatePool, selfSlug, category, 3);
+    if (!relJobs.length && !relUpdates.length) return "";
+    let html = `<h2>ये भी देखें (Related)</h2><ul>`;
+    relJobs.forEach((j) => { html += `<li><a href="${SITE}/job/${esc(j.slug)}">${esc(j.title)}</a></li>`; });
+    relUpdates.forEach((u) => { html += `<li><a href="${SITE}/update/${esc(u.slug)}">${esc(u.title)}</a></li>`; });
+    html += `</ul><p><a href="${SITE}/govt-jobs">सभी Latest Govt Jobs</a> | <a href="${SITE}/test">Free Mock Tests</a> | <a href="${SITE}/blog">Blog</a></p>`;
+    return html;
+  }
+
   // ===== JOBS: full content + JobPosting schema =====
   (colls.jobs || []).forEach(({ id, data }) => {
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
@@ -157,7 +201,7 @@ function buildMetaFiles(colls) {
       d: desc,
       img,
       type: "article",
-      content: expiredBanner + (data.description || ""),
+      content: expiredBanner + (data.description || "") + relatedHtml(slug, String(data.category || "").toLowerCase()),
       ld,
     };
   });
@@ -199,7 +243,7 @@ function buildMetaFiles(colls) {
       d: desc,
       img,
       type: "article",
-      content: body,
+      content: body + relatedHtml(slug, String(data.category || "").toLowerCase()),
       ld,
     };
   });
