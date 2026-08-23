@@ -8,6 +8,8 @@ import {
     MessageCircle, ExternalLink
 } from 'lucide-react';
 import DynamicSidebar from '@/components/DynamicSidebar';
+import { JOB_HUBS } from '@/config/jobHubs';
+import { Link } from 'react-router-dom';
 import { useLanguage } from '@/context/useLanguage';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import SEO from '../components/SEO';
@@ -511,6 +513,30 @@ const GovtJobs = () => {
                                 className="w-full pl-7 md:pl-9 pr-3 py-1.5 md:py-2 text-[9px] md:text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                             />
                         </div>
+                    </div>
+                </div>
+
+                {/* 🎯 JOB HUBS — qualification/category/state wise pages */}
+                <div className="bg-white p-2.5 md:p-3 rounded-xl shadow-sm border border-gray-100 mb-4 md:mb-6">
+                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                        <span className="text-[9px] md:text-[11px] font-black text-slate-400 uppercase tracking-wider shrink-0">
+                            🎯 Category:
+                        </span>
+                        {JOB_HUBS.map((hub) => (
+                            <Link
+                                key={hub.slug}
+                                to={`/jobs/${hub.slug}`}
+                                className="shrink-0 px-2.5 py-1 rounded-full bg-slate-50 hover:bg-blue-600 hover:text-white border border-slate-200 text-[9px] md:text-[11px] font-bold text-slate-600 transition-all whitespace-nowrap"
+                            >
+                                {hub.emoji} {hub.label}
+                            </Link>
+                        ))}
+                        <Link
+                            to="/exam-calendar"
+                            className="shrink-0 px-2.5 py-1 rounded-full bg-amber-50 hover:bg-amber-500 hover:text-white border border-amber-200 text-[9px] md:text-[11px] font-black text-amber-700 transition-all whitespace-nowrap"
+                        >
+                            📅 Exam Calendar
+                        </Link>
                     </div>
                 </div>
 

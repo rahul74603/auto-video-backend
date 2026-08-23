@@ -53,6 +53,10 @@ const Footer = () => {
               <li><Link to="/free-study-material" className="hover:text-white transition-colors">Free Study Material</Link></li>
               <li><Link to="/blog" className="text-gray-400 hover:text-white transition-colors font-bold">Blog</Link></li>
               <li><Link to="/govt-jobs" className="hover:text-white transition-colors">Govt Jobs</Link></li>
+              <li><Link to="/exam-calendar" className="hover:text-white transition-colors">📅 Exam Calendar</Link></li>
+              <li><Link to="/jobs/10th-pass" className="hover:text-white transition-colors">10th Pass Jobs</Link></li>
+              <li><Link to="/jobs/12th-pass" className="hover:text-white transition-colors">12th Pass Jobs</Link></li>
+              <li><Link to="/jobs/railway" className="hover:text-white transition-colors">Railway Jobs</Link></li>
               <li><Link to="/premium-notes" className="text-gray-400 hover:text-white transition-colors font-bold">Premium Notes</Link></li>
             </ul>
           </nav>
