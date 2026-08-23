@@ -23,8 +23,6 @@ type CourseFileView = {
 type PremiumGlobalSettings = {
   mrpPrice?: string | number;
   discountPercent?: string | number;
-  relatedBlogs?: { title?: string; url?: string }[];
-  sidebarLinks?: { name?: string; url?: string }[];
 };
 
 /**

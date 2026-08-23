@@ -28,9 +28,7 @@ type NotesLink = {
 type NotesSettings = {
   mrpPrice?: string | number;
   discountPercent?: string | number;
-  relatedBlogs?: NotesLink[];
   ebookUpdates?: NotesLink[];
-  sidebarLinks?: NotesLink[];
   premiumBoxTitle?: string;
   premiumBoxDesc?: string;
 };

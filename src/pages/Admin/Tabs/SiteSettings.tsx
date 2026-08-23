@@ -2,17 +2,15 @@ import { useState, useEffect } from 'react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { toast } from 'sonner';
 import { asText } from '@/types/firestore';
-import { 
-    Settings, Save, Link as LinkIcon, ShoppingBag, 
-    PlusCircle, Trash2, Megaphone, ToggleRight, ToggleLeft, BookOpen
+import {
+    Settings, Save, ShoppingBag,
+    Megaphone, ToggleRight, ToggleLeft
 } from 'lucide-react';
 
 // =========================================================
 // 🧾 SETTINGS TYPE (type alias → Record<string, unknown> compatible)
 // =========================================================
 type SiteSettingsState = {
-    sidebarLinks: { name: string; url: string }[];
-    relatedBlogs: { title: string; url: string }[];
     premiumBoxTitle: string;
     premiumBoxDesc: string;
     bottomBarText: string;
@@ -26,14 +24,9 @@ type SiteSettingsState = {
 };
 
 const strVal = (v: unknown, fb: string): string => (v !== undefined ? asText(v, fb) : fb);
-const linkList = <T,>(v: unknown, fb: T): T =>
-    (Array.isArray(v) ? (v as unknown as T) : fb);
-
 const SiteSettings = () => {
     const [loading, setLoading] = useState(false);
     const [settings, setSettings] = useState<SiteSettingsState>({
-        sidebarLinks: [], // इसे खाली रखा है ताकि डेटाबेस से आए
-        relatedBlogs: [],
         premiumBoxTitle: "",
         premiumBoxDesc: "",
         bottomBarText: "",
@@ -53,8 +46,6 @@ const SiteSettings = () => {
                 if (cancelled || !data) return;
                 setSettings(prev => ({
                     ...prev,
-                    sidebarLinks: linkList(data['sidebarLinks'], prev.sidebarLinks),
-                    relatedBlogs: linkList(data['relatedBlogs'], prev.relatedBlogs),
                     premiumBoxTitle: strVal(data['premiumBoxTitle'], prev.premiumBoxTitle),
                     premiumBoxDesc: strVal(data['premiumBoxDesc'], prev.premiumBoxDesc),
                     bottomBarText: strVal(data['bottomBarText'], prev.bottomBarText),
@@ -72,38 +63,6 @@ const SiteSettings = () => {
             .catch((err) => console.error("Settings fetch error:", err));
         return () => { cancelled = true; };
     }, []);
-
-    // --- Sidebar Links Handlers (For All-in-1 Sidebars) ---
-    const addLink = () => {
-        setSettings({ ...settings, sidebarLinks: [...(settings.sidebarLinks || []), { name: "", url: "" }] });
-    };
-
-    const removeLink = (index: number) => {
-        const updated = settings.sidebarLinks.filter((_, i) => i !== index);
-        setSettings({ ...settings, sidebarLinks: updated });
-    };
-
-    const updateLink = (index: number, field: 'name' | 'url', value: string) => {
-        const updated = [...settings.sidebarLinks];
-        updated[index][field] = value;
-        setSettings({ ...settings, sidebarLinks: updated });
-    };
-
-    // --- Related Blogs Handlers (Trending Section) ---
-    const addRelatedBlog = () => {
-        setSettings({ ...settings, relatedBlogs: [...(settings.relatedBlogs || []), { title: "", url: "" }] });
-    };
-
-    const removeRelatedBlog = (index: number) => {
-        const updated = settings.relatedBlogs.filter((_, i) => i !== index);
-        setSettings({ ...settings, relatedBlogs: updated });
-    };
-
-    const updateRelatedBlog = (index: number, field: 'title' | 'url', value: string) => {
-        const updated = [...settings.relatedBlogs];
-        updated[index][field] = value;
-        setSettings({ ...settings, relatedBlogs: updated });
-    };
 
     // --- ✅ SAFE SAVE LOGIC (No Overwriting) ---
     const handleSave = async () => {
@@ -145,47 +104,6 @@ const SiteSettings = () => {
 
                 <div className="p-6 md:p-10 grid grid-cols-1 lg:grid-cols-2 gap-10">
                     
-                    {/* LEFT COLUMN: LINKS & BLOGS */}
-                    <div className="space-y-8">
-                        {/* Section 1: Global Sidebar Links */}
-                        <div className="bg-slate-50 p-6 rounded-[32px] border border-slate-100">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="font-black text-blue-700 flex items-center gap-2 text-md uppercase tracking-tight">
-                                    <LinkIcon size={20} /> Sidebar Quick Links
-                                </h3>
-                                <button onClick={addLink} className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all"><PlusCircle size={18} /></button>
-                            </div>
-                            <div className="space-y-3">
-                                {settings.sidebarLinks?.map((link, idx) => (
-                                    <div key={idx} className="flex gap-2 bg-white p-2 rounded-xl border border-slate-200">
-                                        <input id={`sl-n-${idx}`} name={`sl-n-${idx}`} placeholder="Name" className="flex-1 p-2 text-xs font-bold outline-none" value={link.name} onChange={e => updateLink(idx, 'name', e.target.value)} />
-                                        <input id={`sl-u-${idx}`} name={`sl-u-${idx}`} placeholder="URL" className="flex-1 p-2 text-[10px] text-blue-500 outline-none" value={link.url} onChange={e => updateLink(idx, 'url', e.target.value)} />
-                                        <button onClick={() => removeLink(idx)} className="text-red-400 p-1"><Trash2 size={16}/></button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Section 2: Trending Blogs */}
-                        <div className="bg-purple-50/50 p-6 rounded-[32px] border border-purple-100">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="font-black text-purple-700 flex items-center gap-2 text-md uppercase tracking-tight">
-                                    <BookOpen size={20} /> Trending Blog Links
-                                </h3>
-                                <button onClick={addRelatedBlog} className="p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all"><PlusCircle size={18} /></button>
-                            </div>
-                            <div className="space-y-3">
-                                {settings.relatedBlogs?.map((blog, idx) => (
-                                    <div key={idx} className="flex gap-2 bg-white p-2 rounded-xl border border-purple-100">
-                                        <input id={`rb-t-${idx}`} name={`rb-t-${idx}`} placeholder="Blog Title" className="flex-1 p-2 text-xs font-bold outline-none" value={blog.title} onChange={e => updateRelatedBlog(idx, 'title', e.target.value)} />
-                                        <input id={`rb-u-${idx}`} name={`rb-u-${idx}`} placeholder="URL" className="flex-1 p-2 text-[10px] text-purple-500 outline-none" value={blog.url} onChange={e => updateRelatedBlog(idx, 'url', e.target.value)} />
-                                        <button onClick={() => removeRelatedBlog(idx)} className="text-red-400 p-1"><Trash2 size={16}/></button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
                     {/* RIGHT COLUMN: PRICING & PROMO */}
                     <div className="space-y-8">
                         <div className="bg-blue-50/50 p-6 rounded-[32px] border border-blue-100">

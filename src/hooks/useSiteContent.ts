@@ -56,8 +56,7 @@ export const useSiteContent = () => {
   });
 
   useEffect(() => {
-    // ✅ संग्रह का नाम 'site_settings' और डॉक्यूमेंट 'global' कर दिया है 
-    // ताकि AdminSidebarControl के साथ मैच हो सके
+    // ✅ site_settings/global doc se live settings subscribe
     const unsubscribe = siteSettingsRepository.subscribeGlobal((settings) => {
       if (settings) {
         const freshData = settings as unknown as SiteContent;

@@ -3,8 +3,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useMaterial } from '@/features/materials/hooks/useMaterial';
 import {
-  FileText, Download, ArrowLeft, Info, Sparkles,
-  Tag, ShoppingCart, Flame, User, BookOpen
+  FileText, Download, ArrowLeft, Info, Tag, ShoppingCart, Flame, User, BookOpen
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import SEO from '../components/SEO';
@@ -20,21 +19,9 @@ type MaterialView = {
   applyLink?: string;
 };
 
-type RelatedBlogLink = {
-  title?: string;
-  url?: string;
-};
-
-type SidebarLinkItem = {
-  name?: string;
-  url?: string;
-};
-
 type MaterialGlobalSettings = {
   mrpPrice?: string | number;
   discountPercent?: string | number;
-  relatedBlogs?: RelatedBlogLink[];
-  sidebarLinks?: SidebarLinkItem[];
 };
 
 const MaterialDetails = () => {
@@ -52,7 +39,7 @@ const MaterialDetails = () => {
         if (settingsSnap) {
           setGlobalSettings(settingsSnap);
         } else {
-          setGlobalSettings({ relatedBlogs: [], sidebarLinks: [], mrpPrice: "499", discountPercent: "85" });
+          setGlobalSettings({ mrpPrice: "499", discountPercent: "85" });
         }
       } catch (err) {
         console.error("Error loading PDF details:", err);
@@ -66,12 +53,6 @@ const MaterialDetails = () => {
     Number(globalSettings?.mrpPrice || 499) * (1 - Number(globalSettings?.discountPercent || 85) / 100)
   );
 
-  const loopColors = [
-    "from-rose-400 to-pink-600 shadow-rose-500/30",
-    "from-blue-400 to-indigo-600 shadow-blue-500/30",
-    "from-emerald-400 to-teal-600 shadow-emerald-500/30",
-    "from-amber-400 to-orange-600 shadow-orange-500/30"
-  ];
 
   if (loading) return <div className="min-h-screen flex justify-center items-center bg-white"><div className="animate-spin h-10 w-10 border-4 border-blue-600 rounded-full border-t-transparent shadow-lg"></div></div>;
 
@@ -187,24 +168,6 @@ const MaterialDetails = () => {
 
           <aside className="w-[40%] md:w-[32%] space-y-3 md:space-y-6 sticky top-12 md:top-16">
             
-            {globalSettings?.relatedBlogs && (
-              <div className="bg-white p-2 md:p-5 rounded-xl md:rounded-3xl shadow-sm border border-slate-100 overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-purple-50 rounded-bl-full opacity-40"></div>
-                  <h3 className="text-[10px] md:text-base font-black text-slate-900 mb-3 border-b border-slate-50 pb-2 flex items-center gap-1.5 relative z-10">
-                    <Sparkles size={14} className="text-purple-600 animate-pulse" /> ट्रेंडिंग टॉपिक्स 🔥
-                  </h3>
-                  <ul className="space-y-2 md:space-y-3 relative z-10 font-black">
-                      {globalSettings.relatedBlogs.map((b, i: number) => (
-                          <li key={i} onClick={() => window.open(b.url, '_blank')} className={`bg-gradient-to-r ${loopColors[i % loopColors.length]} p-[0.8px] rounded-lg cursor-pointer active:scale-95 shadow-sm`}>
-                              <div className="bg-white p-1.5 md:p-3 rounded-[7px] text-[8.5px] md:text-[11.5px] text-slate-800 line-clamp-2 leading-tight">
-                                  {b.title}
-                              </div>
-                          </li>
-                      ))}
-                  </ul>
-              </div>
-            )}
-
             <div className="p-3 md:p-6 bg-gradient-to-br from-indigo-700 via-blue-800 to-slate-900 rounded-xl md:rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden group">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-3xl group-hover:scale-150 transition-all duration-700"></div>
                 <p className="font-black text-[11px] md:text-lg mb-1 flex items-center gap-2 text-yellow-300">
