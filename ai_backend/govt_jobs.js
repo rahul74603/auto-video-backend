@@ -405,12 +405,98 @@ async function scrapeJobPageOnce(url) {
 // =========================================================
 // 🔥 CORE SCRAPING LOGIC
 // =========================================================
-async function scrapeGovtJobsLogic(maxJobs = 5) {
-    console.log("🚀 Govt Jobs Scraper Started...");
+// =========================================================
+// 🌐 MULTI-SOURCE JOB FEEDS (ek site down/429 ho to baaki chalte rahen)
+// Round-robin merge — koi ek site dominate nahi karti.
+// =========================================================
+const JOB_SOURCES = [
+    // ✅ Sab feeds LIVE-VERIFIED hain (23 Aug 2026)
+    { name: 'IndGovtJobs',    url: 'https://www.indgovtjobs.in/feeds/posts/default?alt=rss' },
+    { name: 'FreeJobAlert',   url: 'https://www.freejobalert.com/feed/' },
+    { name: 'SarkariExam',    url: 'https://www.sarkariexam.com/feed' },
+    { name: 'SarkariJobFind', url: 'https://sarkarijobfind.com/feed/' },
+    { name: 'RojgarResult',   url: 'https://rojgarresult.com/feed/' },
+    { name: 'GovtJobsBlog',   url: 'https://www.govtjobsblog.in/feed/' },
+    { name: 'SarkariNaukriD', url: 'https://www.sarkarinaukridaily.in/feed/' },
+];
 
-    const rssUrl = 'https://www.indgovtjobs.in/feeds/posts/default?alt=rss';
-    const feed   = await parser.parseURL(rssUrl);
-    const items  = feed.items.slice(0, 50);
+async function fetchAllJobItems(perSource = 12, limitTotal = 60) {
+    const buckets = [];
+    for (const src of JOB_SOURCES) {
+        try {
+            const feed = await parser.parseURL(src.url);
+            const items = (feed.items || []).slice(0, perSource).map((it) => ({
+                title:  (it.title || '').trim(),
+                link:   (it.link || it.guid || '').trim(),
+                source: src.name
+            })).filter((it) => it.title && it.link && !it.link.includes('127.0.0.1'));
+            buckets.push(items);
+            console.log(`📰 ${src.name}: ${items.length} items`);
+        } catch (e) {
+            console.warn(`⚠️ ${src.name} feed fail (skip): ${e.message.slice(0, 80)}`);
+        }
+        await sleep(1500);
+    }
+    // Round-robin merge: har site se baari-baari 1 item
+    const merged = [];
+    let added = true;
+    for (let i = 0; added && merged.length < limitTotal; i++) {
+        added = false;
+        for (const bucket of buckets) {
+            if (i < bucket.length && merged.length < limitTotal) {
+                merged.push(bucket[i]);
+                added = true;
+            }
+        }
+    }
+    console.log(`📊 Total candidates (all sources): ${merged.length}`);
+    return merged;
+}
+
+// =========================================================
+// ⭐ JOB QUALITY SCORE — best quality jobs hi save honge
+// Facts completeness + article length (max ~14 points)
+// =========================================================
+function jobQualityScore(jobData, articleHtml) {
+    let score = 0;
+    if (jobData.lastDate)      score += 2;
+    if (jobData.vacancies)     score += 2;
+    if (jobData.qualification) score += 2;
+    if (jobData.salary)        score += 1;
+    if (jobData.startDate)     score += 1;
+    if (jobData.organization)  score += 1;
+    if (jobData.feeGen || jobData.applicationFee) score += 1;
+    if (jobData.notificationLink || jobData.applyLink) score += 1;
+    const words = String(articleHtml || '').replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
+    if (words >= 1500)      score += 3;
+    else if (words >= 1000) score += 2;
+    else if (words >= 600)  score += 1;
+    return { score, words };
+}
+
+const QUALITY_GOOD  = 9; // isse upar = turant save
+const QUALITY_FLOOR = 6; // 6-8 = backup pool (min-2 guarantee ke liye)
+const MIN_JOBS_PER_RUN = 2;
+const MAX_EVALUATIONS  = 12; // AI-quota/time budget per run
+
+async function scrapeGovtJobsLogic(maxJobs = 5) {
+    console.log("🚀 Govt Jobs Scraper Started (multi-source)...");
+
+    const items = await fetchAllJobItems();
+
+    // 🛡️ Cross-site duplicate protection: recent titles (published + drafts)
+    const { overlapsAny } = require('./agents/article_agents/title_utils');
+    const recentTitles = [];
+    try {
+        const [jobsSnap, draftsSnap] = await Promise.all([
+            db.collection("jobs").orderBy("createdAt", "desc").limit(60).get(),
+            db.collection("job_drafts").orderBy("createdAt", "desc").limit(60).get()
+        ]);
+        jobsSnap.forEach((d) => { const t = d.data().title; if (t) recentTitles.push(String(t)); });
+        draftsSnap.forEach((d) => { const t = d.data().title; if (t) recentTitles.push(String(t)); });
+    } catch (e) {
+        console.warn("Recent titles fetch failed:", e.message);
+    }
 
     const now = new Date();
     const dateSuffix = now.toLocaleString('en-IN', {
@@ -436,14 +522,27 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
     }
 
     let savedCount = 0;
+    let evaluated = 0;
+    const backupPool = []; // score 6-8 wale — min-2 guarantee ke liye
 
     for (const item of items) {
         if (savedCount >= maxJobs) break;
+        if (evaluated >= MAX_EVALUATIONS) {
+            console.log(`⏸️ Evaluation budget khatam (${MAX_EVALUATIONS}) — is run me itna hi`);
+            break;
+        }
 
         const titleText = (item.title || '').trim();
 
         if (shouldSkipTitle(titleText)) {
             console.log(`⏭️ Skipped: ${titleText}`);
+            continue;
+        }
+
+        // 🛡️ Same job doosri site se? Title-overlap check
+        const dup = overlapsAny(titleText, recentTitles);
+        if (dup.dup) {
+            console.log(`⏭️ Duplicate (cross-site): "${titleText}" ≈ "${dup.with}"`);
             continue;
         }
 
@@ -464,7 +563,8 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
         }
 
         try {
-            console.log(`📡 Scraping: ${jobLink}`);
+            evaluated++;
+            console.log(`📡 [${evaluated}/${MAX_EVALUATIONS}] Scraping (${item.source || 'RSS'}): ${jobLink}`);
             await sleep(8000); // 🕊️ polite delay — source site 429 na de
             const scrapedContent = await scrapeJobPage(jobLink);
 
@@ -563,20 +663,45 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 Object.entries(draftPayload).filter(([, v]) => v !== undefined)
             );
 
-            await db.collection("job_drafts").doc(finalSlug).set(cleanPayload);
+            // ⭐ QUALITY GATE — sirf ache article wale jobs save honge
+            const { score, words } = jobQualityScore(jobData, articleHtml);
+            console.log(`⭐ Quality: ${score}/14 (${words} words) — ${finalTitle.slice(0, 50)}`);
+
+            // Processed mark turant (dobara AI-quota waste na ho)
             await db.collection("processed_links").doc(docId).set({
-                link:        jobLink,
-                slug:        finalSlug,
-                title:       finalTitle,
-                processedAt: admin.firestore.FieldValue.serverTimestamp()
+                link:         jobLink,
+                slug:         finalSlug,
+                title:        finalTitle,
+                qualityScore: score,
+                processedAt:  admin.firestore.FieldValue.serverTimestamp()
             });
 
-            savedCount++;
-            console.log(`✅ Saved (${savedCount}/${maxJobs}): ${finalTitle}`);
+            if (score >= QUALITY_GOOD) {
+                await db.collection("job_drafts").doc(finalSlug).set(cleanPayload);
+                savedCount++;
+                recentTitles.push(finalTitle);
+                console.log(`✅ Saved (${savedCount}/${maxJobs}) [score ${score}]: ${finalTitle}`);
+            } else if (score >= QUALITY_FLOOR) {
+                backupPool.push({ finalSlug, cleanPayload, finalTitle, score });
+                console.log(`🗂️ Backup pool [score ${score}]: ${finalTitle}`);
+            } else {
+                console.log(`🗑️ Low quality [score ${score}] — skip: ${finalTitle}`);
+            }
             await sleep(2000);
 
         } catch (err) {
             console.error(`❌ Failed: ${jobLink} | ${err.message}`);
+        }
+    }
+
+    // 📉 MIN GUARANTEE: 2 se kam save hue to backup pool ke BEST wale le lo
+    if (savedCount < MIN_JOBS_PER_RUN && backupPool.length) {
+        backupPool.sort((a, b) => b.score - a.score);
+        for (const b of backupPool) {
+            if (savedCount >= MIN_JOBS_PER_RUN) break;
+            await db.collection("job_drafts").doc(b.finalSlug).set(b.cleanPayload);
+            savedCount++;
+            console.log(`✅ Saved from backup (${savedCount}) [score ${b.score}]: ${b.finalTitle}`);
         }
     }
 
