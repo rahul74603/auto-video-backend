@@ -28,7 +28,6 @@ import AdminFoldersTab from './Admin/Tabs/AdminFoldersTab';
 import AdminBrowseTab from './Admin/Tabs/AdminBrowseTab';
 import AdminStorageTab from './Admin/Tabs/AdminStorageTab';
 import AdminJobDrafts from './Admin/Tabs/AdminJobDrafts'; 
-import AdminAIArticleStudio from './Admin/Tabs/AdminAIArticleStudio';
 import AdminBrowseAIDrafts from './Admin/Tabs/AdminBrowseAIDrafts';
 import FastTrackManager from './Admin/Tabs/FastTrackManager'; 
 import AdminWebStories from './Admin/Tabs/AdminWebStories';
@@ -181,11 +180,9 @@ const AdminPage = () => {
                     {activeTab === 'BROWSE' && <AdminBrowseTab />}
                     {activeTab === 'JOBS AI' && (
                         <div className="space-y-4">
-                            {/* ✍️ AI Article Studio — upar: fetched jobs se Article banane ka engine */}
-                            <AdminAIArticleStudio />
-                            {/* 📋 Browse AI Drafts — Telegram EDIT button ka landing pad + draft management */}
+                            {/* 📋 Review AI Drafts — PRIMARY workflow: AI-generated full articles review/edit/publish */}
                             <AdminBrowseAIDrafts />
-                            {/* 📥 AI Job Drafts — neeche: auto-fetched jobs review & publish */}
+                            {/* 📥 Fetched Job Drafts — auto-fetched jobs (AI queue + review & publish) */}
                             <AdminJobDrafts />
                         </div>
                     )}
