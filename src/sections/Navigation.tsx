@@ -339,7 +339,7 @@ const Navigation = () => {
                 </Link>
 
                 <Link
-                    to="/handwritten-premium"
+                    to="/premium-notes"
                     className="flex items-center gap-1 text-amber-500 font-black text-[11px] shrink-0 whitespace-nowrap px-2"
                 >
                     Handwritten Premium{' '}
