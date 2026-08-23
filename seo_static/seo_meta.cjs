@@ -107,6 +107,9 @@ function buildMetaFiles(colls) {
         slug: data.slug || id,
         title: stripHtml(data.title),
         category: String(data.category || "").toLowerCase(),
+        lastDate: String(data.lastDate || ""),
+        vacancies: String(data.vacancies || ""),
+        haystack: `${data.title} ${data.qualification || ""} ${data.location || ""} ${data.category || ""} ${data.organization || ""}`,
         expired: Boolean(vt && Date.parse(`${vt}T23:59:59+05:30`) < Date.now()),
       };
     });
@@ -267,6 +270,36 @@ function buildMetaFiles(colls) {
   [...(colls.study_materials || []), ...(colls.studyMaterials || [])].forEach(({ id, data }) =>
     addPage(`/material/${data.slug || id}`, data, "imageUrl")
   );
+
+  // 🎯 HUB PAGES — bots ko real content list (title/desc + matching active jobs)
+  try {
+    const { JOB_HUBS, hubMatches } = require("./hubs.cjs");
+    JOB_HUBS.forEach((hub) => {
+      const matched = activeJobPool.filter((j) => hubMatches(hub, j.haystack || j.title)).slice(0, 25);
+      let content = `<p>${hub.metaDescription}</p>`;
+      if (matched.length) {
+        content += `<h2>${hub.label} — Active Bhartiyan (${matched.length})</h2><ul>`;
+        matched.forEach((j) => {
+          const extra = [j.vacancies ? `${j.vacancies} Posts` : "", j.lastDate ? `Last Date: ${j.lastDate}` : ""].filter(Boolean).join(" · ");
+          content += `<li><a href="${SITE}/job/${esc(j.slug)}">${esc(j.title)}</a>${extra ? ` — ${esc(extra)}` : ""}</li>`;
+        });
+        content += `</ul>`;
+      }
+      content += `<h2>Dusri Categories</h2><ul>`;
+      JOB_HUBS.filter((h) => h.slug !== hub.slug).forEach((h) => {
+        content += `<li><a href="${SITE}/jobs/${esc(h.slug)}">${esc(h.label)}</a></li>`;
+      });
+      content += `</ul><p><a href="${SITE}/govt-jobs">सभी Latest Govt Jobs</a></p>`;
+      pages[`/jobs/${hub.slug}`] = {
+        t: truncate(hub.seoTitle, 70),
+        d: truncate(hub.metaDescription, 160),
+        img: DEFAULT_IMG,
+        type: "website",
+        content,
+        ld: [],
+      };
+    });
+  } catch (e) { /* hubs optional */ }
 
   return {
     "seo-meta-jobs.json": JSON.stringify(jobs),

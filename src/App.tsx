@@ -28,6 +28,7 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 // Jobs
 const GovtJobs = lazy(() => import('@/sections/GovtJobs'));
 const JobDetails = lazy(() => import('./pages/JobDetails'));
+const JobHub = lazy(() => import('./pages/JobHub'));
 const CategoryPage = lazy(() => import('./pages/CategoryPage'));
 
 // Blog
@@ -218,6 +219,16 @@ function App() {
                                             element={
                                                 <PageWrapper>
                                                     <JobDetails />
+                                                </PageWrapper>
+                                            }
+                                        />
+                                        {/* 🎯 SEO HUB PAGES — /jobs/10th-pass, /jobs/mp, /jobs/railway ... */}
+                                        <Route path="/jobs" element={<Navigate to="/govt-jobs" replace />} />
+                                        <Route
+                                            path="/jobs/:hubSlug"
+                                            element={
+                                                <PageWrapper>
+                                                    <JobHub />
                                                 </PageWrapper>
                                             }
                                         />

@@ -31,6 +31,10 @@ const path = require("path");
 
 const WEBSITE_URL = "https://studygyaan.in";
 
+// 🎯 SEO Hub pages (/jobs/10th-pass, /jobs/mp ...) — sitemap me bhi jayenge
+let JOB_HUBS = [];
+try { JOB_HUBS = require("./hubs.cjs").JOB_HUBS; } catch { /* optional */ }
+
 // ---------- CLI args ----------
 const args = process.argv.slice(2);
 const MOCK = args.includes("--mock");
@@ -209,6 +213,10 @@ function sitemapMain() {
   STATIC_PAGES.forEach((p) => {
     xml += `  <url>\n    <loc>${WEBSITE_URL}${p.path}</loc>\n    <changefreq>${p.freq}</changefreq>\n    <priority>${p.priority}</priority>\n  </url>\n`;
   });
+  // 🎯 Hub pages — high-intent search landing pages
+  JOB_HUBS.forEach((h) => {
+    xml += `  <url>\n    <loc>${WEBSITE_URL}/jobs/${h.slug}</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.9</priority>\n  </url>\n`;
+  });
   return xml + `</urlset>`;
 }
 
@@ -238,6 +246,12 @@ function buildAll(colls) {
   STATIC_PAGES.forEach((p) => {
     allXml += `  <url>\n    <loc>${WEBSITE_URL}${p.path}</loc>\n    <changefreq>${p.freq}</changefreq>\n    <priority>${p.priority}</priority>\n  </url>\n`;
     push(`${WEBSITE_URL}${p.path}`, now);
+  });
+
+  // 🎯 Hub pages in sitemap-all + recent-urls
+  JOB_HUBS.forEach((h) => {
+    allXml += `  <url>\n    <loc>${WEBSITE_URL}/jobs/${h.slug}</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.9</priority>\n  </url>\n`;
+    push(`${WEBSITE_URL}/jobs/${h.slug}`, now);
   });
 
   colls.blogs.forEach(({ id, data }) => {
