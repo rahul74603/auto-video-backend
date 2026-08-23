@@ -160,6 +160,12 @@ const JobHub = () => {
                         <div className="bg-white rounded-2xl border border-slate-100 p-4 md:p-5 mt-4">
                             <p className="text-[10px] md:text-xs font-black text-slate-500 uppercase tracking-widest mb-3">🎯 Dusri Categories Explore Karein</p>
                             <div className="flex flex-wrap gap-2">
+                                <Link
+                                    to="/exam-calendar"
+                                    className="px-3 py-1.5 bg-purple-600 text-white rounded-xl text-[10px] md:text-xs font-black transition-all hover:bg-purple-700"
+                                >
+                                    📅 Exam Calendar
+                                </Link>
                                 {otherHubs.map((h) => (
                                     <Link
                                         key={h.slug}
