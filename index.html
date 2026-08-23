@@ -163,41 +163,11 @@
     </script>
 
     <!-- =====================================================
-         ✅ SUBSCRIBE WITH GOOGLE (SWG) — Idle pe load
-         Pehle: async tha par <head> mein tha — 79KB block
-         Ab: requestIdleCallback se — jab browser free ho tab
+         ❌ SUBSCRIBE WITH GOOGLE (SWG) — REMOVED
+         Ye Google script page me apna khud ka light-theme UI
+         inject karti thi (grey/white box) + 79KB bekar load.
+         openaccess mode me iska koi fayda bhi nahi tha.
     ====================================================== -->
-    <script>
-      (function () {
-        function loadSWG() {
-          var script = document.createElement('script');
-          script.src = 'https://news.google.com/swg/js/v1/swg-basic.js';
-          script.async = true;
-          script.onload = function () {
-            (self.SWG_BASIC = self.SWG_BASIC || []).push(function (basicSubscriptions) {
-              basicSubscriptions.init({
-                type: 'NewsArticle',
-                isPartOfType: ['Product'],
-                isPartOfProductId: 'CAownfa2DA:openaccess',
-                clientOptions: {
-                  theme: 'light',
-                  lang: 'en-GB'
-                }
-              });
-            });
-          };
-          document.head.appendChild(script);
-        }
-
-        /* Browser free ho tab load karo */
-        if ('requestIdleCallback' in window) {
-          requestIdleCallback(loadSWG, { timeout: 5000 });
-        } else {
-          /* Fallback — 5 seconds baad */
-          setTimeout(loadSWG, 5000);
-        }
-      })();
-    </script>
 
   </body>
 </html>
