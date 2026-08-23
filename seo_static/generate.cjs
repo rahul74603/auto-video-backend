@@ -374,30 +374,46 @@ function buildAll(colls) {
 
   allXml += `</urlset>`;
 
-  // --- news sitemap (blogs, last 2 days) ---
+  // --- news sitemap (last 2 days: blogs + JOBS + FAST TRACK — sab news hai!) ---
   const twoDaysAgo = new Date();
   twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
   let newsXml =
     XML_HEAD +
     `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"\n` +
     `        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">\n`;
-  colls.blogs.slice(0, 100).forEach(({ id, data }) => {
-    if (!isIndexableDocument(data) || !hasUsefulTitle(data) || !data.createdAt) return;
+
+  const newsEntry = (urlPath, data, id) => {
+    if (!isIndexableDocument(data) || !hasUsefulTitle(data) || !data.createdAt) return "";
     const pubDate = toDateObj(data.createdAt);
-    if (!pubDate || pubDate < twoDaysAgo) return;
+    if (!pubDate || pubDate < twoDaysAgo) return "";
     const slug = safeXml(data.slug || id);
-    newsXml += `  <url>\n`;
-    newsXml += `    <loc>${WEBSITE_URL}/blog/${slug}</loc>\n`;
-    newsXml += `    <news:news>\n`;
-    newsXml += `      <news:publication>\n`;
-    newsXml += `        <news:name>StudyGyaan</news:name>\n`;
-    newsXml += `        <news:language>hi</news:language>\n`;
-    newsXml += `      </news:publication>\n`;
-    newsXml += `      <news:publication_date>${pubDate.toISOString()}</news:publication_date>\n`;
-    newsXml += `      <news:title>${safeXml(data.title || "StudyGyaan Update")}</news:title>\n`;
-    newsXml += `      <news:keywords>${safeXml(data.category || "Education")}, StudyGyaan, Sarkari Naukri, Exam Preparation</news:keywords>\n`;
-    newsXml += `    </news:news>\n`;
-    newsXml += `  </url>\n`;
+    let x = `  <url>\n`;
+    x += `    <loc>${WEBSITE_URL}/${urlPath}/${slug}</loc>\n`;
+    x += `    <news:news>\n`;
+    x += `      <news:publication>\n`;
+    x += `        <news:name>StudyGyaan</news:name>\n`;
+    x += `        <news:language>hi</news:language>\n`;
+    x += `      </news:publication>\n`;
+    x += `      <news:publication_date>${pubDate.toISOString()}</news:publication_date>\n`;
+    x += `      <news:title>${safeXml(data.title || "StudyGyaan Update")}</news:title>\n`;
+    x += `      <news:keywords>${safeXml(data.category || "Education")}, StudyGyaan, Sarkari Naukri, Exam Preparation</news:keywords>\n`;
+    x += `    </news:news>\n`;
+    x += `  </url>\n`;
+    return x;
+  };
+
+  // Jobs = bharti news (sabse important!)
+  colls.jobs.slice(0, 50).forEach(({ id, data }) => {
+    if ((data.type || "").toUpperCase() === "COURSE") return;
+    newsXml += newsEntry("job", data, id);
+  });
+  // Fast track = result/admit card news
+  colls.fast_track.slice(0, 50).forEach(({ id, data }) => {
+    newsXml += newsEntry("update", data, id);
+  });
+  // Blogs
+  colls.blogs.slice(0, 100).forEach(({ id, data }) => {
+    newsXml += newsEntry("blog", data, id);
   });
   newsXml += `</urlset>`;
 
