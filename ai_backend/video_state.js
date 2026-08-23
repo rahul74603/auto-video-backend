@@ -203,6 +203,19 @@ function baseEligibility(data, opts = {}) {
     return { eligible: true, reason: 'pending' };
 }
 
+// 🗓️ SHORTS CUTOFF — is date se PEHLE publish hue jobs/fast_track pe shorts
+// kabhi nahi banenge (admin rule: "aaj se pehle wala sab bhool jao").
+// OPT-IN: dispatcher opts.shortsCutoffMs pass karta hai (env VIDEO_SHORTS_CUTOFF).
+// Forced/manual runs (maxAgeDays: 0) cutoff bhi bypass karte hain.
+function beforeShortsCutoff(data, opts = {}) {
+    if (opts.maxAgeDays === 0) return false;           // forced/manual run
+    const cutoff = Number(opts.shortsCutoffMs) || 0;   // opt-in only
+    if (!cutoff) return false;
+    const published = publishedAtMs(data);
+    if (!published) return false; // baseEligibility ka 'unknown publish age' message aayega
+    return published < cutoff;
+}
+
 function evaluateJob(data, opts = {}) {
     const type = str(data && data.type).toUpperCase();
     // Legacy parity: onJobPublishedNotify skipped only when type was set and != JOB.
@@ -218,14 +231,24 @@ function evaluateJob(data, opts = {}) {
         return { eligible: false, reason: 'looks like an uploaded study material, not a job post' };
     }
 
-    return baseEligibility(data, opts);
+    const base = baseEligibility(data, opts);
+    if (!base.eligible) return base;
+    if (beforeShortsCutoff(data, opts)) {
+        return { eligible: false, reason: 'shorts cutoff se pehle publish hua — sirf naye publish pe short banti hai' };
+    }
+    return base;
 }
 
 function evaluateFastTrack(data, opts = {}) {
     const status = lower(data && data.status);
     if (status !== 'published') return { eligible: false, reason: `status=${status || 'missing'} (needs published)` };
     if (!str(data && data.title)) return { eligible: false, reason: 'missing title' };
-    return baseEligibility(data, opts);
+    const base = baseEligibility(data, opts);
+    if (!base.eligible) return base;
+    if (beforeShortsCutoff(data, opts)) {
+        return { eligible: false, reason: 'shorts cutoff se pehle publish hua — sirf naye publish pe short banti hai' };
+    }
+    return base;
 }
 
 function evaluateMockTest(data, opts = {}) {
