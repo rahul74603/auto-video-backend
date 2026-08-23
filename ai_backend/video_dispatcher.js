@@ -70,7 +70,16 @@ function parseArgs(argv) {
         scanLimit: Number(process.env.VIDEO_SCAN_LIMIT || 150),
         dryRun: false,
         doc: '',
-        maxAgeDays: envMaxAgeDays()
+        maxAgeDays: envMaxAgeDays(),
+        // 🗓️ Shorts cutoff: is date se pehle publish hue job/fast_track pe
+        // shorts kabhi nahi (admin rule 23 Aug 2026). Env se override/disable:
+        // VIDEO_SHORTS_CUTOFF=0 → disabled
+        shortsCutoffMs: (() => {
+            const raw = process.env.VIDEO_SHORTS_CUTOFF;
+            if (raw === '0') return 0;
+            const parsed = Date.parse(raw || '2026-08-23T00:00:00+05:30');
+            return Number.isFinite(parsed) ? parsed : 0;
+        })()
     };
     for (const raw of argv) {
         const [key, value] = raw.replace(/^--/, '').split('=');
@@ -316,7 +325,8 @@ async function processCandidate(candidate, ctx) {
     const claimResult = await V.claim(ctx.db, admin, kind, ref, {
         runId: ctx.runId,
         worker: 'github-dispatcher',
-        maxAgeDays: ctx.maxAgeDays
+        maxAgeDays: ctx.maxAgeDays,
+        shortsCutoffMs: ctx.shortsCutoffMs
     });
 
     if (!claimResult.claimed) {
@@ -396,6 +406,7 @@ async function main() {
         db,
         runId,
         maxAgeDays: args.maxAgeDays,
+        shortsCutoffMs: args.shortsCutoffMs,
         privacyStatus: process.env.VIDEO_PRIVACY_STATUS || ''
     };
     if (ctx.privacyStatus) console.log(`ℹ️ YouTube privacy override: ${ctx.privacyStatus}`);
@@ -448,7 +459,8 @@ async function main() {
             } else {
                 candidates = await scanCollection(db, kind, {
                     scanLimit: args.scanLimit,
-                    maxAgeDays: args.maxAgeDays
+                    maxAgeDays: args.maxAgeDays,
+                    shortsCutoffMs: args.shortsCutoffMs
                 });
             }
         } catch (err) {
