@@ -17,6 +17,7 @@ import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '@/firebase/config';
 import { Briefcase, Zap, FileText, Newspaper, ArrowRight } from 'lucide-react';
 import { checkIsExpired } from '@/utils/jobExpiry';
+import { JOB_HUBS } from '@/config/jobHubs';
 
 type Item = { id: string; title: string; slug: string; extra?: string };
 
@@ -168,6 +169,7 @@ const Section = ({ k, items }: { k: SectionKey; items: Item[] }) => {
 const DynamicSidebar = () => {
     const [data, setData] = useState<SidebarData | null>(memCache?.data || null);
     const [picked, setPicked] = useState<Partial<Record<SectionKey, Item[]>> | null>(null);
+    const [hubPicks, setHubPicks] = useState<typeof JOB_HUBS>([]);
     const { pathname } = useLocation();
 
     useEffect(() => {
@@ -185,6 +187,7 @@ const DynamicSidebar = () => {
         const fresh: Partial<Record<SectionKey, Item[]>> = {};
         sections.forEach((k) => { fresh[k] = randomPick(data[k], 3); });
         setPicked(fresh);
+        setHubPicks(randomPick(JOB_HUBS, 6));
     }, [data, pathname]);
 
     if (!data || !picked) return null;
@@ -207,6 +210,26 @@ const DynamicSidebar = () => {
             {sections.map((k) => (
                 <Section key={k} k={k} items={picked[k] || []} />
             ))}
+            {/* 🎯 Job Hubs — har load pe 6 random categories */}
+            <section className="bg-white p-3 rounded-xl shadow-sm border border-slate-100">
+                <h2 className="text-[10px] md:text-[11px] font-black mb-2 flex items-center justify-between border-b border-slate-100 pb-1.5 uppercase tracking-wide text-rose-600">
+                    <span>🎯 Job Categories</span>
+                    <Link to="/exam-calendar" className="text-[9px] text-amber-600 hover:text-amber-700 normal-case font-black">
+                        📅 Exam Calendar
+                    </Link>
+                </h2>
+                <div className="flex flex-wrap gap-1.5">
+                    {hubPicks.map((hub) => (
+                        <Link
+                            key={hub.slug}
+                            to={`/jobs/${hub.slug}`}
+                            className="px-2 py-1 rounded-full bg-slate-50 hover:bg-blue-600 hover:text-white border border-slate-200 text-[10px] font-bold text-slate-600 transition-all"
+                        >
+                            {hub.emoji} {hub.label}
+                        </Link>
+                    ))}
+                </div>
+            </section>
         </div>
     );
 };

@@ -415,6 +415,15 @@ const Navigation = () => {
                                 <Wrench size={16} aria-hidden="true" /> Sarkari Tools
                             </a>
                         </li>
+                        <li>
+                            <Link
+                                to="/exam-calendar"
+                                onClick={() => setIsOpen(false)}
+                                className="flex items-center gap-3 py-3 px-4 rounded-xl text-sm font-black text-slate-700 hover:bg-slate-50 border-b border-slate-50"
+                            >
+                                <Target size={16} aria-hidden="true" /> Exam Calendar
+                            </Link>
+                        </li>
 
                         {user ? (
                             <div className="pt-4 mt-2">
