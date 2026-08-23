@@ -75,6 +75,7 @@ const STATIC_PAGES = [
   { path: "", priority: "1.0", freq: "daily" },
   { path: "/govt-jobs", priority: "0.9", freq: "daily" },
   { path: "/exam-calendar", priority: "0.9", freq: "daily" },
+  { path: "/tools", priority: "0.8", freq: "weekly" },
   { path: "/blog", priority: "0.9", freq: "daily" },
   { path: "/test", priority: "0.9", freq: "daily" },
   { path: "/web-stories", priority: "0.9", freq: "daily" },

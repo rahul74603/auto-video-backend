@@ -144,6 +144,18 @@ const DynamicSidebar = () => {
 
     return (
         <div className="space-y-4 md:space-y-5">
+            {/* 🛠️ Sarkari Tools promo */}
+            <Link
+                to="/tools"
+                className="block bg-gradient-to-br from-fuchsia-600 via-purple-700 to-indigo-800 rounded-2xl md:rounded-3xl p-4 md:p-5 text-white shadow-lg hover:shadow-2xl hover:-translate-y-0.5 transition-all"
+            >
+                <p className="font-black text-xs md:text-sm flex items-center gap-2">
+                    🛠️ Sarkari Tools <span className="bg-yellow-400 text-slate-900 text-[8px] px-1.5 py-0.5 rounded-full font-black">FREE</span>
+                </p>
+                <p className="text-[10px] md:text-[11px] font-bold text-purple-100 mt-1 leading-snug">
+                    Photo Resizer (20KB) · Age Calculator · Percentage · sab browser me hi 🔒
+                </p>
+            </Link>
             <Section
                 icon={<Briefcase size={15} />} title="Latest Govt Jobs 💼" accent="text-blue-700"
                 items={data.jobs} hrefBase="/job" moreLabel="Sabhi Jobs Dekhein" moreHref="/govt-jobs"
