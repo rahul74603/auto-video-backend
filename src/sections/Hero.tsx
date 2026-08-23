@@ -81,7 +81,7 @@ const Hero = () => {
                 <br />
 
                 {/* Trust badge */}
-                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md mb-4 md:mb-6">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 mb-4 md:mb-6">
                     <Sparkles className="w-3 h-3 md:w-3.5 md:h-3.5 text-yellow-400" aria-hidden="true" />
                     <span className="text-slate-300 text-[9px] md:text-xs font-bold tracking-widest uppercase">
                         Trusted by 50,000+ Aspirants
@@ -121,7 +121,7 @@ const Hero = () => {
                                 key={btn.id}
                                 href={btn.href}
                                 aria-label={btn.label}
-                                className={`group flex flex-col items-center gap-2 p-3.5 md:p-5 bg-slate-900/70 border ${btn.ring} rounded-2xl backdrop-blur-md hover:-translate-y-1 hover:bg-slate-900 active:scale-95 transition-all`}
+                                className={`group flex flex-col items-center gap-2 p-3.5 md:p-5 bg-slate-900 border ${btn.ring} rounded-2xl hover:-translate-y-1 hover:border-opacity-60 active:scale-95 transition-all`}
                             >
                                 <div className={`bg-white/5 border border-white/10 p-2.5 md:p-3 rounded-xl ${btn.accent} ${btn.glow} group-hover:text-white group-hover:scale-110 transition-all`}>
                                     <Icon size={20} className="md:w-6 md:h-6" aria-hidden="true" />
