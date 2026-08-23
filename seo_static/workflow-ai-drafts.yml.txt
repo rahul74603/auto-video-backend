@@ -1,0 +1,48 @@
+# 👇 Is file ka content copy karke GitHub pe .github/workflows/ai_drafts.yml naam se banana hai
+# (GitHub App restriction ki wajah se ye file main direct push nahi kar sakta)
+
+name: AI Article Drafts (Job + Fast Track)
+
+on:
+  schedule:
+    - cron: '30 5 * * *'    # 11:00 AM IST (job fetch 9:30 AM ke baad)
+    - cron: '0 11 * * *'    # 4:30 PM IST
+    - cron: '30 16 * * *'   # 10:00 PM IST
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Kitne naye AI drafts banane hain is run me (default 2)"
+        required: false
+        default: "2"
+      repair_limit:
+        description: "Kitne failed drafts repair karne hain (default 2)"
+        required: false
+        default: "2"
+
+jobs:
+  ai-drafts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Functions dependencies
+        working-directory: ai_backend
+        run: npm install --legacy-peer-deps 2>&1 | tail -n 3
+
+      - name: Generate AI article drafts (draft-only, kabhi auto-publish nahi)
+        working-directory: ai_backend
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node run_auto_drafts.js --limit=${{ github.event.inputs.limit || '2' }} --repair-limit=${{ github.event.inputs.repair_limit || '2' }}

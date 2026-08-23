@@ -9,6 +9,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
 } from 'firebase/firestore';
 
@@ -278,6 +279,64 @@ export function buildPublishPayloadFromDraft(draft: AIArticleDraftRecord): {
     return { collection: 'jobs', payload: buildJobPublishPayload(draft) };
   }
   return { collection: 'fast_track', payload: buildFastTrackPublishPayload(draft) };
+}
+
+/* ------------------------------------------------------------------ */
+/* 🆓 CLIENT-SIDE PUBLISH (old Cloud Run API deleted — ab admin ke     */
+/* signed-in Firestore session se direct publish hota hai; same        */
+/* payload/doc-id shape jo backend publishDraftRecord banata tha)      */
+/* ------------------------------------------------------------------ */
+
+export type PublishResult = { collection: 'jobs' | 'fast_track'; docId: string; originDeleted: boolean };
+
+/**
+ * Draft ko jobs/fast_track me publish karo — bilkul backend publishDraftRecord
+ * jaisa: same doc-id (`job-<slug>` / `ft-<slug>`), publish ke baad draft delete,
+ * origin (job_drafts / fast_track raw row) cleanup.
+ *
+ * Gate: caller pehle canPublishDraft check kare. `adminOverride` sirf tab jab
+ * admin ne khud content verify kiya ho (edited/re-review-pending drafts ke liye)
+ * — essentials (title/slug/articleHtml) phir bhi zaroori hain.
+ */
+export async function publishDraftClientSide(
+  draft: AIArticleDraftRecord,
+  opts: { adminOverride?: boolean } = {}
+): Promise<PublishResult> {
+  if (draft.status === 'published') {
+    throw new Error('यह draft पहले से publish हो चुका है');
+  }
+  if (!opts.adminOverride) {
+    assertDraftPublishable(draft);
+  }
+  // Override me bhi essentials ke bina publish NAHI (safety)
+  if (!draft.title || !draft.slug || !draft.articleHtml) {
+    throw new Error('Draft me title/slug/article missing hai — publish nahi ho sakta');
+  }
+
+  const { collection: target, payload } = buildPublishPayloadFromDraft(draft);
+  const targetId =
+    (typeof draft.publishedDocId === 'string' && draft.publishedDocId) ||
+    `${draft.type === 'JOB' ? 'job' : 'ft'}-${String(draft.slug || draft.id).slice(0, 90)}`;
+
+  await setDoc(
+    doc(db, target, targetId),
+    { ...payload, createdAt: serverTimestamp(), publishedAt: serverTimestamp() },
+    { merge: true }
+  );
+
+  // ⭐ Publish ke baad draft delete — duplicate records nahi rehte (backend jaisa hi)
+  await deleteDoc(doc(db, AI_ARTICLE_DRAFTS, draft.id)).catch(() => {});
+
+  // ⭐ Origin source-record cleanup (sirf whitelisted collections)
+  const origin = sanitizeOriginRef(draft.originRef);
+  let originDeleted = false;
+  if (origin) {
+    originDeleted = await deleteDoc(doc(db, origin.collection, origin.id))
+      .then(() => true)
+      .catch(() => false);
+  }
+
+  return { collection: target, docId: targetId, originDeleted };
 }
 
 /* ------------------------------------------------------------------ */
