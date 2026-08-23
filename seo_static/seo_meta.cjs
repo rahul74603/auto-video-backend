@@ -108,6 +108,11 @@ function buildMetaFiles(colls) {
     const img = data.imageUrl || DEFAULT_IMG;
     const posted = toIso(data.createdAt) || new Date().toISOString();
     const validThrough = parseLastDate(data.lastDate);
+    // 🗓️ EXPIRED? — Google guideline: expired bharti pe JobPosting schema NAHI
+    // (warna "expired job posting" manual action ka risk). Banner + normal page.
+    const isExpired = Boolean(
+      validThrough && Date.parse(`${validThrough}T23:59:59+05:30`) < Date.now()
+    );
 
     const jobPosting = {
       "@context": "https://schema.org",
@@ -137,16 +142,22 @@ function buildMetaFiles(colls) {
       jobPosting.totalJobOpenings = String(data.totalPosts || data.vacancy).replace(/[^\d]/g, "") || undefined;
     }
 
-    const ld = [jobPosting];
+    const ld = [];
+    if (!isExpired) ld.push(jobPosting);
     const faq = faqSchema(data.faqs);
     if (faq) ld.push(faq);
+
+    // Expired pe bots ko bhi clear notice (content ke upar)
+    const expiredBanner = isExpired
+      ? `<p><strong>⚠️ यह भर्ती बंद हो चुकी है (Last Date: ${data.lastDate || 'N/A'}). नई सरकारी भर्तियों के लिए <a href="${SITE}/govt-jobs">StudyGyaan Govt Jobs</a> देखें।</strong></p>`
+      : '';
 
     jobs[path] = {
       t: truncate(title, 70),
       d: desc,
       img,
       type: "article",
-      content: data.description || "",
+      content: expiredBanner + (data.description || ""),
       ld,
     };
   });
@@ -220,4 +231,4 @@ function buildMetaFiles(colls) {
   };
 }
 
-module.exports = { buildMetaFiles };
+module.exports = { buildMetaFiles, parseLastDate };

@@ -269,17 +269,27 @@ function buildAll(colls) {
 
   // --- jobs ---
   let jobsXml = XML_HEAD + URLSET_OPEN_IMG;
+  let expiredJobsCount = 0;
+  // 🗓️ Expired jobs: sitemap me priority 0.4 + monthly (fresh jobs pe crawl budget)
+  let parseLastDateFn = null;
+  try { parseLastDateFn = require("./seo_meta.cjs").parseLastDate; } catch { /* optional */ }
   colls.jobs.forEach(({ id, data }) => {
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
     if ((data.type || "").toUpperCase() === "COURSE") return;
     const slug = safeXml(data.slug || id);
     const lastmod = getIsoDate(data.updatedAt || data.createdAt, now);
     const img = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
+    let expired = false;
+    if (parseLastDateFn) {
+      const vt = parseLastDateFn(data.lastDate);
+      expired = Boolean(vt && Date.parse(`${vt}T23:59:59+05:30`) < Date.now());
+      if (expired) expiredJobsCount++;
+    }
     const e = urlEntry({
       loc: `${WEBSITE_URL}/job/${slug}`,
       lastmod,
-      freq: "daily",
-      priority: "1.0",
+      freq: expired ? "monthly" : "daily",
+      priority: expired ? "0.4" : "1.0",
       image: img,
       imageTitle: safeXml(data.title || "StudyGyaan Job Update"),
     });
@@ -288,6 +298,7 @@ function buildAll(colls) {
     push(`${WEBSITE_URL}/job/${data.slug || id}`, lastmod);
   });
   jobsXml += `</urlset>`;
+  if (expiredJobsCount) console.log(`   🗓️ Expired jobs (low priority in sitemap): ${expiredJobsCount}`);
 
   // --- tests ---
   let testsXml = XML_HEAD + URLSET_OPEN;
