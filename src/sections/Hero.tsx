@@ -64,6 +64,22 @@ const Hero = () => {
             </div>
 
             <div className="max-w-4xl mx-auto relative z-10 text-center">
+                {/* 🛠️ Sarkari Tools pill — compact but lit */}
+                <a
+                    href="/tools"
+                    className="group inline-flex items-center gap-2 px-4 py-2 md:px-5 md:py-2.5 rounded-full mb-4 md:mb-5
+                               bg-gradient-to-r from-fuchsia-600 via-purple-600 to-indigo-600
+                               shadow-[0_0_25px_rgba(192,38,211,0.45)] hover:shadow-[0_0_40px_rgba(192,38,211,0.7)]
+                               border border-white/20 hover:scale-105 active:scale-95 transition-all"
+                >
+                    <span className="bg-white/20 p-1 rounded-full group-hover:rotate-12 transition-transform">🛠️</span>
+                    <span className="text-white font-black text-[10px] md:text-sm uppercase tracking-wider">
+                        Sarkari Tools — Photo Resizer, Age Calculator
+                    </span>
+                    <span className="bg-yellow-400 text-slate-900 text-[8px] md:text-[10px] px-1.5 py-0.5 rounded-full font-black">FREE</span>
+                </a>
+                <br />
+
                 {/* Trust badge */}
                 <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md mb-4 md:mb-6">
                     <Sparkles className="w-3 h-3 md:w-3.5 md:h-3.5 text-yellow-400" aria-hidden="true" />

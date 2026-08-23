@@ -125,7 +125,7 @@ const Notes: React.FC = () => {
   );
 
   return (
-    <div id="notes-page" className="py-6 md:py-20 bg-yellow-50/50 min-h-screen font-hindi antialiased">
+    <div id="notes-page" className="py-6 md:py-20 bg-slate-50 min-h-screen font-hindi antialiased">
       
       <SEO 
         customTitle="Best E-Books & Handwritten Notes 2026 | StudyGyaan"

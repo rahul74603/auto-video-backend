@@ -339,6 +339,16 @@ function buildMetaFiles(colls) {
     };
   } catch (e) { /* calendar optional */ }
 
+  // 🛠️ TOOLS page — bots ko tools list
+  pages["/tools"] = {
+    t: "Sarkari Tools: Free Photo Resizer, Age Calculator & More",
+    d: "Free sarkari form tools — photo/signature resizer (20KB/50KB), image compressor, age eligibility calculator, percentage calculator. 100% free.",
+    img: DEFAULT_IMG,
+    type: "website",
+    content: `<p>StudyGyaan ke free Sarkari Tools — form bharne ke saare kaam browser me hi.</p><h2>Available Tools</h2><ul><li><a href="${SITE}/tools#photo-resizer">Photo & Signature Resizer (20KB/50KB form-ready)</a></li><li><a href="${SITE}/tools#image-compressor">Image Compressor (KB target)</a></li><li><a href="${SITE}/tools#age-calculator">Age Calculator (eligibility check)</a></li><li><a href="${SITE}/tools#percentage-calculator">Percentage Calculator</a></li><li><a href="${SITE}/tools#word-counter">Word & Character Counter</a></li></ul><p><a href="${SITE}/govt-jobs">Latest Govt Jobs</a> | <a href="${SITE}/exam-calendar">Exam Calendar</a></p>`,
+    ld: [],
+  };
+
   return {
     "seo-meta-jobs.json": JSON.stringify(jobs),
     "seo-meta-updates.json": JSON.stringify(updates),
