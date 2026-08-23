@@ -50,9 +50,33 @@ $ld = $entry['ld'] ?? [];
 
 $h = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
 
+// 🛑 SOFT-404 KILLER: content-detail URL hai lekin data me entry NAHI —
+// matlab ye page exist hi nahi karta (deleted/galat slug). Bots ko asli 404 do
+// taaki Google "Soft 404" / "Duplicate canonical" me na phansaye.
+$isDetailPath = preg_match('#^/(job|update|blog|test|course|material|web-stories)/[^/]+#', $path) === 1;
+if (!$entry && $isDetailPath) {
+    http_response_code(404);
+    header('Content-Type: text/html; charset=utf-8');
+    ?>
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<title>404 - Page Not Found | StudyGyaan</title>
+<meta name="robots" content="noindex, nofollow">
+</head>
+<body>
+<h1>404 — Ye page maujood nahi hai</h1>
+<p><a href="<?= $h($SITE) ?>">StudyGyaan.in Home</a> | <a href="<?= $h($SITE) ?>/govt-jobs">Latest Govt Jobs</a></p>
+</body>
+</html>
+    <?php
+    exit;
+}
+
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: public, max-age=1800');
-if (!$entry) { http_response_code(200); } // unknown path → generic meta, 200 (React route ho sakta hai)
+if (!$entry) { http_response_code(200); } // homepage/listing → generic meta, 200
 ?>
 <!DOCTYPE html>
 <html lang="hi">
