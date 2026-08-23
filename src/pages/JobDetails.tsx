@@ -6,6 +6,7 @@ import { db } from '../firebase/config';
 import { useJob } from '@/features/jobs/hooks/useJob';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { checkIsExpired } from '@/utils/jobExpiry';
+import DynamicSidebar from '../components/DynamicSidebar';
 import type { JobPost, SiteContentDoc, TimestampLike } from '@/types/firestore';
 import {
     Briefcase, Calendar, MapPin, Banknote, Clock,
@@ -880,7 +881,10 @@ const JobDetails = () => {
                         </div>
 
                         {/* Trending */}
-                        {trendingLinks.length > 0 && (
+                        <DynamicSidebar />
+
+                        {/* 🔕 Manual sidebar OFF — upar DynamicSidebar hai */}
+                        {trendingLinks.length < 0 && (
                             <div className="bg-white p-5 md:p-8 rounded-3xl shadow-sm border border-slate-100">
                                 <h2 className="text-xs md:text-base font-black text-slate-900 mb-6 flex items-center gap-2 border-b pb-3 uppercase">
                                     <Sparkles size={18} className="text-blue-600" aria-hidden="true" />

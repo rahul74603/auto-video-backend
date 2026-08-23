@@ -4,13 +4,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useMaterial } from '@/features/materials/hooks/useMaterial';
 import {
   FileText, Download, ArrowLeft, Info, Sparkles,
-  Tag, ExternalLink, ShoppingCart, Flame, User, BookOpen
+  Tag, ShoppingCart, Flame, User, BookOpen
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+import DynamicSidebar from '../components/DynamicSidebar';
 
 type MaterialView = {
   title?: string;
@@ -217,18 +218,9 @@ const MaterialDetails = () => {
                 <button onClick={() => navigate('/premium-notes')} className="w-full bg-yellow-400 text-blue-900 font-black py-2 md:py-4 rounded-xl text-[9px] md:text-sm hover:bg-white transition-all shadow-xl"> अभी पाएँ ➔ </button>
             </div>
 
-            <div className="bg-white p-2 md:p-5 rounded-xl md:rounded-3xl shadow-sm border border-slate-100 hidden sm:block">
-              <h3 className="text-[10px] md:text-sm font-black text-slate-900 mb-3 border-b border-slate-50 pb-2 flex items-center gap-1.5">
-                <Tag size={12} className="text-blue-600" /> महत्वपूर्ण लिंक्स
-              </h3>
-              <ul className="space-y-2">
-                {globalSettings?.sidebarLinks?.map((linkItem, index: number) => (
-                  <li key={index} onClick={() => linkItem.url && window.open(linkItem.url, '_blank')} className="flex items-center justify-between p-2 md:p-3 bg-slate-50 rounded-xl hover:bg-blue-50 transition-all cursor-pointer border border-transparent hover:border-blue-100">
-                    <span className="text-slate-600 font-black text-[9px] md:text-[11px] truncate pr-1">{linkItem.name}</span>
-                    <ExternalLink size={10} className="text-slate-300" />
-                  </li>
-                ))}
-              </ul>
+            {/* 🔕 Manual sidebar OFF — DynamicSidebar (fresh jobs/tests/blogs) */}
+            <div className="hidden sm:block">
+              <DynamicSidebar />
             </div>
 
             <div className="bg-emerald-50 border-2 border-dashed border-emerald-200 p-4 rounded-2xl text-center">
