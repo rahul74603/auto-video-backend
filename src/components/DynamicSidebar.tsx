@@ -1,12 +1,15 @@
 /**
- * DynamicSidebar v2 — 🔄 COMPACT + PAGE-AWARE + AUTO-ROTATING
+ * DynamicSidebar v3 — 🎲 HAR PAGE-LOAD PE NAYE LINKS
  * ==================================================================
- * - Har PAGE pe ALAG links (URL-seeded shuffle — /blog pe alag, /job pe alag)
- * - Roz apne aap rotate hota hai (seed me din ka number)
- * - Naya content aate hi pool me aa jata hai (Firestore latest 12-20)
- * - Compact: 3 sections × 3 links, chhota padding — kam space
- * - Section-mix bhi route ke hisaab se: blog page pe blogs nahi repeat,
- *   test page pe tests nahi repeat, etc.
+ * v2 me galti: chhota pool (12-20) + din-bhar same seed = wahi links
+ * baar-baar. Ab:
+ *   - BADA pool: jobs 30, fast track 20, tests 20, blogs 20
+ *   - HAR page-load pe pure random pick — same page dobara kholo to
+ *     bhi alag links milenge (koi daily-seed nahi)
+ *   - localStorage cache (30 min) — Firestore reads bachte hain,
+ *     par links har render pe naye shuffle hote hain
+ *   - Page-aware mix: blog page pe blogs repeat nahi, job page pe
+ *     jobs repeat nahi, test page pe tests nahi
  */
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
@@ -24,17 +27,34 @@ type SidebarData = {
     blogs: Item[];
 };
 
-/* ---------------- Module-level cache (5 min) ---------------- */
-let cache: { data: SidebarData; at: number } | null = null;
+/* ---------------- Cache: module (session) + localStorage (30 min) ---------------- */
+let memCache: { data: SidebarData; at: number } | null = null;
 let inflight: Promise<SidebarData> | null = null;
-const CACHE_MS = 5 * 60 * 1000;
+const CACHE_MS = 30 * 60 * 1000;
+const LS_KEY = 'sg_sidebar_pool_v3';
 
 const asStr = (v: unknown) => (typeof v === 'string' ? v : '');
 
 type RawDoc = { id: string } & Record<string, unknown>;
 
+function readLS(): { data: SidebarData; at: number } | null {
+    try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { data: SidebarData; at: number };
+        if (!parsed?.data || Date.now() - parsed.at > CACHE_MS) return null;
+        return parsed;
+    } catch { return null; }
+}
+
+function writeLS(data: SidebarData) {
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ data, at: Date.now() })); } catch { /* full/blocked */ }
+}
+
 async function fetchSidebarData(): Promise<SidebarData> {
-    if (cache && Date.now() - cache.at < CACHE_MS) return cache.data;
+    if (memCache && Date.now() - memCache.at < CACHE_MS) return memCache.data;
+    const ls = readLS();
+    if (ls) { memCache = ls; return ls.data; }
     if (inflight) return inflight;
 
     inflight = (async () => {
@@ -47,12 +67,12 @@ async function fetchSidebarData(): Promise<SidebarData> {
             }
         };
 
-        // Bade pools — inme se har page apna alag random set uthata hai
+        // 🎯 BADA pool — isi me se har page-load pe alag random set uthta hai
         const [jobsRaw, ftRaw, testsRaw, blogsRaw] = await Promise.all([
-            grab('jobs', 20),
-            grab('fast_track', 12),
-            grab('mock_tests', 12),
-            grab('blogs', 12),
+            grab('jobs', 30),
+            grab('fast_track', 20),
+            grab('mock_tests', 20),
+            grab('blogs', 20),
         ]);
 
         const data: SidebarData = {
@@ -77,7 +97,8 @@ async function fetchSidebarData(): Promise<SidebarData> {
                 .filter((b) => !['draft', 'pending', 'archived', 'deleted'].includes(asStr(b.status).toLowerCase()) && asStr(b.title))
                 .map((b) => ({ id: b.id, title: asStr(b.title), slug: asStr(b.slug) || b.id })),
         };
-        cache = { data, at: Date.now() };
+        memCache = { data, at: Date.now() };
+        writeLS(data);
         inflight = null;
         return data;
     })();
@@ -85,30 +106,11 @@ async function fetchSidebarData(): Promise<SidebarData> {
     return inflight;
 }
 
-/* ---------------- Seeded shuffle (page + din ke hisaab se) ---------------- */
-function seedFromString(str: string): number {
-    let h = 2166136261;
-    for (let i = 0; i < str.length; i++) {
-        h ^= str.charCodeAt(i);
-        h = Math.imul(h, 16777619);
-    }
-    return h >>> 0;
-}
-
-function mulberry32(seed: number) {
-    let a = seed;
-    return () => {
-        a |= 0; a = (a + 0x6D2B79F5) | 0;
-        let t = Math.imul(a ^ (a >>> 15), 1 | a);
-        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-}
-
-function seededPick<T>(arr: T[], n: number, rnd: () => number): T[] {
+/* ---------------- Pure random pick — HAR call pe naya ---------------- */
+function randomPick<T>(arr: T[], n: number): T[] {
     const copy = [...arr];
     for (let i = copy.length - 1; i > 0; i--) {
-        const j = Math.floor(rnd() * (i + 1));
+        const j = Math.floor(Math.random() * (i + 1));
         [copy[i], copy[j]] = [copy[j], copy[i]];
     }
     return copy.slice(0, n);
@@ -164,7 +166,8 @@ const Section = ({ k, items }: { k: SectionKey; items: Item[] }) => {
 
 /* ---------------- Main component ---------------- */
 const DynamicSidebar = () => {
-    const [data, setData] = useState<SidebarData | null>(cache?.data || null);
+    const [data, setData] = useState<SidebarData | null>(memCache?.data || null);
+    const [picked, setPicked] = useState<Partial<Record<SectionKey, Item[]>> | null>(null);
     const { pathname } = useLocation();
 
     useEffect(() => {
@@ -175,11 +178,17 @@ const DynamicSidebar = () => {
         return () => { cancelled = true; };
     }, []);
 
-    if (!data) return null;
+    // 🎲 Har page-load / route-change pe NAYA random set
+    useEffect(() => {
+        if (!data) return;
+        const sections = sectionsForPath(pathname);
+        const fresh: Partial<Record<SectionKey, Item[]>> = {};
+        sections.forEach((k) => { fresh[k] = randomPick(data[k], 3); });
+        setPicked(fresh);
+    }, [data, pathname]);
 
-    // Seed = page URL + din ka number → har page pe alag, roz rotate
-    const dayNo = Math.floor(Date.now() / 86400000);
-    const rnd = mulberry32(seedFromString(`${pathname}::${dayNo}`));
+    if (!data || !picked) return null;
+
     const sections = sectionsForPath(pathname);
 
     return (
@@ -196,7 +205,7 @@ const DynamicSidebar = () => {
                 <ArrowRight size={13} className="shrink-0" />
             </a>
             {sections.map((k) => (
-                <Section key={k} k={k} items={seededPick(data[k], 3, rnd)} />
+                <Section key={k} k={k} items={picked[k] || []} />
             ))}
         </div>
     );
