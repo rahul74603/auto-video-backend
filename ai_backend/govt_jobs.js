@@ -1,4 +1,4 @@
-﻿const functions = require("firebase-functions");
+const functions = require("firebase-functions");
 // onDocumentCreated (Blaze/v2 only) replaced with noop for Spark
 const onDocumentCreated = () => () => {};
 const admin = require("firebase-admin");
@@ -281,6 +281,72 @@ Return ONLY this JSON (no markdown):
 }
 
 // =========================================================
+// ✍️ FULL ARTICLE GENERATOR (scraper ke saath hi — alag step nahi)
+// Draft me hi poora SEO article (articleHtml) bhar deta hai taaki admin
+// ko Review Draft me sab READYMADE mile — bas check karke publish.
+// =========================================================
+async function generateFullJobArticle(jobData, scrapedContent) {
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+    const facts = JSON.stringify({
+        title: jobData.title, organization: jobData.organization, advtNo: jobData.advtNo,
+        startDate: jobData.startDate, lastDate: jobData.lastDate, vacancies: jobData.vacancies,
+        salary: jobData.salary, qualification: jobData.qualification, minAge: jobData.minAge,
+        ageLimit: jobData.ageLimit, location: jobData.location,
+        selectionProcess: jobData.selectionProcess, eligibility: jobData.eligibility,
+        feeGen: jobData.feeGen, feeOBC: jobData.feeOBC, feeSCST: jobData.feeSCST,
+        feeFemale: jobData.feeFemale, applicationFee: jobData.applicationFee,
+        applyLink: jobData.applyLink, notificationLink: jobData.notificationLink,
+        officialSiteLink: jobData.officialSiteLink
+    });
+
+    const prompt = `Act as StudyGyaan's senior editorial writer for Indian government-job aspirants.
+Write a COMPLETE, ORIGINAL, source-grounded job article in easy Hinglish (Hindi-English mix, Devanagari for Hindi words).
+
+=== VERIFIED FACTS (in JSON — inhi facts ko use karo) ===
+${facts}
+
+=== OFFICIAL SOURCE TEXT (ground truth) ===
+${String(scrapedContent).slice(0, 15000)}
+
+=== STRICT RULES ===
+1. Facts (dates/fees/vacancies/qualification/links) SIRF upar se lo. Koi fact INVENT mat karo.
+2. Agar koi fact missing hai to us section me likho: "अधिक जानकारी के लिए आधिकारिक नोटिफिकेशन देखें।" — guess kabhi nahi.
+3. Source ke sentences WORD-BY-WORD copy MAT karo — apni original editorial wording likho (facts same rahenge).
+4. Koi keyword stuffing nahi, koi filler repetition nahi, koi generic AI padding nahi. Har paragraph useful ho.
+5. Sirf OFFICIAL links use karo (jo facts me diye hain). Koi third-party job portal nahi.
+
+=== OUTPUT FORMAT ===
+- Return ONLY clean HTML (no markdown, no \`\`\`, no <html>/<head>/<body> tags).
+- NO <h1> (page title already H1 hai). Structure:
+  1. 2-3 intro <p> (kya bharti hai, kaun apply kar sakta hai, deadline)
+  2. <h2>संक्षिप्त जानकारी (Overview)</h2> + <table> (Organization | Post | Advt No | Vacancies | Mode | Last Date | Official Website)
+  3. <h2>महत्वपूर्ण तिथियाँ (Important Dates)</h2> + <table> (sirf available dates)
+  4. <h2>पद एवं रिक्तियों का विवरण (Vacancy Details)</h2>
+  5. <h2>शैक्षणिक योग्यता (Educational Qualification)</h2>
+  6. <h2>आयु सीमा (Age Limit)</h2>
+  7. <h2>वेतन (Salary / Pay Scale)</h2>
+  8. <h2>आवेदन शुल्क (Application Fee)</h2> + <table> (sirf available categories)
+  9. <h2>चयन प्रक्रिया (Selection Process)</h2>
+  10. <h2>आवेदन कैसे करें (How to Apply)</h2> + <ol> numbered steps
+  11. <h2>महत्वपूर्ण निर्देश (Important Instructions)</h2> + <ul>
+  12. <h2>महत्वपूर्ण लिंक (Important Links)</h2> + <table> (Apply Online / Notification PDF / Official Website — sirf diye hue official links, <a href> ke saath)
+  13. <h2>अक्सर पूछे जाने वाले प्रश्न (FAQs)</h2> + 5-7 <h3>Question</h3><p>Answer</p> pairs (source-grounded answers)
+  14. Chhota useful conclusion <p> (official notification check karke deadline se pehle apply karne ki salah)
+- Target: 1500-2200 meaningful words. Agar source me kam jankari hai to chhota likho — filler add MAT karo.`;
+
+    const result = await model.generateContent(prompt);
+    let html = result.response.text()
+        .replace(/```html/gi, '')
+        .replace(/```/g, '')
+        .trim();
+    // Safety: h1 aa gaya ho to h2 bana do (page pe single H1 rahe)
+    html = html.replace(/<h1(\s[^>]*)?>/gi, '<h2>').replace(/<\/h1>/gi, '</h2>');
+    return html;
+}
+
+// =========================================================
 // 🌐 WEB SCRAPER
 // =========================================================
 async function scrapeJobPage(url) {
@@ -429,6 +495,16 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
 
             console.log(`🔗 applyLink: ${cleanApplyLink}`);
 
+            // ✍️ FULL ARTICLE — scraper ke saath hi ready (admin ko bas review karna hai)
+            let articleHtml = '';
+            try {
+                articleHtml = await generateFullJobArticle(jobData, scrapedContent);
+                const words = articleHtml.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
+                console.log(`📝 Full article generated: ${words} words`);
+            } catch (artErr) {
+                console.warn(`⚠️ Full article generation fail (draft phir bhi banega): ${artErr.message}`);
+            }
+
             const draftPayload = {
                 title:            finalTitle,
                 slug:             finalSlug,
@@ -436,6 +512,7 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 status:           "pending",
                 metaDescription:  jobData.metaDescription  || '',
                 description:      jobData.description      || '',
+                articleHtml:      articleHtml              || '',
                 category:         jobData.category         || 'other',
                 organization:     jobData.organization     || '',
                 advtNo:           jobData.advtNo           || '',

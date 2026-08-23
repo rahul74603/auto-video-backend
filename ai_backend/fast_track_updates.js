@@ -1,4 +1,4 @@
-﻿const functions = require("firebase-functions");
+const functions = require("firebase-functions");
 // onDocumentWritten (Blaze/v2 only) replaced with noop for Spark
 const onDocumentWritten = () => () => {};
 const admin = require("firebase-admin");
@@ -240,6 +240,62 @@ async function scrapePage(url) {
 // 🤖 AI EXTRACTOR
 // ✅ Smart Retry - 429 aane par retryDelay se wait karo
 // =========================================================
+// =========================================================
+// ✍️ FULL ARTICLE GENERATOR (fetch ke saath hi — Fast Track style)
+// Result/Admit Card/Answer Key/Syllabus ke liye chhota-focused article.
+// JOB wala 13-section structure yahan force NAHI hota (spec ke hisaab se).
+// =========================================================
+async function generateFullFastTrackArticle(extracted, sourceText, category, title, apiKey) {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+    const facts = JSON.stringify({
+        title,
+        org: extracted.org || '',
+        updateDate: extracted.updateDate || '',
+        shortInfo: extracted.shortInfo || '',
+        directLink: extracted.directLink || '',
+        category
+    });
+
+    const prompt = `Act as StudyGyaan's editorial writer. Write a COMPLETE, ORIGINAL, source-grounded article
+for this "${category}" update, in easy Hinglish (Hindi-English mix, Devanagari for Hindi words).
+
+=== VERIFIED FACTS ===
+${facts}
+
+=== SOURCE TEXT (ground truth) ===
+${String(sourceText).slice(0, 12000)}
+
+=== STRICT RULES ===
+1. Facts SIRF source/facts se lo — dates/numbers/names INVENT mat karo.
+2. Missing info par likho: "अधिक जानकारी के लिए आधिकारिक वेबसाइट देखें।" — guess kabhi nahi.
+3. Source ka word-by-word copy mana hai — original editorial wording.
+4. Koi filler/keyword-stuffing nahi. Ye ${category} update hai — job-recruitment wale sections (fee/age/vacancy) FORCE mat karo, sirf relevant sections likho.
+
+=== OUTPUT ===
+Return ONLY clean HTML (no markdown, no \`\`\`). NO <h1>. Structure:
+1. 2-3 intro <p> (kya update aaya, kiske liye, kya karna hai)
+2. <h2>मुख्य जानकारी (Overview)</h2> + chhota <table> (Organization | Update | Date | Official Link)
+3. Category ke hisaab se relevant <h2> sections:
+   - Result → kaise check करें (<ol> steps), आगे क्या (DV/next stage agar source me ho)
+   - Admit Card → kaise download करें (<ol>), exam day instructions
+   - Answer Key → kaise download/objection process (agar source me ho)
+   - Syllabus/Admission → key details, important points <ul>
+4. <h2>महत्वपूर्ण लिंक</h2> + <table> (sirf official links <a href> ke saath)
+5. <h2>अक्सर पूछे जाने वाले प्रश्न (FAQs)</h2> + 4-6 <h3>Q</h3><p>A</p> pairs (source-grounded)
+6. Chhota conclusion <p>
+Target: 800-1500 meaningful words. Kam jankari ho to chhota likho — filler mat daalo.`;
+
+    const result = await model.generateContent(prompt);
+    let html = result.response.text()
+        .replace(/```html/gi, '')
+        .replace(/```/g, '')
+        .trim();
+    html = html.replace(/<h1(\s[^>]*)?>/gi, '<h2>').replace(/<\/h1>/gi, '</h2>');
+    return html;
+}
+
 async function extractWithAI(linksText, category, title, apiKey, logger = console.log) {
     const MAX_RETRIES = 3;
 
@@ -434,6 +490,16 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
 
             logger(`🔗 directLink: ${cleanDirectLink}`);
 
+            // ✍️ FULL ARTICLE — fetch ke saath hi ready (Result/Admit Card style)
+            let articleHtml = '';
+            try {
+                articleHtml = await generateFullFastTrackArticle(extracted, linksText, category, finalTitle, apiKey);
+                const words = articleHtml.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
+                logger(`📝 Full article: ${words} words`);
+            } catch (artErr) {
+                logger(`⚠️ Article generation fail (item phir bhi banega): ${artErr.message}`);
+            }
+
             await db.collection("fast_track").doc(finalSlug).set({
                 title:        finalTitle,
                 slug:         finalSlug,
@@ -442,6 +508,7 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
                 org:          extracted.org        || '',
                 updateDate:   extracted.updateDate || '',
                 description:  extracted.shortInfo  || '',
+                articleHtml:  articleHtml          || '',
                 category,
                 originalLink: link,
                 status:       "draft",
