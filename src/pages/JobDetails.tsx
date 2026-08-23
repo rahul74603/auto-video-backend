@@ -5,6 +5,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useJob } from '@/features/jobs/hooks/useJob';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
+import { checkIsExpired } from '@/utils/jobExpiry';
 import type { JobPost, SiteContentDoc, TimestampLike } from '@/types/firestore';
 import {
     Briefcase, Calendar, MapPin, Banknote, Clock,
@@ -278,6 +279,8 @@ const JobDetails = () => {
     ].filter(Boolean).join(', ');
 
     const parsedLastDate = job.lastDate ? new Date(job.lastDate) : null;
+    // 🗓️ Expired? (lastDate nikal chuki) — banner + JobPosting schema skip
+    const jobExpired = job.isExpired === true || checkIsExpired(String(job.lastDate || ''));
     const jobPostingSchema = {
         "@context": "https://schema.org",
         "@type": "JobPosting",
@@ -327,10 +330,13 @@ const JobDetails = () => {
                 author={job.authorName || job.author || "StudyGyaan Editorial Team"}
                 category={job.category || "Govt Jobs"}
             />
-            <script
-                type="application/ld+json"
-                dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPostingSchema) }}
-            />
+            {/* JobPosting schema — expired bharti pe NAHI (Google guideline) */}
+            {!jobExpired && (
+                <script
+                    type="application/ld+json"
+                    dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPostingSchema) }}
+                />
+            )}
             {/* FAQ schema — only when AI-reviewed article FAQs exist (all answers source-verified) */}
             {Array.isArray(job.faqs) && job.faqs.length > 0 && (
                 <script
@@ -398,6 +404,20 @@ const JobDetails = () => {
                             itemScope
                             itemType="https://schema.org/JobPosting"
                         >
+                            {/* ⚠️ EXPIRED BANNER — bharti band ho chuki hai */}
+                            {jobExpired && (
+                                <div className="bg-red-50 border-b-2 border-red-200 px-4 md:px-8 py-3 md:py-4">
+                                    <p className="text-red-700 font-black text-sm md:text-base flex items-center gap-2">
+                                        ⚠️ यह भर्ती बंद हो चुकी है (Last Date: {job.lastDate || 'N/A'})
+                                    </p>
+                                    <p className="text-red-500 text-xs md:text-sm font-bold mt-1">
+                                        Niche di gayi jankari sirf reference ke liye hai.{' '}
+                                        <a href="/govt-jobs" className="underline text-blue-700 hover:text-blue-900">
+                                            👉 Aaj ki ACTIVE bhartiyan yahan dekhein
+                                        </a>
+                                    </p>
+                                </div>
+                            )}
                             {/* Header */}
                             <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-900 p-4 md:p-8 text-white relative">
                                 <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
