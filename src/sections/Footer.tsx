@@ -48,7 +48,7 @@ const Footer = () => {
             </h3>
             <ul className="space-y-2 md:space-y-4 text-[11px] md:text-sm font-bold">
               <li><Link to="/" className="hover:text-white transition-colors">Home</Link></li>
-              <li><Link to="/tools" className="hover:text-white transition-colors">🛠️ Sarkari Tools</Link></li>
+              <li><a href="https://studygyaan.in/tools/" className="hover:text-white transition-colors">🛠️ Sarkari Tools</a></li>
               <li><Link to="/mock-tests" className="hover:text-white transition-colors">Mock Test</Link></li>
               <li><Link to="/free-study-material" className="hover:text-white transition-colors">Free Study Material</Link></li>
               <li><Link to="/blog" className="text-gray-400 hover:text-white transition-colors font-bold">Blog</Link></li>

@@ -66,7 +66,7 @@ const Hero = () => {
             <div className="max-w-4xl mx-auto relative z-10 text-center">
                 {/* 🛠️ Sarkari Tools pill — compact but lit */}
                 <a
-                    href="/tools"
+                    href="https://studygyaan.in/tools/"
                     className="group inline-flex items-center gap-2 px-4 py-2 md:px-5 md:py-2.5 rounded-full mb-4 md:mb-5
                                bg-gradient-to-r from-fuchsia-600 via-purple-600 to-indigo-600
                                shadow-[0_0_25px_rgba(192,38,211,0.45)] hover:shadow-[0_0_40px_rgba(192,38,211,0.7)]

@@ -688,7 +688,7 @@ const JobDetails = () => {
                                         </p>
                                     </div>
                                     <a
-                                        href="/tools"
+                                        href="https://studygyaan.in/tools/"
                                         className="shrink-0 bg-white text-red-600 hover:bg-yellow-400 hover:text-red-900 h-14 px-8 rounded-2xl flex items-center gap-2 font-black text-sm transition-all shadow-xl z-10"
                                     >
                                         Free Toolkit खोलें 🚀
@@ -866,7 +866,7 @@ const JobDetails = () => {
                                 Resize Photo, Signature & Make Resume FREE
                             </p>
                             <a
-                                href="/tools"
+                                href="https://studygyaan.in/tools/"
                                 className="bg-white text-blue-700 hover:bg-yellow-400 hover:text-blue-900 font-black px-4 py-3 rounded-xl text-xs w-full flex justify-center items-center gap-2 transition-all shadow-md"
                             >
                                 Open Tools <ArrowRight size={16} aria-hidden="true" />
