@@ -4,6 +4,7 @@
  * Mobile UX ka sabse bada fix: hamburger me chhupe links ki jagah
  * hamesha-visible app-jaisa bottom bar. Desktop pe nahi dikhta.
  */
+import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, Briefcase, CalendarDays, FileText, Newspaper } from 'lucide-react';
 
@@ -22,7 +23,9 @@ const MobileBottomNav = () => {
     const { pathname } = useLocation();
     if (HIDDEN_PREFIXES.some((p) => pathname.startsWith(p))) return null;
 
-    return (
+    // 🛡️ Portal → document.body: kisi parent ke transform/filter se
+    // `fixed` positioning nahi tootegi (pehle nav TOP pe chipak gaya tha!)
+    return createPortal(
         <nav
             className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-lg border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.08)]"
             style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
@@ -47,7 +50,8 @@ const MobileBottomNav = () => {
                     );
                 })}
             </div>
-        </nav>
+        </nav>,
+        document.body
     );
 };
 

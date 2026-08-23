@@ -8,7 +8,6 @@ import SEO from '@/components/SEO';
 // 🚀 CRITICAL PATH - Direct Import (LCP के लिए)
 // =========================================================
 import Hero from '@/sections/Hero';
-import QuickAccessGrid from '@/components/QuickAccessGrid';
 
 // =========================================================
 // 🛑 LAZY IMPORTS - Below the fold
@@ -155,7 +154,6 @@ const Home = () => {
             ========================================================= */}
             <section id="hero-section" aria-label="Hero Section">
                 <Hero />
-                <QuickAccessGrid />
             </section>
 
             {/* =========================================================

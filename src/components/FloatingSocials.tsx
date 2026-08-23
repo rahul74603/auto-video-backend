@@ -4,7 +4,7 @@ import { Youtube, MessageCircle, Send, Facebook } from 'lucide-react';
 const FloatingSocials = () => {
     return (
         // z-[9000] fixed position, compact gap-3
-        <div className="fixed right-4 bottom-24 z-[9000] flex flex-col gap-3">
+        <div className="fixed right-4 bottom-24 z-[9000] hidden md:flex flex-col gap-3">
             
             {/* 🔵 Facebook */}
             <a 
