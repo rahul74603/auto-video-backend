@@ -4,9 +4,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useBlog } from '@/features/blogs/hooks/useBlog';
 import { blogRepository } from '@/features/blogs/data/blogRepository';
 import {
-    Calendar, User, Tag, Clock, ChevronLeft,
-    Share2, ExternalLink, Flame, ShoppingCart,
-    ArrowRight, Sparkles, FileSearch, Eye,
+    Calendar, User, Clock, ChevronLeft,
+    Share2, Flame, ShoppingCart,
+    ArrowRight, FileSearch, Eye,
     Check
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -54,22 +54,6 @@ function estimateReadTime(content?: string): string {
 // =========================================================
 // 🎨 COLORS
 // =========================================================
-const LOOP_COLORS = [
-    { bg: 'bg-rose-50', border: 'border-rose-200 hover:border-rose-400', text: 'text-rose-900', iconText: 'text-rose-600' },
-    { bg: 'bg-blue-50', border: 'border-blue-200 hover:border-blue-400', text: 'text-blue-900', iconText: 'text-blue-600' },
-    { bg: 'bg-emerald-50', border: 'border-emerald-200 hover:border-emerald-400', text: 'text-emerald-900', iconText: 'text-emerald-600' },
-    { bg: 'bg-amber-50', border: 'border-amber-200 hover:border-amber-400', text: 'text-amber-900', iconText: 'text-amber-600' },
-    { bg: 'bg-purple-50', border: 'border-purple-200 hover:border-purple-400', text: 'text-purple-900', iconText: 'text-purple-600' }
-];
-
-const LINK_GRADIENTS = [
-    'bg-gradient-to-r from-blue-600 to-cyan-500 shadow-blue-500/30',
-    'bg-gradient-to-r from-purple-600 to-fuchsia-500 shadow-purple-500/30',
-    'bg-gradient-to-r from-orange-500 to-red-500 shadow-orange-500/30',
-    'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-emerald-500/30',
-    'bg-gradient-to-r from-rose-500 to-pink-500 shadow-rose-500/30'
-];
-
 // =========================================================
 // 🦴 SKELETON — CLS nahi hogi, same layout reserve karta hai
 // =========================================================
@@ -145,20 +129,7 @@ const BlogPostSkeleton = () => (
 // =========================================================
 // 🔧 DEFAULT SETTINGS
 // =========================================================
-interface SidebarLink {
-    name?: string;
-    title?: string;
-    url?: string;
-}
-
-interface RelatedBlogLink {
-    title?: string;
-    url?: string;
-}
-
 interface SidebarSettings {
-    sidebarLinks: SidebarLink[];
-    relatedBlogs: RelatedBlogLink[];
     premiumBoxTitle: string;
     premiumBoxDesc: string;
     bottomBarText: string;
@@ -169,14 +140,6 @@ interface SidebarSettings {
 
 function getDefaultSettings(): SidebarSettings {
     return {
-        sidebarLinks: [
-            { name: 'New Govt Job Details', url: '/govt-jobs' },
-            { name: 'Best Free Study Materials', url: '/free-study-material' }
-        ],
-        relatedBlogs: [
-            { title: 'SSC CGL 2025: पूरी जानकारी और सिलेबस', url: '/blog' },
-            { title: 'Railway Group D: Preparation Guide', url: '/blog' }
-        ],
         premiumBoxTitle: 'Premium Material Notes',
         premiumBoxDesc: '100% सफलता के लिए श्रेणी-वार महत्वपूर्ण सवालों का असली संग्रह।',
         bottomBarText: '📢 Premium Notes: पिछले 10 साल के रिपीटेड सवालों का पूरा बंडल',
@@ -324,8 +287,6 @@ const BlogPost = () => {
         || blog.metaDescription
         || `${blog.title} - पूरी जानकारी StudyGyaan पर पढ़ें।`;
 
-    const sidebarUpdates = (globalSettings?.relatedBlogs || []).slice(0, 5);
-    const pageQuickLinks = globalSettings?.sidebarLinks || [];
 
     // =========================================================
     // 🎨 RENDER
@@ -550,73 +511,7 @@ const BlogPost = () => {
                     {/* Sidebar */}
                     <aside className="w-full md:w-[35%] space-y-4 md:space-y-6 md:sticky md:top-16">
 
-                        {sidebarUpdates.length > 0 && (
-                            <section className="bg-white/80 backdrop-blur-xl p-4 md:p-6 rounded-2xl border border-white/60 shadow-sm">
-                                <h2 className="text-sm md:text-lg font-black text-slate-900 mb-4 flex items-center border-b border-slate-100 pb-3">
-                                    <Sparkles className="w-4 h-4 mr-1.5 text-purple-600" aria-hidden="true" />
-                                    <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-700 to-pink-600">
-                                        ट्रेंडिंग आर्टिकल्स 🔥
-                                    </span>
-                                </h2>
-                                <ul className="space-y-3" role="list">
-                                    {sidebarUpdates.map((blogInfo, index) => {
-                                        if (!blogInfo.title) return null;
-                                        const style = LOOP_COLORS[index % LOOP_COLORS.length];
-                                        return (
-                                            <li key={index}>
-                                                <a
-                                                    href={blogInfo.url || '/blog'}
-                                                    target={blogInfo.url?.startsWith('http') ? '_blank' : '_self'}
-                                                    rel={blogInfo.url?.startsWith('http') ? 'noopener noreferrer' : undefined}
-                                                    className={`group border-2 ${style.border} ${style.bg} p-3 md:p-4 rounded-xl transition-all hover:-translate-y-1 shadow-sm hover:shadow-md flex items-center justify-between`}
-                                                >
-                                                    <span className={`flex-1 pr-3 text-[13px] font-black ${style.text} line-clamp-2`}>
-                                                        {blogInfo.title}
-                                                    </span>
-                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-white shadow-sm shrink-0 group-hover:scale-110 transition-transform ${style.iconText}`}>
-                                                        <ArrowRight className="w-4 h-4" aria-hidden="true" />
-                                                    </div>
-                                                </a>
-                                            </li>
-                                        );
-                                    })}
-                                </ul>
-                            </section>
-                        )}
-
                         <DynamicSidebar />
-
-                        {/* 🔕 Manual sidebar OFF — upar DynamicSidebar hai */}
-                        {pageQuickLinks.length < 0 && (
-                            <section className="bg-white/80 p-4 md:p-6 rounded-[2rem] border border-slate-100 shadow-sm">
-                                <h2 className="text-sm md:text-lg font-black text-slate-900 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
-                                    <Tag size={18} className="text-blue-600" aria-hidden="true" />
-                                    महत्वपूर्ण लिंक्स 🔗
-                                </h2>
-                                <ul className="space-y-3" role="list">
-                                    {pageQuickLinks.map((item, index) => (
-                                        <li key={index}>
-                                            <a
-                                                href={item.url || '#'}
-                                                target={item.url?.startsWith('http') ? '_blank' : '_self'}
-                                                rel={item.url?.startsWith('http') ? 'noopener noreferrer' : undefined}
-                                                className={`group flex items-center justify-between p-3 md:p-4 rounded-xl transition-all duration-300 shadow-md hover:shadow-xl hover:-translate-y-1 ${LINK_GRADIENTS[index % LINK_GRADIENTS.length]} text-white`}
-                                            >
-                                                <div className="flex items-center gap-2.5 flex-1">
-                                                    <div className="bg-white/20 p-1.5 rounded-lg shrink-0">
-                                                        <ExternalLink size={14} className="text-white" aria-hidden="true" />
-                                                    </div>
-                                                    <span className="font-black text-[12px] md:text-[15px] leading-snug">
-                                                        {item.title || item.name}
-                                                    </span>
-                                                </div>
-                                                <ArrowRight size={16} className="text-white/70 group-hover:translate-x-1 transition-all shrink-0 ml-1" aria-hidden="true" />
-                                            </a>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </section>
-                        )}
 
                         {globalSettings && (
                             <section className="p-4 md:p-6 bg-gradient-to-br from-blue-700 via-indigo-800 to-slate-900 rounded-2xl md:rounded-[2rem] text-white shadow-2xl border-b-4 border-black/20">

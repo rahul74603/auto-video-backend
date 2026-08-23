@@ -59,9 +59,7 @@ interface QuickLink {
 }
 
 interface GovtJobSettings {
-    relatedBlogs?: QuickLink[];
     jobUpdates?: QuickLink[];
-    sidebarLinks?: QuickLink[];
     mrpPrice?: string | number;
     discountPercent?: string | number;
 }

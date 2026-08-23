@@ -39,7 +39,6 @@ function formatDate(d: TimestampLike): string {
 
 interface GlobalSettings {
     jobUpdates: SiteContentDoc[];
-    relatedBlogs: SiteContentDoc[];
     premiumBoxTitle: string;
     premiumBoxDesc: string;
     bottomBarText: string;
@@ -106,7 +105,6 @@ const FileSearch = ({ className, size = 24 }: { className?: string; size?: numbe
 function getDefaultSettings(): GlobalSettings {
     return {
         jobUpdates: [],
-        relatedBlogs: [],
         premiumBoxTitle: "Premium Study Notes",
         premiumBoxDesc: "100% सफलता के लिए Expert Notes।",
         bottomBarText: "📢 Premium Notes: पिछले 10 साल के रिपीटेड सवाल",
@@ -121,7 +119,6 @@ function normalizeSettings(data: Record<string, unknown> | undefined): GlobalSet
     if (!data) return defaults;
     return {
         jobUpdates: Array.isArray(data.jobUpdates) ? (data.jobUpdates as SiteContentDoc[]) : [],
-        relatedBlogs: Array.isArray(data.relatedBlogs) ? (data.relatedBlogs as SiteContentDoc[]) : [],
         premiumBoxTitle: typeof data.premiumBoxTitle === 'string' ? data.premiumBoxTitle : defaults.premiumBoxTitle,
         premiumBoxDesc: typeof data.premiumBoxDesc === 'string' ? data.premiumBoxDesc : defaults.premiumBoxDesc,
         bottomBarText: typeof data.bottomBarText === 'string' ? data.bottomBarText : defaults.bottomBarText,
@@ -204,10 +201,6 @@ const JobDetails = () => {
         Number(globalSettings?.mrpPrice || 499) *
         (1 - Number(globalSettings?.discountPercent || 85) / 100)
     );
-
-    const trendingLinks = globalSettings?.jobUpdates
-        || globalSettings?.relatedBlogs
-        || [];
 
     // =========================================================
     // 🔄 LOADING
@@ -884,35 +877,6 @@ const JobDetails = () => {
                         <DynamicSidebar />
 
                         {/* 🔕 Manual sidebar OFF — upar DynamicSidebar hai */}
-                        {trendingLinks.length < 0 && (
-                            <div className="bg-white p-5 md:p-8 rounded-3xl shadow-sm border border-slate-100">
-                                <h2 className="text-xs md:text-base font-black text-slate-900 mb-6 flex items-center gap-2 border-b pb-3 uppercase">
-                                    <Sparkles size={18} className="text-blue-600" aria-hidden="true" />
-                                    Latest Updates 🔥
-                                </h2>
-                                <ul className="space-y-4" role="list">
-                                    {trendingLinks.slice(0, 5).map((item, i) => (
-                                        <li key={i}>
-                                            <a
-                                                href={item.url?.startsWith('http')
-                                                    ? safeRedirect(item.url)
-                                                    : item.url || '/govt-jobs'
-                                                }
-                                                target={item.url?.startsWith('http') ? '_blank' : '_self'}
-                                                rel={item.url?.startsWith('http') ? 'nofollow noopener noreferrer' : undefined}
-                                                className="group block"
-                                            >
-                                                <p className="text-[12px] md:text-[14px] font-black text-slate-700 group-hover:text-blue-600 line-clamp-2 leading-tight transition-colors">
-                                                    {item.title}
-                                                </p>
-                                                <div className="h-[2px] w-0 group-hover:w-full bg-blue-100 transition-all mt-2" />
-                                            </a>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
-
                         {/* Premium */}
                         <div className="bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-950 p-6 md:p-10 rounded-[3rem] text-white shadow-2xl border-b-8 border-blue-500">
                             <div className="text-center">

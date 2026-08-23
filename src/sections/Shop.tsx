@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { auth } from '../firebase/config';
 import { useNavigate } from 'react-router-dom';
-import { Crown, ArrowRight, Loader2, Sparkles, Tag, Zap, ExternalLink, FileText, Lock, BookOpen } from 'lucide-react';
+import { Crown, Loader2, Tag, Zap, ExternalLink, FileText, Lock, BookOpen } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { orderRepository } from '@/features/orders/data/orderRepository';
 import { courseRepository } from '@/features/courses/data/courseRepository';
@@ -29,7 +29,6 @@ type ShopLink = {
 type ShopGlobalSettings = {
   mrpPrice?: string;
   discountPercent?: string;
-  relatedBlogs?: ShopLink[];
   shopUpdates?: ShopLink[];
 };
 
@@ -204,21 +203,6 @@ if (settings) {
 
         {/* ✅ Bottom Info Grid (Simplified) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Blogs */}
-          <div className="bg-white p-5 md:p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-             <h3 className="text-sm md:text-xl font-black text-slate-900 mb-6 flex items-center gap-2 uppercase italic">
-                <Sparkles size={20} className="text-purple-600" /> Trending Updates
-             </h3>
-             <div className="space-y-3">
-                {(globalSettings?.relatedBlogs || []).slice(0, 3).map((item, i: number) => (
-                  <div key={i} onClick={() => { if (item.url) window.open(item.url, '_blank'); }} className="cursor-pointer p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between group">
-                    <span className="text-[12px] md:text-base font-bold text-slate-700 line-clamp-1">{item.title}</span>
-                    <ArrowRight size={16} className="text-slate-400 group-hover:translate-x-1 transition-transform" />
-                  </div>
-                ))}
-             </div>
-          </div>
-
           {/* Links */}
           <div className="bg-white p-5 md:p-8 rounded-[2rem] border border-slate-100 shadow-sm">
              <h3 className="text-sm md:text-xl font-black text-slate-900 mb-6 flex items-center gap-2 uppercase italic">

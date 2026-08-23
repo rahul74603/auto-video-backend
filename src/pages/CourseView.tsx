@@ -20,8 +20,6 @@ import {
   CheckCircle,
   ShieldCheck,
   BadgePercent,
-  Tag,
-  ArrowRight,
   BookOpen
 } from 'lucide-react';
 import SEO from '../components/SEO';
@@ -37,16 +35,9 @@ type CourseViewData = {
   features?: string[];
 };
 
-type SidebarQuickLink = {
-  title?: string;
-  name?: string;
-  url?: string;
-};
-
 type GlobalSettingsView = {
   mrpPrice?: string;
   discountPercent?: string;
-  sidebarLinks?: SidebarQuickLink[];
 };
 
 const CourseView = () => {
@@ -178,8 +169,7 @@ const CourseView = () => {
     navigate('/manual-payment', { state: { itemId: id, itemName: course?.title || "Premium Course", amount: finalPrice } });
   };
 
-  const pageQuickLinks = globalSettings?.sidebarLinks || [];
-
+  
   const enterFolder = (folderId: string, folderName: string) => {
       setCurrentFolderId(folderId);
       setFolderPath([...folderPath, { id: folderId, name: folderName }]);
@@ -371,45 +361,6 @@ const CourseView = () => {
 
             <DynamicSidebar />
 
-            {/* 🔕 Manual sidebar OFF — upar DynamicSidebar hai */}
-            {pageQuickLinks.length < 0 && (
-              <div className="bg-white/80 backdrop-blur-xl p-4 md:p-8 rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden relative mt-8 md:mt-12">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-blue-100 rounded-bl-full opacity-60 pointer-events-none"></div>
-                  <h3 className="text-sm md:text-xl font-black text-slate-900 mb-5 border-b border-slate-100 pb-3 flex items-center gap-2 relative z-10">
-                      <Tag size={20} className="text-blue-600 animate-bounce" /> महत्वपूर्ण लिंक्स 🔗
-                  </h3>
-                  <ul className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 relative z-10">
-                      {pageQuickLinks.map((item, index: number) => {
-                          const linkGradients = [
-                            "bg-gradient-to-r from-blue-600 to-cyan-500 shadow-blue-500/30",
-                            "bg-gradient-to-r from-purple-600 to-fuchsia-500 shadow-purple-500/30",
-                            "bg-gradient-to-r from-orange-500 to-red-500 shadow-orange-500/30",
-                            "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-emerald-500/30",
-                            "bg-gradient-to-r from-rose-500 to-pink-500 shadow-rose-500/30"
-                          ];
-                          const bgClass = linkGradients[index % linkGradients.length];
-
-                          return (
-                             <li 
-                               key={index} 
-                               onClick={() => item.url && item.url !== "#" && window.open(item.url, '_blank')} 
-                               className={`group flex items-center justify-between p-3 md:p-5 rounded-xl md:rounded-2xl transition-all duration-300 cursor-pointer shadow-md hover:shadow-xl hover:-translate-y-1 ${bgClass} text-white`}
-                             >
-                                <div className="flex items-start gap-3 w-full">
-                                   <div className="bg-white/20 p-2 rounded-lg shrink-0 mt-0.5 group-hover:scale-110 transition-transform">
-                                      <ExternalLink size={16} className="text-white md:w-5 md:h-5" />
-                                   </div>
-                                   <span className="font-black text-[13px] md:text-[16px] leading-snug tracking-wide pr-2">
-                                       {item.title || item.name}
-                                   </span>
-                                </div>
-                                <ArrowRight size={18} className="text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0 ml-1 self-center" />
-                             </li>
-                          )
-                      })}
-                  </ul>
-              </div>
-            )}
          </div>
       </div>
 {/* ✅ SEO FIX: Internal Links Section (Fixes 'No outgoing links' and 'Orphan page' error) */}

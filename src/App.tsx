@@ -76,7 +76,6 @@ const ShippingPolicy = lazy(() => import('./pages/ShippingPolicy'));
 // Admin (NO GUARD - Direct access)
 const AdminPanel = lazy(() => import('./pages/AdminPage'));
 const AdminBlogWriter = lazy(() => import('./pages/AdminBlogWriter'));
-const AdminSidebarControl = lazy(() => import('./pages/Admin/AdminSidebarControl'));
 const AdminJobDrafts = lazy(() => import('./pages/Admin/Tabs/AdminJobDrafts'));
 const AdminWebStories = lazy(() => import('./pages/Admin/Tabs/AdminWebStories'));
 const AdminBrowseTab = lazy(() => import('./pages/Admin/Tabs/AdminBrowseTab'));
@@ -447,7 +446,6 @@ function App() {
                                         {/* 🔓 ADMIN ROUTES (Direct Access) */}
                                         <Route path="/secret-admin" element={<AdminPanel />} />
                                         <Route path="/write-blog-secret" element={<AdminBlogWriter />} />
-                                        <Route path="/admin/sidebar" element={<AdminSidebarControl />} />
                                         <Route path="/admin/job-drafts" element={<AdminJobDrafts />} />
                                         <Route path="/admin-stories-secret" element={<AdminWebStories />} />
                                         <Route path="/admin/browse" element={<AdminBrowseTab />} />
