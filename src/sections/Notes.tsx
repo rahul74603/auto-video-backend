@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, Download, ShoppingCart, Info, Sparkles, Tag, ExternalLink, ArrowRight } from 'lucide-react';
+import { BookOpen, Download, ShoppingCart, Info, Sparkles } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { db } from '../firebase/config'; 
 import { doc, getDoc } from 'firebase/firestore';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { useNavigate } from 'react-router-dom';
-import SEO from '../components/SEO'; 
+import SEO from '../components/SEO';
+import DynamicSidebar from '../components/DynamicSidebar'; 
 
 interface AffiliateItem {
   id: string;
@@ -78,17 +79,6 @@ const Notes: React.FC = () => {
   }, []);
 
   const sellingPrice = Math.round(Number(globalSettings?.mrpPrice || 499) * (1 - Number(globalSettings?.discountPercent || 85) / 100));
-  
-  const loopColors = [
-    { bg: "bg-rose-50", border: "border-rose-200 hover:border-rose-400", text: "text-rose-900", iconText: "text-rose-600" },
-    { bg: "bg-blue-50", border: "border-blue-200 hover:border-blue-400", text: "text-blue-900", iconText: "text-blue-600" },
-    { bg: "bg-emerald-50", border: "border-emerald-200 hover:border-emerald-400", text: "text-emerald-900", iconText: "text-emerald-600" },
-    { bg: "bg-amber-50", border: "border-amber-200 hover:border-amber-400", text: "text-amber-900", iconText: "text-amber-600" },
-    { bg: "bg-purple-50", border: "border-purple-200 hover:border-purple-400", text: "text-purple-900", iconText: "text-purple-600" }
-  ];
-
-  const trendingBlogs = (globalSettings?.relatedBlogs || []).slice(0, 5); 
-  const pageQuickLinks = ((globalSettings?.ebookUpdates?.length ?? 0) > 0 ? globalSettings?.ebookUpdates : globalSettings?.sidebarLinks) || [];
 
   // 🔥 1. BREADCRUMB SCHEMA (Google Search Hierarchy)
   const breadcrumbSchema = {
@@ -226,72 +216,8 @@ const Notes: React.FC = () => {
           {/* ✅ RIGHT SIDE: DYNAMIC SIDEBAR (35%) */}
           <aside className="w-full md:w-[35%] space-y-4 md:space-y-6 sticky top-14 md:top-20">
               
-              {/* Trending Section */}
-              {trendingBlogs.length > 0 && (
-                <section className="bg-white/80 backdrop-blur-xl p-4 md:p-6 rounded-2xl md:rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 relative overflow-hidden">
-                    <div className="absolute -top-10 -right-10 w-32 h-32 bg-purple-100 rounded-full blur-3xl opacity-60 pointer-events-none"></div>
-                    <h2 className="text-sm md:text-lg font-black text-slate-900 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2 relative z-10">
-                      <Sparkles size={18} className="text-purple-600 animate-pulse" aria-hidden="true" /> 
-                      <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-700 to-pink-600">ट्रेंडिंग ब्लॉग्स 🔥</span>
-                    </h2>
-                    
-                    <ul className="space-y-3 relative z-10">
-                        {trendingBlogs.map((item, index: number) => {
-                            const style = loopColors[index % loopColors.length];
-                            return (
-                              <li key={index} onClick={() => item.url && window.open(item.url, '_blank')} className={`group cursor-pointer border-2 ${style.border} ${style.bg} p-3 md:p-4 rounded-xl md:rounded-2xl transition-all hover:-translate-y-1 shadow-sm hover:shadow-md flex items-center justify-between`}>
-                                  <div className="flex-1 pr-3">
-                                      <span className={`block text-[13px] md:text-[16px] font-black ${style.text} line-clamp-2 min-h-[2.8em] leading-snug`}>{item.title}</span>
-                                  </div>
-                                  <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center bg-white shadow-sm shrink-0 group-hover:scale-110 transition-transform ${style.iconText}`}>
-                                      <ArrowRight className="w-4 h-4 md:w-5 md:h-5" aria-hidden="true" />
-                                  </div>
-                              </li>
-                            );
-                        })}
-                    </ul>
-                </section>
-              )}
-
-              {/* Quick Links Section */}
-              {pageQuickLinks.length > 0 && (
-                <section className="bg-white/80 backdrop-blur-xl p-4 md:p-6 rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden relative">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-blue-100 rounded-bl-full opacity-60 pointer-events-none"></div>
-                    <h2 className="text-sm md:text-lg font-black text-slate-900 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2 relative z-10">
-                        <Tag size={18} className="text-blue-600 animate-bounce" aria-hidden="true" /> महत्वपूर्ण लिंक्स 🔗
-                    </h2>
-                    <ul className="space-y-3 relative z-10">
-                        {pageQuickLinks.map((item, index: number) => {
-                            const linkGradients = [
-                              "bg-gradient-to-r from-blue-600 to-cyan-500 shadow-blue-500/30",
-                              "bg-gradient-to-r from-purple-600 to-fuchsia-500 shadow-purple-500/30",
-                              "bg-gradient-to-r from-orange-500 to-red-500 shadow-orange-500/30",
-                              "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-emerald-500/30",
-                              "bg-gradient-to-r from-rose-500 to-pink-500 shadow-rose-500/30"
-                            ];
-                            const bgClass = linkGradients[index % linkGradients.length];
-
-                            return (
-                               <li 
-                                 key={index} 
-                                 onClick={() => item.url && item.url !== "#" && window.open(item.url, '_blank')} 
-                                 className={`group flex items-center justify-between p-3 md:p-4 rounded-xl md:rounded-2xl transition-all duration-300 cursor-pointer shadow-md hover:shadow-xl hover:-translate-y-1 ${bgClass} text-white`}
-                               >
-                                  <div className="flex items-start gap-2.5 w-full">
-                                     <div className="bg-white/20 p-1.5 rounded-lg shrink-0 mt-0.5 group-hover:scale-110 transition-transform">
-                                        <ExternalLink size={14} className="text-white md:w-4 md:h-4" aria-hidden="true" />
-                                     </div>
-                                     <span className="font-black text-[12px] md:text-[15px] leading-snug tracking-wide pr-2">
-                                         {item.title || item.name}
-                                     </span>
-                                  </div>
-                                  <ArrowRight size={16} className="text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0 ml-1 self-center" aria-hidden="true" />
-                               </li>
-                            )
-                        })}
-                    </ul>
-                </section>
-              )}
+              {/* 🔄 Auto-updating sidebar */}
+              <DynamicSidebar />
 
               {/* Promo Box */}
               <section className="p-4 md:p-6 bg-gradient-to-br from-blue-700 via-indigo-800 to-slate-900 rounded-2xl md:rounded-[2rem] text-white shadow-2xl relative overflow-hidden border-b-4 border-black/20">
@@ -310,18 +236,6 @@ const Notes: React.FC = () => {
               </section>
 
           </aside>
-        </div>
-        {/* ✅ SEO FIX: Internal Links Section (Fixes 'No outgoing links' and 'Orphan page' error) */}
-        <div className="bg-blue-50/50 p-6 md:p-8 rounded-[2rem] border border-blue-100 shadow-sm mt-8">
-          <h2 className="text-sm md:text-xl font-black text-slate-800 mb-5 uppercase tracking-tight flex items-center gap-2">
-            <BookOpen size={20} className="text-blue-600" aria-hidden="true" /> Explore More on StudyGyaan
-          </h2>
-          <div className="flex flex-wrap gap-3">
-            <a href="/govt-jobs" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Latest Govt Jobs</a>
-            <a href="/free-study-material" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Study Material</a>
-            <a href="/test" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Mock Tests</a>
-            <a href="/blog" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Sarkari Yojana & Blogs</a>
-          </div>
         </div>
       </div>
     </div>
