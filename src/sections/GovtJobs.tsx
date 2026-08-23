@@ -5,9 +5,9 @@ import React, {
 import {
     Briefcase, MapPin, Clock, ArrowRight,
     Search, FileText, ChevronLeft, ChevronRight,
-    MessageCircle, Sparkles, Tag,
-    ExternalLink, ShoppingCart
+    MessageCircle, ExternalLink
 } from 'lucide-react';
+import DynamicSidebar from '@/components/DynamicSidebar';
 import { useLanguage } from '@/context/useLanguage';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import SEO from '../components/SEO';
@@ -31,22 +31,6 @@ const CATEGORY_TABS = [
     { id: 'engineering', label: 'Engineering' },
     { id: 'medical', label: 'Medical' },
     { id: 'other', label: 'Other' }
-];
-
-const LOOP_COLORS = [
-    { bg: "bg-rose-50", border: "border-rose-200 hover:border-rose-400", text: "text-rose-900", iconText: "text-rose-600" },
-    { bg: "bg-blue-50", border: "border-blue-200 hover:border-blue-400", text: "text-blue-900", iconText: "text-blue-600" },
-    { bg: "bg-emerald-50", border: "border-emerald-200 hover:border-emerald-400", text: "text-emerald-900", iconText: "text-emerald-600" },
-    { bg: "bg-amber-50", border: "border-amber-200 hover:border-amber-400", text: "text-amber-900", iconText: "text-amber-600" },
-    { bg: "bg-purple-50", border: "border-purple-200 hover:border-purple-400", text: "text-purple-900", iconText: "text-purple-600" }
-];
-
-const LINK_GRADIENTS = [
-    "bg-gradient-to-r from-blue-600 to-cyan-500",
-    "bg-gradient-to-r from-purple-600 to-fuchsia-500",
-    "bg-gradient-to-r from-orange-500 to-red-500",
-    "bg-gradient-to-r from-emerald-500 to-teal-400",
-    "bg-gradient-to-r from-rose-500 to-pink-500"
 ];
 
 // =========================================================
@@ -311,7 +295,7 @@ const GovtJobs = () => {
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [searchInput, setSearchInput] = useState('');
-    const [globalSettings, setGlobalSettings] = useState<GovtJobSettings | null>(null);
+    const [, setGlobalSettings] = useState<GovtJobSettings | null>(null); // settings ab sirf fetch-compat ke liye
     const [currentPage, setCurrentPage] = useState(1);
 
     // =========================================================
@@ -457,22 +441,6 @@ const GovtJobs = () => {
     // =========================================================
     // 💰 SIDEBAR VALUES
     // =========================================================
-    const sellingPrice = useMemo(() => Math.round(
-        Number(globalSettings?.mrpPrice || 499) *
-        (1 - Number(globalSettings?.discountPercent || 85) / 100)
-    ), [globalSettings]);
-
-    const trendingBlogs = useMemo(() =>
-        (globalSettings?.relatedBlogs || []).slice(0, 5),
-        [globalSettings]
-    );
-
-    const pageQuickLinks = useMemo(() =>
-        (globalSettings?.jobUpdates?.length ?? 0) > 0
-            ? (globalSettings?.jobUpdates ?? [])
-            : (globalSettings?.sidebarLinks || []),
-        [globalSettings]
-    );
 
     const handleCategoryChange = useCallback((catId: string) => {
         startTransition(() => {
@@ -638,140 +606,12 @@ const GovtJobs = () => {
                                 )}
                             </div>
                         )}
-
-                        {/* Internal Links */}
-                        <div className="bg-blue-50/50 p-5 md:p-8 rounded-2xl border border-blue-100 mt-6">
-                            <h2 className="text-sm md:text-xl font-black text-slate-800 mb-4 flex items-center gap-2">
-                                <Search size={18} className="text-blue-600" aria-hidden="true" />
-                                Explore More on StudyGyaan
-                            </h2>
-                            <div className="flex flex-wrap gap-2">
-                                {[
-                                    { href: "/govt-jobs", label: "Latest Govt Jobs" },
-                                    { href: "/free-study-material", label: "Free Study Material" },
-                                    { href: "/test", label: "Free Mock Tests" },
-                                    { href: "/blog", label: "Blogs & Updates" },
-                                    { href: "/web-stories", label: "Web Stories" }
-                                ].map(link => (
-                                    <a
-                                        key={link.href}
-                                        href={link.href}
-                                        className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-4 py-2 rounded-xl text-[10px] md:text-sm font-black transition-all shadow-sm"
-                                    >
-                                        {link.label}
-                                    </a>
-                                ))}
-                            </div>
-                        </div>
                     </main>
 
                     {/* ===== SIDEBAR ===== */}
                     <aside className="w-full md:w-[35%] space-y-4 sticky top-16">
-
-                        {/* Trending Blogs */}
-                        {trendingBlogs.length > 0 && (
-                            <section className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
-                                <h2 className="text-sm md:text-base font-black text-slate-900 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
-                                    <Sparkles size={16} className="text-purple-600" aria-hidden="true" />
-                                    ट्रेंडिंग ब्लॉग्स 🔥
-                                </h2>
-                                <ul className="space-y-2" role="list">
-                                    {trendingBlogs.map((item, index) => {
-                                        const style = LOOP_COLORS[index % LOOP_COLORS.length];
-                                        const isInternal =
-                                            item.url?.includes('studygyaan.in') ||
-                                            item.url?.startsWith('/');
-                                        const href = isInternal
-                                            ? (item.url?.replace('https://studygyaan.in', '') || '/blog')
-                                            : safeExternalUrl(item.url ?? '#');
-
-                                        return (
-                                            <li key={index}>
-                                                <a
-                                                    href={href}
-                                                    target={isInternal ? '_self' : '_blank'}
-                                                    rel={isInternal ? undefined : 'noopener noreferrer'}
-                                                    className={`group flex items-center justify-between border-2 ${style.border} ${style.bg} p-3 rounded-xl transition-all hover:-translate-y-0.5 shadow-sm`}
-                                                >
-                                                    <span className={`flex-1 pr-2 text-[12px] font-black ${style.text} line-clamp-2 leading-snug`}>
-                                                        {item.title}
-                                                    </span>
-                                                    <div className={`w-7 h-7 rounded-full flex items-center justify-center bg-white shadow-sm shrink-0 ${style.iconText}`}>
-                                                        <ArrowRight size={14} aria-hidden="true" />
-                                                    </div>
-                                                </a>
-                                            </li>
-                                        );
-                                    })}
-                                </ul>
-                            </section>
-                        )}
-
-                        {/* Quick Links */}
-                        {pageQuickLinks.length > 0 && (
-                            <section className="bg-white p-4 md:p-6 rounded-2xl border border-slate-100 shadow-sm">
-                                <h2 className="text-sm md:text-base font-black text-slate-900 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
-                                    <Tag size={16} className="text-blue-600" aria-hidden="true" />
-                                    महत्वपूर्ण लिंक्स 🔗
-                                </h2>
-                                <ul className="space-y-2" role="list">
-                                    {pageQuickLinks.map((item, index) => (
-                                        <li key={index}>
-                                            <a
-                                                href={safeExternalUrl(item.url ?? '#')}
-                                                target={item.url?.startsWith('http') ? '_blank' : '_self'}
-                                                rel={item.url?.startsWith('http')
-                                                    ? 'nofollow noopener noreferrer'
-                                                    : undefined}
-                                                className={`group flex items-center justify-between p-3 rounded-xl transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 ${LINK_GRADIENTS[index % LINK_GRADIENTS.length]} text-white`}
-                                            >
-                                                <div className="flex items-center gap-2 flex-1">
-                                                    <div className="bg-white/20 p-1 rounded-lg shrink-0">
-                                                        <ExternalLink size={12} aria-hidden="true" />
-                                                    </div>
-                                                    <span className="font-black text-[11px] md:text-sm leading-snug">
-                                                        {item.title || item.name}
-                                                    </span>
-                                                </div>
-                                                <ArrowRight
-                                                    size={14}
-                                                    className="shrink-0 group-hover:translate-x-1 transition-all"
-                                                    aria-hidden="true"
-                                                />
-                                            </a>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </section>
-                        )}
-
-                        {/* Premium Card */}
-                        <section className="p-4 md:p-6 bg-gradient-to-br from-blue-700 via-indigo-800 to-slate-900 rounded-2xl text-white shadow-xl border-b-4 border-black/20">
-                            <p className="font-black text-sm md:text-lg mb-1 italic flex items-center gap-2 text-yellow-300">
-                                <ShoppingCart size={18} aria-hidden="true" />
-                                प्रीमियम नोट्स
-                            </p>
-                            <p className="text-[10px] md:text-xs opacity-90 mb-4 leading-relaxed">
-                                10 साल के रिपीटेड सवालों का पूरा निचोड़।
-                            </p>
-                            <div className="flex items-center gap-2 mb-4 bg-white/10 p-2 md:p-3 rounded-xl border border-white/10">
-                                <span className="line-through text-white/50 text-[10px] font-bold">
-                                    ₹{globalSettings?.mrpPrice || '499'}
-                                </span>
-                                <span className="bg-red-500 text-white text-[8px] font-black px-2 py-0.5 rounded">
-                                    {globalSettings?.discountPercent || '85'}% OFF
-                                </span>
-                                <span className="text-sm md:text-xl font-black text-yellow-400 ml-auto">
-                                    ₹{sellingPrice}
-                                </span>
-                            </div>
-                            <a
-                                href="/premium-notes"
-                                className="block w-full bg-yellow-400 text-blue-900 font-black py-2.5 rounded-xl text-center text-[12px] md:text-sm hover:bg-yellow-300 active:scale-95 transition-transform shadow-lg"
-                            >
-                                अभी खरीदें →
-                            </a>
-                        </section>
+                        {/* 🔄 Auto-updating sidebar — manual links hata diye */}
+                        <DynamicSidebar />
                     </aside>
                 </div>
             </div>

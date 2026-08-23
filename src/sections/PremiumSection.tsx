@@ -4,7 +4,7 @@ import { courseRepository } from '@/features/courses/data/courseRepository';
 import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Crown, ArrowRight, Star, BookOpen, Sparkles, MessageCircle, FileText, Lock, Tag, ExternalLink, Flame } from 'lucide-react';
+import { Crown, ArrowRight, Star, BookOpen, Sparkles, MessageCircle, FileText, Lock, Flame } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import SEO from '../components/SEO';
 
@@ -73,7 +73,7 @@ const CourseFilesList = ({ courseId }: { courseId: string }) => {
 
 const PremiumSection = () => {
   const [courses, setCourses] = useState<Course[]>([]);
-  const [globalSettings, setGlobalSettings] = useState<PremiumGlobalSettings | null>(null);
+  const [, setGlobalSettings] = useState<PremiumGlobalSettings | null>(null);
   const myPhoneNumber = "916263396446"; 
   const navigate = useNavigate();
 
@@ -97,8 +97,6 @@ const PremiumSection = () => {
     const url = `https://wa.me/${myPhoneNumber}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
-
-  const loopColors = ["from-rose-400 to-pink-600", "from-blue-400 to-indigo-600", "from-emerald-400 to-teal-600", "from-amber-400 to-orange-600"];
 
   // 🔥 PRODUCT SCHEMA FOR GOOGLE SEARCH 🔥
   const productSchema = {
@@ -209,25 +207,6 @@ const PremiumSection = () => {
 
           {/* ✅ RIGHT SIDE: DYNAMIC SIDEBAR (40%) */}
           <aside className="w-[40%] md:w-[35%] space-y-2 md:space-y-4 sticky top-14">
-              
-              {/* Trending Section */}
-              {globalSettings?.relatedBlogs && (
-                <section className="bg-white p-1.5 md:p-4 rounded-lg shadow-sm border border-slate-100">
-                    <h2 className="text-[8.5px] md:text-sm font-black text-slate-900 mb-1.5 border-b pb-1 flex items-center gap-1">
-                      <Sparkles size={10} className="text-purple-600 animate-pulse" aria-hidden="true" /> ट्रेंडिंग 🔥
-                    </h2>
-                    <ul className="space-y-1.5 md:space-y-2.5">
-                        {globalSettings.relatedBlogs.map((blogInfo, index: number) => (
-                            <li key={index} onClick={() => blogInfo.url && window.open(blogInfo.url, '_blank')} className={`bg-gradient-to-r ${loopColors[index % loopColors.length]} p-[0.6px] rounded-[3px] md:rounded-lg cursor-pointer active:scale-95 shadow-sm`}>
-                                <div className="bg-white p-1 md:p-2 rounded-[2.5px] md:rounded-[7.5px] text-[7.5px] md:text-[11px] font-black text-slate-800 line-clamp-2 leading-tight">
-                                    {blogInfo.title}
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                </section>
-              )}
-
               {/* Promo Box */}
               <section className="p-2 md:p-4 bg-gradient-to-br from-indigo-600 to-blue-800 rounded-lg text-white shadow-lg relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-10 h-10 bg-white/10 rounded-full blur-xl"></div>
@@ -237,34 +216,7 @@ const PremiumSection = () => {
                   <p className="text-[7.5px] md:text-xs opacity-90 leading-tight mb-2">आज ही जॉइन करें और पाएँ परीक्षा में 100% सफलता दिलाने वाले नोट्स।</p>
                   <button onClick={() => navigate('/premium-notes')} className="w-full bg-white text-indigo-700 font-black py-1 rounded text-[7.5px] md:text-xs hover:bg-slate-100 transition-colors">अभी चेक करें ➔</button>
               </section>
-
-              {/* Quick Links Section */}
-              <section className="bg-white p-1.5 md:p-4 rounded-lg shadow-sm border border-slate-100 hidden sm:block">
-                <h2 className="text-[9px] md:text-sm font-black text-slate-900 mb-1 border-b pb-1 flex items-center gap-1">
-                  <Tag size={10} className="text-blue-600" aria-hidden="true" /> क्विक लिंक्स
-                </h2>
-                <ul className="space-y-1">
-                  {globalSettings?.sidebarLinks?.map((item, index: number) => (
-                    <li key={index} onClick={() => item.url && window.open(item.url, '_blank')} className="flex items-center justify-between p-1 md:p-2.5 bg-slate-50 rounded-md hover:bg-blue-50 transition-all cursor-pointer">
-                      <span className="text-slate-600 font-bold text-[7.5px] md:text-[10px] truncate pr-1">{item.name}</span>
-                      <ExternalLink size={8} className="text-slate-300" aria-hidden="true" />
-                    </li>
-                  ))}
-                </ul>
-              </section>
           </aside>
-        </div>
-        {/* ✅ SEO FIX: Internal Links Section (Fixes 'No outgoing links' and 'Orphan page' error) */}
-        <div className="bg-blue-50/50 p-6 md:p-8 rounded-[2rem] border border-blue-100 shadow-sm mt-8">
-          <h2 className="text-sm md:text-xl font-black text-slate-800 mb-5 uppercase tracking-tight flex items-center gap-2">
-            <BookOpen size={20} className="text-blue-600" aria-hidden="true" /> Explore More on StudyGyaan
-          </h2>
-          <div className="flex flex-wrap gap-3">
-            <a href="/govt-jobs" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Latest Govt Jobs</a>
-            <a href="/free-study-material" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Study Material</a>
-            <a href="/test" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Mock Tests</a>
-            <a href="/blog" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Sarkari Yojana & Blogs</a>
-          </div>
         </div>
       </div>
 

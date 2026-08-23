@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { auth } from '../firebase/config';
 import { useNavigate } from 'react-router-dom';
-import { Crown, ArrowRight, Loader2, Sparkles, Tag, Zap, ExternalLink, FileText, Lock, BookOpen, ShoppingCart } from 'lucide-react';
+import { Crown, ArrowRight, Loader2, Sparkles, Tag, Zap, ExternalLink, FileText, Lock, BookOpen } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { orderRepository } from '@/features/orders/data/orderRepository';
 import { courseRepository } from '@/features/courses/data/courseRepository';
@@ -232,18 +232,6 @@ if (settings) {
                   </div>
                 ))}
              </div>
-          </div>
-        </div>
-{/* ✅ SEO FIX: Internal Links Section (Fixes 'No outgoing links' and 'Orphan page' error) */}
-        <div className="bg-blue-50/50 p-6 md:p-8 rounded-[2rem] border border-blue-100 shadow-sm mt-8">
-          <h2 className="text-sm md:text-xl font-black text-slate-800 mb-5 uppercase tracking-tight flex items-center gap-2">
-            <ShoppingCart size={20} className="text-blue-600" aria-hidden="true" /> Explore More on StudyGyaan
-          </h2>
-          <div className="flex flex-wrap gap-3">
-            <a href="/govt-jobs" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Latest Govt Jobs</a>
-            <a href="/free-study-material" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Study Material</a>
-            <a href="/test" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Mock Tests</a>
-            <a href="/blog" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Sarkari Yojana & Blogs</a>
           </div>
         </div>
       </div>
