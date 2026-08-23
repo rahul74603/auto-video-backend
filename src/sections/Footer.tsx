@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Mail, Phone, MapPin, Facebook, Twitter, Instagram, Linkedin, Sparkles, Zap, Flame } from 'lucide-react';
+import { Mail, Phone, MapPin, Facebook, Sparkles, Zap, Flame, MessageCircle, Send, Youtube } from 'lucide-react';
 
 const Footer = () => {
   return (
@@ -22,18 +22,20 @@ const Footer = () => {
             </p>
             <div className="flex gap-3">
               {[
-                { Icon: Facebook, label: "Follow us on Facebook" },
-                { Icon: Twitter, label: "Follow us on Twitter" },
-                { Icon: Instagram, label: "Follow us on Instagram" },
-                { Icon: Linkedin, label: "Follow us on Linkedin" }
+                { Icon: Facebook, label: "Facebook", href: "https://www.facebook.com/StudyGyaan.in/", hover: "hover:bg-blue-600" },
+                { Icon: MessageCircle, label: "WhatsApp Channel", href: "https://whatsapp.com/channel/0029VbC4vo12ZjCuRpjPrt3b", hover: "hover:bg-green-600" },
+                { Icon: Send, label: "Telegram", href: "https://t.me/studygyaan_official", hover: "hover:bg-sky-500" },
+                { Icon: Youtube, label: "YouTube", href: "https://youtube.com/@studygyaan_official", hover: "hover:bg-red-600" }
               ].map((social, i) => (
                 <a 
                   key={i} 
-                  href="#" 
+                  href={social.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   aria-label={social.label}
-                  className="bg-slate-800/50 p-2 rounded-lg hover:bg-blue-600 hover:text-white transition-all transform hover:-translate-y-1"
+                  className={`bg-slate-800/50 p-2.5 rounded-lg ${social.hover} hover:text-white transition-all transform hover:-translate-y-1`}
                 >
-                  <social.Icon className="w-4 h-4" aria-hidden="true" />
+                  <social.Icon className="w-4 h-4 md:w-5 md:h-5" aria-hidden="true" />
                 </a>
               ))}
             </div>

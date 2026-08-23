@@ -82,7 +82,6 @@ const AdminBrowseTab = lazy(() => import('./pages/Admin/Tabs/AdminBrowseTab'));
 
 // Layout (Lazy)
 const Footer = lazy(() => import('@/sections/Footer'));
-const FloatingSocials = lazy(() => import('./components/FloatingSocials'));
 const HeaderAd = lazy(() =>
     import('@/sections/Ads').then(m => ({ default: m.HeaderAd }))
 );
@@ -453,7 +452,6 @@ function App() {
                             {/* ✅ Footer Layout - Min height (CLS Fix) */}
                             <div style={{ minHeight: '200px' }}>
                                 <Suspense fallback={<SilentLoader />}>
-                                    <FloatingSocials />
                                     <Footer />
                                     <PopupAd />
                                 </Suspense>
