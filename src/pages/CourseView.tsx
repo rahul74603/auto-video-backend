@@ -25,6 +25,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import SEO from '../components/SEO';
+import DynamicSidebar from '../components/DynamicSidebar';
 
 interface CourseContent { id: string; title: string; seoTitle?: string; link?: string; type: 'PDF' | 'VIDEO' | 'FOLDER'; parentId?: string | null; }
 
@@ -368,7 +369,10 @@ const CourseView = () => {
                </div>
             )}
 
-            {pageQuickLinks.length > 0 && (
+            <DynamicSidebar />
+
+            {/* 🔕 Manual sidebar OFF — upar DynamicSidebar hai */}
+            {pageQuickLinks.length < 0 && (
               <div className="bg-white/80 backdrop-blur-xl p-4 md:p-8 rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden relative mt-8 md:mt-12">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-blue-100 rounded-bl-full opacity-60 pointer-events-none"></div>
                   <h3 className="text-sm md:text-xl font-black text-slate-900 mb-5 border-b border-slate-100 pb-3 flex items-center gap-2 relative z-10">

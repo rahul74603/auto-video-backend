@@ -5,6 +5,7 @@ import { useBlogs } from '@/features/blogs/hooks/useBlogs';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Sparkles, Clock, Flame, Tag, ExternalLink, ShoppingCart } from 'lucide-react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+import DynamicSidebar from '../components/DynamicSidebar';
 import { asText, toDateSafe, type TimestampLike } from '@/types/firestore';
 
 type BlogListLink = {
@@ -154,7 +155,10 @@ const BlogList = () => {
             )}
 
             {/* 🎯 COLORFUL QUICK LINKS */}
-            {pageQuickLinks.length > 0 && (
+            <DynamicSidebar />
+
+            {/* 🔕 Manual sidebar OFF — upar DynamicSidebar hai */}
+            {pageQuickLinks.length < 0 && (
               <div className="bg-white/80 backdrop-blur-xl p-4 md:p-6 rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden relative">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-blue-100 rounded-bl-full opacity-60 pointer-events-none"></div>
                   <h3 className="text-sm md:text-lg font-black text-slate-900 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2 relative z-10">

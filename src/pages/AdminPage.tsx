@@ -16,7 +16,6 @@ import { auth } from '../firebase/config';
 import { useSiteContent } from '../hooks/useSiteContent';
 
 // --- 🛠️ TAB COMPONENTS IMPORT ---
-import AdminSidebarControl from './Admin/AdminSidebarControl';
 import NotificationsTab from './Admin/Tabs/NotificationsTab';
 import OrdersTab from './Admin/Tabs/OrdersTab';
 import PremiumTab from './Admin/Tabs/PremiumTab';
@@ -46,7 +45,7 @@ const AdminPage = () => {
     const location = useLocation(); 
 
     // ✅ Active Tab State — AI Article Studio अब JOBS AI tab के अंदर ही है + Automation Control
-    type AdminTab = 'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'SIDEBAR' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'PAYMENTS' | 'AUTOMATION';
+    type AdminTab = 'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'PAYMENTS' | 'AUTOMATION';
     const [activeTab, setActiveTab] = useState<AdminTab>('BROWSE');
 
     const { content: siteContent, updateContent: updateSiteContent } = useSiteContent();
@@ -69,7 +68,7 @@ const AdminPage = () => {
         setPrevUrlSearch(currentUrlSearch);
         const params = new URLSearchParams(currentUrlSearch);
         const urlTab = params.get('tab');
-        if (urlTab && (['BROWSE', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'HOMEPAGE', 'FAST TRACK', 'WEB STORIES', 'CUSTOMIZE', 'SIDEBAR', 'MOCK TEST', 'STORAGE', 'JOBS AI', 'PAYMENTS', 'AUTOMATION'] as AdminTab[]).includes(urlTab as AdminTab)) {
+        if (urlTab && (['BROWSE', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'HOMEPAGE', 'FAST TRACK', 'WEB STORIES', 'CUSTOMIZE', 'MOCK TEST', 'STORAGE', 'JOBS AI', 'PAYMENTS', 'AUTOMATION'] as AdminTab[]).includes(urlTab as AdminTab)) {
             setActiveTab(urlTab as AdminTab);
         }
     }
@@ -150,7 +149,7 @@ const AdminPage = () => {
                     
                     {/* NAVIGATION TABS (Added PAYMENTS + AUTOMATION) */}
                     <div className="flex flex-wrap gap-1 md:gap-2 w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scroll-smooth items-center no-scrollbar">
-                        {['BROWSE', 'JOBS AI', 'AUTOMATION', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'SIDEBAR', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE'].map(t => (
+                        {['BROWSE', 'JOBS AI', 'AUTOMATION', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE'].map(t => (
                             <button 
                                 key={t} 
                                 onClick={() => setActiveTab(t as AdminTab)} 
@@ -190,7 +189,6 @@ const AdminPage = () => {
                     {activeTab === 'HOMEPAGE' && <AdminHomepageTab siteContent={siteContent} updateSiteContent={updateSiteContent} />}
                     {activeTab === 'FAST TRACK' && <FastTrackManager />} 
                     {activeTab === 'WEB STORIES' && <AdminWebStories />}
-                    {activeTab === 'SIDEBAR' && <AdminSidebarControl />}
                     {activeTab === 'MOCK TEST' && <AdminMockTest />}
                     {activeTab === 'PREMIUM' && <PremiumTab />}
                     {activeTab === 'ORDERS' && <OrdersTab />}

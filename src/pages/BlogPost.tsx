@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
 import RelatedContent from '../components/RelatedContent';
+import DynamicSidebar from '../components/DynamicSidebar';
 import ExamHubNavigation from '../components/ExamHubNavigation';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
@@ -583,7 +584,10 @@ const BlogPost = () => {
                             </section>
                         )}
 
-                        {pageQuickLinks.length > 0 && (
+                        <DynamicSidebar />
+
+                        {/* 🔕 Manual sidebar OFF — upar DynamicSidebar hai */}
+                        {pageQuickLinks.length < 0 && (
                             <section className="bg-white/80 p-4 md:p-6 rounded-[2rem] border border-slate-100 shadow-sm">
                                 <h2 className="text-sm md:text-lg font-black text-slate-900 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
                                     <Tag size={18} className="text-blue-600" aria-hidden="true" />
