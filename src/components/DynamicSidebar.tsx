@@ -1,17 +1,15 @@
 /**
- * DynamicSidebar — 🔄 AUTO-UPDATING sidebar (manual links ki jagah)
+ * DynamicSidebar v2 — 🔄 COMPACT + PAGE-AWARE + AUTO-ROTATING
  * ==================================================================
- * Manual sidebar (admin-managed links) hata diya gaya — ab har page ke
- * sidebar me site ka FRESH content khud dikhta hai:
- *   💼 Latest Govt Jobs (active only)  ⚡ Fast Track Updates
- *   📝 Mock Tests                      📰 Blog Posts
- *
- * - Ek hi fetch, module-level cache (page navigation pe re-fetch nahi)
- * - Expired jobs skip hoti hain
- * - Internal links = SEO + engagement dono
+ * - Har PAGE pe ALAG links (URL-seeded shuffle — /blog pe alag, /job pe alag)
+ * - Roz apne aap rotate hota hai (seed me din ka number)
+ * - Naya content aate hi pool me aa jata hai (Firestore latest 12-20)
+ * - Compact: 3 sections × 3 links, chhota padding — kam space
+ * - Section-mix bhi route ke hisaab se: blog page pe blogs nahi repeat,
+ *   test page pe tests nahi repeat, etc.
  */
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '@/firebase/config';
 import { Briefcase, Zap, FileText, Newspaper, ArrowRight } from 'lucide-react';
@@ -49,11 +47,12 @@ async function fetchSidebarData(): Promise<SidebarData> {
             }
         };
 
+        // Bade pools — inme se har page apna alag random set uthata hai
         const [jobsRaw, ftRaw, testsRaw, blogsRaw] = await Promise.all([
-            grab('jobs', 15),
-            grab('fast_track', 8),
-            grab('mock_tests', 8),
-            grab('blogs', 8),
+            grab('jobs', 20),
+            grab('fast_track', 12),
+            grab('mock_tests', 12),
+            grab('blogs', 12),
         ]);
 
         const data: SidebarData = {
@@ -67,19 +66,15 @@ async function fetchSidebarData(): Promise<SidebarData> {
                     if (!asStr(j.title)) return false;
                     return !checkIsExpired(asStr(j.lastDate)); // sirf ACTIVE jobs
                 })
-                .slice(0, 5)
                 .map((j) => ({ id: j.id, title: asStr(j.title), slug: asStr(j.slug) || j.id, extra: asStr(j.lastDate) })),
             fastTrack: ftRaw
                 .filter((f) => asStr(f.status).toLowerCase() === 'published' && asStr(f.title))
-                .slice(0, 4)
                 .map((f) => ({ id: f.id, title: asStr(f.title), slug: asStr(f.slug) || f.id, extra: asStr(f.category) })),
             tests: testsRaw
                 .filter((t) => !['draft', 'archived', 'deleted'].includes(asStr(t.status).toLowerCase()) && asStr(t.title))
-                .slice(0, 4)
                 .map((t) => ({ id: t.id, title: asStr(t.title), slug: asStr(t.slug) || t.id, extra: asStr(t.subject) })),
             blogs: blogsRaw
                 .filter((b) => !['draft', 'pending', 'archived', 'deleted'].includes(asStr(b.status).toLowerCase()) && asStr(b.title))
-                .slice(0, 4)
                 .map((b) => ({ id: b.id, title: asStr(b.title), slug: asStr(b.slug) || b.id })),
         };
         cache = { data, at: Date.now() };
@@ -90,40 +85,79 @@ async function fetchSidebarData(): Promise<SidebarData> {
     return inflight;
 }
 
-/* ---------------- Section card ---------------- */
-const Section = ({
-    icon, title, accent, items, hrefBase, moreLabel, moreHref,
-}: {
-    icon: React.ReactNode; title: string; accent: string;
-    items: Item[]; hrefBase: string; moreLabel: string; moreHref: string;
-}) => {
+/* ---------------- Seeded shuffle (page + din ke hisaab se) ---------------- */
+function seedFromString(str: string): number {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+}
+
+function mulberry32(seed: number) {
+    let a = seed;
+    return () => {
+        a |= 0; a = (a + 0x6D2B79F5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function seededPick<T>(arr: T[], n: number, rnd: () => number): T[] {
+    const copy = [...arr];
+    for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(rnd() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy.slice(0, n);
+}
+
+/* ---------------- Route ke hisaab se section mix ---------------- */
+type SectionKey = 'jobs' | 'fastTrack' | 'tests' | 'blogs';
+
+function sectionsForPath(path: string): SectionKey[] {
+    if (path.startsWith('/blog')) return ['jobs', 'tests', 'fastTrack'];          // blog pe blogs repeat nahi
+    if (path.startsWith('/test') || path.startsWith('/mock')) return ['jobs', 'fastTrack', 'blogs']; // test pe tests nahi
+    if (path.startsWith('/job') || path.startsWith('/govt-jobs') || path.startsWith('/update') || path.startsWith('/jobs'))
+        return ['fastTrack', 'tests', 'blogs'];                                    // job pages pe jobs nahi
+    if (path.startsWith('/free-study-material') || path.startsWith('/material') || path.startsWith('/pdf')
+        || path.startsWith('/e-books') || path.startsWith('/ebook') || path.startsWith('/course') || path.startsWith('/premium-notes'))
+        return ['jobs', 'tests', 'blogs'];
+    return ['jobs', 'fastTrack', 'tests'];                                         // default mix
+}
+
+const SECTION_META: Record<SectionKey, { icon: React.ReactNode; title: string; accent: string; hrefBase: string; moreLabel: string; moreHref: string }> = {
+    jobs:      { icon: <Briefcase size={13} />, title: 'Govt Jobs',   accent: 'text-blue-700',    hrefBase: '/job',    moreLabel: 'Sabhi Jobs',    moreHref: '/govt-jobs' },
+    fastTrack: { icon: <Zap size={13} />,       title: 'Fast Updates', accent: 'text-amber-600',   hrefBase: '/update', moreLabel: 'Sabhi Updates', moreHref: '/govt-jobs' },
+    tests:     { icon: <FileText size={13} />,  title: 'Mock Tests',  accent: 'text-emerald-600', hrefBase: '/test',   moreLabel: 'Sabhi Tests',   moreHref: '/test' },
+    blogs:     { icon: <Newspaper size={13} />, title: 'Blogs',       accent: 'text-purple-600',  hrefBase: '/blog',   moreLabel: 'Sabhi Blogs',   moreHref: '/blog' },
+};
+
+/* ---------------- Compact section card ---------------- */
+const Section = ({ k, items }: { k: SectionKey; items: Item[] }) => {
+    const meta = SECTION_META[k];
     if (!items.length) return null;
     return (
-        <section className="bg-white p-4 md:p-5 rounded-2xl md:rounded-3xl shadow-sm border border-slate-100">
-            <h2 className={`text-xs md:text-sm font-black mb-3 flex items-center gap-2 border-b border-slate-100 pb-2.5 uppercase tracking-wide ${accent}`}>
-                {icon} {title}
+        <section className="bg-white p-3 rounded-xl shadow-sm border border-slate-100">
+            <h2 className={`text-[10px] md:text-[11px] font-black mb-2 flex items-center justify-between border-b border-slate-100 pb-1.5 uppercase tracking-wide ${meta.accent}`}>
+                <span className="flex items-center gap-1.5">{meta.icon} {meta.title}</span>
+                <Link to={meta.moreHref} className="text-[9px] text-slate-400 hover:text-blue-600 flex items-center gap-0.5 normal-case font-bold">
+                    {meta.moreLabel} <ArrowRight size={10} />
+                </Link>
             </h2>
-            <ul className="space-y-2.5" role="list">
+            <ul className="space-y-1.5" role="list">
                 {items.map((item) => (
                     <li key={item.id}>
-                        <Link to={`${hrefBase}/${item.slug}`} className="group block">
-                            <p className="text-[11px] md:text-[13px] font-bold text-slate-700 group-hover:text-blue-600 line-clamp-2 leading-snug transition-colors">
+                        <Link to={`${meta.hrefBase}/${item.slug}`} className="group block">
+                            <p className="text-[11px] md:text-[12px] font-bold text-slate-700 group-hover:text-blue-600 line-clamp-2 leading-snug transition-colors">
                                 {item.title}
                             </p>
-                            {item.extra ? (
-                                <p className="text-[9px] md:text-[10px] font-bold text-slate-400 mt-0.5">{item.extra}</p>
-                            ) : null}
-                            <div className="h-[2px] w-0 group-hover:w-full bg-blue-100 transition-all mt-1.5" />
                         </Link>
                     </li>
                 ))}
             </ul>
-            <Link
-                to={moreHref}
-                className="mt-3 flex items-center justify-center gap-1 text-[10px] md:text-[11px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-wider bg-blue-50 hover:bg-blue-100 rounded-xl py-2 transition-all"
-            >
-                {moreLabel} <ArrowRight size={12} />
-            </Link>
         </section>
     );
 };
@@ -131,6 +165,7 @@ const Section = ({
 /* ---------------- Main component ---------------- */
 const DynamicSidebar = () => {
     const [data, setData] = useState<SidebarData | null>(cache?.data || null);
+    const { pathname } = useLocation();
 
     useEffect(() => {
         let cancelled = false;
@@ -142,36 +177,27 @@ const DynamicSidebar = () => {
 
     if (!data) return null;
 
+    // Seed = page URL + din ka number → har page pe alag, roz rotate
+    const dayNo = Math.floor(Date.now() / 86400000);
+    const rnd = mulberry32(seedFromString(`${pathname}::${dayNo}`));
+    const sections = sectionsForPath(pathname);
+
     return (
-        <div className="space-y-4 md:space-y-5">
-            {/* 🛠️ Sarkari Tools promo */}
-            <Link
-                to="/tools"
-                className="block bg-gradient-to-br from-fuchsia-600 via-purple-700 to-indigo-800 rounded-2xl md:rounded-3xl p-4 md:p-5 text-white shadow-lg hover:shadow-2xl hover:-translate-y-0.5 transition-all"
+        <div className="space-y-3">
+            {/* 🛠️ Sarkari Tools — asli tools site (studygyaan.in/tools/) */}
+            <a
+                href="https://studygyaan.in/tools/"
+                className="flex items-center justify-between gap-2 bg-gradient-to-r from-fuchsia-600 to-indigo-700 rounded-xl px-3 py-2.5 text-white shadow hover:shadow-lg hover:-translate-y-0.5 transition-all"
             >
-                <p className="font-black text-xs md:text-sm flex items-center gap-2">
-                    🛠️ Sarkari Tools <span className="bg-yellow-400 text-slate-900 text-[8px] px-1.5 py-0.5 rounded-full font-black">FREE</span>
-                </p>
-                <p className="text-[10px] md:text-[11px] font-bold text-purple-100 mt-1 leading-snug">
-                    Photo Resizer (20KB) · Age Calculator · Percentage · sab browser me hi 🔒
-                </p>
-            </Link>
-            <Section
-                icon={<Briefcase size={15} />} title="Latest Govt Jobs 💼" accent="text-blue-700"
-                items={data.jobs} hrefBase="/job" moreLabel="Sabhi Jobs Dekhein" moreHref="/govt-jobs"
-            />
-            <Section
-                icon={<Zap size={15} />} title="Fast Track Updates ⚡" accent="text-amber-600"
-                items={data.fastTrack} hrefBase="/update" moreLabel="Sabhi Updates" moreHref="/govt-jobs"
-            />
-            <Section
-                icon={<FileText size={15} />} title="Free Mock Tests 📝" accent="text-emerald-600"
-                items={data.tests} hrefBase="/test" moreLabel="Sabhi Tests" moreHref="/test"
-            />
-            <Section
-                icon={<Newspaper size={15} />} title="Latest Blogs 📰" accent="text-purple-600"
-                items={data.blogs} hrefBase="/blog" moreLabel="Sabhi Blogs" moreHref="/blog"
-            />
+                <span className="font-black text-[11px] md:text-xs flex items-center gap-1.5">
+                    🛠️ Sarkari Tools
+                    <span className="bg-yellow-400 text-slate-900 text-[8px] px-1.5 py-0.5 rounded-full font-black">FREE</span>
+                </span>
+                <ArrowRight size={13} className="shrink-0" />
+            </a>
+            {sections.map((k) => (
+                <Section key={k} k={k} items={seededPick(data[k], 3, rnd)} />
+            ))}
         </div>
     );
 };

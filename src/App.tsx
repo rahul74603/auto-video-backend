@@ -31,7 +31,6 @@ const GovtJobs = lazy(() => import('@/sections/GovtJobs'));
 const JobDetails = lazy(() => import('./pages/JobDetails'));
 const JobHub = lazy(() => import('./pages/JobHub'));
 const ExamCalendar = lazy(() => import('./pages/ExamCalendar'));
-const ToolsHub = lazy(() => import('./pages/ToolsHub'));
 const CategoryPage = lazy(() => import('./pages/CategoryPage'));
 
 // Blog
@@ -223,15 +222,6 @@ function App() {
                                             element={
                                                 <PageWrapper>
                                                     <JobDetails />
-                                                </PageWrapper>
-                                            }
-                                        />
-                                        {/* 🛠️ SARKARI TOOLS */}
-                                        <Route
-                                            path="/tools"
-                                            element={
-                                                <PageWrapper>
-                                                    <ToolsHub />
                                                 </PageWrapper>
                                             }
                                         />

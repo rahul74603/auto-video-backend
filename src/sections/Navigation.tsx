@@ -407,13 +407,13 @@ const Navigation = () => {
                             </Link>
                         </li>
                         <li>
-                            <Link
-                                to="/tools"
+                            <a
+                                href="https://studygyaan.in/tools/"
                                 onClick={() => setIsOpen(false)}
                                 className="flex items-center gap-3 py-3 px-4 rounded-xl text-sm font-black text-slate-700 hover:bg-slate-50 border-b border-slate-50"
                             >
                                 <Wrench size={16} aria-hidden="true" /> Sarkari Tools
-                            </Link>
+                            </a>
                         </li>
 
                         {user ? (
