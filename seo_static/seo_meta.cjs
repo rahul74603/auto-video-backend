@@ -301,6 +301,44 @@ function buildMetaFiles(colls) {
     });
   } catch (e) { /* hubs optional */ }
 
+  // 📅 EXAM CALENDAR — bots ko upcoming last-dates list
+  try {
+    const todayMs = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00+05:30").getTime();
+    const weekMs = todayMs + 7 * 86400000;
+    const withDates = activeJobPool
+      .map((j) => {
+        const iso = parseLastDate(j.lastDate);
+        return iso ? { ...j, dateMs: Date.parse(`${iso}T00:00:00+05:30`), dateIso: iso } : null;
+      })
+      .filter((j) => j && j.dateMs >= todayMs)
+      .sort((a, b) => a.dateMs - b.dateMs);
+
+    const fmtRow = (j) =>
+      `<li><strong>${esc(j.dateIso)}</strong> — <a href="${SITE}/job/${esc(j.slug)}">${esc(j.title)}</a>${j.vacancies ? ` (${esc(j.vacancies)} Posts)` : ""}</li>`;
+
+    const thisWeek = withDates.filter((j) => j.dateMs <= weekMs);
+    const upcoming = withDates.filter((j) => j.dateMs > weekMs).slice(0, 25);
+    const yearNow = new Date().getFullYear();
+
+    let calContent = `<p>Sarkari exam calendar ${yearNow} — govt job last dates aur exam dates ek jagah, roz auto-update.</p>`;
+    if (thisWeek.length) {
+      calContent += `<h2>🔥 Is Hafte Ki Last Dates</h2><ul>${thisWeek.map(fmtRow).join("")}</ul>`;
+    }
+    if (upcoming.length) {
+      calContent += `<h2>📅 Aane Wali Last Dates</h2><ul>${upcoming.map(fmtRow).join("")}</ul>`;
+    }
+    calContent += `<p><a href="${SITE}/govt-jobs">सभी Latest Govt Jobs</a> | <a href="${SITE}/jobs/10th-pass">10th Pass Jobs</a> | <a href="${SITE}/jobs/railway">Railway Jobs</a></p>`;
+
+    pages["/exam-calendar"] = {
+      t: truncate(`Sarkari Exam Calendar ${yearNow}: Govt Job Last Dates & Exam Dates`, 70),
+      d: truncate(`Sarkari exam calendar ${yearNow} — is hafte ki last dates, upcoming govt job deadlines aur exam dates ek jagah. Roz auto-update hota hai.`, 160),
+      img: DEFAULT_IMG,
+      type: "website",
+      content: calContent,
+      ld: [],
+    };
+  } catch (e) { /* calendar optional */ }
+
   return {
     "seo-meta-jobs.json": JSON.stringify(jobs),
     "seo-meta-updates.json": JSON.stringify(updates),

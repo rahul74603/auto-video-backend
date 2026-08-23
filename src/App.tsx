@@ -29,6 +29,7 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 const GovtJobs = lazy(() => import('@/sections/GovtJobs'));
 const JobDetails = lazy(() => import('./pages/JobDetails'));
 const JobHub = lazy(() => import('./pages/JobHub'));
+const ExamCalendar = lazy(() => import('./pages/ExamCalendar'));
 const CategoryPage = lazy(() => import('./pages/CategoryPage'));
 
 // Blog
@@ -219,6 +220,15 @@ function App() {
                                             element={
                                                 <PageWrapper>
                                                     <JobDetails />
+                                                </PageWrapper>
+                                            }
+                                        />
+                                        {/* 📅 EXAM CALENDAR */}
+                                        <Route
+                                            path="/exam-calendar"
+                                            element={
+                                                <PageWrapper>
+                                                    <ExamCalendar />
                                                 </PageWrapper>
                                             }
                                         />
