@@ -47,7 +47,7 @@ const INITIAL_FORM = {
     title: '', organization: '', vacancies: '', location: 'All India',
     advtNo: '', startDate: '', lastDate: '', qualification: '',
     ageLimit: '', minAge: '18', salary: '', applyLink: '',
-    category: 'ssc', description: '', officialSiteLink: '',
+    category: 'ssc', description: '', articleHtml: '', officialSiteLink: '',
     applicationFee: '', selectionProcess: '', eligibility: '',
     notificationLink: '', feeGen: '', feeOBC: '', feeSCST: '',
     feeFemale: '', price: '', imageUrl: '', isLive: true
@@ -180,6 +180,7 @@ function mapPostToForm(post: Record<string, unknown>): JobFormState {
         applyLink: asStr(post.applyLink),
         category: asStr(post.category) || 'ssc',
         description: asStr(post.description),
+        articleHtml: asStr(post.articleHtml),
         officialSiteLink: asStr(post.officialSiteLink),
         applicationFee: asStr(post.applicationFee),
         selectionProcess: asStr(post.selectionProcess),
@@ -1014,15 +1015,41 @@ const AdminBrowseTab = () => {
                         {/* Description */}
                         <div>
                             <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-1 block">
-                                Full Description
+                                Short Description (cards/listing ke liye — 3-4 lines)
                             </label>
                             <textarea
                                 value={formData.description}
                                 onChange={e => updateField('description', e.target.value)}
-                                rows={12}
+                                rows={4}
                                 className="w-full p-4 border-2 border-gray-100 rounded-2xl font-medium text-sm focus:border-blue-500 outline-none transition-all leading-relaxed"
-                                placeholder="Job की पूरी जानकारी यहाँ लिखें..."
+                                placeholder="Job की छोटी summary यहाँ लिखें..."
                             />
+                        </div>
+
+                        {/* ✍️ FULL SEO ARTICLE — scraper ye khud bhar ke laata hai */}
+                        <div>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">
+                                    Full SEO Article (HTML) — AI ne scraper ke saath hi bana diya
+                                </label>
+                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
+                                    (formData.articleHtml.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length) >= 1200
+                                        ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
+                                }`}>
+                                    {formData.articleHtml.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length} words
+                                </span>
+                            </div>
+                            <textarea
+                                value={formData.articleHtml}
+                                onChange={e => updateField('articleHtml', e.target.value)}
+                                rows={18}
+                                spellCheck={false}
+                                className="w-full p-4 border-2 border-gray-100 rounded-2xl font-mono text-xs focus:border-blue-500 outline-none transition-all leading-relaxed"
+                                placeholder="Poora article HTML (h2 sections, tables, FAQs) — scraper run ke baad yahan auto-filled aayega..."
+                            />
+                            <p className="text-[9px] font-bold text-gray-400 mt-1">
+                                💡 Ye poora article job page par dikhega (dates/fee tables, How to Apply, FAQs). Khali ho to purane jobs — agli scraper run se naye drafts me auto-filled aayega.
+                            </p>
                         </div>
 
                         {/* Action Buttons */}
