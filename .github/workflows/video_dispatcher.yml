@@ -32,7 +32,7 @@ on:
   # (system_settings/automation) rather than editing this file.
   # ---------------------------------------------------------------------------
   schedule:
-        - cron: '15 */3 * * *'
+    - cron: '*/10 * * * *'
   workflow_dispatch:
     inputs:
       kind:
@@ -165,7 +165,7 @@ jobs:
           DRY="$IN_DRY"
           DOC="$IN_DOC"
 
-           ARGS="--kind=${KIND:-job,fast_track} --limit=${LIMIT:-1}"
+          ARGS="--kind=${KIND:-all} --limit=${LIMIT:-1}"
           if [ "$DRY" = "true" ]; then ARGS="$ARGS --dry-run"; fi
           if [ -n "$DOC" ]; then ARGS="$ARGS --doc=$DOC"; fi
 

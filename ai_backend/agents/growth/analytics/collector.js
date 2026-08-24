@@ -102,11 +102,44 @@ async function collectYouTube(videoId, opts = {}) {
         if (!item) return {};
 
         const stats = item.statistics || {};
-        return {
+        const contentDetails = item.contentDetails || {};
+        
+        const result = {
             views: parseInt(stats.viewCount) || null,
             likes: parseInt(stats.likeCount) || null,
-            comments: parseInt(stats.commentCount) || null
+            comments: parseInt(stats.commentCount) || null,
+            duration: contentDetails.duration || null  // ISO 8601 duration
         };
+
+        // Try YouTube Analytics API for deeper metrics (requires yt-analytics.readonly scope)
+        try {
+            const ytAnalytics = google.youtubeAnalytics({ version: 'v2', auth: oauth });
+            const today = new Date().toISOString().split('T')[0];
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            
+            const analyticsRes = await ytAnalytics.reports.query({
+                ids: 'channel==MINE',
+                startDate: thirtyDaysAgo,
+                endDate: today,
+                metrics: 'views,watchTimeMinutes,averageViewDuration,averageViewPercentage,subscribersGained',
+                filters: `video==${videoId}`,
+                maxResults: 1
+            });
+
+            if (analyticsRes.data.rows && analyticsRes.data.rows.length > 0) {
+                const row = analyticsRes.data.rows[0];
+                result.watchTimeMinutes = row[1] || null;
+                result.averageViewDuration = row[2] || null;
+                result.averageViewPercentage = row[3] || null;
+                result.subscribersGained = row[4] || null;
+            }
+        } catch (analyticsErr) {
+            // YouTube Analytics API not available (scope issue or API not enabled)
+            // Continue with Data API metrics only
+            console.log(`️ YouTube Analytics API skipped: ${(analyticsErr.message || '').substring(0, 80)}`);
+        }
+
+        return result;
     } catch (err) {
         console.log(`⚠️ YouTube analytics failed: ${(err.message || '').substring(0, 100)}`);
         return {};

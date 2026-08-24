@@ -455,10 +455,22 @@ async function createPoster(jobData, jobCat, posterPath) {
     ctx.textBaseline = 'middle';
     ctx.fillText(theme.textBadge, width / 2, 275);
 
-    // ✅ 3. IMPORTANT TEXT
-    ctx.fillStyle = '#FFFF00';
-    ctx.font      = 'bold 78px sans-serif';
-    ctx.fillText('🔥 IMPORTANT UPDATE 🔥', width / 2, 390);
+    // ✅ 2.5 FIRST-FRAME OVERLAY (Growth Engine)
+    const firstFrameText = (jobData.firstFrameText || '').toUpperCase();
+
+    // ✅ 3. IMPORTANT TEXT (skip if first-frame overlay is present to avoid overlap)
+    if (firstFrameText) {
+        ctx.fillStyle = '#FF0000';
+        ctx.fillRect(0, 340, width, 80);
+        ctx.fillStyle    = '#FFFFFF';
+        ctx.font      = 'bold 58px sans-serif';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(firstFrameText, width / 2, 380);
+    } else {
+        ctx.fillStyle = '#FFFF00';
+        ctx.font      = 'bold 78px sans-serif';
+        ctx.fillText('🔥 IMPORTANT UPDATE 🔥', width / 2, 390);
+    }
 
     // ✅ 4. MAIN TITLE
     ctx.shadowColor  = theme.accent;
@@ -764,7 +776,9 @@ async function generateAndUploadVideo(jobData, options = {}) {
         // 🧠 GROWTH ENGINE: Generate first-frame overlay text
         const firstFrameText = growthRec?.firstFrame?.text || '';
         if (firstFrameText) {
-            console.log(`🖼️ First frame: "${firstFrameText}"`);
+            console.log(`️ First frame: "${firstFrameText}"`);
+            // Pass to poster generator
+            jobData.firstFrameText = firstFrameText;
         }
 
         const safeAnchorY = await createPoster(jobData, jobCat, posterPath);
