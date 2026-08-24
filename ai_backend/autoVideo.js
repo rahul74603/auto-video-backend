@@ -614,8 +614,19 @@ async function generateAndUploadVideo(jobData, options = {}) {
 
         console.log(`📁 Target Dir: ${targetDir}`);
 
+        // 🧠 GROWTH ENGINE INTEGRATION — use recommendation if provided
+        const growthRec = options.growthRecommendation || null;
+        const growthEnabled = growthRec && growthRec.recommended;
+        if (growthEnabled) {
+            console.log(`🧠 Growth Engine: contentScore=${growthRec.contentScore}, hook=${growthRec.hook?.hookType || 'none'}, duration=${growthRec.duration}s`);
+        }
+
         let bgMusicPath = '';
-        if (fs.existsSync(bgMusicDir)) {
+        // Music selection: use growth recommendation if available, else random
+        if (growthEnabled && growthRec.music && fs.existsSync(growthRec.music)) {
+            bgMusicPath = growthRec.music;
+            console.log(`🎵 Music (growth): ${path.basename(bgMusicPath)}`);
+        } else if (fs.existsSync(bgMusicDir)) {
             const mp3Files = fs.readdirSync(bgMusicDir).filter(f => f.toLowerCase().endsWith('.mp3'));
             if (mp3Files.length > 0) {
                 bgMusicPath = path.join(bgMusicDir, mp3Files[Math.floor(Math.random() * mp3Files.length)]);
@@ -634,7 +645,14 @@ async function generateAndUploadVideo(jobData, options = {}) {
             );
         }
 
-        const selectedVideoFile = anchorFiles[Math.floor(Math.random() * anchorFiles.length)];
+        // Presenter selection: use growth recommendation if available, else random
+        let selectedVideoFile;
+        if (growthEnabled && growthRec.presenter && anchorFiles.includes(growthRec.presenter)) {
+            selectedVideoFile = growthRec.presenter;
+            console.log(`🎥 Anchor (growth): ${selectedVideoFile}`);
+        } else {
+            selectedVideoFile = anchorFiles[Math.floor(Math.random() * anchorFiles.length)];
+        }
         const isFemale          = selectedVideoFile.toLowerCase().includes('female');
         const isMale            = selectedVideoFile.toLowerCase().includes('male');
 
@@ -695,8 +713,15 @@ async function generateAndUploadVideo(jobData, options = {}) {
             scriptArray = fastTrackScripts[jobCat] || fastTrackScripts['Default'];
         }
 
-        const script = scriptArray[Math.floor(Math.random() * scriptArray.length)];
-        console.log(`🎙️ Script: ${script.substring(0, 80)}...`);
+        // 🧠 GROWTH ENGINE: use generated script if available and high-quality
+        let script;
+        if (growthEnabled && growthRec.script && growthRec.script.script && growthRec.contentScore >= 40) {
+            script = growthRec.script.script;
+            console.log(`🎙️ Script (growth): ${script.substring(0, 80)}...`);
+        } else {
+            script = scriptArray[Math.floor(Math.random() * scriptArray.length)];
+            console.log(`🎙️ Script: ${script.substring(0, 80)}...`);
+        }
 
         await ttsEngine.synthesize(script, audioPath, {
             googleVoice:  selectedVoice,
@@ -789,8 +814,25 @@ async function generateAndUploadVideo(jobData, options = {}) {
         renderCompleted = true;
 
         // ✅ SEO Data Generate - BOTH TYPES के लिए full data
-        const seoData    = generateSEO(jobData, jobCat);
-        const finalTitle = generateViralTitle(jobData, jobCat);
+        // 🧠 GROWTH ENGINE: use platform-specific packaging if available
+        let seoData, finalTitle;
+        if (growthEnabled && growthRec.platformPackage && growthRec.platformPackage.youtube) {
+            const ytPkg = growthRec.platformPackage.youtube;
+            finalTitle = ytPkg.title || generateViralTitle(jobData, jobCat);
+            seoData = {
+                tags: ytPkg.tags || [],
+                description: ytPkg.description || '',
+                postLink: `https://studygyaan.in/${jobData.type === 'JOB' ? 'job' : 'update'}/${jobData.slug || jobData.id}`,
+                telegramLink: process.env.TELEGRAM_CHANNEL_LINK || "https://t.me/studygyaan_official",
+                hashtags: (ytPkg.hashtags || []).map(h => '#' + h).join(' '),
+                typeIntro: '',
+                ctaLine: ytPkg.cta || ''
+            };
+            console.log(`🧠 SEO (growth): title="${finalTitle}", tags=${seoData.tags.length}`);
+        } else {
+            seoData    = generateSEO(jobData, jobCat);
+            finalTitle = generateViralTitle(jobData, jobCat);
+        }
 
         console.log(`\n📊 SEO REPORT:`);
         console.log(`   📌 Title       : ${finalTitle}`);
