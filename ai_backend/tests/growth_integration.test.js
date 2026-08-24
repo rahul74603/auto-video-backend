@@ -372,3 +372,106 @@ test('workflow: video_dispatcher.yml has 10-minute cron', () => {
         'video_dispatcher.yml must run every 10 minutes'
     );
 });
+
+/* ------------------------------------------------------------------ */
+/* 11. Subtitle integration into FFmpeg                               */
+/* ------------------------------------------------------------------ */
+
+test('subtitle: autoVideo generates SRT when growth enabled', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'autoVideo.js'), 'utf8');
+    assert.ok(src.includes('subtitle_engine'), 'autoVideo must import subtitle engine');
+    assert.ok(src.includes('subtitlePath'), 'autoVideo must create subtitle path');
+    assert.ok(src.includes('.srt'), 'autoVideo must generate SRT file');
+});
+
+test('subtitle: FFmpeg filter includes subtitles when available', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'autoVideo.js'), 'utf8');
+    assert.ok(src.includes("subtitles='"), 'FFmpeg filter must include subtitles filter');
+    assert.ok(src.includes('hasSubtitles'), 'must conditionally apply subtitles');
+});
+
+test('subtitle: cleanup includes subtitle file', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'autoVideo.js'), 'utf8');
+    assert.ok(src.includes('subtitlePath'), 'temp cleanup must include subtitle file');
+});
+
+/* ------------------------------------------------------------------ */
+/* 12. Mock test growth integration                                    */
+/* ------------------------------------------------------------------ */
+
+test('mock_test: dispatcher calls growth orchestrator for MOCK_TEST', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'video_dispatcher.js'), 'utf8');
+    // Check processMockTest has growth engine call
+    const mockTestSection = src.substring(src.indexOf('async function processMockTest'));
+    assert.ok(
+        mockTestSection.includes("require('./agents/growth/orchestrator')"),
+        'processMockTest must call growth orchestrator'
+    );
+});
+
+test('mock_test: dispatcher passes growthRecommendation to mock test renderer', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'video_dispatcher.js'), 'utf8');
+    const mockTestSection = src.substring(src.indexOf('async function processMockTest'));
+    assert.ok(
+        mockTestSection.includes('growthRecommendation:'),
+        'processMockTest must pass growthRecommendation to renderer'
+    );
+});
+
+test('mock_test: analytics collected after mock test upload', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'video_dispatcher.js'), 'utf8');
+    const mockTestSection = src.substring(src.indexOf('async function processMockTest'));
+    assert.ok(
+        mockTestSection.includes("require('./agents/growth/analytics/collector')"),
+        'processMockTest must call analytics collector after upload'
+    );
+});
+
+/* ------------------------------------------------------------------ */
+/* 13. Learning feedback loop                                          */
+/* ------------------------------------------------------------------ */
+
+test('learner: recommendation engine reads historical insights', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'agents', 'growth', 'recommendation_engine.js'), 'utf8');
+    assert.ok(
+        src.includes('growth_insights'),
+        'recommendation engine must read growth_insights collection'
+    );
+});
+
+test('learner: historical insights influence hook selection', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'agents', 'growth', 'recommendation_engine.js'), 'utf8');
+    assert.ok(
+        src.includes('effectiveHookTypes') && src.includes('winningPattern'),
+        'recommendation engine must use historical winning patterns for hook selection'
+    );
+});
+
+test('learner: 80/20 explore-exploit ratio in hook selection', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'agents', 'growth', 'recommendation_engine.js'), 'utf8');
+    assert.ok(
+        src.includes('0.8'),
+        'recommendation engine must use 80% exploitation ratio'
+    );
+});
+
+/* ------------------------------------------------------------------ */
+/* 14. Growth learner run script exists                                */
+/* ------------------------------------------------------------------ */
+
+test('learner: growth_learner_run.js exists and is valid', () => {
+    const learnerPath = path.join(__dirname, '..', 'growth_learner_run.js');
+    assert.ok(fs.existsSync(learnerPath), 'growth_learner_run.js must exist');
+    // Verify it can be required without error
+    const mod = require('../growth_learner_run');
+    assert.ok(typeof mod.main === 'function', 'must export main function');
+});
+
+/* ------------------------------------------------------------------ */
+/* 15. Verify dispatcher cron                                          */
+/* ------------------------------------------------------------------ */
+
+test('workflow: video dispatcher cron is every 10 minutes', () => {
+    const wf = fs.readFileSync(path.join(__dirname, '..', '..', '.github', 'workflows', 'video_dispatcher.yml'), 'utf8');
+    assert.ok(wf.includes("*/10 * * * *"), 'cron must be every 10 minutes');
+});

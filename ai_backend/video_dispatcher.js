@@ -367,11 +367,40 @@ async function processJobLike(candidate, ctx) {
 
 async function processMockTest(candidate, ctx) {
     const { ref, id, data } = candidate;
-    console.log(`\n${'─'.repeat(60)}`);
+    console.log(`
+${'─'.repeat(60)}`);
     console.log(`🎬 MOCK_TEST | doc=${id}`);
     console.log(`   title    : ${data.title || data.subject || '(untitled)'}`);
     console.log(`   questions: ${Array.isArray(data.questions) ? data.questions.length : 0}`);
     console.log(`${'─'.repeat(60)}`);
+
+    // 🧠 GROWTH ENGINE: generate mock-test-specific recommendation
+    let growthRecommendation = null;
+    try {
+        const flags = require('./agents/growth/feature_flags');
+        if (flags.isEnabled('GROWTH_ENGINE_ENABLED')) {
+            const orchestrator = require('./agents/growth/orchestrator');
+            const mockContent = {
+                title: data.title || data.subject || 'Mock Test',
+                subject: data.subject || '',
+                totalQuestions: Array.isArray(data.questions) ? data.questions.length : 0,
+                category: data.category || 'MOCK_TEST',
+                type: 'MOCK_TEST',
+                createdAt: data.createdAt || Date.now(),
+                topic: data.title || data.subject || '',
+                organization: data.subject || ''
+            };
+            growthRecommendation = await orchestrator.processContent(mockContent, {
+                contentId: id, db: ctx.db, runId: ctx.runId, platform: 'youtube'
+            });
+            if (growthRecommendation?.processed) {
+                console.log(`🧠 Mock Growth: score=${growthRecommendation.recommendation.contentScore}, hook=${growthRecommendation.recommendation.hook?.hookType}`);
+            }
+        }
+    } catch (err) {
+        console.log(`⚠️ Mock growth engine skipped (${V.shortError(err, 100)}) — continuing with defaults`);
+        growthRecommendation = null;
+    }
 
     const { generateMockTestVideo } = require('./mock_test_video');
 
@@ -380,12 +409,28 @@ async function processMockTest(candidate, ctx) {
         docRef: ref,
         docData: data,
         managedState: true,
-        privacyStatus: ctx.privacyStatus
+        privacyStatus: ctx.privacyStatus,
+        growthRecommendation: growthRecommendation?.processed ? growthRecommendation.recommendation : null
     });
 
     const detail = typeof result === 'object' && result !== null ? result : { success: result === true };
     if (detail.success) {
         console.log(`✅ MOCK_TEST ${id} → ${detail.videoUrl || 'video uploaded'}`);
+        // Analytics tracking for mock test
+        if (growthRecommendation?.processed && detail.videoId) {
+            try {
+                const ac = require('./agents/growth/analytics/collector');
+                ac.collectPlatformMetrics(ctx.db, {
+                    platform: 'youtube', platformVideoId: detail.videoId, contentId: id,
+                    publishedAt: Date.now(),
+                    hookType: growthRecommendation.recommendation?.hook?.hookType || '',
+                    presenter: growthRecommendation.recommendation?.presenter || '',
+                    visualStyle: growthRecommendation.recommendation?.visualStyle || '',
+                    duration: growthRecommendation.recommendation?.duration || 0,
+                    category: 'MOCK_TEST'
+                }).catch(() => {});
+            } catch { /* ignore */ }
+        }
         return { ok: true, videoId: detail.videoId, videoUrl: detail.videoUrl };
     }
 

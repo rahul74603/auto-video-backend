@@ -33,6 +33,18 @@ async function generateRecommendation(content, opts = {}) {
     const db = opts.db || null;
     const platform = opts.platform || 'youtube';
 
+    // 🧠 LEARNING FEEDBACK: Read historical insights to influence recommendation
+    let historicalInsights = null;
+    if (db && flags.isEnabled('LEARNER_ENABLED')) {
+        try {
+            const learner = require('./analytics/learner');
+            const insightSnap = await db.collection('growth_insights').doc('latest').get();
+            if (insightSnap.exists) {
+                historicalInsights = insightSnap.data();
+            }
+        } catch { /* ignore — learning is optional */ }
+    }
+
     // Step 1: Duplicate check
     const dupCheck = flags.isEnabled('DUPLICATE_DETECTION_ENABLED')
         ? await checkDuplicate(db, content)
@@ -54,9 +66,24 @@ async function generateRecommendation(content, opts = {}) {
         return { recommended: false, reason: 'quality gate failed', quality };
     }
 
-    // Step 4: Hook generation & scoring
+    // Step 4: Hook generation & scoring — with learning feedback
+    // Use historical insights to boost winning hook types (80/20 explore/exploit)
+    let effectiveHookTypes = opportunity.recommendedHookTypes;
+    let learningUsed = false;
+    if (historicalInsights && historicalInsights.patterns) {
+        const hookPattern = historicalInsights.patterns.find(p => p.patternType === 'HOOK');
+        if (hookPattern && hookPattern.confidence >= 0.6 && hookPattern.sampleSize >= 5) {
+            // 80% exploitation: put the winning hook type first
+            if (Math.random() < 0.8) {
+                effectiveHookTypes = [hookPattern.winningPattern, ...opportunity.recommendedHookTypes.filter(t => t !== hookPattern.winningPattern)];
+                learningUsed = true;
+            }
+            // 20% exploration: use default ordering (already set above)
+        }
+    }
+
     const hookResult = generateHooks(content, {
-        hookTypes: opportunity.recommendedHookTypes,
+        hookTypes: effectiveHookTypes,
         contentId: opts.contentId || ''
     });
 
@@ -144,6 +171,11 @@ async function generateRecommendation(content, opts = {}) {
         dispatchPriority: dispatchPriority.priority,
         opportunityScore: opportunity.opportunityScore,
         duplicateCheck: dupCheck.type,
+        learningUsed,
+        historicalInsights: historicalInsights ? {
+            patternsCount: (historicalInsights.patterns || []).length,
+            analyzedAt: historicalInsights.analyzedAt
+        } : null,
         generatedAt: Date.now()
     };
 

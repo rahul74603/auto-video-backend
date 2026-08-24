@@ -730,6 +730,43 @@ async function generateAndUploadVideo(jobData, options = {}) {
             pitch:        1.0
         });
 
+        // 🧠 GROWTH ENGINE: Generate subtitles for the video
+        const subtitlePath = path.join(tempDir, `subs-${timestamp}.srt`);
+        let hasSubtitles = false;
+        try {
+            const flags = require('./agents/growth/feature_flags');
+            if (flags.isEnabled('SUBTITLE_ENGINE_ENABLED')) {
+                const subtitleEngine = require('./agents/growth/subtitle_engine');
+                // Build minimal script structure for subtitle generation
+                const scriptForSubs = {
+                    script: script,
+                    sections: growthRec?.script?.sections || { hook: script }
+                };
+                // Use growth keywords for highlighting if available
+                const keywords = growthRec?.script?.sections?.hook
+                    ? growthRec.script.sections.hook.split(/\s+/).filter(w => /\d/.test(w) || /PASS|POST|DATE|RESULT/i.test(w))
+                    : [];
+                const subResult = subtitleEngine.generateSubtitles(scriptForSubs, { keywords });
+                if (subResult.subtitles && subResult.subtitles.length > 0) {
+                    const srtContent = subResult.toSRT();
+                    fs.writeFileSync(subtitlePath, srtContent, 'utf8');
+                    hasSubtitles = fs.existsSync(subtitlePath) && fs.statSync(subtitlePath).size > 0;
+                    if (hasSubtitles) {
+                        console.log(`📝 Subtitles generated: ${subResult.subtitles.length} segments`);
+                    }
+                }
+            }
+        } catch (subErr) {
+            console.log(`⚠️ Subtitle generation failed (${V.shortError(subErr, 80)}) — continuing without subtitles`);
+            hasSubtitles = false;
+        }
+
+        // 🧠 GROWTH ENGINE: Generate first-frame overlay text
+        const firstFrameText = growthRec?.firstFrame?.text || '';
+        if (firstFrameText) {
+            console.log(`🖼️ First frame: "${firstFrameText}"`);
+        }
+
         const safeAnchorY = await createPoster(jobData, jobCat, posterPath);
         console.log(`📍 Anchor Y position: ${safeAnchorY}`);
 
@@ -751,10 +788,17 @@ async function generateAndUploadVideo(jobData, options = {}) {
         let filter, args;
 
         if (hasMusic) {
+            // Subtitle overlay filter (only if subtitles were generated)
+            let subFilter = '';
+            if (hasSubtitles) {
+                subFilter = `;[outv]subtitles='${subtitlePath}':force_style='FontName=Noto Sans Devanagari,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=180,Alignment=2'[outvs]`;
+            }
+            const outLabel = hasSubtitles ? '[outvs]' : '[outv]';
             filter =
                 `[0:v]zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30[bg];` +
                 `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=680:-1[anchor];` +
-                `[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv];` +
+                `[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv]` +
+                subFilter + `;` +
                 `[2:a]volume=1.5[voice];[3:a]volume=0.08[bgm];[voice][bgm]amix=inputs=2:duration=first[a]`;
 
             args = [
@@ -764,7 +808,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
                 '-i', finalAudio,
                 '-stream_loop', '-1', '-i', finalMusic,
                 '-filter_complex', filter,
-                '-map', '[outv]', '-map', '[a]',
+                '-map', outLabel, '-map', '[a]',
                 '-c:v', 'libx264', '-preset', 'superfast', '-crf', '26',
                 '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2',
                 '-shortest', '-pix_fmt', 'yuv420p',
@@ -772,10 +816,16 @@ async function generateAndUploadVideo(jobData, options = {}) {
             ];
         } else {
             console.log('⚠️ BG Music नहीं मिला, बिना म्यूजिक के render...');
+            let subFilter = '';
+            if (hasSubtitles) {
+                subFilter = `;[outv]subtitles='${subtitlePath}':force_style='FontName=Noto Sans Devanagari,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=180,Alignment=2'[outvs]`;
+            }
+            const outLabel = hasSubtitles ? '[outvs]' : '[outv]';
             filter =
                 `[0:v]zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30[bg];` +
                 `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=680:-1[anchor];` +
-                `[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv];` +
+                `[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv]` +
+                subFilter + `;` +
                 `[2:a]volume=1.5[a]`;
 
             args = [
@@ -784,7 +834,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
                 '-stream_loop', '-1', '-an', '-i', finalAnchor,
                 '-i', finalAudio,
                 '-filter_complex', filter,
-                '-map', '[outv]', '-map', '[a]',
+                '-map', outLabel, '-map', '[a]',
                 '-c:v', 'libx264', '-preset', 'superfast', '-crf', '26',
                 '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2',
                 '-shortest', '-pix_fmt', 'yuv420p',
@@ -1102,7 +1152,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
 
         return { success: false, error: V.shortError(err), uploadFailed };
     } finally {
-        [audioPath, posterPath, videoPath].forEach(f => {
+        [audioPath, posterPath, videoPath, subtitlePath].forEach(f => {
             try {
                 if (fs.existsSync(f)) fs.unlinkSync(f);
             } catch (e) {
