@@ -10,8 +10,8 @@ name: Auto Mock Test Video Maker
 
 on:
   schedule:
-    - cron: '30 3 * * *'   # सुबह 08:30 AM IST (03:00 UTC)
-    - cron: '30 13 * * *'  # रात 08:30 PM IST (15:00 UTC)
+    - cron: '0 3 * * *'   # सुबह 08:30 AM IST (03:00 UTC)
+    - cron: '0 15 * * *'  # रात 08:30 PM IST (15:00 UTC)
   workflow_dispatch:
 
 concurrency:
