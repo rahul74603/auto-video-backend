@@ -128,7 +128,7 @@ const PrivacyPolicy = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto pt-4">
                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:border-emerald-500 transition-all group">
                   <p className="text-[10px] uppercase font-black text-slate-400 mb-1">Official Privacy Support</p>
-                  <p className="text-sm md:text-xl font-black text-slate-800 group-hover:text-emerald-600 transition-colors">studygyaan.help@gmail.com</p>
+                  <p className="text-sm md:text-xl font-black text-slate-800 group-hover:text-emerald-600 transition-colors">contact@studygyaan.in</p>
                </div>
                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:border-emerald-500 transition-all group">
                   <p className="text-[10px] uppercase font-black text-slate-400 mb-1">Admin Location</p>

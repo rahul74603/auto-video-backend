@@ -123,7 +123,7 @@ const TermsAndConditions = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto pt-6">
                <div className="bg-white/5 p-6 rounded-2xl border border-white/10 hover:bg-white/10 transition-all">
                   <p className="text-[10px] uppercase font-black opacity-50 mb-1">Email Queries</p>
-                  <p className="text-sm md:text-lg font-black">studygyaan.help@gmail.com</p>
+                  <p className="text-sm md:text-lg font-black">contact@studygyaan.in</p>
                </div>
                <div className="bg-white/5 p-6 rounded-2xl border border-white/10 hover:bg-white/10 transition-all">
                   <p className="text-[10px] uppercase font-black opacity-50 mb-1">Office Location</p>
