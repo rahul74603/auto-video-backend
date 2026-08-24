@@ -614,8 +614,19 @@ async function generateAndUploadVideo(jobData, options = {}) {
 
         console.log(`📁 Target Dir: ${targetDir}`);
 
+        // 🧠 GROWTH ENGINE INTEGRATION — use recommendation if provided
+        const growthRec = options.growthRecommendation || null;
+        const growthEnabled = growthRec && growthRec.recommended;
+        if (growthEnabled) {
+            console.log(`🧠 Growth Engine: contentScore=${growthRec.contentScore}, hook=${growthRec.hook?.hookType || 'none'}, duration=${growthRec.duration}s`);
+        }
+
         let bgMusicPath = '';
-        if (fs.existsSync(bgMusicDir)) {
+        // Music selection: use growth recommendation if available, else random
+        if (growthEnabled && growthRec.music && fs.existsSync(growthRec.music)) {
+            bgMusicPath = growthRec.music;
+            console.log(`🎵 Music (growth): ${path.basename(bgMusicPath)}`);
+        } else if (fs.existsSync(bgMusicDir)) {
             const mp3Files = fs.readdirSync(bgMusicDir).filter(f => f.toLowerCase().endsWith('.mp3'));
             if (mp3Files.length > 0) {
                 bgMusicPath = path.join(bgMusicDir, mp3Files[Math.floor(Math.random() * mp3Files.length)]);
@@ -634,7 +645,14 @@ async function generateAndUploadVideo(jobData, options = {}) {
             );
         }
 
-        const selectedVideoFile = anchorFiles[Math.floor(Math.random() * anchorFiles.length)];
+        // Presenter selection: use growth recommendation if available, else random
+        let selectedVideoFile;
+        if (growthEnabled && growthRec.presenter && anchorFiles.includes(growthRec.presenter)) {
+            selectedVideoFile = growthRec.presenter;
+            console.log(`🎥 Anchor (growth): ${selectedVideoFile}`);
+        } else {
+            selectedVideoFile = anchorFiles[Math.floor(Math.random() * anchorFiles.length)];
+        }
         const isFemale          = selectedVideoFile.toLowerCase().includes('female');
         const isMale            = selectedVideoFile.toLowerCase().includes('male');
 
@@ -695,8 +713,15 @@ async function generateAndUploadVideo(jobData, options = {}) {
             scriptArray = fastTrackScripts[jobCat] || fastTrackScripts['Default'];
         }
 
-        const script = scriptArray[Math.floor(Math.random() * scriptArray.length)];
-        console.log(`🎙️ Script: ${script.substring(0, 80)}...`);
+        // 🧠 GROWTH ENGINE: use generated script if available and high-quality
+        let script;
+        if (growthEnabled && growthRec.script && growthRec.script.script && growthRec.contentScore >= 40) {
+            script = growthRec.script.script;
+            console.log(`🎙️ Script (growth): ${script.substring(0, 80)}...`);
+        } else {
+            script = scriptArray[Math.floor(Math.random() * scriptArray.length)];
+            console.log(`🎙️ Script: ${script.substring(0, 80)}...`);
+        }
 
         await ttsEngine.synthesize(script, audioPath, {
             googleVoice:  selectedVoice,
@@ -704,6 +729,43 @@ async function generateAndUploadVideo(jobData, options = {}) {
             speakingRate: 1.08,
             pitch:        1.0
         });
+
+        // 🧠 GROWTH ENGINE: Generate subtitles for the video
+        const subtitlePath = path.join(tempDir, `subs-${timestamp}.srt`);
+        let hasSubtitles = false;
+        try {
+            const flags = require('./agents/growth/feature_flags');
+            if (flags.isEnabled('SUBTITLE_ENGINE_ENABLED')) {
+                const subtitleEngine = require('./agents/growth/subtitle_engine');
+                // Build minimal script structure for subtitle generation
+                const scriptForSubs = {
+                    script: script,
+                    sections: growthRec?.script?.sections || { hook: script }
+                };
+                // Use growth keywords for highlighting if available
+                const keywords = growthRec?.script?.sections?.hook
+                    ? growthRec.script.sections.hook.split(/\s+/).filter(w => /\d/.test(w) || /PASS|POST|DATE|RESULT/i.test(w))
+                    : [];
+                const subResult = subtitleEngine.generateSubtitles(scriptForSubs, { keywords });
+                if (subResult.subtitles && subResult.subtitles.length > 0) {
+                    const srtContent = subResult.toSRT();
+                    fs.writeFileSync(subtitlePath, srtContent, 'utf8');
+                    hasSubtitles = fs.existsSync(subtitlePath) && fs.statSync(subtitlePath).size > 0;
+                    if (hasSubtitles) {
+                        console.log(`📝 Subtitles generated: ${subResult.subtitles.length} segments`);
+                    }
+                }
+            }
+        } catch (subErr) {
+            console.log(`⚠️ Subtitle generation failed (${V.shortError(subErr, 80)}) — continuing without subtitles`);
+            hasSubtitles = false;
+        }
+
+        // 🧠 GROWTH ENGINE: Generate first-frame overlay text
+        const firstFrameText = growthRec?.firstFrame?.text || '';
+        if (firstFrameText) {
+            console.log(`🖼️ First frame: "${firstFrameText}"`);
+        }
 
         const safeAnchorY = await createPoster(jobData, jobCat, posterPath);
         console.log(`📍 Anchor Y position: ${safeAnchorY}`);
@@ -726,10 +788,17 @@ async function generateAndUploadVideo(jobData, options = {}) {
         let filter, args;
 
         if (hasMusic) {
+            // Subtitle overlay filter (only if subtitles were generated)
+            let subFilter = '';
+            if (hasSubtitles) {
+                subFilter = `;[outv]subtitles='${subtitlePath}':force_style='FontName=Noto Sans Devanagari,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=180,Alignment=2'[outvs]`;
+            }
+            const outLabel = hasSubtitles ? '[outvs]' : '[outv]';
             filter =
                 `[0:v]zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30[bg];` +
                 `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=680:-1[anchor];` +
-                `[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv];` +
+                `[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv]` +
+                subFilter + `;` +
                 `[2:a]volume=1.5[voice];[3:a]volume=0.08[bgm];[voice][bgm]amix=inputs=2:duration=first[a]`;
 
             args = [
@@ -739,7 +808,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
                 '-i', finalAudio,
                 '-stream_loop', '-1', '-i', finalMusic,
                 '-filter_complex', filter,
-                '-map', '[outv]', '-map', '[a]',
+                '-map', outLabel, '-map', '[a]',
                 '-c:v', 'libx264', '-preset', 'superfast', '-crf', '26',
                 '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2',
                 '-shortest', '-pix_fmt', 'yuv420p',
@@ -747,10 +816,16 @@ async function generateAndUploadVideo(jobData, options = {}) {
             ];
         } else {
             console.log('⚠️ BG Music नहीं मिला, बिना म्यूजिक के render...');
+            let subFilter = '';
+            if (hasSubtitles) {
+                subFilter = `;[outv]subtitles='${subtitlePath}':force_style='FontName=Noto Sans Devanagari,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=180,Alignment=2'[outvs]`;
+            }
+            const outLabel = hasSubtitles ? '[outvs]' : '[outv]';
             filter =
                 `[0:v]zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30[bg];` +
                 `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=680:-1[anchor];` +
-                `[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv];` +
+                `[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv]` +
+                subFilter + `;` +
                 `[2:a]volume=1.5[a]`;
 
             args = [
@@ -759,7 +834,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
                 '-stream_loop', '-1', '-an', '-i', finalAnchor,
                 '-i', finalAudio,
                 '-filter_complex', filter,
-                '-map', '[outv]', '-map', '[a]',
+                '-map', outLabel, '-map', '[a]',
                 '-c:v', 'libx264', '-preset', 'superfast', '-crf', '26',
                 '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2',
                 '-shortest', '-pix_fmt', 'yuv420p',
@@ -789,8 +864,25 @@ async function generateAndUploadVideo(jobData, options = {}) {
         renderCompleted = true;
 
         // ✅ SEO Data Generate - BOTH TYPES के लिए full data
-        const seoData    = generateSEO(jobData, jobCat);
-        const finalTitle = generateViralTitle(jobData, jobCat);
+        // 🧠 GROWTH ENGINE: use platform-specific packaging if available
+        let seoData, finalTitle;
+        if (growthEnabled && growthRec.platformPackage && growthRec.platformPackage.youtube) {
+            const ytPkg = growthRec.platformPackage.youtube;
+            finalTitle = ytPkg.title || generateViralTitle(jobData, jobCat);
+            seoData = {
+                tags: ytPkg.tags || [],
+                description: ytPkg.description || '',
+                postLink: `https://studygyaan.in/${jobData.type === 'JOB' ? 'job' : 'update'}/${jobData.slug || jobData.id}`,
+                telegramLink: process.env.TELEGRAM_CHANNEL_LINK || "https://t.me/studygyaan_official",
+                hashtags: (ytPkg.hashtags || []).map(h => '#' + h).join(' '),
+                typeIntro: '',
+                ctaLine: ytPkg.cta || ''
+            };
+            console.log(`🧠 SEO (growth): title="${finalTitle}", tags=${seoData.tags.length}`);
+        } else {
+            seoData    = generateSEO(jobData, jobCat);
+            finalTitle = generateViralTitle(jobData, jobCat);
+        }
 
         console.log(`\n📊 SEO REPORT:`);
         console.log(`   📌 Title       : ${finalTitle}`);
@@ -1060,7 +1152,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
 
         return { success: false, error: V.shortError(err), uploadFailed };
     } finally {
-        [audioPath, posterPath, videoPath].forEach(f => {
+        [audioPath, posterPath, videoPath, subtitlePath].forEach(f => {
             try {
                 if (fs.existsSync(f)) fs.unlinkSync(f);
             } catch (e) {
