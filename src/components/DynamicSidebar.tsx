@@ -181,7 +181,7 @@ const DynamicSidebar = () => {
     // 🎲 Har page-load / route-change pe NAYA random set
     // Use a stable hash as seed so useMemo gives consistent picks per (pathname, data) combo
     const dataKey = data
-        ? `${data.jobs?.length ?? 0}:${data.fast_track?.length ?? 0}:${data.mock_tests?.length ?? 0}:${data.blogs?.length ?? 0}`
+        ? `${data.jobs?.length ?? 0}:${data.fastTrack?.length ?? 0}:${data.tests?.length ?? 0}:${data.blogs?.length ?? 0}`
         : '';
     const computeKey = `${pathname}:${dataKey}`;
 
