@@ -11,7 +11,7 @@
  *   - Page-aware mix: blog page pe blogs repeat nahi, job page pe
  *     jobs repeat nahi, test page pe tests nahi
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '@/firebase/config';
@@ -168,8 +168,6 @@ const Section = ({ k, items }: { k: SectionKey; items: Item[] }) => {
 /* ---------------- Main component ---------------- */
 const DynamicSidebar = () => {
     const [data, setData] = useState<SidebarData | null>(memCache?.data || null);
-    const [picked, setPicked] = useState<Partial<Record<SectionKey, Item[]>> | null>(null);
-    const [hubPicks, setHubPicks] = useState<typeof JOB_HUBS>([]);
     const { pathname } = useLocation();
 
     useEffect(() => {
@@ -181,14 +179,23 @@ const DynamicSidebar = () => {
     }, []);
 
     // 🎲 Har page-load / route-change pe NAYA random set
-    useEffect(() => {
-        if (!data) return;
+    // Use a stable hash as seed so useMemo gives consistent picks per (pathname, data) combo
+    const dataKey = data
+        ? `${data.jobs?.length ?? 0}:${data.fast_track?.length ?? 0}:${data.mock_tests?.length ?? 0}:${data.blogs?.length ?? 0}`
+        : '';
+    const computeKey = `${pathname}:${dataKey}`;
+
+    const picked = useMemo(() => {
+        if (!data) return null;
         const sections = sectionsForPath(pathname);
         const fresh: Partial<Record<SectionKey, Item[]>> = {};
         sections.forEach((k) => { fresh[k] = randomPick(data[k], 3); });
-        setPicked(fresh);
-        setHubPicks(randomPick(JOB_HUBS, 6));
-    }, [data, pathname]);
+        return fresh;
+    }, [computeKey]);
+
+    const hubPicks = useMemo(() => {
+        return randomPick(JOB_HUBS, 6);
+    }, [computeKey]);
 
     if (!data || !picked) return null;
 
