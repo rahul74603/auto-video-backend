@@ -330,7 +330,10 @@ async function processJobLike(candidate, ctx) {
         collection: candidate.collection,
         managedState: true,
         privacyStatus: ctx.privacyStatus,
-        growthRecommendation: growthRecommendation?.processed ? growthRecommendation.recommendation : null
+        growthRecommendation: growthRecommendation?.processed ? {
+            ...growthRecommendation.recommendation,
+            enhancements: growthRecommendation.enhancements   // CRITICAL: aiVisual, cta, deadline, motion are here
+        } : null
     });
 
     // generateAndUploadVideo returns true (legacy) or a detail object.
@@ -410,7 +413,10 @@ ${'─'.repeat(60)}`);
         docData: data,
         managedState: true,
         privacyStatus: ctx.privacyStatus,
-        growthRecommendation: growthRecommendation?.processed ? growthRecommendation.recommendation : null
+        growthRecommendation: growthRecommendation?.processed ? {
+            ...growthRecommendation.recommendation,
+            enhancements: growthRecommendation.enhancements   // CRITICAL: aiVisual, cta, deadline, motion
+        } : null
     });
 
     const detail = typeof result === 'object' && result !== null ? result : { success: result === true };

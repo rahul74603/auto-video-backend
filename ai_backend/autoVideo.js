@@ -394,25 +394,37 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
     const theme = themes[jobCat] || themes['Default'];
 
     // ✅ 1. BACKGROUND — AI image if available, else gradient
-    if (growthRec?.enhancements?.aiVisual?.path && fs.existsSync(growthRec.enhancements.aiVisual.path)) {
-        try {
-            const { Image } = require('canvas');
-            const aiImg = new Image();
-            aiImg.src = fs.readFileSync(growthRec.enhancements.aiVisual.path);
-            // Scale to fill 1080x1920 while maintaining aspect ratio
-            const scale = Math.max(width / aiImg.width, height / aiImg.height);
-            const drawW = aiImg.width * scale;
-            const drawH = aiImg.height * scale;
-            const drawX = (width - drawW) / 2;
-            const drawY = (height - drawH) / 2;
-            ctx.drawImage(aiImg, drawX, drawY, drawW, drawH);
-            // Add subtle dark overlay for text readability
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-            ctx.fillRect(0, 0, width, height);
-            console.log('🖼️ AI image used as poster background');
-        } catch (err) {
-            console.log(`️ AI image load failed, using gradient: ${V.shortError ? V.shortError(err, 60) : err.message}`);
-            // Fallback to gradient
+    if (growthRec?.enhancements?.aiVisual?.path) {
+        const aiPath = growthRec.enhancements.aiVisual.path;
+        console.log(`🔍 AI Visual check: path=${aiPath}, exists=${fs.existsSync(aiPath)}`);
+        if (fs.existsSync(aiPath)) {
+            try {
+                const { Image } = require('canvas');
+                const aiImg = new Image();
+                aiImg.src = fs.readFileSync(aiPath);
+                // Scale to fill 1080x1920 while maintaining aspect ratio
+                const scale = Math.max(width / aiImg.width, height / aiImg.height);
+                const drawW = aiImg.width * scale;
+                const drawH = aiImg.height * scale;
+                const drawX = (width - drawW) / 2;
+                const drawY = (height - drawH) / 2;
+                ctx.drawImage(aiImg, drawX, drawY, drawW, drawH);
+                // Add subtle dark overlay for text readability
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+                ctx.fillRect(0, 0, width, height);
+                console.log('🖼️ AI image used as poster background');
+            } catch (err) {
+                console.log(`⚠️ AI image load failed, using gradient: ${err.message || err}`);
+                // Fallback to gradient
+                const grad = ctx.createLinearGradient(0, 0, 0, height);
+                grad.addColorStop(0, theme.bg1);
+                grad.addColorStop(0.5, theme.bg2);
+                grad.addColorStop(1, theme.bg3);
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, width, height);
+            }
+        } else {
+            console.log(`⚠️ AI image file missing at: ${aiPath}`);
             const grad = ctx.createLinearGradient(0, 0, 0, height);
             grad.addColorStop(0, theme.bg1);
             grad.addColorStop(0.5, theme.bg2);
@@ -421,6 +433,7 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
             ctx.fillRect(0, 0, width, height);
         }
     } else {
+        console.log('🎨 No AI visual in growthRec, using gradient background');
         // Fallback gradient
         const grad = ctx.createLinearGradient(0, 0, 0, height);
         grad.addColorStop(0, theme.bg1);
