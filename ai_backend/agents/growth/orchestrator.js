@@ -129,53 +129,75 @@ async function processContent(content, opts = {}) {
         // NEW: AI Visual generation (with cost control)
         let aiVisual = null;
         if (flags.isEnabled('AI_VISUAL_ENABLED')) {
-            const costCheck = await costControlEngine.checkImageGenerationAllowed(db, {
-                budgetTier: opts.budgetTier || 'free',
-                jobId: opts.contentId
+            const imagePrompt = aiVisualEngine.generatePrompt(content, {
+                placement: content.presenterPlacement || 'bottom'
             });
-            
-            if (costCheck.allowed) {
-                // Check cache first
-                const imagePrompt = aiVisualEngine.generatePrompt(content, {
-                    placement: content.presenterPlacement || 'bottom'
+            const imageFingerprint = aiVisualEngine.hashString(imagePrompt);
+
+            // STEP 1 — Fast path: validated stable-cache hit.
+            // Within the same workflow run (and therefore the same GitHub
+            // Actions runner) the stable-cache file still exists. Reusing it
+            // costs nothing, so we bypass cost control entirely and do NOT
+            // count this as a new generation.
+            const stablePath = aiVisualEngine.getStableCachePath(opts.contentId, imageFingerprint);
+            if (aiVisualEngine.validateImage(stablePath)) {
+                aiVisual = { path: stablePath, cached: true, reused: true };
+                log.stage('ai_visual_cache_hit', { path: stablePath, reused: true });
+            } else {
+                // STEP 2 — No validated cache. Apply cost control, then try
+                // to generate a new image.
+                const costCheck = await costControlEngine.checkImageGenerationAllowed(db, {
+                    budgetTier: opts.budgetTier || 'free',
+                    jobId: opts.contentId
                 });
-                const imageFingerprint = aiVisualEngine.hashString(imagePrompt);
-                
-                const cacheCheck = await costControlEngine.checkImageCache(db, imageFingerprint, {
-                    budgetTier: opts.budgetTier || 'free'
-                });
-                
-                if (cacheCheck.cached) {
-                    aiVisual = { path: cacheCheck.path, cached: true };
-                    log.stage('ai_visual_cached', { path: aiVisual.path });
+
+                if (!costCheck.allowed) {
+                    log.stage('ai_visual_blocked', { reason: costCheck.reason });
                 } else {
-                    // Generate new image
-                    const tempImagePath = aiVisualEngine.getTempImagePath(opts.contentId);
-                    const imageResult = await aiVisualEngine.generateImage(imagePrompt, {
-                        outputPath: tempImagePath,
-                        timeout: 30000
-                    });
-                    
-                    if (imageResult.success) {
-                        aiVisual = imageResult;
-                        await costControlEngine.storeImageInCache(db, imageFingerprint, imageResult.path, {
-                            provider: imageResult.provider
-                        });
-                        await costControlEngine.logImageGeneration(db, {
-                            jobId: opts.contentId,
-                            provider: imageResult.provider,
-                            success: true
-                        });
-                        log.stage('ai_visual_generated', { 
-                            provider: imageResult.provider,
-                            size: imageResult.size
-                        });
+                    // Check Firestore cache for a cross-run record. It may
+                    // point at a stale /tmp/ path — we will overwrite it with
+                    // the stable path below after a successful generation.
+                    const cacheCheck = await costControlEngine.checkImageCache(db, imageFingerprint, {
+                        budgetTier: opts.budgetTier || 'free'
+                    }).catch(() => ({ cached: false }));
+
+                    if (cacheCheck?.cached && aiVisualEngine.validateImage(cacheCheck.path)) {
+                        // Firestore pointed at a still-valid file (rare in
+                        // GitHub Actions, but possible if the same runner
+                        // processed two dispatcher runs in a row). Reuse it.
+                        aiVisual = { path: cacheCheck.path, cached: true, reused: true };
+                        log.stage('ai_visual_firestore_cache_hit', { path: cacheCheck.path });
                     } else {
-                        log.stage('ai_visual_failed', { error: imageResult.error });
+                        // STEP 3 — Generate a new image.
+                        const imageResult = await aiVisualEngine.generateImage(imagePrompt, {
+                            outputPath: stablePath,
+                            timeout: 30000
+                        });
+
+                        if (imageResult.success) {
+                            aiVisual = imageResult;
+                            // Update Firestore cache to point at the stable
+                            // path so subsequent runs have the best chance
+                            // of finding a usable file.
+                            await costControlEngine.storeImageInCache(db, imageFingerprint, stablePath, {
+                                provider: imageResult.provider
+                            }).catch(() => {});
+                            await costControlEngine.logImageGeneration(db, {
+                                jobId: opts.contentId,
+                                provider: imageResult.provider,
+                                success: true
+                            });
+                            log.stage('ai_visual_generated', {
+                                provider: imageResult.provider,
+                                size: imageResult.size,
+                                path: stablePath
+                            });
+                        } else {
+                            log.stage('ai_visual_failed', { error: imageResult.error });
+                            // Fall through — autoVideo.js will use gradient.
+                        }
                     }
                 }
-            } else {
-                log.stage('ai_visual_blocked', { reason: costCheck.reason });
             }
         }
 

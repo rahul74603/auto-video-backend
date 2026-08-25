@@ -187,13 +187,62 @@ async function generateImage(prompt, options = {}) {
     }
 }
 
+// Stable cache directory for AI images. On GitHub Actions the runner is
+// ephemeral, but WITHIN a single workflow run the workspace + GITHUB_WORKSPACE
+// path persists across all jobs/steps. We place cached images under a
+// deterministic folder so retries within the same run can reuse them.
+// Across runs the directory is gone — that is expected; the cache is a best-
+// effort local fallback, with Firestore as the canonical cache record.
+function getStableCacheDir() {
+    const base = process.env.GITHUB_WORKSPACE || os.tmpdir();
+    const dir = path.join(base, '.ai_visual_cache');
+    if (!fs.existsSync(dir)) {
+        try { fs.mkdirSync(dir, { recursive: true }); } catch { /* best-effort */ }
+    }
+    return dir;
+}
+
 /**
- * Get temporary path for AI image
+ * Return a deterministic, content-stable path for a cached AI image.
+ * Two calls with the same contentId + fingerprint yield the same path,
+ * so retries in the same run find the file that was written earlier.
+ */
+function getStableCachePath(contentId, fingerprint) {
+    const dir = getStableCacheDir();
+    const safe = String(contentId || 'unknown').replace(/[^a-z0-9_-]+/gi, '-').substring(0, 80);
+    const safeFp = String(fingerprint || 'default').substring(0, 40);
+    return path.join(dir, `ai-visual-${safe}-${safeFp}.jpg`);
+}
+
+/**
+ * Get temporary path for AI image (kept for backward compatibility with
+ * callers that generate a throwaway image without caching).
  */
 function getTempImagePath(jobId) {
     const tempDir = os.tmpdir();
     const filename = `ai-visual-${jobId}-${Date.now()}.jpg`;
     return path.join(tempDir, filename);
+}
+
+/**
+ * Validate a cached image file is usable: exists, non-empty, and a valid JPEG.
+ * Returns true only when the file can safely be used as a poster background.
+ */
+function validateImage(imagePath) {
+    if (!imagePath || typeof imagePath !== 'string') return false;
+    if (!fs.existsSync(imagePath)) return false;
+    try {
+        const stat = fs.statSync(imagePath);
+        if (!stat.isFile() || stat.size < 100) return false; // corrupted/empty
+        // Quick header check — JPEG starts with FF D8
+        const fd = fs.openSync(imagePath, 'r');
+        const header = Buffer.alloc(2);
+        fs.readSync(fd, header, 0, 2, 0);
+        fs.closeSync(fd);
+        return header[0] === 0xFF && header[1] === 0xD8;
+    } catch {
+        return false;
+    }
 }
 
 /**
@@ -217,6 +266,9 @@ module.exports = {
     generatePrompt,
     generateImage,
     getTempImagePath,
+    getStableCachePath,
+    getStableCacheDir,
+    validateImage,
     cleanupImage,
     hashString
 };
