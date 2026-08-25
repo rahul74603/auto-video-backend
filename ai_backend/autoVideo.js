@@ -360,48 +360,44 @@ async function createPoster(jobData, jobCat, posterPath) {
     const canvas = createCanvas(width, height);
     const ctx    = canvas.getContext('2d');
 
+    // Clean, professional color themes
     const themes = {
         "Result": {
-            bg1: '#0f2027', bg2: '#203a43', bg3: '#2c5364',
-            accent: '#00FF00', badgeBg: '#28a745',
-            textBadge: '🏆 RESULT DECLARED 🏆', emoji: '🏆'
+            bg1: '#1a1a2e', bg2: '#16213e', bg3: '#0f3460',
+            accent: '#00d4ff', badgeBg: '#e94560',
+            textBadge: 'RESULT OUT', emoji: '🏆'
         },
         "Admit Card": {
-            bg1: '#4b134f', bg2: '#c94b4b', bg3: '#ff0844',
-            accent: '#FFD700', badgeBg: '#dc3545',
-            textBadge: '🎫 ADMIT CARD OUT 🎫', emoji: '🎫'
-        },
-        "Syllabus": {
-            bg1: '#141e30', bg2: '#243b55', bg3: '#2c3e50',
-            accent: '#00FFFF', badgeBg: '#17a2b8',
-            textBadge: '📚 NEW SYLLABUS 📚', emoji: '📚'
+            bg1: '#2d132c', bg2: '#3d1c4a', bg3: '#4a1f5c',
+            accent: '#ffd700', badgeBg: '#ff6b6b',
+            textBadge: 'ADMIT CARD OUT', emoji: '🎫'
         },
         "Answer Key": {
-            bg1: '#232526', bg2: '#414345', bg3: '#4b6cb7',
-            accent: '#FFA500', badgeBg: '#fd7e14',
-            textBadge: '🔑 ANSWER KEY 🔑', emoji: '🔑'
+            bg1: '#1e3c72', bg2: '#2a5298', bg3: '#1e3c72',
+            accent: '#ffa500', badgeBg: '#ff8c00',
+            textBadge: 'ANSWER KEY', emoji: '🔑'
+        },
+        "Syllabus": {
+            bg1: '#134e5e', bg2: '#2a6b7c', bg3: '#134e5e',
+            accent: '#00ff88', badgeBg: '#00cc6a',
+            textBadge: 'NEW SYLLABUS', emoji: ''
         },
         "Default": {
             bg1: '#0f0c29', bg2: '#302b63', bg3: '#24243e',
-            accent: '#00FFFF', badgeBg: '#d32f2f',
-            textBadge: '⚡ LATEST UPDATE ⚡', emoji: '⚡'
+            accent: '#00d4ff', badgeBg: '#ff006e',
+            textBadge: 'LATEST UPDATE', emoji: '⚡'
         }
     };
 
     const theme = themes[jobCat] || themes['Default'];
 
+    // ✅ 1. BACKGROUND GRADIENT (clean, no circles)
     const grad = ctx.createLinearGradient(0, 0, 0, height);
     grad.addColorStop(0, theme.bg1);
     grad.addColorStop(0.5, theme.bg2);
     grad.addColorStop(1, theme.bg3);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, height);
-
-    ctx.globalAlpha = 0.08;
-    ctx.fillStyle   = theme.accent;
-    ctx.beginPath(); ctx.arc(900, 200, 300, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(100, 1700, 250, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 1.0;
 
     function drawRoundedRect(x, y, w, h, r) {
         ctx.beginPath();
@@ -434,138 +430,154 @@ async function createPoster(jobData, jobCat, posterPath) {
         return y + lineHeight;
     }
 
-    // ✅ 1. TOP LOGO BAR
+    // ✅ 2. BRAND LOGO (TOP, LARGE, PROMINENT)
+    const brandY = 100;
     ctx.shadowColor  = theme.accent;
-    ctx.shadowBlur   = 30;
-    drawRoundedRect(80, 60, 920, 130, 65);
+    ctx.shadowBlur   = 40;
+    drawRoundedRect(100, brandY, 880, 160, 80);
     ctx.fillStyle    = theme.accent;
     ctx.fill();
     ctx.shadowBlur   = 0;
     ctx.fillStyle    = '#000000';
-    ctx.font         = 'bold 72px sans-serif';
+    ctx.font         = 'bold 90px sans-serif';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('📚 STUDYGYAAN.IN 📚', width / 2, 125);
+    ctx.fillText('STUDYGYAAN.IN', width / 2, brandY + 80);
 
-    // ✅ 2. CATEGORY BADGE
+    // ✅ 3. CATEGORY BADGE (below brand, clean)
+    const badgeY = 300;
+    drawRoundedRect(200, badgeY, 680, 100, 50);
     ctx.fillStyle    = theme.badgeBg;
-    ctx.fillRect(0, 220, width, 110);
+    ctx.fill();
     ctx.fillStyle    = '#FFFFFF';
-    ctx.font         = 'bold 62px sans-serif';
+    ctx.font         = 'bold 70px sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillText(theme.textBadge, width / 2, 275);
+    ctx.fillText(`${theme.emoji} ${theme.textBadge} ${theme.emoji}`, width / 2, badgeY + 50);
 
-    // ✅ 2.5 FIRST-FRAME OVERLAY (Growth Engine)
+    // ✅ 4. FIRST FRAME / IMPORTANT TEXT (clean, no overlap)
     const firstFrameText = (jobData.firstFrameText || '').toUpperCase();
-
-    // ✅ 3. IMPORTANT TEXT (skip if first-frame overlay is present to avoid overlap)
+    const importantTextY = 440;
+    
     if (firstFrameText) {
+        drawRoundedRect(50, importantTextY, 980, 90, 45);
         ctx.fillStyle = '#FF0000';
-        ctx.fillRect(0, 340, width, 80);
+        ctx.fill();
         ctx.fillStyle    = '#FFFFFF';
-        ctx.font      = 'bold 58px sans-serif';
+        ctx.font         = 'bold 60px sans-serif';
         ctx.textBaseline = 'middle';
-        ctx.fillText(firstFrameText, width / 2, 380);
+        ctx.fillText(firstFrameText, width / 2, importantTextY + 45);
     } else {
-        ctx.fillStyle = '#FFFF00';
-        ctx.font      = 'bold 78px sans-serif';
-        ctx.fillText('🔥 IMPORTANT UPDATE 🔥', width / 2, 390);
+        ctx.fillStyle = '#FFD700';
+        ctx.font      = 'bold 75px sans-serif';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(' IMPORTANT UPDATE 🔥', width / 2, importantTextY + 45);
     }
 
-    // ✅ 4. MAIN TITLE
+    // ✅ 5. MAIN TITLE (centered, large, clean)
     ctx.shadowColor  = theme.accent;
-    ctx.shadowBlur   = 20;
+    ctx.shadowBlur   = 30;
     ctx.fillStyle    = '#FFFFFF';
-    ctx.font         = '900 78px sans-serif';
-    ctx.textBaseline = 'alphabetic';
-    let titleEndY = wrapText(
-        (jobData.title || '').toUpperCase(),
-        width / 2, 510, 960, 95
+    ctx.font         = 'bold 85px sans-serif';
+    ctx.textBaseline = 'top';
+    const titleY = 580;
+    const titleEndY = wrapText(
+        (jobData.title || 'Latest Update').toUpperCase(),
+        width / 2, titleY, 900, 110
     );
     ctx.shadowBlur = 0;
 
-    // ✅ 5. CTA BUTTON
-    let ctaY = titleEndY + 40;
-
-    const ctaTexts = {
-        'Result':     { text: '✅ CHECK RESULT NOW',  color: '#00FF00' },
-        'Admit Card': { text: '📥 DOWNLOAD NOW',      color: '#FFD700' },
-        'Answer Key': { text: '🔑 CHECK ANSWER KEY',  color: '#FFA500' },
-        'Syllabus':   { text: '📚 FREE PDF DOWNLOAD', color: '#00FFFF' },
-        'Default':    { text: '🚀 APPLY NOW',          color: '#FF4444' }
-    };
-    const cta = ctaTexts[jobCat] || ctaTexts['Default'];
-
-    drawRoundedRect(100, ctaY - 55, 880, 90, 45);
-    ctx.fillStyle   = cta.color;
-    ctx.globalAlpha = 0.2;
+    // ✅ 6. KEY INFO BOX (dates, vacancies - clean layout)
+    const infoBoxY = Math.max(titleEndY + 50, 750);
+    drawRoundedRect(80, infoBoxY, 920, 320, 60);
+    ctx.fillStyle   = 'rgba(0, 0, 0, 0.7)';
     ctx.fill();
-    ctx.globalAlpha = 1.0;
-    ctx.fillStyle    = cta.color;
-    ctx.font         = 'bold 68px sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(cta.text, width / 2, ctaY);
-
-    // ✅ 6. INFO BOX
-    let infoBoxY = ctaY + 80;
-    drawRoundedRect(50, infoBoxY, 980, 260, 40);
-    ctx.fillStyle   = 'rgba(0, 0, 0, 0.55)';
-    ctx.fill();
-    ctx.lineWidth   = 4;
+    ctx.lineWidth   = 5;
     ctx.strokeStyle = theme.accent;
     ctx.stroke();
 
-    ctx.font = 'bold 58px sans-serif';
-    const todayDate = new Date().toLocaleDateString('en-GB');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    let infoLineY = infoBoxY + 60;
 
     if (['Result', 'Answer Key', 'Admit Card'].includes(jobCat)) {
-        ctx.fillStyle    = '#00FFFF';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`${theme.emoji} Update: ${jobCat} Out!`, width / 2, infoBoxY + 80);
+        ctx.fillStyle    = '#00FF88';
+        ctx.font         = 'bold 65px sans-serif';
+        ctx.fillText(`${theme.emoji} ${jobCat} DECLARED`, width / 2, infoLineY);
+        infoLineY += 90;
         ctx.fillStyle = '#FFFFFF';
+        ctx.font      = 'bold 60px sans-serif';
         const showDate = (jobData.updateDate && jobData.updateDate !== 'undefined')
-            ? jobData.updateDate : todayDate;
-        ctx.fillText(`📅 Date: ${showDate}`, width / 2, infoBoxY + 180);
+            ? jobData.updateDate : new Date().toLocaleDateString('en-GB');
+        ctx.fillText(`${showDate}`, width / 2, infoLineY);
     } else {
-        ctx.fillStyle    = '#00FFFF';
-        ctx.textBaseline = 'middle';
+        // Show vacancies if available
+        if (jobData.vacancies) {
+            ctx.fillStyle    = '#00FF88';
+            ctx.font         = 'bold 65px sans-serif';
+            ctx.fillText(`${jobData.vacancies} VACANCIES`, width / 2, infoLineY);
+            infoLineY += 90;
+        }
+        
+        // Apply date
+        ctx.fillStyle = '#00D4FF';
+        ctx.font      = 'bold 60px sans-serif';
         const showStart = (jobData.startDate && jobData.startDate !== 'undefined')
             ? jobData.startDate : 'Apply Now';
-        ctx.fillText(`🚀 Apply: ${showStart}`, width / 2, infoBoxY + 80);
-        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(`Apply: ${showStart}`, width / 2, infoLineY);
+        infoLineY += 90;
+        
+        // Last date
+        ctx.fillStyle = '#FF4444';
         ctx.font      = 'bold 65px sans-serif';
         const showLast = (jobData.lastDate && jobData.lastDate !== 'undefined')
-            ? jobData.lastDate : 'जल्दी करें!';
-        ctx.fillText(`⏳ Last Date: ${showLast}`, width / 2, infoBoxY + 180);
+            ? jobData.lastDate : 'Apply Soon!';
+        ctx.fillText(`Last Date: ${showLast}`, width / 2, infoLineY);
     }
 
-    // ✅ 7. TELEGRAM BOX
-    let tgBoxY = infoBoxY + 280;
-    if (tgBoxY + 100 > 1740) {
-        tgBoxY = 1630;
-    }
+    // ✅ 7. CTA BUTTON (prominent, clear)
+    const ctaY = infoBoxY + 380;
+    const ctaTexts = {
+        'Result':     { text: 'CHECK RESULT',  color: '#00FF88' },
+        'Admit Card': { text: 'DOWNLOAD NOW',  color: '#FFD700' },
+        'Answer Key': { text: 'VIEW KEY',      color: '#FFA500' },
+        'Syllabus':   { text: 'GET PDF',       color: '#00FF88' },
+        'Default':    { text: 'APPLY NOW',     color: '#FF4444' }
+    };
+    const cta = ctaTexts[jobCat] || ctaTexts['Default'];
 
-    drawRoundedRect(50, tgBoxY, 980, 100, 30);
+    drawRoundedRect(150, ctaY, 780, 110, 55);
+    ctx.fillStyle   = cta.color;
+    ctx.globalAlpha = 0.3;
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle    = cta.color;
+    ctx.font         = 'bold 75px sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(cta.text, width / 2, ctaY + 55);
+
+    // ✅ 8. TELEGRAM (smaller, bottom)
+    const tgY = ctaY + 160;
+    drawRoundedRect(100, tgY, 880, 80, 40);
     ctx.fillStyle    = '#0088cc';
     ctx.fill();
     ctx.fillStyle    = '#FFFFFF';
-    ctx.font         = 'bold 48px sans-serif';
+    ctx.font         = 'bold 50px sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillText('📲 JOIN TELEGRAM: @studygyaan_official', width / 2, tgBoxY + 50);
+    ctx.fillText('@studygyaan_official', width / 2, tgY + 40);
 
-    // ✅ 8. FOOTER
-    ctx.fillStyle    = '#FFCC00';
-    ctx.fillRect(0, 1750, width, 170);
+    // ✅ 9. FOOTER (clean, minimal)
+    ctx.fillStyle    = '#FFD700';
+    ctx.fillRect(0, 1780, width, 140);
     ctx.fillStyle    = '#000000';
-    ctx.font         = '900 52px sans-serif';
+    ctx.font         = 'bold 60px sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillText('👇 DIRECT LINK - FIRST COMMENT में 👇', width / 2, 1835);
+    ctx.fillText('LINK IN FIRST COMMENT', width / 2, 1850);
 
     fs.writeFileSync(posterPath, canvas.toBuffer('image/png'));
-    console.log('✅ Poster बन गया!');
+    console.log(' Poster created (clean design)!');
 
-    const anchorY = tgBoxY + 120;
-    return Math.min(anchorY, 1200);
+    // Return anchor Y position (where video anchor should be placed)
+    return Math.min(tgY + 120, 1400);
 }
 
 // =========================================================
