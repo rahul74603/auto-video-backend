@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '@/firebase/config';
 import { 
   Video, 
@@ -9,15 +9,12 @@ import {
   Clock, 
   CheckCircle2, 
   XCircle, 
-  AlertCircle, 
   Play,
   Youtube,
   Facebook,
   Send,
   RotateCcw,
   Eye,
-  Calendar,
-  TrendingUp,
   Activity
 } from 'lucide-react';
 
