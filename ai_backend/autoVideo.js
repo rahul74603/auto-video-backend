@@ -911,6 +911,10 @@ const motionEngine = require('./agents/growth/motion_engine');
         console.log(`   Audio  : ${fs.existsSync(finalAudio)}`);
         console.log(`   Music  : ${hasMusic}`);
 
+        // outLabel: which video output label to map (with or without subtitles)
+        const burnEnabled = flags.isEnabled('SUBTITLE_BURN_ENABLED');
+        const outLabel = (hasSubtitles && burnEnabled) ? '[outvs]' : '[outv]';
+
         let filter, args;
 
         if (hasMusic) {
@@ -924,7 +928,6 @@ const motionEngine = require('./agents/growth/motion_engine');
             if (hasSubtitles && burnEnabled) {
                 subFilter = `;[outv]subtitles='${subtitlePath}':force_style='FontName=Noto Sans Devanagari,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=180,Alignment=2'[outvs]`;
             }
-            const outLabel = (hasSubtitles && burnEnabled) ? '[outvs]' : '[outv]';
             // 🧠 MOTION ENGINE: Apply controlled motion to poster
             let motionFilter = '';
             if (growthEnabled && growthRec?.enhancements?.motionProfile?.profile?.ffmpegFilter) {
@@ -966,7 +969,6 @@ const motionEngine = require('./agents/growth/motion_engine');
             if (hasSubtitles && burnEnabled) {
                 subFilter = `;[outv]subtitles='${subtitlePath}':force_style='FontName=Noto Sans Devanagari,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=180,Alignment=2'[outvs]`;
             }
-            const outLabel = (hasSubtitles && burnEnabled) ? '[outvs]' : '[outv]';
             // 🧠 MOTION ENGINE: Apply controlled motion to poster
             let motionFilter = '';
             if (growthEnabled && growthRec?.enhancements?.motionProfile?.profile?.ffmpegFilter) {
