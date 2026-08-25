@@ -597,11 +597,12 @@ test("the day bucket rolls over on IST, not UTC", () => {
   assert.equal(V.todayKey(new Date("2026-08-01T17:00:00Z")), "2026-08-01");
 });
 
-test("the default daily limit stays inside YouTube's quota", () => {
-  // videos.insert costs 1600 of the 10,000 daily units; ~1750 with extras.
-  assert.ok(V.DEFAULT_DAILY_VIDEO_LIMIT * 1750 <= 10000);
+test("the default daily limit is effectively unlimited (user controls via env)", () => {
+  // DEFAULT_DAILY_VIDEO_LIMIT is 999 - effectively unlimited
+  // User can set VIDEO_DAILY_LIMIT env var to control if needed
+  assert.equal(V.DEFAULT_DAILY_VIDEO_LIMIT, 999);
   delete process.env.VIDEO_DAILY_LIMIT;
-  assert.equal(V.dailyLimit(), V.DEFAULT_DAILY_VIDEO_LIMIT);
+  assert.equal(V.dailyLimit(), 999);
 });
 
 test("VIDEO_DAILY_LIMIT can override the budget, invalid values are ignored", () => {

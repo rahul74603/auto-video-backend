@@ -616,6 +616,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
     const posterPath = path.join(tempDir, `poster-${timestamp}.png`);
     const safeSlug   = (jobData.slug || 'govt-update').replace(/[^a-z0-9]/gi, '-').substring(0, 50);
     const videoPath  = path.join(tempDir, `${safeSlug}-${timestamp}.mp4`);
+    const subtitlePath = path.join(tempDir, `subs-${timestamp}.srt`); // always defined for cleanup
 
     let jobCat = jobData.category || 'Default';
 
@@ -755,7 +756,6 @@ async function generateAndUploadVideo(jobData, options = {}) {
         });
 
         // 🧠 GROWTH ENGINE: Generate subtitles for the video
-        const subtitlePath = path.join(tempDir, `subs-${timestamp}.srt`);
         let hasSubtitles = false;
         try {
             const flags = require('./agents/growth/feature_flags');
