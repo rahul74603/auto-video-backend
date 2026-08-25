@@ -446,7 +446,8 @@ async function processCandidate(candidate, ctx) {
         runId: ctx.runId,
         worker: 'github-dispatcher',
         maxAgeDays: ctx.maxAgeDays,
-        shortsCutoffMs: ctx.shortsCutoffMs
+        shortsCutoffMs: ctx.shortsCutoffMs,
+        freshOnly: ctx.maxAgeDays > 0   // legacy content hard guard
     });
 
     if (!claimResult.claimed) {
@@ -580,7 +581,8 @@ async function main() {
                 candidates = await scanCollection(db, kind, {
                     scanLimit: args.scanLimit,
                     maxAgeDays: args.maxAgeDays,
-                    shortsCutoffMs: args.shortsCutoffMs
+                    shortsCutoffMs: args.shortsCutoffMs,
+                    freshOnly: args.maxAgeDays > 0   // legacy content guard ON when freshness window active
                 });
             }
         } catch (err) {

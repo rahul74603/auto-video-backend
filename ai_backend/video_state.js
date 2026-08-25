@@ -66,7 +66,7 @@ const DEFAULT_LEGACY_GRACE_MS = 30 * 60 * 1000; // 30 minutes
 // Older content — including legacy backlog and stale queued/failed docs — is
 // never auto-rendered. Publishing fresh content is what triggers a video.
 // Force a specific old doc manually with --doc=<id> --max-age-days=0.
-const DEFAULT_MAX_AGE_DAYS = 1;
+const DEFAULT_MAX_AGE_DAYS = 0.5;   // STRICT: only last 12 hours of fresh publishes
 
 const JOB_BLOCKED_STATUSES = ['draft', 'pending', 'archived', 'rejected', 'unpublished', 'deleted', 'expired'];
 const NON_JOB_TYPES = ['MATERIAL', 'AFFILIATE', 'FAST_TRACK', 'BLOG', 'NOTE', 'PDF', 'STORY'];
@@ -172,11 +172,32 @@ function publishedAtMs(data) {
         || 0;
 }
 
+/**
+ * Hard guard: legacy/pre-video content must never be auto-processed.
+ * If content has NO videoTriggeredAt ever AND was published more than
+ * maxAgeDays ago, it's permanently ineligible. This prevents old jobs
+ * from suddenly triggering videos when the dispatcher runs.
+ * 
+ * Only fresh publishes (within maxAgeDays window) are eligible.
+ * User must explicitly use --max-age-days=0 to override.
+ */
+function isLegacyBacklog(data, maxAgeDays) {
+    if (!data) return false;
+    // If videoTriggeredAt already exists, this content was seen by the system
+    // before — apply normal retry/stale logic, not legacy skip.
+    if (data.videoTriggeredAt) return false;
+    // No videoTriggeredAt AND published outside freshness window = legacy
+    const created = publishedAtMs(data);
+    if (!created) return true;   // no timestamp = assume old
+    return (Date.now() - created) > maxAgeDays * 24 * 60 * 60 * 1000;
+}
+
 function baseEligibility(data, opts = {}) {
     const maxAttempts = opts.maxAttempts || DEFAULT_MAX_ATTEMPTS;
     const staleLockMs = opts.staleLockMs || DEFAULT_STALE_LOCK_MS;
     const legacyGraceMs = opts.legacyGraceMs === undefined ? DEFAULT_LEGACY_GRACE_MS : opts.legacyGraceMs;
     const maxAgeDays = opts.maxAgeDays === undefined ? DEFAULT_MAX_AGE_DAYS : opts.maxAgeDays;
+    const freshOnly = opts.freshOnly !== false;   // default ON
 
     if (!data) return { eligible: false, reason: 'no data' };
     if (isExcluded(data)) return { eligible: false, reason: 'excluded by admin flag' };
@@ -197,8 +218,13 @@ function baseEligibility(data, opts = {}) {
             return { eligible: false, reason: `unknown publish age (no parseable timestamp) — force with --max-age-days=0` };
         }
         if ((Date.now() - created) > maxAgeDays * 24 * 60 * 60 * 1000) {
-            return { eligible: false, reason: `older than ${maxAgeDays}d backlog window` };
+            return { eligible: false, reason: `older than ${maxAgeDays}d freshness window` };
         }
+    }
+    // NEW: Hard skip for legacy content that was NEVER touched by video system
+    // AND falls outside the freshness window.
+    if (freshOnly && maxAgeDays > 0 && isLegacyBacklog(data, maxAgeDays)) {
+        return { eligible: false, reason: `legacy content — videoTriggeredAt missing + older than ${maxAgeDays}d freshness window` };
     }
     return { eligible: true, reason: 'pending' };
 }
