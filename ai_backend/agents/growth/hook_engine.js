@@ -72,8 +72,8 @@ const HOOK_TEMPLATES = {
         (f) => `${f.topic || ''} — full details, ${f.vacancies || 'vacancy'} + ${f.lastDate || 'dates'}`,
     ],
     audience_specific: [
-        (f) => `${f.state || ''} के students के लिए खुशखबरी — ${f.topic || 'नई भर्ती'}`,
-        (f) => `${f.edu || '10वीं/12वीं'} pass students — ये भर्ती तुम्हारे लिए है`,
+        (f) => `${f.edu || '10वीं'} पास वालों के लिए — ${f.topic || 'बड़ी भर्ती'}`,
+        (f) => `${f.org || ''} में ${f.vacancies || ''} पद — ${f.edu || 'eligible'} वालों के लिए`,
         (f) => `${f.gender || ''}${f.edu || 'युवा'} — ${f.category || 'सरकारी'} job का मौका`,
         (f) => `ITI/Diploma holders — ${f.org || ''} में नौकरी`,
     ]

@@ -31,7 +31,7 @@ const DEFAULTS = {
     CONTENT_CLUSTERING_ENABLED: true,
     
     // New enhancement flags
-    AI_VISUAL_ENABLED: false,
+    AI_VISUAL_ENABLED: true,  // ENABLED: AI images for visual variety
     DYNAMIC_LAYOUT_ENABLED: true,
     VISUAL_FATIGUE_PREVENTION_ENABLED: true,
     DEADLINE_ENGINE_ENABLED: true,
