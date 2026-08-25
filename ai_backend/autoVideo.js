@@ -958,19 +958,40 @@ const motionEngine = require('./agents/growth/motion_engine');
 
         await new Promise((resolve, reject) => {
             const ffmpeg = spawn(ffmpegPath, args);
+            const stderrChunks = [];
+            const MAX_STDERR_BYTES = 12000;   // cap to avoid flooding Actions logs
+            let totalStderrBytes = 0;
+
             ffmpeg.stderr.on('data', (data) => {
                 const out = data.toString();
                 if (out.includes('frame=')) {
                     process.stdout.write(`\r${out.split('\n')[0]}`);
                 }
+                // Always capture stderr for diagnostics (bounded)
+                if (totalStderrBytes < MAX_STDERR_BYTES) {
+                    const budget = MAX_STDERR_BYTES - totalStderrBytes;
+                    stderrChunks.push(Buffer.from(data).slice(0, budget));
+                    totalStderrBytes += Math.min(data.length, budget);
+                }
             });
             ffmpeg.on('error', (spawnErr) => reject(new Error(`FFmpeg spawn failed: ${spawnErr.message}`)));
-            ffmpeg.on('close', (code) => {
+            ffmpeg.on('close', (code, signal) => {
                 if (code === 0) {
                     console.log('\n✅ Rendering पूरी!');
                     resolve();
                 } else {
-                    reject(new Error(`FFmpeg failed: code ${code}`));
+                    const stderrTail = Buffer.concat(stderrChunks).toString('utf8');
+                    // Build a bounded diagnostic: last ~4 KB of stderr + command summary
+                    const diagnostic = stderrTail.length > 4000
+                        ? '...[truncated]...' + stderrTail.slice(-4000)
+                        : stderrTail;
+                    const cmdSummary = `${path.basename(ffmpegPath)} ${args.slice(0, 4).join(' ')} ... [${args.length} args]`;
+                    reject(new Error(
+                        `FFmpeg failed: exitCode=${code}` +
+                        (signal ? ` signal=${signal}` : '') +
+                        `\nCommand: ${cmdSummary}` +
+                        `\nSTDERR:\n${diagnostic}`
+                    ));
                 }
             });
         });

@@ -44,7 +44,9 @@ const MOTION_PROFILES = {
     'gentle_pan_right': {
         name: 'Gentle Pan Right',
         description: 'Slow horizontal movement',
-        ffmpegFilter: 'crop=iw*0.9:ih*0.9,pan=1080:1920:0:0',
+        // Note: 'pan' is audio-only in FFmpeg. Use 'pad' to reframe the cropped
+        // image at the right side, simulating a right-pan framing on a still image.
+        ffmpegFilter: 'crop=iw*0.9:ih*0.9,pad=1080:1920:(ow-iw):0',
         intensity: 'low',
         bestFor: ['JOB', 'UPSC', 'ENGINEERING'],
         duration: 'full',
@@ -54,7 +56,9 @@ const MOTION_PROFILES = {
     'gentle_pan_up': {
         name: 'Gentle Pan Up',
         description: 'Slow vertical movement',
-        ffmpegFilter: 'crop=iw*0.9:ih*0.9,pan=1080:1920:0:ih*0.1',
+        // Note: 'pan' is audio-only in FFmpeg. Use 'pad' to reframe the cropped
+        // image at the top, simulating an upward-pan framing on a still image.
+        ffmpegFilter: 'crop=iw*0.9:ih*0.9,pad=1080:1920:0:(oh-ih)',
         intensity: 'low',
         bestFor: ['JOB', 'DEFENCE', 'POLICE'],
         duration: 'full',

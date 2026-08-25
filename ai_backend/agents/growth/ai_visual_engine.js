@@ -111,7 +111,10 @@ function hashString(str) {
         hash = ((hash << 5) - hash) + char;
         hash = hash & hash; // Convert to 32bit integer
     }
-    return hash;
+    // Firestore document IDs must be non-empty strings. The raw hash is a
+    // (possibly negative) number — convert to a string and sanitize it so it
+    // is a valid Firestore document path.
+    return `ai-${Math.abs(hash).toString(36)}`;
 }
 
 /**
