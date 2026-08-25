@@ -135,31 +135,38 @@ async function logImageGeneration(db, options = {}) {
     if (!db) {
         return;
     }
-    
+
+    // Ensure admin is initialized before using FieldValue sentinels.
+    // `admin` is a module-level variable lazily loaded by getAdmin(); calling
+    // getAdmin() once here guarantees it is defined for all FieldValue usage
+    // below, even on the very first call to logImageGeneration().
+    const firebaseAdmin = getAdmin();
+    const FieldValue = firebaseAdmin.firestore.FieldValue;
+
     try {
         const today = new Date().toISOString().split('T')[0];
-        
+
         // Update daily count
         const dailyRef = db.collection('cost_tracking').doc(`images_${today}`);
         await dailyRef.set({
-            count: admin.firestore.FieldValue.increment(1),
+            count: FieldValue.increment(1),
             date: today,
-            lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+            lastUpdated: FieldValue.serverTimestamp()
         }, { merge: true });
-        
+
         // Update per-video count
         if (jobId) {
             const videoRef = db.collection('cost_tracking').doc(`video_${jobId}`);
             await videoRef.set({
                 jobId,
-                imageCount: admin.firestore.FieldValue.increment(1),
-                totalCost: admin.firestore.FieldValue.increment(cost),
-                lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+                imageCount: FieldValue.increment(1),
+                totalCost: FieldValue.increment(cost),
+                lastUpdated: FieldValue.serverTimestamp()
             }, { merge: true });
         }
-        
+
     } catch (err) {
-        console.log(`⚠️ Cost logging failed: ${err.message || err}`);
+        console.log(`️ Cost logging failed: ${err.message || err}`);
     }
 }
 

@@ -299,7 +299,7 @@ async function processJobLike(candidate, ctx) {
                 title: payload.title,
                 organization: payload.organization || data.organization || '',
                 vacancies: payload.vacancies || data.vacancies || '',
-                lastDate: payload.startDate || data.lastDate || '',
+                lastDate: payload.lastDate || data.lastDate || '',
                 category: payload.category || data.category || '',
                 type: kind === KIND.JOB ? 'JOB' : 'FAST_TRACK',
                 createdAt: data.createdAt || Date.now()
