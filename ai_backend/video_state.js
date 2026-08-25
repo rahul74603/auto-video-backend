@@ -457,7 +457,7 @@ module.exports = {
  * The counter lives in Firestore so it is shared across runs.
  */
 const QUOTA_DOC = 'system_settings/video_quota';
-const DEFAULT_DAILY_VIDEO_LIMIT = 5;
+const DEFAULT_DAILY_VIDEO_LIMIT = 999; // effectively unlimited - user controls via VIDEO_DAILY_LIMIT env
 
 function todayKey(now = new Date()) {
     // Bucket by IST day so the reset lines up with the site's audience.

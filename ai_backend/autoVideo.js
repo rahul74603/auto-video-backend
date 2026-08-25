@@ -8,6 +8,7 @@ const admin = require("firebase-admin");
 const FormData = require('form-data');
 const V = require('./video_state');
 const ttsEngine = require('./tts_engine');
+const flags = require('./agents/growth/feature_flags');
 require("dotenv").config();
 
 // ✅ Approved anchor files only — never pick up unrelated MP4s from the folder.
@@ -616,6 +617,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
     const posterPath = path.join(tempDir, `poster-${timestamp}.png`);
     const safeSlug   = (jobData.slug || 'govt-update').replace(/[^a-z0-9]/gi, '-').substring(0, 50);
     const videoPath  = path.join(tempDir, `${safeSlug}-${timestamp}.mp4`);
+    const subtitlePath = path.join(tempDir, `subs-${timestamp}.srt`); // always defined for cleanup
 
     let jobCat = jobData.category || 'Default';
 
@@ -755,7 +757,6 @@ async function generateAndUploadVideo(jobData, options = {}) {
         });
 
         // 🧠 GROWTH ENGINE: Generate subtitles for the video
-        const subtitlePath = path.join(tempDir, `subs-${timestamp}.srt`);
         let hasSubtitles = false;
         try {
             const flags = require('./agents/growth/feature_flags');
@@ -815,11 +816,16 @@ async function generateAndUploadVideo(jobData, options = {}) {
 
         if (hasMusic) {
             // Subtitle overlay filter (only if subtitles were generated)
+            // 🔥 SUBTITLE BURN: only when flag ON + SRT exists.
+            // Default OFF — GitHub Actions runner has no Devanagari font,
+            // burning produces □□□ tofu boxes. SRT still generated for
+            // YouTube CC upload; burn when font is installed.
+            const burnEnabled = flags.isEnabled('SUBTITLE_BURN_ENABLED');
             let subFilter = '';
-            if (hasSubtitles) {
+            if (hasSubtitles && burnEnabled) {
                 subFilter = `;[outv]subtitles='${subtitlePath}':force_style='FontName=Noto Sans Devanagari,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=180,Alignment=2'[outvs]`;
             }
-            const outLabel = hasSubtitles ? '[outvs]' : '[outv]';
+            const outLabel = (hasSubtitles && burnEnabled) ? '[outvs]' : '[outv]';
             filter =
                 `[0:v]zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30[bg];` +
                 `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=680:-1[anchor];` +
@@ -842,11 +848,16 @@ async function generateAndUploadVideo(jobData, options = {}) {
             ];
         } else {
             console.log('⚠️ BG Music नहीं मिला, बिना म्यूजिक के render...');
+            // 🔥 SUBTITLE BURN: only when flag ON + SRT exists.
+            // Default OFF — GitHub Actions runner has no Devanagari font,
+            // burning produces □□□ tofu boxes. SRT still generated for
+            // YouTube CC upload; burn when font is installed.
+            const burnEnabled = flags.isEnabled('SUBTITLE_BURN_ENABLED');
             let subFilter = '';
-            if (hasSubtitles) {
+            if (hasSubtitles && burnEnabled) {
                 subFilter = `;[outv]subtitles='${subtitlePath}':force_style='FontName=Noto Sans Devanagari,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=180,Alignment=2'[outvs]`;
             }
-            const outLabel = hasSubtitles ? '[outvs]' : '[outv]';
+            const outLabel = (hasSubtitles && burnEnabled) ? '[outvs]' : '[outv]';
             filter =
                 `[0:v]zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30[bg];` +
                 `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=680:-1[anchor];` +
