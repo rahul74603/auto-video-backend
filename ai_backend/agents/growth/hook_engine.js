@@ -25,7 +25,7 @@ const HOOK_TEMPLATES = {
     ],
     curiosity: [
         (f) => `क्या आप जानते हैं? ${f.topic || 'ये भर्ती'} ${f.vacancies ? f.vacancies + ' पदों' : 'के लिए'} आ गई`,
-        (f) => `${f.edu || '10वीं पास'} भी apply कर सकता है — ${f.topic || 'ये भर्ती'}`,
+        (f) => f.edu ? `${f.edu} भी apply कर सकता है — ${f.topic || 'ये भर्ती'}` : `${f.topic || 'ये'} — अभी चेक करें`,
         (f) => `ये ${f.category || 'सरकारी'} नौकरी miss मत करना`,
         (f) => `${f.org || ''} ने निकाली बंपर भर्ती — details देखो`,
     ],
