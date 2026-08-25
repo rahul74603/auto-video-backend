@@ -9,6 +9,7 @@ const FormData = require('form-data');
 const V = require('./video_state');
 const ttsEngine = require('./tts_engine');
 const flags = require('./agents/growth/feature_flags');
+const motionEngine = require('./agents/growth/motion_engine');
 require("dotenv").config();
 
 // ✅ Approved anchor files only — never pick up unrelated MP4s from the folder.
@@ -353,7 +354,7 @@ function generateViralTitle(jobData, jobCat) {
 // =========================================================
 // 🎨 4. POSTER DESIGNER
 // =========================================================
-async function createPoster(jobData, jobCat, posterPath) {
+async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
     const { createCanvas } = require('canvas');
 
     const width  = 1080;
@@ -535,26 +536,39 @@ async function createPoster(jobData, jobCat, posterPath) {
         ctx.fillText(`Last Date: ${showLast}`, width / 2, infoLineY);
     }
 
-    // ✅ 7. CTA BUTTON (prominent, clear)
+    // ✅ 7. DYNAMIC CTA BUTTON (from CTA engine or fallback)
     const ctaY = infoBoxY + 380;
-    const ctaTexts = {
-        'Result':     { text: 'CHECK RESULT',  color: '#00FF88' },
-        'Admit Card': { text: 'DOWNLOAD NOW',  color: '#FFD700' },
-        'Answer Key': { text: 'VIEW KEY',      color: '#FFA500' },
-        'Syllabus':   { text: 'GET PDF',       color: '#00FF88' },
-        'Default':    { text: 'APPLY NOW',     color: '#FF4444' }
-    };
-    const cta = ctaTexts[jobCat] || ctaTexts['Default'];
+    let ctaText = 'APPLY NOW';
+    let ctaColor = '#FF4444';
+    
+    if (growthRec?.enhancements?.cta?.closing?.template) {
+        // Use CTA from engine
+        const ctaTemplate = growthRec.enhancements.cta.closing.template;
+        ctaText = ctaTemplate.toUpperCase().replace(/[^A-Z0-9\s!]/g, '').substring(0, 25);
+        ctaColor = growthRec.enhancements.cta.closing.color || '#FF4444';
+    } else {
+        // Fallback to static CTAs
+        const ctaTexts = {
+            'Result':     { text: 'CHECK RESULT',  color: '#00FF88' },
+            'Admit Card': { text: 'DOWNLOAD NOW',  color: '#FFD700' },
+            'Answer Key': { text: 'VIEW KEY',      color: '#FFA500' },
+            'Syllabus':   { text: 'GET PDF',       color: '#00FF88' },
+            'Default':    { text: 'APPLY NOW',     color: '#FF4444' }
+        };
+        const cta = ctaTexts[jobCat] || ctaTexts['Default'];
+        ctaText = cta.text;
+        ctaColor = cta.color;
+    }
 
     drawRoundedRect(150, ctaY, 780, 110, 55);
-    ctx.fillStyle   = cta.color;
+    ctx.fillStyle   = ctaColor;
     ctx.globalAlpha = 0.3;
     ctx.fill();
     ctx.globalAlpha = 1.0;
-    ctx.fillStyle    = cta.color;
+    ctx.fillStyle    = '#FFFFFF';
     ctx.font         = 'bold 75px sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillText(cta.text, width / 2, ctaY + 55);
+    ctx.fillText(ctaText, width / 2, ctaY + 55);
 
     // ✅ 8. TELEGRAM (smaller, bottom)
     const tgY = ctaY + 160;
@@ -760,6 +774,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
         let hasSubtitles = false;
         try {
             const flags = require('./agents/growth/feature_flags');
+const motionEngine = require('./agents/growth/motion_engine');
             if (flags.isEnabled('SUBTITLE_ENGINE_ENABLED')) {
                 const subtitleEngine = require('./agents/growth/subtitle_engine');
                 // Build minimal script structure for subtitle generation
@@ -794,7 +809,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
             jobData.firstFrameText = firstFrameText;
         }
 
-        const safeAnchorY = await createPoster(jobData, jobCat, posterPath);
+        const safeAnchorY = await createPoster(jobData, jobCat, posterPath, growthRec);
         console.log(`📍 Anchor Y position: ${safeAnchorY}`);
 
         console.log('🎬 FFmpeg Rendering शुरू...');
@@ -826,8 +841,18 @@ async function generateAndUploadVideo(jobData, options = {}) {
                 subFilter = `;[outv]subtitles='${subtitlePath}':force_style='FontName=Noto Sans Devanagari,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=180,Alignment=2'[outvs]`;
             }
             const outLabel = (hasSubtitles && burnEnabled) ? '[outvs]' : '[outv]';
+            // 🧠 MOTION ENGINE: Apply controlled motion to poster
+            let motionFilter = '';
+            if (growthEnabled && growthRec?.enhancements?.motionProfile?.profile?.ffmpegFilter) {
+                motionFilter = growthRec.enhancements.motionProfile.profile.ffmpegFilter;
+                console.log(` Motion: ${growthRec.enhancements.motionProfile.profile.name}`);
+            } else {
+                // Default subtle zoom
+                motionFilter = "zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30";
+            }
+            
             filter =
-                `[0:v]zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30[bg];` +
+                `[0:v]${motionFilter}[bg];` +
                 `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=680:-1[anchor];` +
                 `[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv]` +
                 subFilter + `;` +
@@ -858,8 +883,18 @@ async function generateAndUploadVideo(jobData, options = {}) {
                 subFilter = `;[outv]subtitles='${subtitlePath}':force_style='FontName=Noto Sans Devanagari,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=180,Alignment=2'[outvs]`;
             }
             const outLabel = (hasSubtitles && burnEnabled) ? '[outvs]' : '[outv]';
+            // 🧠 MOTION ENGINE: Apply controlled motion to poster
+            let motionFilter = '';
+            if (growthEnabled && growthRec?.enhancements?.motionProfile?.profile?.ffmpegFilter) {
+                motionFilter = growthRec.enhancements.motionProfile.profile.ffmpegFilter;
+                console.log(`🎬 Motion: ${growthRec.enhancements.motionProfile.profile.name}`);
+            } else {
+                // Default subtle zoom
+                motionFilter = "zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30";
+            }
+            
             filter =
-                `[0:v]zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30[bg];` +
+                `[0:v]${motionFilter}[bg];` +
                 `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=680:-1[anchor];` +
                 `[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv]` +
                 subFilter + `;` +
