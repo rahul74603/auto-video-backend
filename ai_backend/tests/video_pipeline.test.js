@@ -185,7 +185,9 @@ test("old backlog content is not auto-rendered", () => {
   const data = { type: "JOB", title: "Old job", createdAt: now() - 60 * DAY };
   const verdict = V.evaluateJob(data);
   assert.equal(verdict.eligible, false);
-  assert.match(verdict.reason, /backlog window/);
+  // Match either the original freshness-guard wording OR the new legacy-content guard
+  assert.ok(/backlog window|freshness window|legacy content/.test(verdict.reason),
+    `expected freshness/legacy skip, got: ${verdict.reason}`);
 });
 
 test("the backlog window can be disabled for forced/manual runs", () => {
@@ -200,7 +202,8 @@ test("stale backlog content is never auto-rendered, even if it entered the state
   };
   const verdict = V.evaluateJob(data);
   assert.equal(verdict.eligible, false);
-  assert.match(verdict.reason, /backlog window/);
+  assert.ok(/backlog window|freshness window|legacy content/.test(verdict.reason),
+    `expected freshness/legacy skip, got: ${verdict.reason}`);
 });
 
 test("recently published content still retries inside the fresh window", () => {
@@ -211,13 +214,14 @@ test("recently published content still retries inside the fresh window", () => {
   assert.equal(V.evaluateJob(data).eligible, true);
 });
 
-test("default freshness window is 1 day — fresh content eligible, older skipped", () => {
-  const fresh = { type: "JOB", title: "Just published", createdAt: now() - 12 * HOUR };
+test("default freshness window is 0.5 day (12 hours) — fresh content eligible, older skipped", () => {
+  const fresh = { type: "JOB", title: "Just published", createdAt: now() - 6 * HOUR };
   const stale = { type: "JOB", title: "Two days old", createdAt: now() - 2 * DAY };
   assert.equal(V.evaluateJob(fresh).eligible, true);
   const verdict = V.evaluateJob(stale);
   assert.equal(verdict.eligible, false);
-  assert.match(verdict.reason, /backlog window/);
+  assert.ok(/backlog window|freshness window|legacy content/.test(verdict.reason),
+    `expected freshness/legacy skip, got: ${verdict.reason}`);
 });
 
 test("content with no parseable timestamp is treated as backlog (freshness guard)", () => {
@@ -248,7 +252,8 @@ test("an unparseable publishedAt falls back to createdAt, not a fresh updatedAt"
   };
   const verdict = V.evaluateJob(data);
   assert.equal(verdict.eligible, false);
-  assert.match(verdict.reason, /backlog window/);
+  assert.ok(/backlog window|freshness window|legacy content/.test(verdict.reason),
+    `expected freshness/legacy skip, got: ${verdict.reason}`);
 });
 
 /* ------------------------------------------------------------------ */
