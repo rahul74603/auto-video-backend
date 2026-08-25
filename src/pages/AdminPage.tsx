@@ -28,6 +28,7 @@ import AdminBrowseTab from './Admin/Tabs/AdminBrowseTab';
 import AdminStorageTab from './Admin/Tabs/AdminStorageTab';
 import AdminJobDrafts from './Admin/Tabs/AdminJobDrafts'; 
 import AdminBrowseAIDrafts from './Admin/Tabs/AdminBrowseAIDrafts';
+import VideoControlCenter from './Admin/Tabs/VideoControlCenter';
 import FastTrackManager from './Admin/Tabs/FastTrackManager'; 
 import AdminWebStories from './Admin/Tabs/AdminWebStories';
 // 🔥 NEW: Payment Approval Tab Import
@@ -45,7 +46,7 @@ const AdminPage = () => {
     const location = useLocation(); 
 
     // ✅ Active Tab State — AI Article Studio अब JOBS AI tab के अंदर ही है + Automation Control
-    type AdminTab = 'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'PAYMENTS' | 'AUTOMATION';
+    type AdminTab = 'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'PAYMENTS' | 'AUTOMATION' | 'VIDEO';
     const [activeTab, setActiveTab] = useState<AdminTab>('BROWSE');
 
     const { content: siteContent, updateContent: updateSiteContent } = useSiteContent();
@@ -68,7 +69,7 @@ const AdminPage = () => {
         setPrevUrlSearch(currentUrlSearch);
         const params = new URLSearchParams(currentUrlSearch);
         const urlTab = params.get('tab');
-        if (urlTab && (['BROWSE', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'HOMEPAGE', 'FAST TRACK', 'WEB STORIES', 'CUSTOMIZE', 'MOCK TEST', 'STORAGE', 'JOBS AI', 'PAYMENTS', 'AUTOMATION'] as AdminTab[]).includes(urlTab as AdminTab)) {
+        if (urlTab && (['BROWSE', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'HOMEPAGE', 'FAST TRACK', 'WEB STORIES', 'CUSTOMIZE', 'MOCK TEST', 'STORAGE', 'JOBS AI', 'PAYMENTS', 'AUTOMATION', 'VIDEO'] as AdminTab[]).includes(urlTab as AdminTab)) {
             setActiveTab(urlTab as AdminTab);
         }
     }
@@ -149,7 +150,7 @@ const AdminPage = () => {
                     
                     {/* NAVIGATION TABS (Added PAYMENTS + AUTOMATION) */}
                     <div className="flex flex-wrap gap-1 md:gap-2 w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scroll-smooth items-center no-scrollbar">
-                        {['BROWSE', 'JOBS AI', 'AUTOMATION', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE'].map(t => (
+                        {['BROWSE', 'JOBS AI', 'AUTOMATION', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE', 'VIDEO'].map(t => (
                             <button 
                                 key={t} 
                                 onClick={() => setActiveTab(t as AdminTab)} 
@@ -200,6 +201,8 @@ const AdminPage = () => {
                     {activeTab === 'PAYMENTS' && <AdminPaymentApproval />}
                     {/* 🛑 Automation Control */}
                     {activeTab === 'AUTOMATION' && <AdminAutomationControl />}
+                    {/* 🎬 Video Control Center */}
+                    {activeTab === 'VIDEO' && <VideoControlCenter />}
                 </div>
             </div>
             
