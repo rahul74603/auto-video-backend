@@ -30,10 +30,10 @@ const HOOK_TEMPLATES = {
         (f) => `${f.org || ''} ने निकाली बंपर भर्ती — details देखो`,
     ],
     eligibility: [
-        (f) => `${f.edu || '10वीं'} PASS हो? ये भर्ती आपके लिए है`,
-        (f) => `${f.edu || '12th Pass'} + ${f.age || ''} — ये नौकरी तुम्हारे लिए है`,
+        (f) => f.edu ? `${f.edu} PASS हो? ये भर्ती आपके लिए है` : `${f.org || ''} भर्ती — eligibility check करें`,
+        (f) => f.edu && f.age ? `${f.edu} + ${f.age} — ये नौकरी तुम्हारे लिए` : `${f.topic || 'भर्ती'} — eligibility details`,
         (f) => `बिना exam की ${f.category || 'सरकारी'} नौकरी — ${f.org || ''}`,
-        (f) => `${f.edu || 'Graduate'} हो तो ${f.org || 'इस'} भर्ती के लिए apply करो`,
+        (f) => f.edu ? `${f.edu} हो तो ${f.org || 'इस'} भर्ती के लिए apply करो` : `${f.vacancies || ''} पद — apply करें`,
     ],
     benefit: [
         (f) => `${f.org || 'सरकारी'} नौकरी — ${f.salary || 'अच्छी'} salary + benefits`,
@@ -60,10 +60,10 @@ const HOOK_TEMPLATES = {
         (f) => `सरकारी नौकरी or private? ये भर्ती देखो पहले`,
     ],
     surprising_fact: [
-        (f) => `${f.vacancies || 'हज़ारों'} पद — एक ही notification में`,
+        (f) => f.vacancies ? `${f.vacancies} पद — एक ही notification में` : `${f.topic || 'बड़ी भर्ती'} — details देखें`,
         (f) => `बिना written exam — ${f.org || ''} में सीधी भर्ती`,
-        (f) => `सिर्फ ${f.edu || '10वीं'} pass में ${f.category || 'सरकारी'} job`,
-        (f) => `${f.org || ''} ने अब तक की सबसे बड़ी भर्ती निकाली`,
+        (f) => f.edu ? `सिर्फ ${f.edu} pass में ${f.category || 'सरकारी'} job` : `${f.category || 'Important'} update — अभी चेक करें`,
+        (f) => `${f.org || ''} ने बड़ी भर्ती निकाली — ${f.vacancies || ''} पद`,
     ],
     direct_answer: [
         (f) => `${f.topic || 'भर्ती'} — ${f.vacancies || ''} पद — ${f.lastDate || ''}`,
@@ -72,8 +72,8 @@ const HOOK_TEMPLATES = {
         (f) => `${f.topic || ''} — full details, ${f.vacancies || 'vacancy'} + ${f.lastDate || 'dates'}`,
     ],
     audience_specific: [
-        (f) => `${f.state || ''} के students के लिए खुशखबरी — ${f.topic || 'नई भर्ती'}`,
-        (f) => `${f.edu || '10वीं/12वीं'} pass students — ये भर्ती तुम्हारे लिए है`,
+        (f) => f.edu ? `${f.edu} वालों के लिए — ${f.topic || 'बड़ी भर्ती'}` : `${f.org || ''} में ${f.vacancies || ''} पद`,
+        (f) => f.edu ? `${f.edu} pass वालों — ये ${f.category || 'भर्ती'} तुम्हारे लिए` : `${f.topic || 'नई भर्ती'} — अभी apply करें`,
         (f) => `${f.gender || ''}${f.edu || 'युवा'} — ${f.category || 'सरकारी'} job का मौका`,
         (f) => `ITI/Diploma holders — ${f.org || ''} में नौकरी`,
     ]
@@ -88,12 +88,13 @@ function extractHookFacts(content) {
         topic: content.title || content.topic || '',
         category: content.category || '',
         education: content.qualification || content.edu || '',
-        edu: content.qualification || content.edu || '10वीं पास',
+        edu: content.qualification || content.edu || '',  // empty if not provided
         age: content.ageLimit || '',
         salary: content.salary || '',
         location: content.location || content.state || '',
         state: content.state || '',
-        action: content.action || 'भर्ती'
+        action: content.action || 'भर्ती',
+        type: content.type || 'JOB'  // JOB, FAST_TRACK, MOCK_TEST
     };
 }
 
