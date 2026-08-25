@@ -1,38 +1,41 @@
-name: 🎬 Video Dispatcher (Firestore Poller)
+name:  Video Dispatcher (Firestore Poller)
 
 # =============================================================================
 # Firebase-billing-INDEPENDENT video trigger.
 #
 #   Website/admin publishes  →  Firestore
-#   →  this scheduled workflow polls Firestore with SERVICE_ACCOUNT_JSON
+#   →  INSTANT trigger via repository_dispatch (from govt_jobs.js / fast_track_updates.js)
+#   →  OR scheduled poll every 5 minutes as safety net
 #   →  claims a pending JOB / FAST_TRACK / MOCK_TEST document (atomic)
-#   →  runs the existing FFmpeg renderers (autoVideo.js / mock_test_video.js)
+#   →  runs the EXISTING renderer (autoVideo.js / mock_test_video.js) with FFmpeg
 #   →  YouTube / Facebook / Telegram
 #   →  writes videoStatus back to Firestore
 #
 # No Cloud Function is involved, so this keeps working on the Spark plan.
-# The legacy repository_dispatch path (video_maker.yml) still works and both
-# paths claim the same document, so duplicates are impossible.
+# Growth engine integrated — hook/script/subtitle/music/presenter optimization.
 # =============================================================================
 
 on:
   # ---------------------------------------------------------------------------
-  # ✅ LIVE. Runs every 10 minutes.
-  #
-  # Publish a JOB or FAST TRACK on the website and the next run picks it up and
-  # renders the Short automatically — no button, no Firebase Cloud Function.
-  # Mock tests are handled by the same loop.
-  #
-  # GitHub's scheduler is best-effort and can lag under load, so a publish is
-  # normally live within ~10-20 minutes. Nothing is ever missed: unprocessed
-  # content simply waits for the next run.
-  #
-  # This repository is public, so scheduled Actions minutes are free.
-  # To pause everything, use the admin switch in Firestore
-  # (system_settings/automation) rather than editing this file.
+  # 🚨 INSTANT: Fires immediately when govt_jobs.js / fast_track_updates.js
+  # publishes content. No waiting for cron — video starts rendering RIGHT NOW.
+  # ---------------------------------------------------------------------------
+  repository_dispatch:
+    types:
+      - generate_job_video        # from ai_backend/govt_jobs.js
+      - generate_fasttrack_video  # from ai_backend/fast_track_updates.js
+      - generate_mock_test_video  # future-proof
+
+  # ---------------------------------------------------------------------------
+  # ✅ FALLBACK: Runs every 5 minutes as a safety net.
+  # Catches anything the instant trigger missed (network blips, etc).
   # ---------------------------------------------------------------------------
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/5 * * * *'
+
+  # ---------------------------------------------------------------------------
+  # ✅ MANUAL: Run from GitHub UI for testing or re-processing.
+  # ---------------------------------------------------------------------------
   workflow_dispatch:
     inputs:
       kind:
@@ -75,7 +78,7 @@ jobs:
         working-directory: ai_backend
 
     steps:
-      - name: 📥 Checkout
+      - name:  Checkout
         uses: actions/checkout@v4
 
       - name: 📦 Setup Node.js 20
@@ -85,7 +88,7 @@ jobs:
           cache: npm
           cache-dependency-path: ai_backend/package-lock.json
 
-      - name: 🔧 System Dependencies (canvas + FFmpeg build deps)
+      - name:  System Dependencies (canvas + FFmpeg build deps)
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y \
@@ -153,8 +156,9 @@ jobs:
           TELEGRAM_CHANNEL_NAME: ${{ secrets.TELEGRAM_CHANNEL_NAME }}
           # --- Run tuning ---
           VIDEO_PRIVACY_STATUS:  ${{ github.event.inputs.privacy }}
-          # workflow_dispatch inputs are user supplied, so they are passed as
-          # env vars (data) instead of being interpolated into the script (code).
+          # --- repository_dispatch support ---
+          IN_JOBDATA: ${{ toJSON(github.event.client_payload.jobData) }}
+          # workflow_dispatch inputs
           IN_KIND:  ${{ github.event.inputs.kind }}
           IN_LIMIT: ${{ github.event.inputs.limit }}
           IN_DRY:   ${{ github.event.inputs.dry_run }}
@@ -165,9 +169,15 @@ jobs:
           DRY="$IN_DRY"
           DOC="$IN_DOC"
 
-          ARGS="--kind=${KIND:-all} --limit=${LIMIT:-1}"
-          if [ "$DRY" = "true" ]; then ARGS="$ARGS --dry-run"; fi
-          if [ -n "$DOC" ]; then ARGS="$ARGS --doc=$DOC"; fi
+          # repository_dispatch → instant trigger, process immediately
+          if [ -n "$IN_JOBDATA" ] && [ "$IN_JOBDATA" != "null" ] && [ "$IN_JOBDATA" != "" ]; then
+            echo " Instant trigger (repository_dispatch) — processing immediately"
+            ARGS="--kind=all --limit=1 --max-age-days=0"
+          else
+            ARGS="--kind=${KIND:-all} --limit=${LIMIT:-1}"
+            if [ "$DRY" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+            if [ -n "$DOC" ]; then ARGS="$ARGS --doc=$DOC"; fi
+          fi
 
           echo "▶️ node video_dispatcher.js $ARGS"
           node video_dispatcher.js $ARGS
