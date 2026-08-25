@@ -388,9 +388,28 @@ async function markCompleted(db, admin, collection, ref, payload = {}) {
         update.youtubeVideoUrl = payload.videoUrl;        // legacy field kept
         update.videoCreatedAt = serverTimestamp(admin);   // legacy field kept
     }
+    // Independent platform statuses — each upload is tracked separately.
+    // A failure on one platform does not mark the whole video as failed.
+    if (payload.platformStatuses) {
+        update.platformStatuses = payload.platformStatuses;
+    }
     Object.assign(update, payload.extra || {});
     await docRef.update(update);
     return update;
+}
+
+/**
+ * Reset a failed/queued document so the dispatcher can retry it.
+ * Clears the stale lock and error, preserves historical attempt count
+ * so max-retry protection still applies.
+ */
+async function retryEligible(db, admin, collection, ref) {
+    const docRef = typeof ref === 'string' ? db.collection(collection).doc(ref) : ref;
+    await docRef.update({
+        videoStatus: STATUS.QUEUED,
+        videoError: admin.firestore.FieldValue.delete(),
+        videoLockId: admin.firestore.FieldValue.delete()
+    });
 }
 
 async function markFailed(db, admin, collection, ref, error, options = {}) {
@@ -463,7 +482,8 @@ module.exports = {
     markCompleted,
     markFailed,
     releaseClaim,
-    safeUpdate
+    safeUpdate,
+    retryEligible
 };
 
 /* ------------------------------------------------------------------ */

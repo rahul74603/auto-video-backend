@@ -472,6 +472,7 @@ async function processCandidate(candidate, ctx) {
             await V.markCompleted(ctx.db, admin, collection, ref, {
                 videoId: outcome.videoId,
                 videoUrl: outcome.videoUrl,
+                platformStatuses: outcome.platformStatuses || undefined,
                 extra: kind === KIND.MOCK_TEST ? { mockVideoMade: true } : {}
             });
             return { status: 'completed', kind, id, videoUrl: outcome.videoUrl };

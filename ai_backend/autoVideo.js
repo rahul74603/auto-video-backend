@@ -746,6 +746,48 @@ async function generateAndUploadVideo(jobData, options = {}) {
         const finalAnchorPath = path.join(targetDir, selectedVideoFile);
         console.log(`🎥 Anchor: ${selectedVideoFile} | Voice: ${selectedVoice}`);
 
+//  Reusable FFmpeg runner with bounded stderr capture.
+//    mode = 'full' | 'static-fallback' (for diagnostics only)
+async function runFFmpeg(ffmpegPath, args, mode = 'full') {
+    return new Promise((resolve, reject) => {
+        const ffmpeg = spawn(ffmpegPath, args);
+        const stderrChunks = [];
+        const MAX_STDERR_BYTES = 12000;
+        let totalStderrBytes = 0;
+
+        ffmpeg.stderr.on('data', (data) => {
+            const out = data.toString();
+            if (out.includes('frame=')) {
+                process.stdout.write(`\r[${mode}] ${out.split('\n')[0]}`);
+            }
+            if (totalStderrBytes < MAX_STDERR_BYTES) {
+                const budget = MAX_STDERR_BYTES - totalStderrBytes;
+                stderrChunks.push(Buffer.from(data).slice(0, budget));
+                totalStderrBytes += Math.min(data.length, budget);
+            }
+        });
+        ffmpeg.on('error', (spawnErr) => reject(new Error(`FFmpeg spawn failed: ${spawnErr.message}`)));
+        ffmpeg.on('close', (code, signal) => {
+            if (code === 0) {
+                console.log(`\n[${mode}] Rendering पूरी!`);
+                resolve();
+            } else {
+                const stderrTail = Buffer.concat(stderrChunks).toString('utf8');
+                const diagnostic = stderrTail.length > 4000
+                    ? '...[truncated]...' + stderrTail.slice(-4000)
+                    : stderrTail;
+                const cmdSummary = `${path.basename(ffmpegPath)} ... [${args.length} args]`;
+                reject(new Error(
+                    `FFmpeg failed (${mode}): exitCode=${code}` +
+                    (signal ? ` signal=${signal}` : '') +
+                    `\nCommand: ${cmdSummary}` +
+                    `\nSTDERR:\n${diagnostic}`
+                ));
+            }
+        });
+    });
+}
+
         // TTS credentials are optional now: tts_engine falls back to the free
         // Edge voices when Google TTS is unavailable (e.g. billing disabled).
         const ttsKeyVar = process.env.TTS_KEY_JSON;
@@ -956,45 +998,36 @@ const motionEngine = require('./agents/growth/motion_engine');
             ];
         }
 
-        await new Promise((resolve, reject) => {
-            const ffmpeg = spawn(ffmpegPath, args);
-            const stderrChunks = [];
-            const MAX_STDERR_BYTES = 12000;   // cap to avoid flooding Actions logs
-            let totalStderrBytes = 0;
+        //  FFmpeg rendering with motion-fallback:
+        //   1. Try full filter (poster + motion + anchor overlay)
+        //   2. On failure, retry with static poster (no motion)
+        //   3. On second failure, give up — let caller mark as failed
+        const STATIC_MOTION = "zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30";
+        let ffmpegSucceeded = false;
 
-            ffmpeg.stderr.on('data', (data) => {
-                const out = data.toString();
-                if (out.includes('frame=')) {
-                    process.stdout.write(`\r${out.split('\n')[0]}`);
-                }
-                // Always capture stderr for diagnostics (bounded)
-                if (totalStderrBytes < MAX_STDERR_BYTES) {
-                    const budget = MAX_STDERR_BYTES - totalStderrBytes;
-                    stderrChunks.push(Buffer.from(data).slice(0, budget));
-                    totalStderrBytes += Math.min(data.length, budget);
-                }
-            });
-            ffmpeg.on('error', (spawnErr) => reject(new Error(`FFmpeg spawn failed: ${spawnErr.message}`)));
-            ffmpeg.on('close', (code, signal) => {
-                if (code === 0) {
-                    console.log('\n✅ Rendering पूरी!');
-                    resolve();
-                } else {
-                    const stderrTail = Buffer.concat(stderrChunks).toString('utf8');
-                    // Build a bounded diagnostic: last ~4 KB of stderr + command summary
-                    const diagnostic = stderrTail.length > 4000
-                        ? '...[truncated]...' + stderrTail.slice(-4000)
-                        : stderrTail;
-                    const cmdSummary = `${path.basename(ffmpegPath)} ${args.slice(0, 4).join(' ')} ... [${args.length} args]`;
-                    reject(new Error(
-                        `FFmpeg failed: exitCode=${code}` +
-                        (signal ? ` signal=${signal}` : '') +
-                        `\nCommand: ${cmdSummary}` +
-                        `\nSTDERR:\n${diagnostic}`
-                    ));
-                }
-            });
-        });
+        for (const attempt of [filter, null]) {   // null = static fallback
+            const effectiveFilter = attempt || (hasMusic
+                ? `${STATIC_MOTION}[bg];[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=680:-1[anchor];[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv]${subFilter};[2:a]volume=1.5[voice];[3:a]volume=0.08[bgm];[voice][bgm]amix=inputs=2:duration=first[a]`
+                : `${STATIC_MOTION}[bg];[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=680:-1[anchor];[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv]${subFilter};[2:a]volume=1.5[a]`
+            );
+
+            const ffmpegArgs = hasMusic
+                ? ['-y', '-loop', '1', '-i', finalPoster, '-stream_loop', '-1', '-an', '-i', finalAnchor, '-i', finalAudio, '-stream_loop', '-1', '-i', finalMusic, '-filter_complex', effectiveFilter, '-map', outLabel, '-map', '[a]', '-c:v', 'libx264', '-preset', 'superfast', '-crf', '26', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2', '-shortest', '-pix_fmt', 'yuv420p', finalVideoOut]
+                : ['-y', '-loop', '1', '-i', finalPoster, '-stream_loop', '-1', '-an', '-i', finalAnchor, '-i', finalAudio, '-filter_complex', effectiveFilter, '-map', outLabel, '-map', '[a]', '-c:v', 'libx264', '-preset', 'superfast', '-crf', '26', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2', '-shortest', '-pix_fmt', 'yuv420p', finalVideoOut];
+
+            try {
+                await runFFmpeg(ffmpegPath, ffmpegArgs, effectiveFilter === filter ? 'full' : 'static-fallback');
+                ffmpegSucceeded = true;
+                break;
+            } catch (err) {
+                const isFallback = attempt === null;
+                if (isFallback) throw err;   // last attempt — propagate
+                console.log(`⚠️ FFmpeg full-motion render failed — retrying with static poster: ${V.shortError(err, 120)}`);
+            }
+        }
+
+        if (ffmpegSucceeded) console.log('✅ Rendering पूरी!');
+        else throw new Error('FFmpeg failed after all fallback attempts');
 
         renderCompleted = true;
 
@@ -1142,11 +1175,23 @@ const motionEngine = require('./agents/growth/motion_engine');
             console.log('⚠️ Playlist error:', plErr.message);
         }
 
+        // Independent platform statuses — one failure must not mark the whole
+        // video as failed. Each platform is tracked separately in Firestore.
+        const platformStatuses = { youtube: 'completed' };
+
         // ✅ Facebook Upload (public runs only)
         if (isTestUpload) {
             console.log('⏭️ Facebook skip — test upload.');
+            platformStatuses.facebook = 'skipped';
         } else {
-            await uploadToFacebook(videoPath, seoData.description);
+            try {
+                await uploadToFacebook(videoPath, seoData.description);
+                platformStatuses.facebook = 'completed';
+            } catch (fbErr) {
+                console.log('⚠️ Facebook upload failed:', fbErr.message);
+                platformStatuses.facebook = 'failed';
+                platformStatuses.facebookError = V.shortError(fbErr, 200);
+            }
         }
 
         // ✅ Telegram Notification
@@ -1189,11 +1234,15 @@ const motionEngine = require('./agents/growth/motion_engine');
                     }
                 );
                 console.log('✅ Telegram notification sent!');
+                platformStatuses.telegram = 'completed';
             } catch (tgErr) {
                 console.log('⚠️ Telegram error:', tgErr.message);
+                platformStatuses.telegram = 'failed';
+                platformStatuses.telegramError = V.shortError(tgErr, 200);
             }
         } else {
-            console.log('⚠️ Telegram credentials missing, skipping...');
+            console.log('️ Telegram credentials missing, skipping...');
+            platformStatuses.telegram = 'skipped';
         }
 
         // ✅ Auto First Comment (public runs only)
@@ -1267,7 +1316,7 @@ const motionEngine = require('./agents/growth/motion_engine');
         console.log(`🔖 Tags Count: ${seoData.tags.length}`);
         console.log(`${'='.repeat(50)}\n`);
 
-        return { success: true, videoId, videoUrl };
+        return { success: true, videoId, videoUrl, platformStatuses };
 
     } catch (err) {
         // Render succeeded but something after it (YouTube upload) blew up →
