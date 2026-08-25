@@ -18,9 +18,11 @@ const PRESENTERS = {
     'female_anchor_5.mp4': { id: 'female_5', gender: 'female', style: 'youthful' }
 };
 
-// Simple round-robin state (module-level, resets per process)
-let rrIndex = 0;
-
+/**
+ * Deterministic rotation based on content ID + date
+ * GitHub Actions har run fresh process hai, isliye module-level state kaam nahi karta
+ * Ye function content ID aur date se consistent selection karta hai
+ */
 function selectPresenter(content, opportunity, opts = {}) {
     if (!flags.isEnabled('PRESENTER_ROTATION_ENABLED')) {
         return { anchor: visualEngine.APPROVED_ANCHORS[0], reason: 'rotation disabled' };
@@ -28,6 +30,14 @@ function selectPresenter(content, opportunity, opts = {}) {
 
     const style = opts.visualStyle || {};
     const category = opportunity?.category || 'GENERAL';
+    const contentId = content.id || content.slug || content.title || 'default';
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+    // Deterministic seed from content ID + date
+    const seed = (contentId + today).split('').reduce((a, b) => {
+        a = ((a << 5) - a) + b.charCodeAt(0);
+        return a & a;
+    }, 0);
 
     // If analytics data is available, use it
     if (opts.performanceData) {
@@ -35,25 +45,22 @@ function selectPresenter(content, opportunity, opts = {}) {
         if (best) return { anchor: best, reason: 'best performer from analytics' };
     }
 
-    // Otherwise use style-guided selection
+    // Style-guided selection with deterministic rotation
     if (style.anchor === 'female') {
         const females = Object.keys(PRESENTERS).filter(a => a.includes('female'));
-        const anchor = females[rrIndex % females.length];
-        rrIndex++;
+        const anchor = females[Math.abs(seed) % females.length];
         return { anchor, reason: 'style requires female' };
     }
     if (style.anchor === 'male') {
         const males = Object.keys(PRESENTERS).filter(a => a.includes('male'));
-        const anchor = males[rrIndex % males.length];
-        rrIndex++;
+        const anchor = males[Math.abs(seed) % males.length];
         return { anchor, reason: 'style requires male' };
     }
 
-    // 'any' — round-robin among all approved anchors
+    // 'any' — deterministic rotation among all approved anchors
     const allAnchors = visualEngine.APPROVED_ANCHORS;
-    const anchor = allAnchors[rrIndex % allAnchors.length];
-    rrIndex++;
-    return { anchor, reason: 'round-robin rotation' };
+    const anchor = allAnchors[Math.abs(seed) % allAnchors.length];
+    return { anchor, reason: 'deterministic rotation' };
 }
 
 function findBestPresenter(performanceData, category, style) {
