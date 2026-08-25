@@ -1,6 +1,8 @@
 const functions = require("firebase-functions");
-// onDocumentWritten (Blaze/v2 only) replaced with noop for Spark
-const onDocumentWritten = () => () => {};
+// v1 Firestore triggers work on Spark plan (125K reads / 50K writes per month free).
+// Replaced the v2 noop with a real v1 trigger so FAST_TRACK publish instantly
+// dispatches to GitHub Actions without requiring Blaze billing.
+const onDocumentWritten = (documentPath) => functions.firestore.document(documentPath).onWrite;
 const admin = require("firebase-admin");
 const axios = require("axios");
 const { google } = require("googleapis");
@@ -603,35 +605,17 @@ exports.triggerFastTrackUpdates = functions.https.onRequest(async (req, res) => 
 });
 
 // =========================================================
-// 3️⃣ FIRESTORE TRIGGER
+// 3️ FIRESTORE TRIGGER (v1 — works on Spark plan, no Blaze required)
 // =========================================================
-exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
-    document:       "fast_track/{docId}",
-    memory:         "2GiB",
-    timeoutSeconds: 540,
-    secrets: [
-        "TELEGRAM_BOT_TOKEN",
-        "TELEGRAM_CHAT_ID",
-        "GEMINI_API_KEY",
-        "SERVICE_ACCOUNT_JSON",
-        "GMAIL_CREDENTIALS",
-        "YOUTUBE_TOKEN",
-        "TTS_KEY_JSON",
-        "FB_PAGE_ID",
-        "FB_PAGE_TOKEN",
-        "GH_TOKEN",
-        "GITHUB_OWNER",
-        "GITHUB_REPO"
-    ]
-}, async (event) => {
+exports.onFastTrackApprovedSendTelegram = onDocumentWritten("fast_track/{docId}")(async (change, context) => {
 
-    if (!event.data.after.exists) {
+    if (!change.after.exists) {
         console.log("⏭️ Document deleted, skipping.");
         return null;
     }
 
-    const afterData  = event.data.after.data();
-    const beforeData = event.data.before ? event.data.before.data() : null;
+    const afterData  = change.after.data();
+    const beforeData = change.before ? change.before.data() : null;
 
     if (afterData.status === 'draft') {
         console.log(`⏭️ Draft, skipping: ${afterData.title}`);
@@ -639,12 +623,12 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten({
     }
 
     if (beforeData && beforeData.status === 'published') {
-        console.log(`⏭️ Already published, skipping: ${afterData.title}`);
+        console.log(`️ Already published, skipping: ${afterData.title}`);
         return null;
     }
 
     const item  = afterData;
-    const docId = event.params.docId;
+    const docId = context.params.docId;
 
     console.log(`\n${'='.repeat(50)}`);
     console.log(`🚀 Processing Approved: ${item.title}`);

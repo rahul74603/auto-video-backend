@@ -1,6 +1,8 @@
 const functions = require("firebase-functions");
-// onDocumentCreated (Blaze/v2 only) replaced with noop for Spark
-const onDocumentCreated = () => () => {};
+// v1 Firestore triggers work on Spark plan (125K reads / 50K writes per month free).
+// Replaced the v2 noop with a real v1 trigger so JOB publish instantly
+// dispatches to GitHub Actions without requiring Blaze billing.
+const onDocumentCreated = (documentPath) => functions.firestore.document(documentPath).onCreate;
 const admin = require("firebase-admin");
 const axios = require("axios");
 const { google } = require("googleapis");
@@ -778,38 +780,26 @@ exports.fetchLatestGovtJobs = functions.https.onRequest(async (req, res) => {
 // =========================================================
 // 2️⃣ FIRESTORE TRIGGER - Job Publish होने पर
 // =========================================================
-exports.onJobPublishedNotify = onDocumentCreated({
-    document:       "jobs/{jobId}",
-    timeoutSeconds: 120,
-    memory:         "512MB",
-    secrets: [
-        "TELEGRAM_BOT_TOKEN",
-        "TELEGRAM_CHAT_ID",
-        "GH_TOKEN",
-        "GITHUB_OWNER",
-        "GITHUB_REPO",
-        "SERVICE_ACCOUNT_JSON"
-    ]
-}, async (event) => {
+// =========================================================
+// 2) FIRESTORE TRIGGER - Job publish hone par (v1 - Spark compatible)
+// =========================================================
+exports.onJobPublishedNotify = onDocumentCreated("jobs/{jobId}")(async (snap, context) => {
 
-    const snap = event.data;
     if (!snap) return null;
 
     const job   = snap.data();
-    const jobId = event.params.jobId;
+    const jobId = context.params.jobId;
 
     if (job.type && job.type !== 'JOB') {
-        console.log(`⏭️ Skipping non-JOB type: ${job.type}`);
+        console.log("Skipping non-JOB type:", job.type);
         return null;
     }
 
     const jobUrl = `https://studygyaan.in/job/${job.slug || jobId}`;
-    console.log(`\n${'='.repeat(50)}`);
-    console.log(`🚀 New Job: ${job.title}`);
-    console.log(`🔗 URL: ${jobUrl}`);
-    console.log(`${'='.repeat(50)}\n`);
-
-    // ─────────────────────────────────────
+    console.log("\n" + "=".repeat(50));
+    console.log("New Job:", job.title);
+    console.log("URL:", jobUrl);
+    console.log("=".repeat(50) + "\n");
     // STEP 1: Schema Save
     // ─────────────────────────────────────
     try {
