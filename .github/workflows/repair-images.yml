@@ -1,0 +1,41 @@
+name: Repair Dead Images (one-time)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true = sirf ginti dikhao (safe) | false = asli repair karo"
+        required: false
+        default: "true"
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install minimal deps
+        working-directory: ai_backend
+        run: npm install --no-save --legacy-peer-deps firebase-admin sharp basic-ftp dotenv
+
+      - name: Run repair
+        working-directory: ai_backend
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "false" ]; then
+            node repair_images.js
+          else
+            node repair_images.js --dry-run
+          fi
