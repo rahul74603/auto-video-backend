@@ -1,5 +1,7 @@
 'use strict';
 
+const { normalizeDate } = require('./date_normalizer');
+
 /**
  * deadline_engine.js — Deadline Intelligence Engine
  * 
@@ -37,11 +39,23 @@ function calculateUrgency(lastDateStr, currentDate = new Date()) {
         };
     }
     
-    const lastDate = new Date(lastDateStr);
+    // Normalize date from various Indian formats to ISO (YYYY-MM-DD)
+    const normalizedDate = normalizeDate(lastDateStr);
+    
+    if (!normalizedDate) {
+        return {
+            state: 'UNKNOWN',
+            daysLeft: null,
+            message: null,
+            shouldRemind: false
+        };
+    }
+    
+    const lastDate = new Date(normalizedDate);
     
     if (isNaN(lastDate.getTime())) {
         return {
-            state: 'INVALID_DATE',
+            state: 'UNKNOWN',
             daysLeft: null,
             message: null,
             shouldRemind: false

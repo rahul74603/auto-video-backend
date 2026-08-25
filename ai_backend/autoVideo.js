@@ -483,7 +483,7 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
     ctx.fill();
     ctx.shadowBlur   = 0;
     ctx.fillStyle    = '#000000';
-    ctx.font         = 'bold 90px sans-serif';
+    ctx.font         = 'bold 90px "Noto Sans Devanagari", "Noto Sans", sans-serif';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('STUDYGYAAN.IN', width / 2, brandY + 80);
@@ -494,7 +494,7 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
     ctx.fillStyle    = theme.badgeBg;
     ctx.fill();
     ctx.fillStyle    = '#FFFFFF';
-    ctx.font         = 'bold 70px sans-serif';
+    ctx.font         = 'bold 70px "Noto Sans Devanagari", "Noto Sans", sans-serif';
     ctx.textBaseline = 'middle';
     ctx.fillText(`${theme.emoji} ${theme.textBadge} ${theme.emoji}`, width / 2, badgeY + 50);
 
@@ -507,12 +507,12 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
         ctx.fillStyle = '#FF0000';
         ctx.fill();
         ctx.fillStyle    = '#FFFFFF';
-        ctx.font         = 'bold 60px sans-serif';
+        ctx.font         = 'bold 60px "Noto Sans Devanagari", "Noto Sans", sans-serif';
         ctx.textBaseline = 'middle';
         ctx.fillText(firstFrameText, width / 2, importantTextY + 45);
     } else {
         ctx.fillStyle = '#FFD700';
-        ctx.font      = 'bold 75px sans-serif';
+        ctx.font      = 'bold 75px "Noto Sans Devanagari", "Noto Sans", sans-serif';
         ctx.textBaseline = 'middle';
         ctx.fillText(' IMPORTANT UPDATE 🔥', width / 2, importantTextY + 45);
     }
@@ -521,7 +521,7 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
     ctx.shadowColor  = theme.accent;
     ctx.shadowBlur   = 30;
     ctx.fillStyle    = '#FFFFFF';
-    ctx.font         = 'bold 85px sans-serif';
+    ctx.font         = 'bold 85px "Noto Sans Devanagari", "Noto Sans", sans-serif';
     ctx.textBaseline = 'top';
     const titleY = 580;
     const titleEndY = wrapText(
@@ -545,11 +545,11 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
 
     if (['Result', 'Answer Key', 'Admit Card'].includes(jobCat)) {
         ctx.fillStyle    = '#00FF88';
-        ctx.font         = 'bold 65px sans-serif';
+        ctx.font         = 'bold 65px "Noto Sans Devanagari", "Noto Sans", sans-serif';
         ctx.fillText(`${theme.emoji} ${jobCat} DECLARED`, width / 2, infoLineY);
         infoLineY += 90;
         ctx.fillStyle = '#FFFFFF';
-        ctx.font      = 'bold 60px sans-serif';
+        ctx.font      = 'bold 60px "Noto Sans Devanagari", "Noto Sans", sans-serif';
         const showDate = (jobData.updateDate && jobData.updateDate !== 'undefined')
             ? jobData.updateDate : new Date().toLocaleDateString('en-GB');
         ctx.fillText(`${showDate}`, width / 2, infoLineY);
@@ -557,14 +557,14 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
         // Show vacancies if available
         if (jobData.vacancies) {
             ctx.fillStyle    = '#00FF88';
-            ctx.font         = 'bold 65px sans-serif';
+            ctx.font         = 'bold 65px "Noto Sans Devanagari", "Noto Sans", sans-serif';
             ctx.fillText(`${jobData.vacancies} VACANCIES`, width / 2, infoLineY);
             infoLineY += 90;
         }
         
         // Apply date
         ctx.fillStyle = '#00D4FF';
-        ctx.font      = 'bold 60px sans-serif';
+        ctx.font      = 'bold 60px "Noto Sans Devanagari", "Noto Sans", sans-serif';
         const showStart = (jobData.startDate && jobData.startDate !== 'undefined')
             ? jobData.startDate : 'Apply Now';
         ctx.fillText(`Apply: ${showStart}`, width / 2, infoLineY);
@@ -572,7 +572,7 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
         
         // Last date
         ctx.fillStyle = '#FF4444';
-        ctx.font      = 'bold 65px sans-serif';
+        ctx.font      = 'bold 65px "Noto Sans Devanagari", "Noto Sans", sans-serif';
         const showLast = (jobData.lastDate && jobData.lastDate !== 'undefined')
             ? jobData.lastDate : 'Apply Soon!';
         ctx.fillText(`Last Date: ${showLast}`, width / 2, infoLineY);
@@ -608,7 +608,7 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
     ctx.fill();
     ctx.globalAlpha = 1.0;
     ctx.fillStyle    = '#FFFFFF';
-    ctx.font         = 'bold 75px sans-serif';
+    ctx.font         = 'bold 75px "Noto Sans Devanagari", "Noto Sans", sans-serif';
     ctx.textBaseline = 'middle';
     ctx.fillText(ctaText, width / 2, ctaY + 55);
 
@@ -618,7 +618,7 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
     ctx.fillStyle    = '#0088cc';
     ctx.fill();
     ctx.fillStyle    = '#FFFFFF';
-    ctx.font         = 'bold 50px sans-serif';
+    ctx.font         = 'bold 50px "Noto Sans Devanagari", "Noto Sans", sans-serif';
     ctx.textBaseline = 'middle';
     ctx.fillText('@studygyaan_official', width / 2, tgY + 40);
 
@@ -626,7 +626,7 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
     ctx.fillStyle    = '#FFD700';
     ctx.fillRect(0, 1780, width, 140);
     ctx.fillStyle    = '#000000';
-    ctx.font         = 'bold 60px sans-serif';
+    ctx.font         = 'bold 60px "Noto Sans Devanagari", "Noto Sans", sans-serif';
     ctx.textBaseline = 'middle';
     ctx.fillText('LINK IN FIRST COMMENT', width / 2, 1850);
 
