@@ -364,12 +364,12 @@ test('mock_test: video_dispatcher still calls processMockTest for MOCK_TEST kind
 /* 10. Verify the workflow cron schedule                                */
 /* ------------------------------------------------------------------ */
 
-test('workflow: video_dispatcher.yml has 10-minute cron', () => {
+test('workflow: video_dispatcher.yml has 5-minute cron', () => {
     const workflowPath = path.join(__dirname, '..', '..', '.github', 'workflows', 'video_dispatcher.yml');
     const src = fs.readFileSync(workflowPath, 'utf8');
     assert.ok(
-        src.includes("cron: '*/10 * * * *'"),
-        'video_dispatcher.yml must run every 10 minutes'
+        src.includes("cron: '*/5 * * * *'"),
+        'video_dispatcher.yml must run every 5 minutes as the safety-net fallback'
     );
 });
 
@@ -471,7 +471,7 @@ test('learner: growth_learner_run.js exists and is valid', () => {
 /* 15. Verify dispatcher cron                                          */
 /* ------------------------------------------------------------------ */
 
-test('workflow: video dispatcher cron is every 10 minutes', () => {
+test('workflow: video dispatcher cron is every 5 minutes', () => {
     const wf = fs.readFileSync(path.join(__dirname, '..', '..', '.github', 'workflows', 'video_dispatcher.yml'), 'utf8');
-    assert.ok(wf.includes("*/10 * * * *"), 'cron must be every 10 minutes');
+    assert.ok(wf.includes("*/5 * * * *"), 'cron must be every 5 minutes');
 });
