@@ -13,8 +13,8 @@ Website / Admin publishes
         ↓
      Firestore                       (Spark plan — no billing needed)
         ↓
-GitHub Actions scheduled poller      .github/workflows/video_dispatcher.yml
-        ↓                            every 15 minutes
+GitHub Actions video dispatcher      .github/workflows/video_dispatcher.yml
+        ↓                            repository_dispatch + */5 fallback
 ai_backend/video_dispatcher.js
         ↓  atomically claims the document (videoStatus: → processing)
 Existing renderers + FFmpeg

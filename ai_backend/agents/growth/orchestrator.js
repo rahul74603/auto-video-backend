@@ -126,13 +126,29 @@ async function processContent(content, opts = {}) {
             log.stage('visual_diversity', { score: visualDiversity.score });
         }
 
-        // NEW: AI Visual generation (with cost control)
+        // NEW: AI Visual generation (with cost control + visual diversity plan)
         let aiVisual = null;
+        let visualPlan = null;
         if (flags.isEnabled('AI_VISUAL_ENABLED')) {
-            const imagePrompt = aiVisualEngine.generatePrompt(content, {
-                placement: content.presenterPlacement || 'bottom'
+            // Deterministic visual plan: fingerprint -> scene/subject/camera/
+            // lighting/style/seed + recent-video diversity guard.
+            const recentAiVisuals = await visualFatiguePrevention
+                .getRecentAiVisualHistory(db, { limit: 20 })
+                .catch(() => []);
+            visualPlan = aiVisualEngine.buildVisualPlan(content, {
+                placement: content.presenterPlacement || 'bottom',
+                recentVisualHistory: recentAiVisuals,
+                contentId: opts.contentId
             });
-            const imageFingerprint = aiVisualEngine.hashString(imagePrompt);
+            const imagePrompt = visualPlan.prompt;
+            const imageFingerprint = visualPlan.cacheKey;
+
+            log.stage('ai_visual_plan', {
+                scene: visualPlan.scene,
+                seed: visualPlan.seed,
+                variant: visualPlan.variant,
+                combination: visualPlan.combinationKey
+            });
 
             // STEP 1 — Fast path: validated stable-cache hit.
             // Within the same workflow run (and therefore the same GitHub
@@ -168,10 +184,11 @@ async function processContent(content, opts = {}) {
                         aiVisual = { path: cacheCheck.path, cached: true, reused: true };
                         log.stage('ai_visual_firestore_cache_hit', { path: cacheCheck.path });
                     } else {
-                        // STEP 3 — Generate a new image.
+                        // STEP 3 — Generate a new image (deterministic seed).
                         const imageResult = await aiVisualEngine.generateImage(imagePrompt, {
                             outputPath: stablePath,
-                            timeout: 30000
+                            timeout: 30000,
+                            seed: visualPlan.seed
                         });
 
                         if (imageResult.success) {
@@ -187,10 +204,26 @@ async function processContent(content, opts = {}) {
                                 provider: imageResult.provider,
                                 success: true
                             });
+                            // Record the visual combination so the next N
+                            // videos can avoid an immediate duplicate.
+                            await visualFatiguePrevention.logAiVisualUsage(db, {
+                                contentId: opts.contentId,
+                                category: content.category,
+                                fingerprint: imageFingerprint,
+                                combination: visualPlan.combinationKey,
+                                scene: visualPlan.scene,
+                                subject: visualPlan.subject,
+                                camera: visualPlan.camera,
+                                lighting: visualPlan.lighting,
+                                style: visualPlan.style,
+                                seed: visualPlan.seed,
+                                variant: visualPlan.variant
+                            }).catch(() => {});
                             log.stage('ai_visual_generated', {
                                 provider: imageResult.provider,
                                 size: imageResult.size,
-                                path: stablePath
+                                path: stablePath,
+                                seed: visualPlan.seed
                             });
                         } else {
                             log.stage('ai_visual_failed', { error: imageResult.error });
@@ -317,6 +350,10 @@ async function processContent(content, opts = {}) {
                 deadlineState: deadlineInfo?.state,
                 faqTopic: faqOpportunity?.selected ? faqOpportunity.faq.topic : null,
                 aiVisualProvider: aiVisual?.provider,
+                aiVisualScene: visualPlan?.scene,
+                aiVisualCombination: visualPlan?.combinationKey,
+                aiVisualSeed: visualPlan?.seed,
+                aiVisualVariant: visualPlan?.variant,
                 motionProfile: motionProfile?.profile?.name,
                 ctaKey: cta?.closing?.key
             });
@@ -343,6 +380,7 @@ async function processContent(content, opts = {}) {
                 deadlineInfo,
                 faqOpportunity: faqOpportunity?.selected ? faqOpportunity.faq : null,
                 aiVisual,
+                visualPlan,
                 motionProfile,
                 cta,
                 visualDiversity

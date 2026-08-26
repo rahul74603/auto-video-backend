@@ -86,7 +86,7 @@ git pull origin arena/01a02390-auto-video-backend
 npm run build
 ```
 
-Fir `dist/` folder ki files cPanel pe upload karo.
+Fir `dist/` folder ready hai (normal Vite build output).
 
 ---
 

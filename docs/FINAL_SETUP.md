@@ -145,26 +145,20 @@ npm run dev
 
 ---
 
-### STEP 6 — Production Deploy
+### STEP 6 — Production Build
 
-**Live site pe deploy karne ke liye:**
+**Live site deploy karne ke liye normal Vite build:**
 
 1. Build karo:
    ```powershell
    npm run build
    ```
 
-2. `dist/` folder me sab files hain
+2. Output `dist/` folder me milta hai (normal Vite build).
 
-3. cPanel File Manager me jao:
-   - https://server17213-10344.hostycare.online:2083
-   - File Manager → `public_html`
+3. Use the existing live site deployment method as-is; only the normal Vite build output (`dist/`) is produced.
 
-4. Upload karo:
-   - `dist/index.html`
-   - `dist/assets/` folder (saari files)
-
-5. **Important:** Ye files/folders ko **mat chhede**:
+4. **Important:** Ye files/folders ko **mat chhede**:
    - `.htaccess`
    - `uploads/`
    - `tools/`
