@@ -365,8 +365,12 @@ return (
 
 - `JobDetails.tsx` — ✅ Done (pushed)
 - `BlogPost.tsx` — ✅ Done
-- `FastTrackDetails.tsx` — TODO: Add same
-- `MaterialPage.tsx`, `EbookDetails.tsx`, `CourseView.tsx`, `PlayMockTest.tsx`, `WebStoryViewer.tsx` — TODO
+- `FastTrackDetails.tsx` — ✅ Done
+- `MaterialDetails.tsx` — ✅ Done (real breadcrumb + RelatedContent + ExamHubNavigation)
+- `EbookDetails.tsx` — ✅ Done (real breadcrumb + RelatedContent + ExamHubNavigation)
+- `CourseView.tsx` — ✅ Done (breadcrumb + RelatedContent + ExamHubNavigation)
+- `PlayMockTest.tsx` — ✅ Done (breadcrumb + RelatedContent + ExamHubNavigation on start + result screens)
+- `WebStoryViewer.tsx` — ✅ Already compliant (Phase 7: 4 related-link chips + hub chip + bottom CTA; story-to-story links kept minimal)
 
 **Result:** Every orphan page now gets 8-12 internal links automatically, no manual editing of 1,170 pages.
 
@@ -513,11 +517,11 @@ return (
 - Ensure `/govt-jobs?exam=SSC GD` works as hub (already does via query param, but make SEO-friendly URL `/govt-jobs/ssc-gd/` via rewrite in firebase.json)
 - Add hub pages for top exams (SSC, Railway, Banking) if not exist
 
-**Phase 3 — Add dynamic breadcrumbs — 30 min — DONE for JobDetails + BlogPost, TODO for others**
-- Integrate Breadcrumbs into FastTrackDetails, MaterialPage, CourseView, PlayMockTest
+**Phase 3 — Add dynamic breadcrumbs — 30 min — DONE (all detail pages)**
+- Integrate Breadcrumbs into FastTrackDetails, MaterialDetails, EbookDetails, CourseView, PlayMockTest (MaterialPage/FastTrackGrid/MockTestLibrary listing pages already have them)
 
-**Phase 4 — Add related content — 30 min — DONE for JobDetails + BlogPost, TODO for others**
-- Same as Phase 3
+**Phase 4 — Add related content — 30 min — DONE (all detail pages)**
+- RelatedContent + ExamHubNavigation integrated on FastTrackDetails, MaterialDetails, EbookDetails, CourseView, PlayMockTest (start + result screens); WebStoryViewer keeps its minimal static related-link chips
 
 **Phase 5 — Add contextual exam hubs — 30 min — DONE**
 
@@ -549,14 +553,15 @@ Hand this to your developer:
 - [ ] Run `node tools/analyze-orphans.js ./orphan.csv` to generate full 1,170-row fix map
 - [ ] Deploy Cloud Functions: `firebase deploy --only functions --project studymaterial-406ad`
 - [ ] Build frontend: `npm run build` → `dist/` (normal Vite build retained)
-- [ ] Integrate Breadcrumbs + RelatedContent + ExamHubNavigation into:
-  - [ ] JobDetails.tsx (✅ Done)
-  - [ ] BlogPost.tsx (✅ Done)
-  - [ ] FastTrackDetails.tsx (TODO)
-  - [ ] MaterialPage.tsx (TODO)
-  - [ ] CourseView.tsx (TODO)
-  - [ ] PlayMockTest.tsx (TODO)
-  - [ ] WebStoryViewer.tsx (TODO)
+- [x] Integrate Breadcrumbs + RelatedContent + ExamHubNavigation into:
+  - [x] JobDetails.tsx (✅ Done)
+  - [x] BlogPost.tsx (✅ Done)
+  - [x] FastTrackDetails.tsx (✅ Done)
+  - [x] MaterialDetails.tsx (✅ Done — real data breadcrumb + RelatedContent + ExamHubNavigation)
+  - [x] EbookDetails.tsx (✅ Done — real data breadcrumb + RelatedContent + ExamHubNavigation)
+  - [x] CourseView.tsx (✅ Done — breadcrumb + RelatedContent + ExamHubNavigation)
+  - [x] PlayMockTest.tsx (✅ Done — breadcrumb + RelatedContent + ExamHubNavigation on start + result screens)
+  - [x] WebStoryViewer.tsx (✅ Already compliant — 4 related-link chips + hub chip + CTA, minimal story-to-story)
 - [ ] Add Firestore field `exam` to all existing docs (run backfill script)
 - [ ] Test: Open a job page → view source → check breadcrumbs HTML + related links present
 - [ ] Ahrefs → New crawl → verify orphan count drops from 1,170 to <100

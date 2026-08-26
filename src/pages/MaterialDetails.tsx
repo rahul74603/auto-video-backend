@@ -3,11 +3,13 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useMaterial } from '@/features/materials/hooks/useMaterial';
 import {
-  FileText, Download, ArrowLeft, Info, Tag, ShoppingCart, Flame, User, BookOpen
+  FileText, Download, ArrowLeft, Info, Tag, ShoppingCart, Flame, User
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import DynamicSidebar from '../components/DynamicSidebar';
@@ -79,9 +81,10 @@ const MaterialDetails = () => {
                 {/* 🍞 Breadcrumbs — fixes orphan pages */}
                 <Breadcrumbs
                   crumbs={buildBreadcrumbPath({
-                    title: 'StudyGyaan',
-                    exam: 'GENERAL',
-                    category: 'UPDATE' as any,
+                    title: item.title || 'Study Material',
+                    exam: ((loadedMaterial as Record<string, unknown>)?.exam as string) || 'GENERAL',
+                    category: 'STUDY_MATERIAL',
+                    subject: item.subject,
                   })}
                   className="mb-4 bg-white px-3 py-2 rounded-xl border shadow-sm"
                 />
@@ -150,20 +153,23 @@ const MaterialDetails = () => {
                      © {new Date().getFullYear()} StudyGyaan.in - Free High-Quality Education
                    </p>
                 </div>
-{/* ✅ SEO FIX: Internal Links Section (Fixes 'No outgoing links' and 'Orphan page' error) */}
-                <div className="bg-blue-50/50 p-6 md:p-8 rounded-[2rem] border border-blue-100 shadow-sm mt-8">
-                  <h2 className="text-sm md:text-xl font-black text-slate-800 mb-5 uppercase tracking-tight flex items-center gap-2">
-                    <BookOpen size={20} className="text-blue-600" aria-hidden="true" /> Explore More on StudyGyaan
-                  </h2>
-                  <div className="flex flex-wrap gap-3">
-                    <a href="/govt-jobs" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Latest Govt Jobs</a>
-                    <a href="/free-study-material" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Study Material</a>
-                    <a href="/test" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Mock Tests</a>
-                    <a href="/blog" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Sarkari Yojana & Blogs</a>
-                  </div>
-                </div>
               </div>
             </article>
+
+            {/* ✅ SEO FIX: Dynamic internal links — fixes 'No outgoing links' + orphan pages */}
+            <ExamHubNavigation
+              exam={((item as unknown as Record<string, unknown>)?.exam as string) || 'GENERAL'}
+              className="mt-6"
+            />
+            <RelatedContent
+              currentId={id || ''}
+              exam={((item as unknown as Record<string, unknown>)?.exam as string) || 'GENERAL'}
+              category="STUDY_MATERIAL"
+              subject={item.subject}
+              title={item.title || 'Study Material'}
+              limit={6}
+              className="mt-6"
+            />
           </div>
 
           <aside className="w-[40%] md:w-[32%] space-y-3 md:space-y-6 sticky top-12 md:top-16">

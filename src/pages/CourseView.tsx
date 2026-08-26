@@ -19,11 +19,14 @@ import {
   ShoppingBag,
   CheckCircle,
   ShieldCheck,
-  BadgePercent,
-  BookOpen
+  BadgePercent
 } from 'lucide-react';
 import SEO from '../components/SEO';
 import DynamicSidebar from '../components/DynamicSidebar';
+import Breadcrumbs from '../components/Breadcrumbs';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
+import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
 
 interface CourseContent { id: string; title: string; seoTitle?: string; link?: string; type: 'PDF' | 'VIDEO' | 'FOLDER'; parentId?: string | null; }
 
@@ -219,6 +222,16 @@ const CourseView = () => {
         customImage="https://studygyaan.in/og-image.jpg"
       />
 
+      {/* 🍞 Breadcrumbs — fixes orphan pages */}
+      <Breadcrumbs
+        crumbs={buildBreadcrumbPath({
+          title: course.title || 'Course',
+          exam: ((course as unknown as Record<string, unknown>)?.exam as string) || 'GENERAL',
+          category: 'COURSE',
+        })}
+        className="mb-3 md:mb-4 bg-white px-3 py-2 rounded-xl border shadow-sm"
+      />
+
       <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 md:gap-2 text-gray-500 hover:text-gray-900 mb-3 md:mb-6 font-bold transition text-xs md:text-base">
         <ArrowLeft className="w-4 h-4 md:w-5 md:h-5" /> वापस जाएँ
       </button>
@@ -363,18 +376,19 @@ const CourseView = () => {
 
          </div>
       </div>
-{/* ✅ SEO FIX: Internal Links Section (Fixes 'No outgoing links' and 'Orphan page' error) */}
-      <div className="bg-blue-50/50 p-6 md:p-8 rounded-[2rem] border border-blue-100 shadow-sm mt-8 mb-6">
-        <h2 className="text-sm md:text-xl font-black text-slate-800 mb-5 uppercase tracking-tight flex items-center gap-2">
-          <BookOpen size={20} className="text-blue-600" aria-hidden="true" /> Explore More on StudyGyaan
-        </h2>
-        <div className="flex flex-wrap gap-3">
-          <a href="/govt-jobs" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Latest Govt Jobs</a>
-          <a href="/free-study-material" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Study Material</a>
-          <a href="/test" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Mock Tests</a>
-          <a href="/blog" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Sarkari Yojana & Blogs</a>
-        </div>
-      </div>
+{/* ✅ SEO FIX: Dynamic internal links — fixes 'No outgoing links' + orphan pages */}
+      <ExamHubNavigation
+        exam={((course as unknown as Record<string, unknown>)?.exam as string) || 'GENERAL'}
+        className="mt-8 mb-6"
+      />
+      <RelatedContent
+        currentId={id || ''}
+        exam={((course as unknown as Record<string, unknown>)?.exam as string) || 'GENERAL'}
+        category="COURSE"
+        title={course.title || 'Course'}
+        limit={6}
+        className="mt-8 mb-6"
+      />
       <style dangerouslySetInnerHTML={{__html: `
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

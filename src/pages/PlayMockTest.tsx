@@ -11,6 +11,10 @@ import {
     CheckSquare, Lightbulb, X
 } from 'lucide-react';
 import SEO from '../components/SEO';
+import Breadcrumbs from '../components/Breadcrumbs';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
+import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
 
 // Strict view of the mock test document used by the player.
 interface PlayTestData {
@@ -21,6 +25,9 @@ interface PlayTestData {
     negativeMarking?: number;
     totalQuestions?: number;
     questions?: MockQuestion[];
+    exam?: string;
+    category?: string;
+    subject?: string;
 }
 
 interface OptionTheme {
@@ -232,8 +239,9 @@ const PlayMockTest = () => {
     // START SCREEN
     // ================================================
     if (!testStarted) {
+        const testExam = testData.exam || testData.category || 'GENERAL';
         return (
-            <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-hindi overflow-y-auto">
+            <div className="min-h-screen bg-slate-100 p-4 font-hindi overflow-y-auto">
                 <SEO 
                     customTitle={`${testData.title} - Ready to Play | StudyGyaan`}
                     customDescription={`Attempt this free '${testData.title}' mock test. Total ${testData.totalQuestions} questions.`}
@@ -245,7 +253,19 @@ const PlayMockTest = () => {
                     dangerouslySetInnerHTML={{ __html: JSON.stringify(quizSchema) }} 
                 />
 
-                <div className="bg-white max-w-xl w-full rounded-[40px] shadow-2xl overflow-hidden border-2 border-indigo-50">
+                <div className="max-w-xl mx-auto">
+                    {/* 🍞 Breadcrumbs — fixes orphan pages */}
+                    <Breadcrumbs
+                        crumbs={buildBreadcrumbPath({
+                            title: testData.title || 'Mock Test',
+                            exam: testExam,
+                            category: 'MOCK_TEST',
+                            subject: testData.subject,
+                        })}
+                        className="mb-4 bg-white px-3 py-2 rounded-xl border shadow-sm"
+                    />
+
+                <div className="bg-white w-full rounded-[40px] shadow-2xl overflow-hidden border-2 border-indigo-50">
                     {/* Header */}
                     <div className="bg-slate-900 p-8 text-white text-center">
                         <Trophy className="w-12 h-12 text-yellow-400 mx-auto mb-3 animate-bounce" />
@@ -316,6 +336,19 @@ const PlayMockTest = () => {
                             Start Examination 🚀
                         </button>
                     </div>
+                </div>
+
+                    {/* ✅ SEO FIX: Dynamic internal links — fixes 'No outgoing links' + orphan pages */}
+                    <ExamHubNavigation exam={testExam} className="mt-6" />
+                    <RelatedContent
+                        currentId={testData.id || id || ''}
+                        exam={testExam}
+                        category="MOCK_TEST"
+                        subject={testData.subject}
+                        title={testData.title || 'Mock Test'}
+                        limit={6}
+                        className="mt-6"
+                    />
                 </div>
             </div>
         );
@@ -455,6 +488,17 @@ const PlayMockTest = () => {
                             );
                         })}
                     </section>
+
+                    {/* ✅ SEO FIX: Dynamic internal links — fixes 'No outgoing links' + orphan pages */}
+                    <ExamHubNavigation exam={testData.exam || testData.category || 'GENERAL'} />
+                    <RelatedContent
+                        currentId={testData.id || id || ''}
+                        exam={testData.exam || testData.category || 'GENERAL'}
+                        category="MOCK_TEST"
+                        subject={testData.subject}
+                        title={testData.title || 'Mock Test'}
+                        limit={6}
+                    />
                 </div>
             </div>
         );
