@@ -11,6 +11,8 @@ import {
 import { Button } from '../components/ui/button';
 import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 
 type EbookView = {
@@ -97,9 +99,9 @@ const EbookDetails = () => {
                 {/* 🍞 Breadcrumbs — fixes orphan pages */}
                 <Breadcrumbs
                   crumbs={buildBreadcrumbPath({
-                    title: 'StudyGyaan',
-                    exam: 'GENERAL',
-                    category: 'UPDATE' as any,
+                    title: ebook.title || 'E-Book',
+                    exam: ((ebook as unknown as Record<string, unknown>)?.exam as string) || 'GENERAL',
+                    category: 'EBOOK',
                   })}
                   className="mb-4 bg-white px-3 py-2 rounded-xl border shadow-sm"
                 />
@@ -186,6 +188,20 @@ const EbookDetails = () => {
               </div>
 
             </article>
+
+            {/* ✅ SEO FIX: Dynamic internal links — fixes 'No outgoing links' + orphan pages */}
+            <ExamHubNavigation
+              exam={((ebook as unknown as Record<string, unknown>)?.exam as string) || 'GENERAL'}
+              className="mt-6"
+            />
+            <RelatedContent
+              currentId={id || ''}
+              exam={((ebook as unknown as Record<string, unknown>)?.exam as string) || 'GENERAL'}
+              category="EBOOK"
+              title={ebook.title || 'E-Book'}
+              limit={6}
+              className="mt-6"
+            />
           </div>
 
           <aside className="w-[40%] md:w-[32%] space-y-4 md:space-y-8 sticky top-12 md:top-16">

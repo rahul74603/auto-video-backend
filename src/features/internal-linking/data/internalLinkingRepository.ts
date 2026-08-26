@@ -16,7 +16,7 @@ import {
  */
 
 export type ContentType = 'JOB' | 'FAST_TRACK' | 'MOCK_TEST' | 'STUDY_MATERIAL' | 'BLOG' | 'WEB_STORY' | 'COURSE' | 'EBOOK' | 'STATIC';
-export type ContentCategory = 'RECRUITMENT' | 'ADMIT_CARD' | 'RESULT' | 'SYLLABUS' | 'ANSWER_KEY' | 'MOCK_TEST' | 'STUDY_MATERIAL' | 'JOB' | 'UPDATE' | 'WEB_STORY' | 'EBOOK' | 'PREMIUM' | 'STATIC';
+export type ContentCategory = 'RECRUITMENT' | 'ADMIT_CARD' | 'RESULT' | 'SYLLABUS' | 'ANSWER_KEY' | 'MOCK_TEST' | 'STUDY_MATERIAL' | 'JOB' | 'UPDATE' | 'WEB_STORY' | 'EBOOK' | 'COURSE' | 'PREMIUM' | 'STATIC';
 
 export interface RelatedContent {
   id: string;
@@ -97,7 +97,9 @@ function determineCategoryFromDoc(data: any, collection: string): ContentCategor
   if (collection === 'mock_tests' || title.includes('mock test')) return 'MOCK_TEST';
   if (collection === 'study_materials' || title.includes('notes') || title.includes('study material')) return 'STUDY_MATERIAL';
   if (collection === 'web_stories') return 'WEB_STORY';
+  if (collection === 'courses') return 'COURSE';
   if (collection === 'blogs') return 'UPDATE';
+  if (data.type === 'EBOOK' || title.includes('ebook') || title.includes('e-book')) return 'EBOOK';
   return 'RECRUITMENT';
 }
 
@@ -218,6 +220,17 @@ export async function fetchRelatedContent(opts: FetchOptions): Promise<RelatedCo
       await queryCollection('mock_tests', 'MOCK_TEST', 15);
     } else if (opts.category === 'ADMIT_CARD' || opts.category === 'RESULT') {
       await queryCollection('fast_track', 'FAST_TRACK', 15, (d) => determineCategoryFromDoc(d, 'fast_track') === opts.category);
+    } else if (opts.category === 'COURSE') {
+      await queryCollection('courses', 'COURSE', 15);
+    } else if (opts.category === 'EBOOK') {
+      // E-books live in the jobs collection but must link to /ebook/:id, so
+      // surface complementary study material + mock tests instead of wrong /job/ URLs.
+      await queryCollection('study_materials', 'STUDY_MATERIAL', 10);
+      await queryCollection('mock_tests', 'MOCK_TEST', 10);
+    } else if (opts.category === 'WEB_STORY') {
+      await queryCollection('web_stories', 'WEB_STORY', 15);
+    } else if (opts.category === 'STUDY_MATERIAL') {
+      await queryCollection('study_materials', 'STUDY_MATERIAL', 15);
     } else {
       await queryCollection('jobs', 'JOB', 15, (d) => determineCategoryFromDoc(d, 'jobs') === opts.category);
     }
@@ -263,6 +276,9 @@ export function buildBreadcrumbPath(current: { title: string; exam?: string; cat
       'STUDY_MATERIAL': { name: 'Study Material', url: '/free-study-material' },
       'JOB': { name: 'Government Jobs', url: '/govt-jobs' },
       'UPDATE': { name: 'Latest Updates', url: '/govt-jobs' },
+      'COURSE': { name: 'Premium Courses', url: '/premium-notes' },
+      'EBOOK': { name: 'E-Books', url: '/e-books' },
+      'WEB_STORY': { name: 'Web Stories', url: '/web-stories' },
     };
     const cat = categoryMap[current.category];
     if (cat) crumbs.push(cat);
