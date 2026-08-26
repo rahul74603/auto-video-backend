@@ -108,7 +108,21 @@ jobs:
             libgif-dev \
             librsvg2-dev \
             fonts-noto-cjk \
+            fonts-noto-devanagari \
             fonts-noto-color-emoji
+          # Regenerate the font cache so canvas + libass can resolve
+          # "Noto Sans Devanagari" immediately.
+          fc-cache -f >/dev/null 2>&1 || true
+
+      - name: ✅ Verify Devanagari font (Hindi rendering regression check)
+        run: |
+          if ! fc-list | grep -qi "Noto Sans Devanagari"; then
+            echo "::error::Noto Sans Devanagari is NOT installed — Hindi text will render as boxes"
+            fc-list | grep -i devanagari || true
+            exit 1
+          fi
+          echo "✅ Noto Sans Devanagari is installed:"
+          fc-list | grep -i "Noto Sans Devanagari" | head -5
 
       - name:  Install dependencies (npm ci — lockfile preserved)
         run: npm ci
