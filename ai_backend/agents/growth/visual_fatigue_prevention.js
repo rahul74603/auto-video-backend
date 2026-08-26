@@ -250,6 +250,71 @@ async function logVisualUsage(db, usage, options = {}) {
     }
 }
 
+/**
+ * Get recent AI visual combinations (scene + seed + fingerprint) that were
+ * generated for recent videos. Used by the AI visual diversity guard.
+ *
+ * Keeps the query cheap: ordered by loggedAt desc in the same lightweight
+ * visual_usage_log collection, and filters AI entries in memory so no extra
+ * composite index is required.
+ */
+async function getRecentAiVisualHistory(db, options = {}) {
+    if (!db) {
+        return [];
+    }
+    
+    try {
+        const limit = options.limit || 20;
+        const collection = options.collection || 'visual_usage_log';
+        const snapshot = await db.collection(collection)
+            .orderBy('loggedAt', 'desc')
+            .limit(limit)
+            .get();
+        
+        return snapshot.docs
+            .map(doc => ({
+                id: doc.id,
+                kind: doc.data().kind,
+                contentId: doc.data().contentId,
+                category: doc.data().category,
+                fingerprint: doc.data().fingerprint,
+                combination: doc.data().combination || doc.data().combinationKey,
+                scene: doc.data().scene,
+                subject: doc.data().subject,
+                camera: doc.data().camera,
+                lighting: doc.data().lighting,
+                style: doc.data().style,
+                seed: doc.data().seed,
+                variant: doc.data().variant,
+                loggedAt: doc.data().loggedAt
+            }))
+            .filter(item => item.kind === 'ai-visual');
+    } catch (err) {
+        console.log(`⚠️ Failed to fetch AI visual history: ${err.message || err}`);
+        return [];
+    }
+}
+
+/**
+ * Log an AI visual combination so the next N videos can avoid repeating it.
+ */
+async function logAiVisualUsage(db, usage, options = {}) {
+    if (!db) {
+        return;
+    }
+    
+    try {
+        const collection = options.collection || 'visual_usage_log';
+        await db.collection(collection).add({
+            ...usage,
+            kind: 'ai-visual',
+            loggedAt: Date.now()
+        });
+    } catch (err) {
+        console.log(`⚠️ Failed to log AI visual usage: ${err.message || err}`);
+    }
+}
+
 module.exports = {
     calculateDiversityScore,
     calculateDimensionDiversity,
@@ -257,5 +322,7 @@ module.exports = {
     suggestAlternatives,
     selectDiverseCombination,
     getRecentVisualHistory,
-    logVisualUsage
+    logVisualUsage,
+    getRecentAiVisualHistory,
+    logAiVisualUsage
 };

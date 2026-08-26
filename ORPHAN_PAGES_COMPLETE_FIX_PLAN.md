@@ -548,7 +548,7 @@ Hand this to your developer:
 - [ ] Pull latest `arena/019fd293-auto-video-backend` (has internal linking system)
 - [ ] Run `node tools/analyze-orphans.js ./orphan.csv` to generate full 1,170-row fix map
 - [ ] Deploy Cloud Functions: `firebase deploy --only functions --project studymaterial-406ad`
-- [ ] Build & upload frontend: `npm run build` → upload `dist/` to cPanel
+- [ ] Build frontend: `npm run build` → `dist/` (normal Vite build retained)
 - [ ] Integrate Breadcrumbs + RelatedContent + ExamHubNavigation into:
   - [ ] JobDetails.tsx (✅ Done)
   - [ ] BlogPost.tsx (✅ Done)

@@ -425,7 +425,7 @@ All features work out-of-the-box with safe defaults.
 1. Pull latest code to local PC
 2. Run `npm install --legacy-peer-deps`
 3. Run `npm run build`
-4. Upload to cPanel (dist/ folder)
+4. Normal Vite build output stays at `dist/` (existing frontend build only).
 
 ### Monitoring
 1. Watch first 10 videos for quality
