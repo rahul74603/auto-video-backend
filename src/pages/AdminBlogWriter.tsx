@@ -3,6 +3,7 @@ import { auth, storage } from '../firebase/config';
 import { onAuthStateChanged, type User } from 'firebase/auth'; 
 import { serverTimestamp } from 'firebase/firestore';
 import { blogRepository } from '@/features/blogs/data/blogRepository';
+import { ARTICLE_API_BASE } from '@/features/ai-articles/data/aiArticleRepository';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; 
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css'; 
@@ -28,7 +29,7 @@ type AIGeneratedBlog = {
 };
 
 const AdminBlogWriter = () => {
-  const API_BASE_URL = "https://api-hf6vlh5cpq-uc.a.run.app";
+  const API_BASE_URL = ARTICLE_API_BASE;
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL;

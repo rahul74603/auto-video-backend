@@ -820,3 +820,58 @@ test("secret presence may be logged, but never the secret value", () => {
   assert.match(src, /TTS_KEY_JSON present\s*:\s*\$\{Boolean\(process\.env\.TTS_KEY_JSON\)\}/);
   assert.doesNotMatch(src, /console\.log\([^)]*\$\{process\.env\.TTS_KEY_JSON\}/);
 });
+
+/* ------------------------------------------------------------------ */
+/* Regression: subFilter is not defined (static fallback path)         */
+/* ------------------------------------------------------------------ */
+
+test("REGRESSION: subFilter is in scope for the static-fallback retry path (no ReferenceError)", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "autoVideo.js"), "utf8");
+
+  // 1. subFilter must be declared ONCE at function scope (NOT inside each
+  //    if(hasMusic)/else block). Block-scoped `let subFilter` made the
+  //    fallback filter at line ~1012 throw ReferenceError on retry.
+  const letSubFilterMatches = [...src.matchAll(/^\s*let\s+subFilter\s*=/gm)];
+  assert.equal(
+    letSubFilterMatches.length, 1,
+    `expected exactly ONE 'let subFilter =' at outer scope, found ${letSubFilterMatches.length} — ` +
+    "duplicate block-scoped declarations will reintroduce the ReferenceError on fallback"
+  );
+
+  // 2. The outer subFilter must appear BEFORE the if(hasMusic) block so both
+  //    branches and the fallback retry all see it.
+  const outerDeclIdx = src.indexOf("let subFilter = '';");
+  const hasMusicIdx = src.indexOf("if (hasMusic) {");
+  assert.ok(outerDeclIdx >= 0, "subFilter declaration not found");
+  assert.ok(outerDeclIdx < hasMusicIdx, "subFilter must be declared BEFORE if(hasMusic) so fallback retry can see it");
+
+  // 3. subFilter must still be referenced inside the fallback filter
+  //    templates (the exact lines that used to throw ReferenceError).
+  const fallbackSection = src.slice(src.indexOf("for (const attempt of [filter, null])"));
+  assert.match(
+    fallbackSection,
+    /\$\{subFilter\}/,
+    "fallback filter must still reference subFilter (subtitle burn must work on retry)"
+  );
+
+  // 4. Subtitle-enabled path still sets subFilter to the subtitles filter
+  //    (we didn't remove subtitles just to silence the error).
+  assert.match(
+    src,
+    /\[outv\]subtitles='\$\{subtitlePath\}':force_style='FontName=Noto Sans Devanagari/,
+    "subtitle burn filter must remain intact for Hindi+English subtitles"
+  );
+});
+
+test("REGRESSION: outLabel is also in scope for the ffmpeg retry args", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "autoVideo.js"), "utf8");
+
+  // outLabel is declared const once outside the if/else — verify it's not
+  // shadowed inside the branches like subFilter used to be.
+  const outLabelDecls = [...src.matchAll(/^\s*(?:const|let|var)\s+outLabel\s*=/gm)];
+  assert.equal(outLabelDecls.length, 1, "outLabel should be declared exactly once at outer scope");
+});
