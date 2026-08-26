@@ -915,19 +915,21 @@ const motionEngine = require('./agents/growth/motion_engine');
         const burnEnabled = flags.isEnabled('SUBTITLE_BURN_ENABLED');
         const outLabel = (hasSubtitles && burnEnabled) ? '[outvs]' : '[outv]';
 
+        // 🔧 subFilter must be declared OUTSIDE the if(hasMusic)/else blocks
+        // so it's in scope for the static-fallback retry filter below.
+        let subFilter = '';
+        if (hasSubtitles && burnEnabled) {
+            subFilter = `;[outv]subtitles='${subtitlePath}':force_style='FontName=Noto Sans Devanagari,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=180,Alignment=2'[outvs]`;
+        }
+
         let filter, args;
 
         if (hasMusic) {
-            // Subtitle overlay filter (only if subtitles were generated)
             // 🔥 SUBTITLE BURN: only when flag ON + SRT exists.
             // Default OFF — GitHub Actions runner has no Devanagari font,
             // burning produces □□□ tofu boxes. SRT still generated for
             // YouTube CC upload; burn when font is installed.
-            const burnEnabled = flags.isEnabled('SUBTITLE_BURN_ENABLED');
-            let subFilter = '';
-            if (hasSubtitles && burnEnabled) {
-                subFilter = `;[outv]subtitles='${subtitlePath}':force_style='FontName=Noto Sans Devanagari,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=180,Alignment=2'[outvs]`;
-            }
+            // subFilter is already computed above in outer scope.
             // 🧠 MOTION ENGINE: Apply controlled motion to poster
             let motionFilter = '';
             if (growthEnabled && growthRec?.enhancements?.motionProfile?.profile?.ffmpegFilter) {
@@ -960,15 +962,8 @@ const motionEngine = require('./agents/growth/motion_engine');
             ];
         } else {
             console.log('⚠️ BG Music नहीं मिला, बिना म्यूजिक के render...');
+            // subFilter already computed above in outer scope.
             // 🔥 SUBTITLE BURN: only when flag ON + SRT exists.
-            // Default OFF — GitHub Actions runner has no Devanagari font,
-            // burning produces □□□ tofu boxes. SRT still generated for
-            // YouTube CC upload; burn when font is installed.
-            const burnEnabled = flags.isEnabled('SUBTITLE_BURN_ENABLED');
-            let subFilter = '';
-            if (hasSubtitles && burnEnabled) {
-                subFilter = `;[outv]subtitles='${subtitlePath}':force_style='FontName=Noto Sans Devanagari,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=180,Alignment=2'[outvs]`;
-            }
             // 🧠 MOTION ENGINE: Apply controlled motion to poster
             let motionFilter = '';
             if (growthEnabled && growthRec?.enhancements?.motionProfile?.profile?.ffmpegFilter) {
