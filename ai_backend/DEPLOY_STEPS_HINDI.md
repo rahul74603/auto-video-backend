@@ -144,7 +144,7 @@ Installing video workflow files...
   OK  .github\workflows\mock_test_maker.yml
   OK  .github\workflows\fast_track.yml
 Verifying...
-  OK  dispatcher schedule disabled (manual-only) - safe to install
+  OK  dispatcher verified (repository_dispatch + */5 fallback)
 ```
 
 ### Ya bilkul manual (script chalana hi na ho to)
@@ -270,9 +270,10 @@ gh pr merge 11 --repo rahul74603/auto-video-backend --squash
 Merge ke baad Actions tab refresh karo — ab "🎬 Video Dispatcher (Firestore
 Poller)" dikhega aur "Run workflow" button aa jayega.
 
-> Merge karna surakshit hai: dispatcher ka schedule band hai aur manual
-> defaults `dry_run=true` + `privacy=unlisted` hain. Merge se koi video
-> apne aap nahi banega.
+> Merge se pehle check karo: production workflow ab `repository_dispatch` +
+> 5-minute fallback + `workflow_dispatch` ke saath ACTIVE hai. `workflow_dispatch`
+> defaults `dry_run=false` + `privacy=` (public) hain; unlisted test ke liye inputs
+> set karo.
 
 **Merge ke baad ye 2 temporary files delete kar dena:**
 
@@ -440,7 +441,7 @@ Merge ke baad system automatic ho jayega.
 
 ```
 Aap website par JOB / FAST TRACK publish karo
-        ↓  (10 minute ke andar)
+        ↓  (30-60s via repository_dispatch; 5-min fallback)
 GitHub Actions Firestore check karta hai
         ↓
 Short video ban kar YouTube par LIVE
@@ -452,7 +453,7 @@ Facebook + Telegram par bhi automatic
 
 | Cheez | Value |
 |---|---|
-| Kitni jaldi | har 10 minute me check |
+| Kitni jaldi | repository_dispatch + har 5 minute me check |
 | Ek run me | 1 video |
 | Roz max | 5 videos (YouTube quota limit) |
 | Kya chahiye | kuch nahi — publish karo, bas |
