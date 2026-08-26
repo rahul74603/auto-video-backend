@@ -3,6 +3,7 @@ import type { ChangeEvent } from 'react';
 import { storage } from '../../../firebase/config';
 import { serverTimestamp } from 'firebase/firestore';
 import { mockTestRepository } from '@/features/mock-tests/data/mockTestRepository';
+import { ARTICLE_API_BASE } from '@/features/ai-articles/data/aiArticleRepository';
 import type { MockTestRecord } from '@/features/mock-tests/data/mockTestRepository';
 import type { MockQuestion } from '@/types/firestore';
 import { asText } from '@/types/firestore';
@@ -52,7 +53,7 @@ const normTest = (t: MockTestRecord): AdminTestItem => ({
 
 const AdminMockTest = () => {
 
-    const API_BASE_URL = "https://api-hf6vlh5cpq-uc.a.run.app";
+    const API_BASE_URL = ARTICLE_API_BASE;
     // ================= STATES =================
 
     const [loading, setLoading] = useState(false);
