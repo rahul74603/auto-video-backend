@@ -69,8 +69,24 @@ const ExamHubNavigation = ({ exam, className = '' }: ExamHubProps) => {
 
   // If SSC in exam but not specific, use SSC GD as fallback for SSC
   if (hub === defaultHub && normalizedExam.includes('SSC')) {
-    hub = examHubMap['SSC GD'];
+    hub = examHubMap['SSC'] || examHubMap['SSC GD'];
     matchedExam = 'SSC';
+  }
+  if (hub === defaultHub && /BANK|IBPS|SBI/.test(normalizedExam)) {
+    hub = examHubMap.BANKING;
+    matchedExam = 'BANKING';
+  }
+  if (hub === defaultHub && /POLICE/.test(normalizedExam)) {
+    hub = examHubMap.POLICE;
+    matchedExam = 'POLICE';
+  }
+  if (hub === defaultHub && /UPSC|NDA|CDS/.test(normalizedExam)) {
+    hub = examHubMap.UPSC;
+    matchedExam = 'UPSC';
+  }
+  if (hub === defaultHub && /TEACH|CTET|NET|KVS/.test(normalizedExam)) {
+    hub = examHubMap.TEACHING;
+    matchedExam = 'TEACHING';
   }
 
   return (

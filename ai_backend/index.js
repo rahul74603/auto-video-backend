@@ -9,6 +9,7 @@ const axios = require("axios");
 require("dotenv").config();
 const path = require("path");
 const { registerAgentRoutes, authorizeAgentRequest } = require("./agents/agent_orchestrator");
+const { createArticleAuthMiddleware } = require("./agents/article_agents/article_auth");
 const { enhanceCommand } = require("./agents/prompt_enhancer");
 const { SEOIndexingAgent } = require("./agents/seo_indexing_agent");
 setGlobalOptions({
@@ -32,7 +33,9 @@ const { isAutomationEnabled } = require("./agents/automation_guard");
 registerAgentRoutes(app);
 // Source-grounded Job / Fast-track article agents (Generate, Preview,
 // Regenerate, Apply, Publish). Draft-first; failed review blocks publishing.
-require("./agents/article_agents/article_routes").registerArticleAgentRoutes(app, db);
+const articleAuth = createArticleAuthMiddleware(admin.auth());
+require("./agents/article_agents/article_routes").registerArticleAgentRoutes(app, db, { authMiddleware: articleAuth });
+require("./agents/seo_intelligence/routes").registerSeoIntelligenceRoutes(app, db, { authMiddleware: articleAuth });
 // 📱 Article → Web Story backfill endpoint (POST /stories/backfill)
 require("./article_to_story").registerStoryRoutes(app, db, admin.firestore.FieldValue);
 app.post("/seo/indexing-audit", async (req, res) => {

@@ -273,7 +273,8 @@ const FastTrackDetails = () => {
     const canonicalUrl = `https://studygyaan.in/update/${canonicalSlug}`;
     const publishedIso = getIsoDate(data.createdAt);
 
-    const seoTitle = `${data.title} - ${data.category} 2025 | StudyGyaan`;
+    const seoTitle = String(data.seoTitle || '').trim()
+        || `${data.title} - ${data.category} ${new Date().getFullYear()} | StudyGyaan`;
     const seoDesc = data.description || data.shortInfo
         || `Check latest ${data.category} for ${data.title}. Get direct links and official updates on StudyGyaan.in`;
 
@@ -302,7 +303,7 @@ const FastTrackDetails = () => {
                 customKeywords={`${data.title}, ${data.category}, ${data.org || ''}, StudyGyaan, Sarkari Result`}
                 ogType="article"
                 publishedDate={publishedIso}
-                modifiedDate={publishedIso}
+                modifiedDate={getIsoDate(data.updatedAt || data.publishedAt || data.createdAt)}
                 author={data.authorName || "StudyGyaan Editorial Team"}
                 category={data.category}
             />
@@ -489,10 +490,28 @@ const FastTrackDetails = () => {
                     </article>
 
                     {/* 🧭 Exam Hub + Related Content — fixes orphan */}
-                    <ExamHubNavigation exam={(data?.category as string) || 'GENERAL'} className="mt-6" />
+                    {data.sourceCitation?.url && (
+                        <p className="text-xs text-slate-500 font-medium mt-4">
+                            Official source:{' '}
+                            <a className="text-blue-700 underline" href={`/redirect?url=${encodeURIComponent(data.sourceCitation.url)}`} target="_blank" rel="nofollow noopener noreferrer">
+                                {data.sourceCitation.label || 'Notification'}
+                            </a>
+                        </p>
+                    )}
+                    {Array.isArray(data.updateHistory) && data.updateHistory.length > 0 && (
+                        <div className="bg-white border rounded-2xl p-4 mt-4">
+                            <h2 className="text-xs font-black uppercase mb-2">Update history</h2>
+                            {data.updateHistory.slice().reverse().slice(0, 6).map((entry, idx) => (
+                                <p key={idx} className="text-[11px] text-slate-600">{entry.reason} {entry.at?.slice(0, 10)}</p>
+                            ))}
+                        </div>
+                    )}
+                    <ExamHubNavigation exam={(data?.examFamily as string) || (data?.category as string) || 'GENERAL'} className="mt-6" />
                     <RelatedContent
                       currentId={data?.id || ''}
                       exam={data?.category}
+                      examFamily={data?.examFamily}
+                      contentKind={data?.contentKind}
                       category={((data?.category === 'Admit Card' ? 'ADMIT_CARD' : data?.category === 'Result' ? 'RESULT' : 'UPDATE') as any)}
                       title={data?.title || ''}
                       limit={6}

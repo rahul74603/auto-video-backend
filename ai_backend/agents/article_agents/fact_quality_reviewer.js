@@ -36,6 +36,8 @@ const {
   countTags,
   listAnchorHrefs
 } = require("./article_html_utils");
+const { reviewEditorialQuality } = require("../seo_intelligence/editorial_quality_gate");
+const { parseDateFlexible, daysUntilInIndia } = require("../growth/date_normalizer");
 
 // ---------- text helpers ----------
 
@@ -333,50 +335,9 @@ function shingleSet(text, size = 8) {
 }
 
 /**
- * DATE PARSER (freshness check ke liye) — Hindi + English + numeric formats:
- *   "25 अगस्त 2026", "25 August 2026", "25/08/2026", "August 25, 2026"
- * Samajh na aaye to null (aise case me check skip — false alarm nahi).
+ * DATE PARSER — canonical implementation is growth/date_normalizer.parseDateFlexible
+ * (imported above). Local copy removed to prevent UTC/IST drift.
  */
-const EN_MONTH_INDEX = {
-  january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
-  july: 6, august: 7, september: 8, october: 9, november: 10, december: 11
-};
-
-function parseDateFlexible(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return null;
-  const text = normalizeDigits(raw).toLowerCase();
-
-  // dd/mm/yyyy | dd-mm-yyyy | dd.mm.yyyy
-  let m = text.match(/\b(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})\b/);
-  if (m) {
-    const d = Number(m[1]);
-    const mo = Number(m[2]) - 1;
-    let y = Number(m[3]);
-    if (y < 100) y += 2000;
-    if (d >= 1 && d <= 31 && mo >= 0 && mo <= 11) return new Date(Date.UTC(y, mo, d));
-    return null;
-  }
-
-  // "25 अगस्त 2026" ya "25 august 2026"
-  m = text.match(/\b(\d{1,2})\s+([^\s,]+)\s*,?\s*(\d{4})\b/);
-  if (m) {
-    let monthName = m[2];
-    if (HINDI_MONTHS[monthName]) monthName = HINDI_MONTHS[monthName];
-    const mo = EN_MONTH_INDEX[monthName];
-    if (mo !== undefined) return new Date(Date.UTC(Number(m[3]), mo, Number(m[1])));
-  }
-
-  // "august 25, 2026"
-  m = text.match(/\b([^\s,]+)\s+(\d{1,2}),?\s*(\d{4})\b/);
-  if (m) {
-    let monthName = m[1];
-    if (HINDI_MONTHS[monthName]) monthName = HINDI_MONTHS[monthName];
-    const mo = EN_MONTH_INDEX[monthName];
-    if (mo !== undefined) return new Date(Date.UTC(Number(m[3]), mo, Number(m[2])));
-  }
-  return null;
-}
 
 /**
  * FRESHNESS CHECK (user requirement: "koi old data to nahi hai").
@@ -390,8 +351,8 @@ function checkFreshness({ article, issues, warnings, metrics }) {
   metrics.freshnessChecked = Boolean(lastDateStr);
   if (!parsed) return; // parse nahi hua → chhodo, writer ka rule hi enough hai
 
-  const today = new Date();
-  const diffDays = Math.floor((parsed.getTime() - today.getTime()) / 86400000);
+  const diffDays = daysUntilInIndia(lastDateStr, new Date());
+  if (diffDays === null) return;
   metrics.lastDateInDays = diffDays;
 
   if (diffDays < -30) {
@@ -629,6 +590,12 @@ function reviewArticle({ type, article, source, existing }) {
   checkKeywordStuffing(ctx);
   checkOfficialLinks(ctx);
 
+  // Human-editorial usefulness (not an AI-detector). Extra issues still block publish.
+  const editorial = reviewEditorialQuality({ type, article });
+  issues.push(...(editorial.issues || []));
+  warnings.push(...(editorial.warnings || []));
+  Object.assign(metrics, editorial.metrics || {});
+
   const score = Math.max(0, 100 - issues.length * 12 - warnings.length * 3);
   return {
     verdict: issues.length ? "fail" : "pass",
@@ -730,6 +697,26 @@ const ISSUE_GUIDANCE = [
   {
     re: /^organization:partial-match/,
     fix: () => "Organization ka naam EXACT wahi likho jo source me likha hai (apna mat banao)."
+  },
+  {
+    re: /^editorial:clickbait-title/,
+    fix: () => "Title natural rakho — shocking/viral/click-here type clickbait mat likho."
+  },
+  {
+    re: /^editorial:hedging-title/,
+    fix: () => "Title me 'संभावित/expected' mat likho jab tak source me ghoshit fact na ho."
+  },
+  {
+    re: /^editorial:placeholder-content/,
+    fix: () => "TODO/lorem/coming-soon placeholder hatao — sirf source-grounded useful prose likho."
+  },
+  {
+    re: /^editorial:repeated-boilerplate/,
+    fix: () => "Same sentence baar-baar mat repeat karo. Har paragraph nayi useful baat bataye."
+  },
+  {
+    re: /^faq:placeholder-answers/,
+    fix: () => "FAQ answers 'Official Notification देखें' par mat chhodo — source wali short fact likho."
   }
 ];
 

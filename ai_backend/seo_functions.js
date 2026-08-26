@@ -1,4 +1,4 @@
-﻿const functions = require("firebase-functions");
+const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
 if (!admin.apps.length) {
@@ -57,6 +57,12 @@ function isIndexableDocument(data = {}) {
 
 function hasUsefulTitle(data = {}) {
     return String(data.title || data.post_name || "").trim().length >= 5;
+}
+
+function sitemapPriorityXml(data, fallback) {
+    const value = Number(data && data.sitemapPriority);
+    if (Number.isFinite(value) && value >= 0.1 && value <= 1) return value.toFixed(1);
+    return fallback;
 }
 
 // =========================================================
@@ -207,7 +213,7 @@ exports.generateSitemapJobs = functions.https.onRequest(async (req, res) => {
             xml += `    <loc>${WEBSITE_URL}/${route}/${safeSlug}</loc>\n`;
             xml += `    <lastmod>${updateTime}</lastmod>\n`;
             xml += `    <changefreq>daily</changefreq>\n`;
-            xml += `    <priority>1.0</priority>\n`;
+            xml += `    <priority>${sitemapPriorityXml(data, "1.0")}</priority>\n`;
             xml += `    <image:image>\n`;
             xml += `      <image:loc>${imageUrl}</image:loc>\n`;
             xml += `      <image:title>${imageTitle}</image:title>\n`;
@@ -340,7 +346,7 @@ exports.generateSitemapUpdates = functions.https.onRequest(async (_req, res) => 
             xml += `    <loc>${WEBSITE_URL}/update/${slug}</loc>\n`;
             xml += `    <lastmod>${updateTime}</lastmod>\n`;
             xml += `    <changefreq>daily</changefreq>\n`;
-            xml += `    <priority>0.8</priority>\n`;
+            xml += `    <priority>${sitemapPriorityXml(data, "0.8")}</priority>\n`;
             xml += `  </url>\n`;
         });
 

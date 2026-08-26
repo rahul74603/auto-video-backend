@@ -231,12 +231,34 @@ async function runSEOMasterAgent(db, FieldValue, options = {}) {
   const freshness = await checkContentFreshness(db);
   const seo = await runSEOAudit({ maxUrls: options.maxUrls || 80 });
 
+  let intelligence = { skipped: true };
+  try {
+    const { runSeoIntelligence } = require("./seo_intelligence/orchestrator");
+    intelligence = await runSeoIntelligence(db, FieldValue, {
+      force: Boolean(options.force),
+      maxJobs: 80,
+      maxUpdates: 40
+    });
+  } catch (error) {
+    intelligence = { ok: false, error: error.message };
+    console.warn("SEO intelligence failed (non-fatal):", error.message);
+  }
+
   const summary = {
     runId: new Date().toISOString().replace(/[:.]/g, '-'),
     generatedAt: new Date().toISOString(),
     connections,
     freshness,
     seo,
+    intelligence: {
+      ok: intelligence.ok !== false && !intelligence.error,
+      skipped: Boolean(intelligence.skipped),
+      recommendationCount: intelligence.recommendationCount || 0,
+      lifecycleUpdates: intelligence.lifecycleUpdates || 0,
+      relatedUpdates: intelligence.relatedUpdates || 0,
+      lifecycle: intelligence.lifecycle || null,
+      error: intelligence.error || null
+    },
     durationMs: Date.now() - startTime
   };
 

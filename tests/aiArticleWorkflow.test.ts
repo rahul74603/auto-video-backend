@@ -202,7 +202,7 @@ describe('AI Article Workflow — publish payloads', () => {
     expect(payload.authorName).toBe(EDITORIAL_AUTHOR);
     expect(payload.organization).toBe('Staff Selection Commission (SSC)');
     expect(payload.vacancies).toBe('5432');
-    expect(payload.lastDate).toBe('31/07/2026');
+    expect(payload.lastDate).toBe('2026-07-31');
     expect(payload.applyLink).toBe('https://ssc.gov.in/apply-cgl-2026');
     expect(payload.notificationLink).toBeUndefined(); // empty facts are stripped
     expect(payload.faqs).toHaveLength(4);

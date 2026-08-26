@@ -16,6 +16,7 @@ import {
     AlertTriangle, Eye, Wand2, Link2, Zap, Layers, Home
 } from 'lucide-react';
 import type { FastTrackItem } from '@/types/firestore';
+import { enrichPublicDocument } from '@/features/seo-intelligence/taxonomy';
 
 // =========================================================
 // 🛠️ HELPERS
@@ -437,6 +438,13 @@ const FastTrackManager = () => {
                 // ✅ Update existing
                 await updateDoc(doc(db, "fast_track", editingId), {
                     ...formData,
+                    ...enrichPublicDocument({
+                        type: 'FAST_TRACK',
+                        title: formData.title,
+                        category: formData.category,
+                        org: formData.org,
+                        sourceUrl: formData.directLink,
+                    }),
                     updatedAt: serverTimestamp()
                 });
                 showToast("✅ Update saved!");
@@ -459,6 +467,13 @@ const FastTrackManager = () => {
                 await addDoc(collection(db, "fast_track"), {
                     ...formData,
                     slug: finalSlug,
+                    ...enrichPublicDocument({
+                        type: 'FAST_TRACK',
+                        title: formData.title,
+                        category: formData.category,
+                        org: formData.org,
+                        sourceUrl: formData.directLink,
+                    }),
                     createdAt: serverTimestamp()
                 });
 

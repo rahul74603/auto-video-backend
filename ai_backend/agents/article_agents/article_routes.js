@@ -154,9 +154,13 @@ function sanitizeEdits(edits) {
   return allowed;
 }
 
-function registerArticleAgentRoutes(app, db) {
+function registerArticleAgentRoutes(app, db, deps = {}) {
+  const protect = typeof deps.authMiddleware === "function"
+    ? deps.authMiddleware
+    : (_req, _res, next) => next();
+
   /* ---------------- GENERATE ---------------- */
-  app.post("/articles/generate", async (req, res) => {
+  app.post("/articles/generate", protect, async (req, res) => {
 
     try {
       const type = cleanType(req.body?.type);
@@ -314,7 +318,7 @@ function registerArticleAgentRoutes(app, db) {
   });
 
   /* ---------------- PREVIEW ---------------- */
-  app.post("/articles/preview", async (req, res) => {
+  app.post("/articles/preview", protect, async (req, res) => {
 
     try {
       const draftId = String(req.body?.draftId || "").trim();
@@ -346,7 +350,7 @@ function registerArticleAgentRoutes(app, db) {
   });
 
   /* ---------------- REGENERATE ---------------- */
-  app.post("/articles/regenerate", async (req, res) => {
+  app.post("/articles/regenerate", protect, async (req, res) => {
 
     try {
       const draftId = String(req.body?.draftId || "").trim();
@@ -421,7 +425,7 @@ function registerArticleAgentRoutes(app, db) {
   });
 
   /* ---------------- APPLY (admin edits → re-review) ---------------- */
-  app.post("/articles/apply", async (req, res) => {
+  app.post("/articles/apply", protect, async (req, res) => {
 
     try {
       const draftId = String(req.body?.draftId || "").trim();
@@ -493,7 +497,7 @@ function registerArticleAgentRoutes(app, db) {
   });
 
   /* ---------------- PUBLISH (guarded) ---------------- */
-  app.post("/articles/publish", async (req, res) => {
+  app.post("/articles/publish", protect, async (req, res) => {
 
     try {
       const draftId = String(req.body?.draftId || "").trim();

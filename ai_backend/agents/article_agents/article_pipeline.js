@@ -39,8 +39,8 @@ const crypto = require("crypto");
 const { ARTICLE_TYPES, EDITORIAL_AUTHOR, MAX_REPAIR_ATTEMPTS } = require("./constants");
 const { generateJobArticle, normalizeJobArticle } = require("./job_article_writer");
 const { generateFastTrackArticle, normalizeFastTrackArticle } = require("./fast_track_article_writer");
-const { reviewArticle, parseDateFlexible } = require("./fact_quality_reviewer");
-const { harvestFactsDates } = require("./facts_date_harvester");
+const { reviewArticle } = require("./fact_quality_reviewer");
+const { toIsoDateString } = require("../growth/date_normalizer");
 const { assertSourceArticleWorthy } = require("./source_adequacy_gate");
 const { fetchAndExtractSource } = require("./source_fetcher");
 const { normalizeArticleHtml } = require("./article_html_utils");
@@ -48,6 +48,8 @@ const {
   repairArticleDeterministically,
   splitReviewIssues
 } = require("./article_repairer");
+const { enrichContentDocument } = require("../seo_intelligence/enrich");
+const { buildHistoryEntry, mergeUpdateHistory } = require("../seo_intelligence/update_history");
 
 const DRAFT_COLLECTION = "ai_article_drafts";
 
@@ -371,8 +373,8 @@ function stripEmpty(obj) {
 function sanitizeJobDate(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  const parsed = parseDateFlexible(raw);
-  if (parsed) return parsed.toISOString().slice(0, 10);
+  const iso = toIsoDateString(raw);
+  if (iso) return iso;
   return /\d/.test(raw) ? raw.slice(0, 40) : "";
 }
 
@@ -423,13 +425,25 @@ function buildJobPublishPayload(draft, draftId) {
   if (typeof mapped.applicationFee === "string") {
     mapped.applicationFee = mapped.applicationFee.replace(/₹\s*₹+/g, "₹").trim();
   }
-  return stripEmpty(mapped);
+  const seo = enrichContentDocument({
+    type: "JOB",
+    title: mapped.title,
+    h1: draft.h1,
+    seoTitle: draft.seoTitle,
+    metaDescription: mapped.metaDescription,
+    facts: draft.facts || {},
+    faqs: mapped.faqs,
+    wordCount: mapped.wordCount,
+    sourceUrl: mapped.sourceUrl,
+    articleHtml: mapped.articleHtml
+  });
+  return stripEmpty({ ...mapped, ...seo });
 }
 
 /** Map a passed FAST_TRACK draft to the existing `fast_track` document shape. */
 function buildFastTrackPublishPayload(draft, draftId) {
   const facts = draft.facts || {};
-  return stripEmpty({
+  const mapped = {
     title: draft.title,
     slug: draft.slug,
     category: facts.category || "Other",
@@ -449,7 +463,22 @@ function buildFastTrackPublishPayload(draft, draftId) {
     wordCount: draft.wordCount || 0,
     sourceUrl: draft.sourceUrl || "",
     publishedFromDraftId: draftId
+  };
+  const seo = enrichContentDocument({
+    type: "FAST_TRACK",
+    title: mapped.title,
+    h1: draft.h1,
+    seoTitle: draft.seoTitle,
+    metaDescription: mapped.metaDescription,
+    facts,
+    category: mapped.category,
+    organization: mapped.org,
+    faqs: mapped.faqs,
+    wordCount: mapped.wordCount,
+    sourceUrl: mapped.sourceUrl,
+    articleHtml: mapped.articleHtml
   });
+  return stripEmpty({ ...mapped, ...seo });
 }
 
 function buildPublishPayload(draft, draftId) {
@@ -473,14 +502,29 @@ async function publishDraftRecord(db, FieldValue, draft, draftId) {
   const targetId = draft.publishedDocId
     || `${draft.type === "JOB" ? "job" : "ft"}-${String(draft.slug || draftId).slice(0, 90)}`;
 
+  let existing = null;
+  try {
+    const existingSnap = await db.collection(collection).doc(targetId).get();
+    if (existingSnap.exists) existing = existingSnap.data();
+  } catch {
+    existing = null;
+  }
+
+  const historyEntry = buildHistoryEntry(existing, payload, {
+    reason: existing ? "updated" : "published"
+  });
+  const updateHistory = mergeUpdateHistory(existing?.updateHistory, historyEntry);
+
   await db
     .collection(collection)
     .doc(targetId)
     .set(
       {
         ...payload,
-        createdAt: FieldValue.serverTimestamp(),
-        publishedAt: FieldValue.serverTimestamp()
+        updateHistory,
+        createdAt: existing?.createdAt || FieldValue.serverTimestamp(),
+        publishedAt: existing?.publishedAt || FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
       },
       { merge: true }
     );

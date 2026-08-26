@@ -1,6 +1,13 @@
 /* eslint-disable */
 import { db } from '@/firebase/config';
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import {
+  complementaryKinds,
+  detectContentKind,
+  detectExamFamily,
+  type ContentKind,
+  type ExamFamily,
+} from '@/features/seo-intelligence/taxonomy';
 
 /**
  * Internal Linking Repository — scalable related content system for 1,170+ orphan pages fix
@@ -31,6 +38,10 @@ interface FetchOptions {
   topic?: string;
   contentType?: ContentType;
   excludeId?: string;
+  excludeUrl?: string;
+  title?: string;
+  examFamily?: string;
+  contentKind?: string;
   limitCount?: number;
 }
 
@@ -134,19 +145,41 @@ export async function fetchRelatedContent(opts: FetchOptions): Promise<RelatedCo
         if (data.status && String(data.status).toLowerCase() !== 'published' && colName !== 'web_stories') return;
         if (filter && !filter(data)) return;
 
+        const title = String(data.title || '');
+        if (title.trim().length < 5) return;
         const category = determineCategoryFromDoc(data, colName);
         const exam = determineExamFromDoc(data);
-        
-        // Calculate priority
+        const url = buildUrl(colName, doc);
+        if (opts.excludeUrl && url === opts.excludeUrl) return;
+        if (results.some((row) => row.url === url)) return;
+
+        const candFamily = (data.examFamily as ExamFamily) || detectExamFamily({
+          title,
+          category: data.category,
+          organization: data.organization || data.org,
+        });
+        const candKind = (data.contentKind as ContentKind) || detectContentKind({
+          type: colName === 'jobs' ? 'JOB' : colName === 'mock_tests' ? 'MOCK_TEST' : colName === 'blogs' ? 'BLOG' : 'FAST_TRACK',
+          title,
+          category: data.category,
+        });
+        const sourceFamily = (opts.examFamily as ExamFamily) || detectExamFamily({
+          title: opts.title,
+          category: opts.exam,
+          exam: opts.exam,
+        });
+        const sourceKind = (opts.contentKind as ContentKind) || (opts.category as unknown as ContentKind) || 'OTHER';
+
         let priority = 0;
-        if (opts.exam && exam === opts.exam) priority += 40;
-        if (opts.category && category === opts.category) priority += 30;
+        if (sourceFamily && sourceFamily !== 'GENERAL' && candFamily === sourceFamily) priority += 40;
+        else if (opts.exam && exam === opts.exam) priority += 24;
+        const complements = complementaryKinds(sourceKind);
+        if (complements.includes(candKind)) priority += 30;
+        else if (opts.category && category === opts.category) priority += 12;
         if (opts.subject && data.subject === opts.subject) priority += 20;
         if (opts.topic && data.topic === opts.topic) priority += 15;
-        if (opts.contentType && type === opts.contentType) priority -= 10; // Prefer different type for diversity
-        
-        // Boost recent
-        priority += Math.random() * 5; // Small randomization to avoid same results
+        if (opts.contentType && type === opts.contentType) priority -= 8;
+        if (priority < 12) return;
 
         results.push({
           id: doc.id,
@@ -157,7 +190,7 @@ export async function fetchRelatedContent(opts: FetchOptions): Promise<RelatedCo
           exam,
           subject: data.subject,
           topic: data.topic,
-          url: buildUrl(colName, doc),
+          url,
           priority
         });
         seenIds.add(doc.id);

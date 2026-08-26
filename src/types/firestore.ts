@@ -96,6 +96,18 @@ export interface JobPost {
   lastUpdated?: string;
   expiryDate?: string;
   isExpired?: boolean;
+  seoTitle?: string;
+  examFamily?: string;
+  contentKind?: string;
+  topicCluster?: string;
+  searchIntent?: string;
+  lifecycleStatus?: string;
+  imageAlt?: string;
+  youtubeUrl?: string;
+  youtubeVideoId?: string;
+  relatedLinks?: { title?: string; url?: string; kind?: string }[];
+  updateHistory?: { at?: string; reason?: string; changes?: { field: string; from: string; to: string }[] }[];
+  sourceCitation?: { url?: string; label?: string; disclosed?: boolean };
   [key: string]: unknown;
 }
 
@@ -127,6 +139,14 @@ export interface FastTrackItem {
   createdAt?: TimestampLike;
   updatedAt?: TimestampLike;
   publishedAt?: TimestampLike;
+  seoTitle?: string;
+  examFamily?: string;
+  contentKind?: string;
+  topicCluster?: string;
+  youtubeUrl?: string;
+  relatedLinks?: { title?: string; url?: string; kind?: string }[];
+  updateHistory?: { at?: string; reason?: string; changes?: { field: string; from: string; to: string }[] }[];
+  sourceCitation?: { url?: string; label?: string };
   [key: string]: unknown;
 }
 
