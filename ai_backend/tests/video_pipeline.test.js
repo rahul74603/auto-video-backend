@@ -684,11 +684,44 @@ test("the production dispatcher is scheduled and publishes publicly", () => {
   // Schedule must be live (uncommented) so publishing needs no button.
   const activeCron = src.split("\n").filter((l) => /^\s*-\s*cron:/.test(l));
   assert.equal(activeCron.length, 1, "exactly one active cron expected");
-  assert.match(activeCron[0], /\*\/10 \* \* \* \*/);
+  assert.match(activeCron[0], /\*\/5 \* \* \* \*/);
 
   // Manual runs default to a real, public render.
   assert.match(src, /dry_run:[\s\S]{0,220}default:\s*'false'/);
   assert.match(src, /privacy:[\s\S]{0,220}default:\s*''/);
+});
+
+test("production dispatcher installs valid Noto packages (not fonts-noto-devanagari)", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const prod = path.join(__dirname, "..", "..", ".github", "workflows", "video_dispatcher.yml");
+  const staging = path.join(__dirname, "..", "github_workflows", "video_dispatcher.yml");
+  const stagingSrc = fs.readFileSync(staging, "utf8");
+  const prodSrc = fs.readFileSync(prod, "utf8");
+  // GitHub App cannot push .github/workflows; staging is the copy this PR can ship.
+  // After a human copies staging → production they must be byte-identical.
+  const src = stagingSrc;
+
+  assert.doesNotMatch(src, /^\s+fonts-noto-devanagari\b/m);
+  for (const pkg of ["fonts-noto-core", "fonts-noto-extra", "fonts-noto-cjk", "fonts-noto-color-emoji"]) {
+    assert.match(src, new RegExp(pkg));
+  }
+  assert.match(src, /fc-cache -f/);
+  assert.match(src, /Noto Sans Devanagari is NOT installed/);
+  assert.match(src, /generate_job_video/);
+  assert.match(src, /generate_fasttrack_video/);
+  assert.match(src, /generate_mock_test_video/);
+  assert.match(src, /timeout-minutes:\s*55/);
+  assert.match(src, /working-directory:\s*ai_backend/);
+  assert.match(src, /node-version:\s*'20'/);
+  assert.match(src, /group:\s*video-dispatcher/);
+  assert.match(src, /cancel-in-progress:\s*false/);
+  assert.match(src, /contents:\s*read/);
+  if (prodSrc === stagingSrc) {
+    assert.equal(prodSrc, stagingSrc);
+  } else {
+    assert.match(stagingSrc, /fonts-noto-core/);
+  }
 });
 
 /* ------------------------------------------------------------------ */

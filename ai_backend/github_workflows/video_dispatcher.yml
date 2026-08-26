@@ -107,9 +107,12 @@ jobs:
             libjpeg-dev \
             libgif-dev \
             librsvg2-dev \
+            fonts-noto-core \
+            fonts-noto-extra \
             fonts-noto-cjk \
-            fonts-noto-devanagari \
             fonts-noto-color-emoji
+          # fonts-noto-devanagari is INVALID on current Ubuntu runners.
+          # Noto Sans Devanagari ships in fonts-noto-core / fonts-noto-extra.
           # Regenerate the font cache so canvas + libass can resolve
           # "Noto Sans Devanagari" immediately.
           fc-cache -f >/dev/null 2>&1 || true
