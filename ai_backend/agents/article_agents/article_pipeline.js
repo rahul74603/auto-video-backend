@@ -39,8 +39,8 @@ const crypto = require("crypto");
 const { ARTICLE_TYPES, EDITORIAL_AUTHOR, MAX_REPAIR_ATTEMPTS } = require("./constants");
 const { generateJobArticle, normalizeJobArticle } = require("./job_article_writer");
 const { generateFastTrackArticle, normalizeFastTrackArticle } = require("./fast_track_article_writer");
-const { reviewArticle, parseDateFlexible } = require("./fact_quality_reviewer");
-const { harvestFactsDates } = require("./facts_date_harvester");
+const { reviewArticle } = require("./fact_quality_reviewer");
+const { toIsoDateString } = require("../growth/date_normalizer");
 const { assertSourceArticleWorthy } = require("./source_adequacy_gate");
 const { fetchAndExtractSource } = require("./source_fetcher");
 const { normalizeArticleHtml } = require("./article_html_utils");
@@ -50,8 +50,6 @@ const {
 } = require("./article_repairer");
 const { enrichContentDocument } = require("../seo_intelligence/enrich");
 const { buildHistoryEntry, mergeUpdateHistory } = require("../seo_intelligence/update_history");
-const { selectRelatedLinks, canonicalPath } = require("../seo_intelligence/linking_engine");
-const { detectExamFamily, detectContentKind } = require("../seo_intelligence/taxonomy");
 
 const DRAFT_COLLECTION = "ai_article_drafts";
 
@@ -375,8 +373,8 @@ function stripEmpty(obj) {
 function sanitizeJobDate(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  const parsed = parseDateFlexible(raw);
-  if (parsed) return parsed.toISOString().slice(0, 10);
+  const iso = toIsoDateString(raw);
+  if (iso) return iso;
   return /\d/.test(raw) ? raw.slice(0, 40) : "";
 }
 
@@ -445,7 +443,7 @@ function buildJobPublishPayload(draft, draftId) {
 /** Map a passed FAST_TRACK draft to the existing `fast_track` document shape. */
 function buildFastTrackPublishPayload(draft, draftId) {
   const facts = draft.facts || {};
-  return stripEmpty({
+  const mapped = {
     title: draft.title,
     slug: draft.slug,
     category: facts.category || "Other",
@@ -465,7 +463,22 @@ function buildFastTrackPublishPayload(draft, draftId) {
     wordCount: draft.wordCount || 0,
     sourceUrl: draft.sourceUrl || "",
     publishedFromDraftId: draftId
+  };
+  const seo = enrichContentDocument({
+    type: "FAST_TRACK",
+    title: mapped.title,
+    h1: draft.h1,
+    seoTitle: draft.seoTitle,
+    metaDescription: mapped.metaDescription,
+    facts,
+    category: mapped.category,
+    organization: mapped.org,
+    faqs: mapped.faqs,
+    wordCount: mapped.wordCount,
+    sourceUrl: mapped.sourceUrl,
+    articleHtml: mapped.articleHtml
   });
+  return stripEmpty({ ...mapped, ...seo });
 }
 
 function buildPublishPayload(draft, draftId) {
@@ -482,44 +495,6 @@ function buildPublishPayload(draft, draftId) {
  * Review gate PHIR se lagta hai (assertPublishable) — console/telegram dono safe.
  * db + FieldValue parameter se lete hain (module unit-testable rehta hai).
  */
-function catalogItemFromDoc(doc, collectionName) {
-  const data = typeof doc.data === "function" ? doc.data() : doc;
-  const title = data.title || "";
-  return {
-    id: doc.id,
-    title,
-    slug: data.slug || doc.id,
-    status: data.status || "published",
-    category: data.category || "",
-    organization: data.organization || data.org || "",
-    type: collectionName === "jobs" ? "JOB" : collectionName === "mock_tests" ? "MOCK_TEST" : "FAST_TRACK",
-    examFamily: data.examFamily || detectExamFamily({ title, category: data.category, organization: data.organization || data.org }),
-    contentKind: data.contentKind || detectContentKind({
-      type: collectionName === "jobs" ? "JOB" : collectionName === "mock_tests" ? "MOCK_TEST" : "FAST_TRACK",
-      title,
-      category: data.category
-    })
-  };
-}
-
-async function loadRelatedCatalog(db) {
-  const catalog = [];
-  const reads = [
-    ["jobs", 40],
-    ["fast_track", 20],
-    ["mock_tests", 15]
-  ];
-  for (const [name, limitCount] of reads) {
-    try {
-      const snap = await db.collection(name).orderBy("createdAt", "desc").limit(limitCount).get();
-      (snap.docs || []).forEach((doc) => catalog.push(catalogItemFromDoc(doc, name)));
-    } catch {
-      /* best-effort — publish must not fail because related links failed */
-    }
-  }
-  return catalog;
-}
-
 async function publishDraftRecord(db, FieldValue, draft, draftId) {
   assertPublishable(draft);
 
@@ -540,18 +515,6 @@ async function publishDraftRecord(db, FieldValue, draft, draftId) {
   });
   const updateHistory = mergeUpdateHistory(existing?.updateHistory, historyEntry);
 
-  let relatedLinks = Array.isArray(payload.relatedLinks) ? payload.relatedLinks : [];
-  try {
-    const catalog = await loadRelatedCatalog(db);
-    relatedLinks = selectRelatedLinks(
-      { ...payload, id: targetId, type: draft.type === "JOB" ? "JOB" : "FAST_TRACK" },
-      catalog,
-      8
-    );
-  } catch {
-    /* keep payload relatedLinks */
-  }
-
   await db
     .collection(collection)
     .doc(targetId)
@@ -559,7 +522,6 @@ async function publishDraftRecord(db, FieldValue, draft, draftId) {
       {
         ...payload,
         updateHistory,
-        relatedLinks,
         createdAt: existing?.createdAt || FieldValue.serverTimestamp(),
         publishedAt: existing?.publishedAt || FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp()

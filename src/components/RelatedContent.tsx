@@ -11,6 +11,8 @@ interface RelatedContentProps {
   subject?: string;
   topic?: string;
   title: string;
+  examFamily?: string;
+  contentKind?: string;
   className?: string;
   limit?: number;
   showTitle?: boolean;
@@ -32,11 +34,12 @@ const RelatedContent = ({
   subject,
   topic,
   title,
+  examFamily,
+  contentKind,
   className = '',
   limit = 6,
   showTitle = true,
 }: RelatedContentProps) => {
-  void title; // TS6133 fix - prop reserved for future use
   const [related, setRelated] = useState<Awaited<ReturnType<typeof fetchRelatedContent>>>([]);
   const [loading, setLoading] = useState(true);
 
@@ -50,6 +53,9 @@ const RelatedContent = ({
           category,
           subject,
           topic,
+          title,
+          examFamily,
+          contentKind,
           excludeId: currentId,
           limitCount: limit,
         });
@@ -65,7 +71,7 @@ const RelatedContent = ({
     return () => {
       cancelled = true;
     };
-  }, [currentId, exam, category, subject, topic, limit]);
+  }, [currentId, exam, category, subject, topic, title, examFamily, contentKind, limit]);
 
   if (loading) {
     return (

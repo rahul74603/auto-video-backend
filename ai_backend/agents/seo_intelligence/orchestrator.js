@@ -17,8 +17,7 @@
 
 const { isAutomationEnabled } = require("../automation_guard");
 const { detectExamFamily, detectContentKind } = require("./taxonomy");
-const { classifyJobLifecycle } = require("./job_lifecycle");
-const { selectRelatedLinks } = require("./linking_engine");
+const { classifyJobLifecycle, lifecycleFieldsEqual } = require("./job_lifecycle");
 const {
   findCtrOpportunities,
   findContentGaps,
@@ -34,13 +33,6 @@ const RECS = "seo_recommendations";
 const SETTINGS = "system_settings";
 const SETTINGS_DOC = "seo_intelligence";
 const GSC_DOC = "seo_search_console";
-
-function toDate(value) {
-  if (!value) return null;
-  if (typeof value.toDate === "function") return value.toDate();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
 
 function mapDoc(doc, collectionName) {
   const data = typeof doc.data === "function" ? doc.data() : doc;
@@ -62,6 +54,10 @@ function mapDoc(doc, collectionName) {
     wordCount: data.wordCount || 0,
     articleHtml: data.articleHtml || "",
     faqs: data.faqs || [],
+    lifecycleStatus: data.lifecycleStatus || "",
+    lifecycleDays: data.lifecycleDays,
+    includeJobPostingSchema: data.includeJobPostingSchema,
+    sitemapPriority: data.sitemapPriority,
     examFamily: data.examFamily || detectExamFamily({ title, category: data.category, organization: data.organization || data.org }),
     contentKind: data.contentKind || detectContentKind({
       type: collectionName === "jobs" ? "JOB" : collectionName === "mock_tests" ? "MOCK_TEST" : collectionName === "fast_track" ? "FAST_TRACK" : "BLOG",
@@ -140,7 +136,7 @@ async function refreshLifecycleFields(db, jobs, now, maxWrites = 50) {
   for (const job of jobs) {
     if (updated >= maxWrites) break;
     const life = classifyJobLifecycle(job, now);
-    if (job.lifecycleStatus === life.status) continue;
+    if (lifecycleFieldsEqual(job, life)) continue;
     try {
       await db.collection("jobs").doc(job.id).set(
         {
@@ -154,24 +150,6 @@ async function refreshLifecycleFields(db, jobs, now, maxWrites = 50) {
       updated += 1;
     } catch (error) {
       console.warn("[seo-intelligence] lifecycle write failed:", error.message);
-    }
-  }
-  return updated;
-}
-
-async function refreshRelatedLinks(db, pages, catalog, maxWrites = 25) {
-  let updated = 0;
-  for (const page of pages) {
-    if (updated >= maxWrites) break;
-    const related = selectRelatedLinks(page, catalog, 6);
-    if (!related.length) continue;
-    const collection = page.type === "JOB" ? "jobs" : page.type === "FAST_TRACK" ? "fast_track" : null;
-    if (!collection) continue;
-    try {
-      await db.collection(collection).doc(page.id).set({ relatedLinks: related }, { merge: true });
-      updated += 1;
-    } catch (error) {
-      console.warn("[seo-intelligence] relatedLinks write failed:", error.message);
     }
   }
   return updated;
@@ -193,7 +171,7 @@ function youtubeLoopRecs(pages) {
       });
     }
   }
-  return recs.slice(0, 8);
+  return recs.slice(0, 3);
 }
 
 function mockTestRecs(pages, tests) {

@@ -6,6 +6,7 @@ import { db } from '../firebase/config';
 import { useJob } from '@/features/jobs/hooks/useJob';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { checkIsExpired } from '@/utils/jobExpiry';
+import { youtubeIdFromUrl } from '@/utils/youtubeId';
 import DynamicSidebar from '../components/DynamicSidebar';
 import type { JobPost, SiteContentDoc, TimestampLike } from '@/types/firestore';
 import {
@@ -670,7 +671,7 @@ const JobDetails = () => {
                                             <div className="aspect-video rounded-2xl overflow-hidden bg-black">
                                                 <iframe
                                                     title={job.title || 'StudyGyaan video'}
-                                                    src={`https://www.youtube.com/embed/${job.youtubeVideoId || String(job.youtubeUrl).replace(/^.*v=/, '').slice(0, 11)}`}
+                                                    src={`https://www.youtube.com/embed/${job.youtubeVideoId || youtubeIdFromUrl(String(job.youtubeUrl || ''))}`}
                                                     className="w-full h-full"
                                                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                                     allowFullScreen
@@ -862,6 +863,8 @@ const JobDetails = () => {
                                   <RelatedContent
                                     currentId={job.id}
                                     exam={job.category || job.organization}
+                                    examFamily={job.examFamily}
+                                    contentKind={job.contentKind || 'JOB'}
                                     category={'JOB' as any}
                                     title={job.title || ''}
                                     limit={8}

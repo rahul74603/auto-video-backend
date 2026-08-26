@@ -1,7 +1,13 @@
 "use strict";
 
 /**
- * Authentication guard for every /articles/* route.
+ * Authentication guard for every /articles/* and /seo/intelligence/* route.
+ *
+ * Callers:
+ *   - frontend admin (AdminAIArticleStudio, AdminSeoDashboard) → Firebase ID token
+ *   - trusted server tooling → x-agent-token / AGENT_ADMIN_TOKEN
+ *   - JOBS AI publish is Firestore client-side (not these HTTP routes)
+ *   - Telegram publish calls publishDraftRecord in-process (not these HTTP routes)
  *
  * The admin page being hidden behind a client-side login is not sufficient:
  * callers can invoke a Cloud Function URL directly. Article generation costs

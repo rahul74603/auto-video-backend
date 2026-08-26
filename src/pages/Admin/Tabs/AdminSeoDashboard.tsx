@@ -14,13 +14,16 @@ const AdminSeoDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [gscText, setGscText] = useState('');
+  const [loadError, setLoadError] = useState('');
 
   const load = async () => {
     setLoading(true);
+    setLoadError('');
     try {
       setDashboard(await fetchSeoDashboard());
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
+      setLoadError(msg);
       toast.error(`SEO dashboard: ${msg}`);
     } finally {
       setLoading(false);
@@ -60,11 +63,29 @@ const AdminSeoDashboard = () => {
     }
   };
 
-  if (loading && !dashboard) {
+  if (loading && !dashboard && !loadError) {
     return (
       <div className="py-16 flex flex-col items-center justify-center bg-white rounded-[2rem] border">
         <RefreshCw className="w-8 h-8 animate-spin text-blue-600 mb-3" />
         <p className="font-black text-xs uppercase tracking-widest text-blue-600">Loading SEO dashboard…</p>
+      </div>
+    );
+  }
+
+  if (loadError && !dashboard) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-[2rem] p-6 space-y-3">
+        <p className="font-black text-sm text-amber-800 flex items-center gap-2">
+          <AlertTriangle size={16} /> SEO dashboard could not load
+        </p>
+        <p className="text-sm text-amber-900 font-medium">{loadError}</p>
+        <p className="text-xs text-amber-700">
+          Admin sign-in is required. If you see a configuration error, set ARTICLE_ADMIN_EMAILS
+          (or a Firebase admin custom claim) on the API function. Secrets are never shown here.
+        </p>
+        <button onClick={() => void load()} className="px-4 py-2 rounded-xl bg-white border font-black text-xs">
+          Retry
+        </button>
       </div>
     );
   }
@@ -155,9 +176,11 @@ const AdminSeoDashboard = () => {
       </div>
 
       <div className="bg-white border rounded-[2rem] p-6">
-        <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Search Console ingest</h3>
+        <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Search Console Data Import</h3>
         <p className="text-xs text-gray-500 mb-3">
-          Paste GSC Search Analytics JSON (query, page, clicks, impressions, ctr, position). Only studygyaan.in URLs are kept. Tokens are never stored.
+          Manual JSON import — not a live Search Console integration. Paste Search Analytics rows
+          (query, page, clicks, impressions, ctr, position). Only studygyaan.in URLs are kept.
+          Tokens, API keys and service-account JSON are never stored.
         </p>
         <textarea
           value={gscText}

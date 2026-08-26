@@ -37,22 +37,42 @@ function isStudyGyaanPage(page) {
   }
 }
 
+function asNonNegNumber(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
+function normalizeCtr(value) {
+  const n = asNonNegNumber(value);
+  if (n === null) return null;
+  if (n > 1 && n <= 100) return n / 100;
+  if (n > 1) return null;
+  return n;
+}
+
 function normalizeGscRows(rows) {
   const list = Array.isArray(rows) ? rows : [];
   const out = [];
   for (const row of list.slice(0, 500)) {
-    const keys = Array.isArray(row?.keys) ? row.keys : [];
+    if (!row || typeof row !== "object") continue;
+    const keys = Array.isArray(row.keys) ? row.keys : [];
     const query = String(row.query || keys[0] || "").trim().slice(0, 200);
-    const page = String(row.page || keys[1] || keys[0] || "").trim().slice(0, 300);
-    if (!isStudyGyaanPage(page) && !query) continue;
-    if (page && !isStudyGyaanPage(page)) continue;
+    const page = String(row.page || keys[1] || "").trim().slice(0, 300);
+    if (!page || !isStudyGyaanPage(page)) continue;
+    const clicks = asNonNegNumber(row.clicks);
+    const impressions = asNonNegNumber(row.impressions);
+    const ctr = normalizeCtr(row.ctr);
+    const position = asNonNegNumber(row.position);
+    if (clicks === null || impressions === null || ctr === null || position === null) continue;
+    if (position > 1000) continue;
     out.push({
       query,
       page,
-      clicks: Number(row.clicks) || 0,
-      impressions: Number(row.impressions) || 0,
-      ctr: Number(row.ctr) || 0,
-      position: Number(row.position) || 0
+      clicks: Math.round(clicks),
+      impressions: Math.round(impressions),
+      ctr,
+      position
     });
   }
   return out;
@@ -94,14 +114,11 @@ function findContentGaps(documents) {
         kind: "CONTENT_GAP",
         title: `Missing ${expected} in ${family} cluster`,
         reason: `${family} has ${[...kinds].join(", ")} but no ${expected} page.`,
-        suggestedAction:
-          expected === CONTENT_KINDS.MOCK_TEST
-            ? "If a real syllabus exists, consider a bilingual mock test. Do not invent questions from thin air."
-            : "Only write this page when an official source (PDF/notice) is available. Do not auto-create.",
+        suggestedAction: "Create this page when official information becomes available. Never auto-create and never invent facts.",
         examFamily: family,
         missingKind: expected,
         autoCreate: false,
-        priority: expected === CONTENT_KINDS.ADMIT_CARD || expected === CONTENT_KINDS.RESULT ? 70 : 45
+        priority: expected === CONTENT_KINDS.MOCK_TEST ? 45 : 35
       });
     }
   }

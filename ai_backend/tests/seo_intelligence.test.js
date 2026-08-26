@@ -4,7 +4,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { detectExamFamily, detectContentKind, clusterId, CONTENT_KINDS } = require("../agents/seo_intelligence/taxonomy");
-const { classifyJobLifecycle, STATES } = require("../agents/seo_intelligence/job_lifecycle");
+const { classifyJobLifecycle, STATES, lifecycleFieldsEqual } = require("../agents/seo_intelligence/job_lifecycle");
+const { buildJobPublishPayload, buildFastTrackPublishPayload } = require("../agents/article_agents/article_pipeline");
 const { buildHistoryEntry, mergeUpdateHistory } = require("../agents/seo_intelligence/update_history");
 const { classifySearchIntent, INTENTS, assessIntentAlignment } = require("../agents/seo_intelligence/search_intent");
 const { scoreFaqUsefulness, buildFaqPageSchema } = require("../agents/seo_intelligence/article_faq");
@@ -23,7 +24,6 @@ const {
 const { youtubeIdFromUrl, findRelatedMockTests, findYoutubeMatches } = require("../agents/seo_intelligence/ecosystem");
 const { enrichContentDocument } = require("../agents/seo_intelligence/enrich");
 const { runSeoIntelligence } = require("../agents/seo_intelligence/orchestrator");
-const { buildJobPublishPayload } = require("../agents/article_agents/article_pipeline");
 const { EDITORIAL_AUTHOR } = require("../agents/article_agents/constants");
 
 test("taxonomy detects SSC / Railway families and job vs result kinds", () => {
@@ -188,6 +188,33 @@ test("enrich adds cluster/intent/lifecycle fields used at publish", () => {
   assert.equal(seo.examFamily, "SSC");
   assert.equal(seo.searchIntent, "APPLY");
   assert.equal(seo.sourceCitation.disclosed, true);
+});
+
+test("lifecycle writes are skipped when status/schema/priority already match", () => {
+  const life = classifyJobLifecycle({ type: "JOB", lastDate: "31/12/2026" }, new Date("2026-08-26T00:00:00Z"));
+  assert.equal(lifecycleFieldsEqual({
+    lifecycleStatus: life.status,
+    lifecycleDays: life.daysUntilLastDate,
+    includeJobPostingSchema: life.includeJobPostingSchema,
+    sitemapPriority: life.sitemapPriority
+  }, life), true);
+  assert.equal(lifecycleFieldsEqual({ lifecycleStatus: "OPEN" }, life), false);
+});
+
+test("fast-track publish payload uses the same canonical enrichment as JOB", () => {
+  const payload = buildFastTrackPublishPayload({
+    title: "SSC CGL Result 2026",
+    slug: "ssc-cgl-result-2026",
+    metaDescription: "Check result.",
+    articleHtml: "<h1>Result</h1>",
+    facts: { category: "Result", org: "SSC", updateDate: "01/08/2026", directLink: "https://ssc.gov.in/result" },
+    sourceUrl: "https://ssc.gov.in/result"
+  }, "draft-ft");
+  assert.equal(payload.examFamily, "SSC");
+  assert.equal(payload.contentKind, "RESULT");
+  assert.equal(payload.searchIntent, "LATEST_UPDATE");
+  assert.equal(payload.sourceCitation.disclosed, true);
+  assert.equal(payload.seoIntelligenceVersion, 1);
 });
 
 test("publish payload includes SEO intelligence fields without dropping core job fields", () => {

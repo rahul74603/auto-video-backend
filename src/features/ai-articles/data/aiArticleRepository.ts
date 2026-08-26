@@ -1,6 +1,6 @@
 import { auth, db } from '@/firebase/config';
-import { enrichPublicDocument } from '@/features/seo-intelligence/taxonomy';
-import { classifyJobLifecycle } from '@/utils/jobExpiry';
+import { enrichPublicDocument, sanitizePublishDate } from '@/features/seo-intelligence/taxonomy';
+import { buildHistoryEntry, mergeUpdateHistory } from '@/features/seo-intelligence/updateHistory';
 import {
   addDoc,
   collection,
@@ -204,16 +204,34 @@ function stripEmpty<T extends Record<string, unknown>>(obj: T): T {
   return out as T;
 }
 
+function sanitizeJobFee(value: unknown): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (!/\d/.test(raw)) {
+    return /(nil|free|no\s*fee|n\/a|na\b)/i.test(raw) ? '0' : '';
+  }
+  const num = raw.replace(/,/g, '').match(/\d+/);
+  return num ? num[0] : '';
+}
+
 export function buildJobPublishPayload(draft: AIArticleDraftRecord): Record<string, unknown> {
   const facts = draft.facts || {};
+  const startDate = sanitizePublishDate(facts.startDate);
+  const lastDate = sanitizePublishDate(facts.lastDate);
+  const examDate = sanitizePublishDate(facts.examDate);
   const seo = enrichPublicDocument({
     type: 'JOB',
     title: draft.title,
+    h1: draft.h1,
+    seoTitle: draft.seoTitle,
+    metaDescription: draft.metaDescription,
     category: facts.category,
     organization: facts.organization,
     sourceUrl: draft.sourceUrl,
+    lastDate,
+    startDate,
+    wordCount: draft.wordCount,
   });
-  const life = classifyJobLifecycle(String(facts.lastDate || ''), facts.startDate);
   return stripEmpty({
     title: draft.title,
     slug: draft.slug,
@@ -234,9 +252,9 @@ export function buildJobPublishPayload(draft: AIArticleDraftRecord): Record<stri
     organization: facts.organization,
     advtNo: facts.advtNo,
     category: facts.category,
-    startDate: facts.startDate,
-    lastDate: facts.lastDate,
-    examDate: facts.examDate,
+    startDate,
+    lastDate,
+    examDate,
     vacancies: facts.vacancies,
     salary: facts.salary,
     qualification: facts.qualification,
@@ -245,17 +263,15 @@ export function buildJobPublishPayload(draft: AIArticleDraftRecord): Record<stri
     location: facts.location,
     selectionProcess: facts.selectionProcess,
     eligibility: facts.eligibility,
-    feeGen: facts.feeGen,
-    feeSCST: facts.feeSCST,
-    feeFemale: facts.feeFemale,
-    feeOBC: facts.feeOBC,
+    feeGen: sanitizeJobFee(facts.feeGen),
+    feeSCST: sanitizeJobFee(facts.feeSCST),
+    feeFemale: sanitizeJobFee(facts.feeFemale),
+    feeOBC: sanitizeJobFee(facts.feeOBC),
     applicationFee: facts.applicationFee,
     applyLink: facts.applyLink,
     notificationLink: facts.notificationLink,
     officialSiteLink: facts.officialSiteLink,
     ...seo,
-    lifecycleStatus: life.status,
-    lifecycleDays: life.daysUntilLastDate,
   });
 }
 
@@ -264,9 +280,14 @@ export function buildFastTrackPublishPayload(draft: AIArticleDraftRecord): Recor
   const seo = enrichPublicDocument({
     type: 'FAST_TRACK',
     title: draft.title,
+    h1: draft.h1,
+    seoTitle: draft.seoTitle,
+    metaDescription: draft.metaDescription,
     category: facts.category,
     org: facts.org,
+    organization: facts.org,
     sourceUrl: draft.sourceUrl,
+    wordCount: draft.wordCount,
   });
   return stripEmpty({
     title: draft.title,
@@ -339,9 +360,23 @@ export async function publishDraftClientSide(
     (typeof draft.publishedDocId === 'string' && draft.publishedDocId) ||
     `${draft.type === 'JOB' ? 'job' : 'ft'}-${String(draft.slug || draft.id).slice(0, 90)}`;
 
+  const targetRef = doc(db, target, targetId);
+  const existingSnap = await getDoc(targetRef);
+  const existing = existingSnap.exists() ? (existingSnap.data() as Record<string, unknown>) : null;
+  const historyEntry = buildHistoryEntry(existing, payload, {
+    reason: existing ? 'updated' : 'published',
+  });
+  const updateHistory = mergeUpdateHistory(existing?.updateHistory, historyEntry);
+
   await setDoc(
-    doc(db, target, targetId),
-    { ...payload, createdAt: serverTimestamp(), publishedAt: serverTimestamp() },
+    targetRef,
+    {
+      ...payload,
+      updateHistory,
+      createdAt: existing?.createdAt || serverTimestamp(),
+      publishedAt: existing?.publishedAt || serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
     { merge: true }
   );
 

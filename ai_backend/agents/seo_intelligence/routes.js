@@ -114,8 +114,9 @@ function registerSeoIntelligenceRoutes(app, db, deps = {}) {
       await db.collection("system_settings").doc(GSC_DOC).set(
         {
           rows,
+          source: "manual-json-import",
           ingestedAt: new Date().toISOString(),
-          ingestedBy: req.articleAdmin?.email || req.articleAdmin?.via || "admin",
+          ingestedBy: String(req.articleAdmin?.email || req.articleAdmin?.via || "admin").slice(0, 120),
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         },
         { merge: true }

@@ -510,6 +510,8 @@ const FastTrackDetails = () => {
                     <RelatedContent
                       currentId={data?.id || ''}
                       exam={data?.category}
+                      examFamily={data?.examFamily}
+                      contentKind={data?.contentKind}
                       category={((data?.category === 'Admit Card' ? 'ADMIT_CARD' : data?.category === 'Result' ? 'RESULT' : 'UPDATE') as any)}
                       title={data?.title || ''}
                       limit={6}
