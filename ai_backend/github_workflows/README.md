@@ -7,26 +7,6 @@ The four workflow files are therefore mirrored here, ready to copy.
 They are already applied in this sandbox's working tree — they just could not be
 included in the pushed commit.
 
-## 🏗️ Frontend production build artifact (2026-08-26)
-
-`frontend-build.yml` builds the real production Vite bundle (`npm run build`) on
-every push to `main` (and on `workflow_dispatch`) and uploads `dist.zip` as a
-GitHub Actions artifact for manual cPanel upload. It uses the real
-`VITE_FIREBASE_*` GitHub Secrets and does **not** bypass `scripts/assert-env.mjs`.
-
-To install this one file (the GitHub App used to create the branch cannot push
-`.github/workflows/` directly):
-
-```bash
-cp ai_backend/github_workflows/frontend-build.yml .github/workflows/frontend-build.yml
-git add .github/workflows/frontend-build.yml
-git commit -m "Install frontend production build workflow"
-git push
-```
-
-Then add the six `VITE_FIREBASE_*` values as GitHub Actions **Secrets** (preferred)
-or **Variables** (see the workflow's build step; a Secret value wins if both are set).
-
 ## Install (one command)
 
 From the repository root.
