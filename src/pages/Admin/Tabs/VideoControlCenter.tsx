@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs, type QueryDocumentSnapshot, type DocumentData } from 'firebase/firestore';
 import { db } from '@/firebase/config';
+import { asText, toDateSafe, type TimestampLike } from '@/types/firestore';
 import { 
   Video, 
   RefreshCw, 
@@ -29,10 +30,10 @@ interface VideoRecord {
   title: string;
   category: string;
   status: VideoStatus;
-  publishedAt: any;
-  videoTriggeredAt: any;
-  videoStartedAt: any;
-  videoCompletedAt: any;
+  publishedAt: TimestampLike;
+  videoTriggeredAt: TimestampLike;
+  videoStartedAt: TimestampLike;
+  videoCompletedAt: TimestampLike;
   videoAttempts: number;
   videoError: string;
   platformStatuses: {
@@ -53,6 +54,158 @@ interface VideoRecord {
   collection: string;
 }
 
+const VIDEO_STATUSES: readonly VideoStatus[] = ['queued', 'processing', 'completed', 'failed', 'upload_failed'];
+const PLATFORM_STATUSES: readonly PlatformStatus[] = ['completed', 'failed', 'skipped', 'pending', '-'];
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function fieldsFromDoc(docSnap: QueryDocumentSnapshot<DocumentData>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(docSnap.data())) {
+    out[key] = value;
+  }
+  return out;
+}
+
+function isVideoStatus(value: unknown): value is VideoStatus {
+  return typeof value === 'string' && (VIDEO_STATUSES as readonly string[]).includes(value);
+}
+
+function asVideoStatus(value: unknown, fallback: VideoStatus): VideoStatus {
+  return isVideoStatus(value) ? value : fallback;
+}
+
+function isPlatformStatus(value: unknown): value is PlatformStatus {
+  return typeof value === 'string' && (PLATFORM_STATUSES as readonly string[]).includes(value);
+}
+
+function asPlatformStatus(value: unknown): PlatformStatus | undefined {
+  return isPlatformStatus(value) ? value : undefined;
+}
+
+function asPlatformStatuses(value: unknown): VideoRecord['platformStatuses'] {
+  if (!isPlainObject(value)) return {};
+  return {
+    youtube: asPlatformStatus(value.youtube),
+    facebook: asPlatformStatus(value.facebook),
+    telegram: asPlatformStatus(value.telegram),
+  };
+}
+
+function asFiniteNumber(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function asTimestamp(value: unknown): TimestampLike {
+  if (value == null || typeof value === 'string' || typeof value === 'number' || value instanceof Date) {
+    return value;
+  }
+  if (!isPlainObject(value)) return undefined;
+  const seconds = typeof value.seconds === 'number' ? value.seconds : undefined;
+  const nanoseconds = typeof value.nanoseconds === 'number' ? value.nanoseconds : undefined;
+  const maybeToDate = value.toDate;
+  if (typeof maybeToDate === 'function') {
+    return {
+      seconds,
+      nanoseconds,
+      toDate: () => {
+        const result: unknown = maybeToDate.call(value);
+        return result instanceof Date ? result : new Date(NaN);
+      },
+    };
+  }
+  if (seconds !== undefined) return { seconds, nanoseconds };
+  return undefined;
+}
+
+function timestampMillis(value: TimestampLike): number {
+  return toDateSafe(value)?.getTime() ?? 0;
+}
+
+function toVideoRecord(
+  id: string,
+  data: Record<string, unknown>,
+  type: ContentType,
+  collectionName: string,
+): VideoRecord {
+  const fallbackStatus: VideoStatus =
+    type === 'MOCK_TEST' && Boolean(data.mockVideoMade) ? 'completed' : 'queued';
+  const title = asText(data.title) || (type === 'MOCK_TEST' ? asText(data.subject) : '') || 'Untitled';
+  return {
+    id,
+    type,
+    title,
+    category: asText(data.category, 'Unknown'),
+    status: asVideoStatus(data.videoStatus, fallbackStatus),
+    publishedAt: asTimestamp(data.publishedAt),
+    videoTriggeredAt: asTimestamp(data.videoTriggeredAt),
+    videoStartedAt: asTimestamp(data.videoStartedAt),
+    videoCompletedAt: asTimestamp(data.videoCompletedAt),
+    videoAttempts: asFiniteNumber(data.videoAttempts),
+    videoError: asText(data.videoError),
+    platformStatuses: asPlatformStatuses(data.platformStatuses),
+    videoYouTubeUrl: asText(data.videoYouTubeUrl),
+    contentScore: asFiniteNumber(data.contentScore),
+    hook: asText(data.hook),
+    duration: asFiniteNumber(data.duration),
+    presenter: asText(data.presenter),
+    layout: asText(data.layout),
+    motion: asText(data.motion),
+    cta: asText(data.cta),
+    deadlineState: asText(data.deadlineState),
+    aiVisualUsed: data.aiVisualUsed === true,
+    collection: collectionName,
+  };
+}
+
+async function loadVideoRecords(): Promise<VideoRecord[]> {
+  const allVideos: VideoRecord[] = [];
+
+  const jobsQuery = query(
+    collection(db, 'jobs'),
+    orderBy('videoTriggeredAt', 'desc'),
+    limit(100)
+  );
+  const jobsSnap = await getDocs(jobsQuery);
+  jobsSnap.forEach(docSnap => {
+    const data = fieldsFromDoc(docSnap);
+    if (data.videoTriggeredAt || data.videoStatus) {
+      allVideos.push(toVideoRecord(docSnap.id, data, 'JOB', 'jobs'));
+    }
+  });
+
+  const fastTrackQuery = query(
+    collection(db, 'fast_track'),
+    orderBy('videoTriggeredAt', 'desc'),
+    limit(100)
+  );
+  const fastTrackSnap = await getDocs(fastTrackQuery);
+  fastTrackSnap.forEach(docSnap => {
+    const data = fieldsFromDoc(docSnap);
+    if (data.videoTriggeredAt || data.videoStatus) {
+      allVideos.push(toVideoRecord(docSnap.id, data, 'FAST_TRACK', 'fast_track'));
+    }
+  });
+
+  const mockTestQuery = query(
+    collection(db, 'mock_tests'),
+    orderBy('videoTriggeredAt', 'desc'),
+    limit(100)
+  );
+  const mockTestSnap = await getDocs(mockTestQuery);
+  mockTestSnap.forEach(docSnap => {
+    const data = fieldsFromDoc(docSnap);
+    if (data.videoTriggeredAt || data.videoStatus || data.mockVideoMade) {
+      allVideos.push(toVideoRecord(docSnap.id, data, 'MOCK_TEST', 'mock_tests'));
+    }
+  });
+
+  allVideos.sort((a, b) => timestampMillis(b.videoTriggeredAt) - timestampMillis(a.videoTriggeredAt));
+  return allVideos;
+}
+
 const VideoControlCenter = () => {
   const [videos, setVideos] = useState<VideoRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,134 +215,10 @@ const VideoControlCenter = () => {
   const [selectedVideo, setSelectedVideo] = useState<VideoRecord | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
 
-  // Fetch videos from all three collections
   const fetchVideos = async () => {
     setLoading(true);
     try {
-      const allVideos: VideoRecord[] = [];
-
-      // Fetch from jobs collection
-      const jobsQuery = query(
-        collection(db, 'jobs'),
-        orderBy('videoTriggeredAt', 'desc'),
-        limit(100)
-      );
-      const jobsSnap = await getDocs(jobsQuery);
-      jobsSnap.forEach(doc => {
-        const data = doc.data();
-        if (data.videoTriggeredAt || data.videoStatus) {
-          allVideos.push({
-            id: doc.id,
-            type: 'JOB',
-            title: data.title || 'Untitled',
-            category: data.category || 'Unknown',
-            status: data.videoStatus || 'queued',
-            publishedAt: data.publishedAt,
-            videoTriggeredAt: data.videoTriggeredAt,
-            videoStartedAt: data.videoStartedAt,
-            videoCompletedAt: data.videoCompletedAt,
-            videoAttempts: data.videoAttempts || 0,
-            videoError: data.videoError || '',
-            platformStatuses: data.platformStatuses || {},
-            videoYouTubeUrl: data.videoYouTubeUrl || '',
-            contentScore: data.contentScore || 0,
-            hook: data.hook || '',
-            duration: data.duration || 0,
-            presenter: data.presenter || '',
-            layout: data.layout || '',
-            motion: data.motion || '',
-            cta: data.cta || '',
-            deadlineState: data.deadlineState || '',
-            aiVisualUsed: data.aiVisualUsed || false,
-            collection: 'jobs'
-          });
-        }
-      });
-
-      // Fetch from fast_track collection
-      const fastTrackQuery = query(
-        collection(db, 'fast_track'),
-        orderBy('videoTriggeredAt', 'desc'),
-        limit(100)
-      );
-      const fastTrackSnap = await getDocs(fastTrackQuery);
-      fastTrackSnap.forEach(doc => {
-        const data = doc.data();
-        if (data.videoTriggeredAt || data.videoStatus) {
-          allVideos.push({
-            id: doc.id,
-            type: 'FAST_TRACK',
-            title: data.title || 'Untitled',
-            category: data.category || 'Unknown',
-            status: data.videoStatus || 'queued',
-            publishedAt: data.publishedAt,
-            videoTriggeredAt: data.videoTriggeredAt,
-            videoStartedAt: data.videoStartedAt,
-            videoCompletedAt: data.videoCompletedAt,
-            videoAttempts: data.videoAttempts || 0,
-            videoError: data.videoError || '',
-            platformStatuses: data.platformStatuses || {},
-            videoYouTubeUrl: data.videoYouTubeUrl || '',
-            contentScore: data.contentScore || 0,
-            hook: data.hook || '',
-            duration: data.duration || 0,
-            presenter: data.presenter || '',
-            layout: data.layout || '',
-            motion: data.motion || '',
-            cta: data.cta || '',
-            deadlineState: data.deadlineState || '',
-            aiVisualUsed: data.aiVisualUsed || false,
-            collection: 'fast_track'
-          });
-        }
-      });
-
-      // Fetch from mock_tests collection
-      const mockTestQuery = query(
-        collection(db, 'mock_tests'),
-        orderBy('videoTriggeredAt', 'desc'),
-        limit(100)
-      );
-      const mockTestSnap = await getDocs(mockTestQuery);
-      mockTestSnap.forEach(doc => {
-        const data = doc.data();
-        if (data.videoTriggeredAt || data.videoStatus || data.mockVideoMade) {
-          allVideos.push({
-            id: doc.id,
-            type: 'MOCK_TEST',
-            title: data.title || data.subject || 'Untitled',
-            category: data.category || 'Unknown',
-            status: data.videoStatus || (data.mockVideoMade ? 'completed' : 'queued'),
-            publishedAt: data.publishedAt,
-            videoTriggeredAt: data.videoTriggeredAt,
-            videoStartedAt: data.videoStartedAt,
-            videoCompletedAt: data.videoCompletedAt,
-            videoAttempts: data.videoAttempts || 0,
-            videoError: data.videoError || '',
-            platformStatuses: data.platformStatuses || {},
-            videoYouTubeUrl: data.videoYouTubeUrl || '',
-            contentScore: data.contentScore || 0,
-            hook: data.hook || '',
-            duration: data.duration || 0,
-            presenter: data.presenter || '',
-            layout: data.layout || '',
-            motion: data.motion || '',
-            cta: data.cta || '',
-            deadlineState: data.deadlineState || '',
-            aiVisualUsed: data.aiVisualUsed || false,
-            collection: 'mock_tests'
-          });
-        }
-      });
-
-      // Sort by videoTriggeredAt descending
-      allVideos.sort((a, b) => {
-        const aTime = a.videoTriggeredAt?.toMillis?.() || a.videoTriggeredAt || 0;
-        const bTime = b.videoTriggeredAt?.toMillis?.() || b.videoTriggeredAt || 0;
-        return bTime - aTime;
-      });
-
-      setVideos(allVideos);
+      setVideos(await loadVideoRecords());
     } catch (error) {
       console.error('Error fetching videos:', error);
     } finally {
@@ -198,7 +227,20 @@ const VideoControlCenter = () => {
   };
 
   useEffect(() => {
-    fetchVideos();
+    let cancelled = false;
+    void loadVideoRecords()
+      .then((records) => {
+        if (!cancelled) setVideos(records);
+      })
+      .catch((error: unknown) => {
+        console.error('Error fetching videos:', error);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Filter and search
@@ -270,9 +312,9 @@ const VideoControlCenter = () => {
     }
   };
 
-  const formatDate = (timestamp: any) => {
-    if (!timestamp) return '—';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  const formatDate = (timestamp: TimestampLike) => {
+    const date = toDateSafe(timestamp);
+    if (!date) return '—';
     return date.toLocaleString('en-IN', {
       day: '2-digit',
       month: 'short',
@@ -281,6 +323,11 @@ const VideoControlCenter = () => {
       minute: '2-digit'
     });
   };
+
+  const isStatusFilter = (value: string): value is VideoStatus | 'all' =>
+    value === 'all' || isVideoStatus(value);
+  const isTypeFilter = (value: string): value is ContentType | 'all' =>
+    value === 'all' || value === 'JOB' || value === 'FAST_TRACK' || value === 'MOCK_TEST';
 
   // Retry handler
   const handleRetry = async (video: VideoRecord) => {
@@ -332,7 +379,7 @@ const VideoControlCenter = () => {
             <p className="text-gray-600 mt-1">Monitor and manage your video generation queue</p>
           </div>
           <button
-            onClick={fetchVideos}
+            onClick={() => { void fetchVideos(); }}
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
           >
             <RefreshCw size={16} />
@@ -427,7 +474,9 @@ const VideoControlCenter = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <select
               value={filterStatus}
-              onChange={e => setFilterStatus(e.target.value as VideoStatus | 'all')}
+              onChange={e => {
+                if (isStatusFilter(e.target.value)) setFilterStatus(e.target.value);
+              }}
               className="border rounded-lg px-3 py-2 bg-white"
             >
               <option value="all">All Status</option>
@@ -440,7 +489,9 @@ const VideoControlCenter = () => {
 
             <select
               value={filterType}
-              onChange={e => setFilterType(e.target.value as ContentType | 'all')}
+              onChange={e => {
+                if (isTypeFilter(e.target.value)) setFilterType(e.target.value);
+              }}
               className="border rounded-lg px-3 py-2 bg-white"
             >
               <option value="all">All Types</option>
@@ -545,7 +596,7 @@ const VideoControlCenter = () => {
                       </button>
                       {(video.status === 'failed' || video.status === 'upload_failed') && video.videoAttempts < 3 && (
                         <button
-                          onClick={() => handleRetry(video)}
+                          onClick={() => { void handleRetry(video); }}
                           disabled={retryingId === video.id}
                           className="p-1 hover:bg-blue-100 rounded text-blue-600 disabled:opacity-50"
                           title="Retry"
@@ -715,7 +766,7 @@ const VideoControlCenter = () => {
                   {(selectedVideo.status === 'failed' || selectedVideo.status === 'upload_failed') && selectedVideo.videoAttempts < 3 && (
                     <button
                       onClick={() => {
-                        handleRetry(selectedVideo);
+                        void handleRetry(selectedVideo);
                         setSelectedVideo(null);
                       }}
                       className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center justify-center gap-2"
