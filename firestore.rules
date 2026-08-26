@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email == "rahulkumar74603@gmail.com";
+    }
+
+    function isSeoInternalPath(collectionId, documentId) {
+      return (collectionId == "system_settings" &&
+          (documentId == "seo_intelligence" || documentId == "seo_search_console")) ||
+        collectionId == "seo_recommendations" ||
+        collectionId == "seo_intelligence_runs";
+    }
+
+    match /orders/{orderId} {
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read, update: if request.auth != null && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read, write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+    }
+
+    match /purchases/{purchaseId} {
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if request.auth != null;
+      allow update, delete: if isAdmin();
+    }
+
+    match /system_settings/seo_intelligence {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /system_settings/seo_search_console {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /seo_recommendations/{recId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /seo_intelligence_runs/{runId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /{collectionId}/{documentId}/{path=**} {
+      allow read: if !isSeoInternalPath(collectionId, documentId);
+      allow write: if isAdmin();
+    }
+  }
+}

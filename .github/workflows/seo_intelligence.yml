@@ -1,0 +1,60 @@
+name: SEO Intelligence Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true = test run without Firestore writes; false = persist scan results"
+        required: false
+        default: "false"
+      limit:
+        description: "Max jobs to scan (1-150, default 80)"
+        required: false
+        default: "80"
+      gsc_json:
+        description: "Optional manual Search Console JSON rows. Leave blank unless importing GSC data."
+        required: false
+        default: ""
+  schedule:
+    # Conservative daily run: 7:15 AM IST. No high-frequency paid backend/service.
+    - cron: "45 1 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  seo-intelligence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install backend dependencies
+        working-directory: ai_backend
+        run: npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+
+      - name: Run SEO Intelligence
+        working-directory: ai_backend
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SEO_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          SEO_SCAN_LIMIT: ${{ github.event.inputs.limit || '80' }}
+          SEO_GSC_JSON: ${{ github.event.inputs.gsc_json || '' }}
+        run: node run_seo_intelligence.js
+
+      - name: Upload non-sensitive SEO summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seo-intelligence-summary
+          path: ai_backend/seo_intelligence_summary.json
+          if-no-files-found: ignore
+          retention-days: 7

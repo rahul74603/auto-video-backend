@@ -1,20 +1,28 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw, Search, ShieldCheck, AlertTriangle, Play } from 'lucide-react';
+import { ExternalLink, RefreshCw, Search, ShieldCheck, AlertTriangle, Play, Clipboard } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
   fetchSeoDashboard,
-  runSeoIntelligence,
-  ingestSearchConsoleRows,
+  getSeoIntelligenceWorkflowUrl,
+  prepareSearchConsoleImport,
   type SeoDashboard,
   type SeoRecommendation,
 } from '@/features/seo-intelligence/data/seoIntelligenceRepository';
 
+const formatDate = (value?: string | null) => {
+  if (!value) return 'Not available';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+};
+
 const AdminSeoDashboard = () => {
   const [dashboard, setDashboard] = useState<SeoDashboard | null>(null);
   const [loading, setLoading] = useState(true);
-  const [running, setRunning] = useState(false);
   const [gscText, setGscText] = useState('');
+  const [preparedGscJson, setPreparedGscJson] = useState('');
   const [loadError, setLoadError] = useState('');
+  const workflowUrl = getSeoIntelligenceWorkflowUrl();
 
   const load = async () => {
     setLoading(true);
@@ -52,32 +60,26 @@ const AdminSeoDashboard = () => {
     };
   }, []);
 
-  const handleRun = async () => {
-    setRunning(true);
-    try {
-      await runSeoIntelligence(true);
-      toast.success('SEO intelligence run complete — recommendations updated, nothing auto-published');
-      await load();
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      toast.error(msg);
-    } finally {
-      setRunning(false);
-    }
+  const handleRunInstructions = () => {
+    window.open(workflowUrl, '_blank', 'noopener,noreferrer');
+    toast('GitHub Actions page opened. Choose “Run workflow” to scan without Cloud Run.');
   };
 
-  const handleIngest = async () => {
+  const handlePrepareGsc = async () => {
     try {
       const parsed = JSON.parse(gscText) as unknown;
       const rows = Array.isArray(parsed) ? parsed : (parsed as { rows?: unknown[] }).rows;
-      if (!Array.isArray(rows)) throw new Error('JSON array of rows required');
-      const count = await ingestSearchConsoleRows(rows as Array<Record<string, unknown>>);
-      toast.success(`${count} Search Console rows saved (no secrets stored)`);
-      setGscText('');
-      await load();
+      const prepared = prepareSearchConsoleImport(rows);
+      setPreparedGscJson(prepared.json);
+      try {
+        await navigator.clipboard?.writeText(prepared.json);
+        toast.success(`${prepared.rows.length} valid GSC rows prepared and copied. Paste into GitHub Actions gsc_json input.`);
+      } catch {
+        toast.success(`${prepared.rows.length} valid GSC rows prepared. Paste the JSON below into GitHub Actions gsc_json input.`);
+      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      toast.error(`GSC ingest: ${msg}`);
+      toast.error(`GSC import: ${msg}`);
     }
   };
 
@@ -98,8 +100,8 @@ const AdminSeoDashboard = () => {
         </p>
         <p className="text-sm text-amber-900 font-medium">{loadError}</p>
         <p className="text-xs text-amber-700">
-          Admin sign-in is required. If you see a configuration error, set ARTICLE_ADMIN_EMAILS
-          (or a Firebase admin custom claim) on the API function. Secrets are never shown here.
+          This dashboard now reads persisted SEO Intelligence data directly from Firestore. If this fails,
+          verify Firestore rules allow the signed-in admin to read system_settings/seo_intelligence and seo_recommendations.
         </p>
         <button onClick={() => void load()} className="px-4 py-2 rounded-xl bg-white border font-black text-xs">
           Retry
@@ -110,6 +112,9 @@ const AdminSeoDashboard = () => {
 
   const recs = dashboard?.recommendations || [];
   const lifecycle = dashboard?.lifecycle || {};
+  const scan = dashboard?.scan;
+  const failed = scan?.lastStatus === 'failed';
+  const running = scan?.lastStatus === 'running';
 
   return (
     <div className="space-y-6">
@@ -120,20 +125,20 @@ const AdminSeoDashboard = () => {
               <Search className="text-blue-600" size={22} /> SEO Intelligence
             </h2>
             <p className="text-sm text-gray-500 font-medium mt-1">
-              Human-first recommendations only. Never auto-publishes, never invents facts, never hides AI usage.
+              Billing-safe mode: dashboard reads Firestore results. Scans run in GitHub Actions, not Cloud Run.
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button onClick={() => void load()} className="px-4 py-2 rounded-xl bg-gray-50 border font-black text-xs">
               Refresh
             </button>
             <button
-              onClick={() => void handleRun()}
-              disabled={running}
-              className="px-5 py-2 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center gap-2 disabled:opacity-50"
+              onClick={handleRunInstructions}
+              className="px-5 py-2 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center gap-2"
             >
-              {running ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
-              Run scan
+              <Play size={14} />
+              Run Scan via GitHub Actions
+              <ExternalLink size={13} />
             </button>
           </div>
         </div>
@@ -157,7 +162,34 @@ const AdminSeoDashboard = () => {
           <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 flex items-center gap-1">
             <ShieldCheck size={12} /> Auto-create pages: OFF
           </span>
+          <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 flex items-center gap-1">
+            <ShieldCheck size={12} /> Auto-publish: OFF
+          </span>
         </div>
+      </div>
+
+      <div className={`border rounded-[2rem] p-5 ${failed ? 'bg-red-50 border-red-200' : running ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
+          <div>
+            <h3 className="font-black text-sm uppercase tracking-widest text-gray-500">Scan status</h3>
+            <p className="mt-2 text-sm font-bold text-slate-700">
+              Latest status: <span className={failed ? 'text-red-700' : running ? 'text-blue-700' : 'text-emerald-700'}>{scan?.lastStatus || 'No scan yet'}</span>
+            </p>
+            <p className="text-xs text-gray-500 mt-1">Last success: {formatDate(scan?.lastSuccessAt || scan?.lastRunAt)}</p>
+            <p className="text-xs text-gray-500 mt-1">Duration: {scan?.scanDurationMs ? `${Math.round(scan.scanDurationMs / 1000)}s` : 'Not available'}</p>
+            <p className="text-xs text-gray-500 mt-1">Recommendations: {scan?.recommendationCount ?? recs.length}</p>
+            {scan?.github?.runId && <p className="text-xs text-gray-500 mt-1">GitHub run: {scan.github.runId}</p>}
+          </div>
+          <a href={workflowUrl} target="_blank" rel="noreferrer" className="px-4 py-2 rounded-xl border bg-white font-black text-xs flex items-center gap-2 w-fit">
+            Open workflow <ExternalLink size={13} />
+          </a>
+        </div>
+        {failed && scan?.lastError?.message && (
+          <p className="mt-3 text-xs text-red-700 font-semibold">Latest error: {scan.lastError.message}</p>
+        )}
+        <p className="mt-3 text-xs text-gray-500">
+          Browser never runs privileged SEO code and never stores GitHub tokens. Use GitHub Actions → SEO Intelligence Runner → Run workflow.
+        </p>
       </div>
 
       {(dashboard?.freshness?.issues || []).length > 0 && (
@@ -176,7 +208,7 @@ const AdminSeoDashboard = () => {
       <div className="bg-white border rounded-[2rem] p-6">
         <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-4">Recommendations (manual only)</h3>
         {recs.length === 0 ? (
-          <p className="text-sm text-gray-400 font-medium">No recommendations yet — run a scan after content exists.</p>
+          <p className="text-sm text-gray-400 font-medium">No recommendations yet — run the GitHub Actions scan after content exists.</p>
         ) : (
           <div className="space-y-3">
             {recs.slice(0, 25).map((rec: SeoRecommendation, idx) => (
@@ -196,8 +228,8 @@ const AdminSeoDashboard = () => {
       <div className="bg-white border rounded-[2rem] p-6">
         <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Search Console Data Import</h3>
         <p className="text-xs text-gray-500 mb-3">
-          Manual JSON import — not a live Search Console integration. Paste Search Analytics rows
-          (query, page, clicks, impressions, ctr, position). Only studygyaan.in URLs are kept.
+          Manual JSON import is preserved, but browser direct Firestore write is disabled because Firestore rules are not in this repo.
+          Paste rows here to validate and prepare safe JSON, then paste the prepared JSON into the GitHub Actions workflow input named <b>gsc_json</b>.
           Tokens, API keys and service-account JSON are never stored.
         </p>
         <textarea
@@ -206,9 +238,20 @@ const AdminSeoDashboard = () => {
           className="w-full h-32 border rounded-xl p-3 text-xs font-mono"
           placeholder='[{"query":"ssc cgl apply","page":"https://studygyaan.in/job/ssc-cgl-2026","clicks":12,"impressions":800,"ctr":0.015,"position":8}]'
         />
-        <button onClick={() => void handleIngest()} className="mt-3 px-4 py-2 bg-slate-900 text-white rounded-xl font-black text-xs">
-          Save GSC rows
-        </button>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button onClick={() => void handlePrepareGsc()} className="px-4 py-2 bg-slate-900 text-white rounded-xl font-black text-xs flex items-center gap-2">
+            <Clipboard size={13} /> Prepare GSC JSON
+          </button>
+          <button onClick={handleRunInstructions} className="px-4 py-2 bg-white border rounded-xl font-black text-xs flex items-center gap-2">
+            Open GitHub Actions <ExternalLink size={13} />
+          </button>
+        </div>
+        {preparedGscJson && (
+          <div className="mt-4 bg-slate-50 border rounded-2xl p-4">
+            <p className="text-xs font-black text-slate-600 mb-2">Prepared gsc_json workflow input</p>
+            <textarea readOnly value={preparedGscJson} className="w-full h-32 border rounded-xl p-3 text-xs font-mono bg-white" />
+          </div>
+        )}
       </div>
     </div>
   );
