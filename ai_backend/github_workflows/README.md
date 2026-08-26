@@ -24,7 +24,8 @@ git commit -m "Install frontend production build workflow"
 git push
 ```
 
-Then add the six `VITE_FIREBASE_*` GitHub Secrets (see the workflow's build step).
+Then add the six `VITE_FIREBASE_*` values as GitHub Actions **Secrets** (preferred)
+or **Variables** (see the workflow's build step; a Secret value wins if both are set).
 
 ## Install (one command)
 
