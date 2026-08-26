@@ -55,6 +55,24 @@ function monthIndexOf(token: string): number | undefined {
     return ENGLISH_MONTHS[token.toLowerCase()];
 }
 
+/** Named months only — no Devanagari range in a character class (eslint + safer). */
+function monthNamePattern(): string {
+    const names = [...Object.keys(HINDI_MONTHS), ...Object.keys(ENGLISH_MONTHS)]
+        .sort((a, b) => b.length - a.length)
+        .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return names.join('|');
+}
+
+const MONTH_NAME = monthNamePattern();
+const DAY_MONTH_YEAR = new RegExp(
+    `^(\\d{1,2})(?:st|nd|rd|th)?[\\s-]+(${MONTH_NAME})[\\s,-]+(\\d{4})$`,
+    'i',
+);
+const MONTH_DAY_YEAR = new RegExp(
+    `^(${MONTH_NAME})[\\s-]+(\\d{1,2})(?:st|nd|rd|th)?[\\s,]+(\\d{4})$`,
+    'i',
+);
+
 function validYmd(year: number, monthIndex: number, day: number): CalendarParts | null {
     if (!Number.isInteger(year) || !Number.isInteger(monthIndex) || !Number.isInteger(day)) return null;
     if (year < 1990 || year > 2100) return null;
@@ -113,20 +131,20 @@ export function parseDateParts(value: unknown): CalendarParts | null {
     let m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/);
     if (m) return validYmd(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 
-    m = raw.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/);
+    m = raw.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
     if (m) {
         let year = Number(m[3]);
         if (year < 100) year += 2000;
         return validYmd(year, Number(m[2]) - 1, Number(m[1]));
     }
 
-    m = raw.match(/^(\d{1,2})(?:st|nd|rd|th)?[\s\-]+([A-Za-z\u0900-\u097F]+)[\s,\-]+(\d{4})$/i);
+    m = raw.match(DAY_MONTH_YEAR);
     if (m) {
         const month = monthIndexOf(m[2]);
         if (month !== undefined) return validYmd(Number(m[3]), month, Number(m[1]));
     }
 
-    m = raw.match(/^([A-Za-z\u0900-\u097F]+)[\s\-]+(\d{1,2})(?:st|nd|rd|th)?[\s,]+(\d{4})$/i);
+    m = raw.match(MONTH_DAY_YEAR);
     if (m) {
         const month = monthIndexOf(m[1]);
         if (month !== undefined) return validYmd(Number(m[3]), month, Number(m[2]));

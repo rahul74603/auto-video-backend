@@ -14,24 +14,58 @@ const {
 } = require("./taxonomy");
 
 const SITE = "https://studygyaan.in";
+const SITE_HOST = "studygyaan.in";
 
-function canonicalPath(item) {
-  if (item.url && String(item.url).startsWith("/")) return item.url.split("?")[0];
-  if (item.url && String(item.url).startsWith(SITE)) {
-    try {
-      return new URL(item.url).pathname;
-    } catch {
-      /* fall through */
+function ownHostname(hostname) {
+  return String(hostname || "").replace(/\.$/, "").toLowerCase() === SITE_HOST;
+}
+
+/**
+ * Return a same-origin path (no query/hash) or "" if the value is not a
+ * StudyGyaan URL. Uses WHATWG URL parsing — never hostname substring checks.
+ */
+function pathFromInternalUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  if (value.startsWith("//") || value.includes("\\")) return "";
+
+  let parsed;
+  try {
+    if (value.startsWith("/")) {
+      parsed = new URL(value, SITE);
+    } else {
+      parsed = new URL(value);
     }
+  } catch {
+    return "";
   }
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return "";
+  if (!ownHostname(parsed.hostname)) return "";
+  if (parsed.username || parsed.password) return "";
+
+  const path = parsed.pathname || "";
+  if (!path.startsWith("/") || path.startsWith("//")) return "";
+  if (path.includes("\\") || path.length > 180) return "";
+  return path;
+}
+
+function pathFromSlug(item) {
   const slug = item.slug || item.id;
   if (!slug) return "";
+  const encoded = encodeURIComponent(String(slug).slice(0, 120));
   const kind = item.contentKind || detectContentKind(item);
-  if (kind === "JOB") return `/job/${encodeURIComponent(slug)}`;
-  if (kind === "MOCK_TEST") return `/test/${encodeURIComponent(slug)}`;
-  if (kind === "BLOG") return `/blog/${encodeURIComponent(slug)}`;
-  if (kind === "MATERIAL") return `/material/${encodeURIComponent(slug)}`;
-  return `/update/${encodeURIComponent(slug)}`;
+  if (kind === "JOB") return `/job/${encoded}`;
+  if (kind === "MOCK_TEST") return `/test/${encoded}`;
+  if (kind === "BLOG") return `/blog/${encoded}`;
+  if (kind === "MATERIAL") return `/material/${encoded}`;
+  return `/update/${encoded}`;
+}
+
+function canonicalPath(item) {
+  const fromUrl = pathFromInternalUrl(item && item.url);
+  if (fromUrl) return fromUrl;
+  return pathFromSlug(item || {});
 }
 
 function isPublished(item) {
@@ -88,13 +122,16 @@ function selectRelatedLinks(source, catalog, limit = 8) {
   }
 
   const hub = hubForFamily(source.examFamily || detectExamFamily(source));
-  if (hub && !picked.some((p) => p.url === hub.url)) {
+  if (hub && !picked.some((p) => p.url === hub.url || p.url === String(hub.url).split("?")[0])) {
     picked.push({ title: hub.name, url: hub.url, kind: "HUB", examFamily: source.examFamily || "GENERAL", score: 10 });
   }
   return picked.slice(0, max);
 }
 
 module.exports = {
+  SITE,
+  SITE_HOST,
+  pathFromInternalUrl,
   canonicalPath,
   isPublished,
   scoreRelated,

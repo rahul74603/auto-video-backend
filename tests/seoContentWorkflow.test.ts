@@ -64,6 +64,8 @@ describe('SEO content workflow — lifecycle', () => {
     expect(daysUntilInIndia('', now)).toBeNull();
     expect(parseJobDate('not a date')).toBeNull();
     expect(parseJobDate('31st August 2026')?.getDate()).toBe(31);
+    expect(parseJobDate('14 September 2026')?.getDate()).toBe(14);
+    expect(parseJobDate('14 सितंबर 2026')?.getMonth()).toBe(8);
   });
 });
 

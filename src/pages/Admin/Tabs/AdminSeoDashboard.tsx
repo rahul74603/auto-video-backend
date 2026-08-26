@@ -31,7 +31,25 @@ const AdminSeoDashboard = () => {
   };
 
   useEffect(() => {
-    void load();
+    let cancelled = false;
+    void fetchSeoDashboard()
+      .then((data) => {
+        if (cancelled) return;
+        setDashboard(data);
+        setLoadError('');
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const msg = error instanceof Error ? error.message : String(error);
+        setLoadError(msg);
+        toast.error(`SEO dashboard: ${msg}`);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleRun = async () => {

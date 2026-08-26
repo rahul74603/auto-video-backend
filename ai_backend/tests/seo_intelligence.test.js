@@ -12,7 +12,8 @@ const { scoreFaqUsefulness, buildFaqPageSchema } = require("../agents/seo_intell
 const { buildImageAlt, findImagesMissingAlt } = require("../agents/seo_intelligence/image_seo");
 const { scoreDiscoverReadiness } = require("../agents/seo_intelligence/discover");
 const { reviewEditorialQuality } = require("../agents/seo_intelligence/editorial_quality_gate");
-const { scoreRelated, selectRelatedLinks } = require("../agents/seo_intelligence/linking_engine");
+const { scoreRelated, selectRelatedLinks, canonicalPath, pathFromInternalUrl } = require("../agents/seo_intelligence/linking_engine");
+const { CappedHitStore, createLimiter } = require("../agents/seo_intelligence/rate_limit");
 const {
   normalizeGscRows,
   findCtrOpportunities,
@@ -112,6 +113,37 @@ test("editorial gate fails clickbait but passes a normal job title", () => {
     }
   });
   assert.deepEqual(pass.issues, []);
+});
+
+test("canonicalPath uses URL parsing and rejects foreign/protocol-relative hosts", () => {
+  assert.equal(pathFromInternalUrl("https://studygyaan.in/job/ssc-cgl-2026?x=1#y"), "/job/ssc-cgl-2026");
+  assert.equal(pathFromInternalUrl("/update/ssc-result"), "/update/ssc-result");
+  assert.equal(pathFromInternalUrl("https://studygyaan.in.evil.com/job/x"), "");
+  assert.equal(pathFromInternalUrl("https://evil.com/job/x"), "");
+  assert.equal(pathFromInternalUrl("//evil.com/job/x"), "");
+  assert.equal(pathFromInternalUrl("javascript:alert(1)"), "");
+  assert.equal(pathFromInternalUrl("https://studygyaan.in@evil.com/job/x"), "");
+  const fromSlug = canonicalPath({ slug: "ssc-cgl-2026", contentKind: "JOB" });
+  assert.equal(fromSlug, "/job/ssc-cgl-2026");
+  const poisoned = canonicalPath({
+    slug: "ssc-cgl-2026",
+    contentKind: "JOB",
+    url: "https://studygyaan.in.evil.com/job/pwned"
+  });
+  assert.equal(poisoned, "/job/ssc-cgl-2026");
+});
+
+test("seo intelligence rate-limit store caps keys and counts hits", async () => {
+  const store = new CappedHitStore(2);
+  store.init({ windowMs: 60_000 });
+  store._now = () => 1_000;
+  const a = await store.increment("ip-a");
+  assert.equal(a.totalHits, 1);
+  await store.increment("ip-b");
+  await store.increment("ip-c");
+  assert.ok(store.hits.size <= 2);
+  const limiter = createLimiter({ windowMs: 60_000, limit: 99, store: new CappedHitStore(10) });
+  assert.equal(typeof limiter, "function");
 });
 
 test("internal linking prefers same exam complementary types and never self-links", () => {

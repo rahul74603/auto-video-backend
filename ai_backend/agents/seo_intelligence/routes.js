@@ -3,6 +3,7 @@
 /**
  * Admin SEO Intelligence APIs.
  * Auth: same article-admin middleware (Firebase ID token / agent token).
+ * Rate-limited with express-rate-limit (already in functions package.json).
  * Never returns secrets. Never auto-publishes.
  */
 
@@ -11,6 +12,7 @@ const { authorizeArticleRequest } = require("../article_agents/article_auth");
 const { runSeoIntelligence, GSC_DOC, SETTINGS_DOC, RECS } = require("./orchestrator");
 const { normalizeGscRows, buildDashboard, redactSecrets } = require("./intelligence");
 const { checkConnections, checkContentFreshness } = require("../seo_master_agent");
+const { createSeoLimiters } = require("./rate_limit");
 
 function fail(res, status, message) {
   return res.status(status).json({ success: false, error: message });
@@ -58,8 +60,9 @@ async function loadRecommendations(db) {
 
 function registerSeoIntelligenceRoutes(app, db, deps = {}) {
   const protect = createProtect(deps);
+  const { readLimit, runLimit, ingestLimit } = createSeoLimiters(deps);
 
-  app.post("/seo/intelligence/dashboard", protect, async (req, res) => {
+  app.post("/seo/intelligence/dashboard", readLimit, protect, async (req, res) => {
     try {
       const [connections, freshness, lastRun, recommendations] = await Promise.all([
         checkConnections(db).catch(() => []),
@@ -84,7 +87,7 @@ function registerSeoIntelligenceRoutes(app, db, deps = {}) {
     }
   });
 
-  app.post("/seo/intelligence/recommendations", protect, async (req, res) => {
+  app.post("/seo/intelligence/recommendations", readLimit, protect, async (req, res) => {
     try {
       const recommendations = await loadRecommendations(db);
       return ok(res, { recommendations: redactSecrets(recommendations) });
@@ -93,7 +96,7 @@ function registerSeoIntelligenceRoutes(app, db, deps = {}) {
     }
   });
 
-  app.post("/seo/intelligence/run", protect, async (req, res) => {
+  app.post("/seo/intelligence/run", runLimit, protect, async (req, res) => {
     try {
       const force = req.body?.force === true;
       const report = await runSeoIntelligence(db, admin.firestore.FieldValue, {
@@ -107,7 +110,7 @@ function registerSeoIntelligenceRoutes(app, db, deps = {}) {
     }
   });
 
-  app.post("/seo/intelligence/search-console/ingest", protect, async (req, res) => {
+  app.post("/seo/intelligence/search-console/ingest", ingestLimit, protect, async (req, res) => {
     try {
       const rows = normalizeGscRows(req.body?.rows || req.body?.data || []);
       if (!rows.length) return fail(res, 400, "Provide Search Console rows [{query,page,clicks,impressions,ctr,position}]");
