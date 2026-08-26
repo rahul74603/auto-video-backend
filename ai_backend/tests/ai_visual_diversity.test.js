@@ -282,6 +282,26 @@ test('ai_visual_diversity: same content may reuse its own recorded combination (
     assert.equal(ownRetry.prompt, base.prompt, 'own content must keep the same prompt');
 });
 
+test('ai_visual_diversity: guard rejects a DIFFERENT content that recorded the same combination/fingerprint', () => {
+    const content = { type: 'JOB', documentId: 'job-guard-1', slug: 'guard', category: 'POLICE', title: 'Guard Test' };
+    const base = aiVisualEngine.buildVisualPlan(content, { recentVisualHistory: [] });
+
+    // Even if another content's history entry carries the same combination and
+    // fingerprint digest, it must NOT be treated as "own" and must be avoided.
+    const otherHistory = [{
+        contentId: 'job-guard-other',
+        combination: base.combinationKey,
+        scene: base.scene,
+        seed: base.seed,
+        fingerprint: base.cacheKey
+    }];
+    const guarded = aiVisualEngine.buildVisualPlan(content, { recentVisualHistory: otherHistory });
+
+    assert.notEqual(guarded.combinationKey, base.combinationKey, 'different content must be pushed to a fresh combination');
+    const guardedAgain = aiVisualEngine.buildVisualPlan(content, { recentVisualHistory: otherHistory });
+    assert.equal(guarded.combinationKey, guardedAgain.combinationKey, 'guarded selection must still be deterministic');
+});
+
 test('ai_visual_diversity: visual fatigue engine exposes AI history helpers', () => {
     assert.equal(typeof visualFatiguePrevention.getRecentAiVisualHistory, 'function');
     assert.equal(typeof visualFatiguePrevention.logAiVisualUsage, 'function');

@@ -18,6 +18,19 @@
  *   external services.
  * - AI images contain NO text, logos, watermarks, emblems or readable docs.
  *
+ * Cache semantics (IMPORTANT):
+ * - Same-run retry reuses the image written to the stable cache path because
+ *   the ephemeral GitHub Actions workspace is still alive during the run.
+ * - Cross-run reuse across INDEPENDENT GitHub Actions runners is NOT
+ *   guaranteed: the AI image file lives only on the ephemeral runner
+ *   filesystem, and the Firestore image_cache record only stores that
+ *   ephemeral path. A new runner does not inherit the old file.
+ *   Same-content deterministic prompt/seed is guaranteed; exact binary image
+ *   reuse across independent GitHub Actions runners is not guaranteed.
+ * - No paid persistent storage (Firebase Storage/Cloud Run) was added for
+ *   this. If persistent binary reuse is required later it must be added as a
+ *   separate, deliberate change.
+ *
  * Fallback order (unchanged):
  * 1. AI-generated image (when provider available)
  * 2. Existing category visual
@@ -698,7 +711,12 @@ function buildVisualPlan(content, options = {}) {
         lastPlan = plan;
         const collides = recentHistory.some((item) => {
             if (!item) return false;
-            if (sameContentId && (item.contentId === sameContentId || item.fingerprint === plan.cacheKey)) {
+            // A content item may safely re-use its own previously generated
+            // combination (retry/cache-reuse). Only the recorded contentId
+            // grants that exemption; a matching fingerprint alone must NOT,
+            // because a different content with the same digest would otherwise
+            // silently reuse another video's visual.
+            if (sameContentId && item.contentId === sameContentId) {
                 return false;
             }
             const combo = item.combination || item.combinationKey;
