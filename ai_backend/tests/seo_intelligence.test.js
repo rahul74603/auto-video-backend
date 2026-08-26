@@ -241,6 +241,61 @@ test("intelligence orchestrator never publishes and can run dry without db write
   assert.ok(!("jobs" in (report.scanned || {})) || report.scanned.jobs === 0);
 });
 
+test("intelligence orchestrator live scan writes no relatedLinks and does not throw", async () => {
+  const writes = [];
+  const jobDoc = {
+    id: "job-ssc-cgl",
+    data: () => ({
+      title: "SSC CGL 2026 Recruitment",
+      slug: "ssc-cgl-2026",
+      lastDate: "31/12/2026",
+      type: "JOB",
+      createdAt: { toDate: () => new Date("2026-01-01") },
+      lifecycleStatus: "OPEN",
+      includeJobPostingSchema: true,
+      sitemapPriority: 0.8
+    })
+  };
+  const db = {
+    collection(name) {
+      return {
+        orderBy() {
+          return {
+            limit() {
+              return {
+                async get() {
+                  return { docs: name === "jobs" ? [jobDoc] : [] };
+                }
+              };
+            }
+          };
+        },
+        doc(id) {
+          return {
+            async get() {
+              return { exists: false, data: () => ({}) };
+            },
+            async set(data, opts) {
+              writes.push({ collection: name, id, data, opts });
+            }
+          };
+        }
+      };
+    }
+  };
+  const report = await runSeoIntelligence(db, { serverTimestamp: () => "ts" }, {
+    force: true,
+    now: new Date("2026-08-26T00:00:00Z"),
+    maxJobs: 10,
+    maxUpdates: 10
+  });
+  assert.equal(report.ok, true);
+  assert.equal(report.relatedUpdates, 0);
+  assert.equal(report.lifecycleUpdates, 0);
+  assert.ok(!writes.some((w) => w.data && Object.prototype.hasOwnProperty.call(w.data, "relatedLinks")));
+  assert.ok(!writes.some((w) => w.collection === "jobs"));
+});
+
 test("editorial issues do not fire on a well-structured grounded article body", () => {
   const article = {
     type: "JOB",

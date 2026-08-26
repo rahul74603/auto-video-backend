@@ -155,6 +155,14 @@ async function refreshLifecycleFields(db, jobs, now, maxWrites = 50) {
   return updated;
 }
 
+/**
+ * Stored relatedLinks writes were removed in the fix phase.
+ * Internal linking is scored at render time by the existing RelatedContent widget.
+ */
+async function refreshRelatedLinks() {
+  return 0;
+}
+
 function youtubeLoopRecs(pages) {
   const recs = [];
   for (const page of pages) {
