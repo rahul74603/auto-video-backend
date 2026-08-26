@@ -252,7 +252,8 @@ const JobDetails = () => {
     const contentYear = getContentYear(job);
     const titleAlreadyHasYear = String(job.title || '').includes(contentYear);
 
-    const seoTitle = `${job.title}${titleAlreadyHasYear ? '' : ` ${contentYear}`} - ${job.vacancies || 'Latest'} Vacancies | StudyGyaan`;
+    const seoTitle = String(job.seoTitle || '').trim()
+        || `${job.title}${titleAlreadyHasYear ? '' : ` ${contentYear}`} - ${job.vacancies || 'Latest'} Vacancies | StudyGyaan`;
     const seoDesc = job.metaDescription || (job.description
         ? job.description.substring(0, 160)
         : `Apply online for ${job.title} recruitment ${contentYear}. ${job.organization || ''} - ${job.vacancies || 'Various'} vacancies. Check eligibility, salary ₹${job.salary || 'as per rules'}, last date ${job.lastDate || 'check notification'}.`);
@@ -320,7 +321,7 @@ const JobDetails = () => {
                 customKeywords={seoKeywords}
                 ogType="article"
                 publishedDate={publishedIso}
-                modifiedDate={publishedIso}
+                modifiedDate={getIsoDate(job.updatedAt || job.publishedAt || job.createdAt)}
                 author={job.authorName || job.author || "StudyGyaan Editorial Team"}
                 category={job.category || "Govt Jobs"}
             />
@@ -419,9 +420,11 @@ const JobDetails = () => {
                                 </div>
                                 <div className="relative z-10">
                                     <div className="flex gap-2 mb-2 flex-wrap">
+                                        {!jobExpired && (
                                         <span className="bg-yellow-400 text-blue-900 font-black text-[7px] md:text-[10px] px-2 py-0.5 rounded-full uppercase">
                                             Latest Update
                                         </span>
+                                        )}
                                         {job.organization && (
                                             <span className="bg-white/10 text-white font-bold text-[7px] md:text-[10px] px-2 py-0.5 rounded-full border border-white/20 uppercase truncate"
                                                 itemProp="hiringOrganization">
@@ -649,6 +652,47 @@ const JobDetails = () => {
                                                 className="prose prose-sm md:prose-lg max-w-none text-slate-700 ai-article-content [&_.table-responsive]:overflow-x-auto [&_table]:w-full [&_table]:text-sm"
                                                 dangerouslySetInnerHTML={{ __html: job.articleHtml }}
                                             />
+                                        </div>
+                                    )}
+
+                                    {job.sourceCitation?.url && (
+                                        <p className="text-xs text-slate-500 font-medium">
+                                            Official source:{' '}
+                                            <a href={`/redirect?url=${encodeURIComponent(job.sourceCitation.url)}`} className="text-blue-700 underline" rel="nofollow noopener noreferrer" target="_blank">
+                                                {job.sourceCitation.label || 'Notification'}
+                                            </a>
+                                        </p>
+                                    )}
+
+                                    {(job.youtubeVideoId || job.youtubeUrl) && (
+                                        <div className="bg-white border rounded-3xl p-5 shadow-sm">
+                                            <h2 className="text-sm font-black mb-3">Related video</h2>
+                                            <div className="aspect-video rounded-2xl overflow-hidden bg-black">
+                                                <iframe
+                                                    title={job.title || 'StudyGyaan video'}
+                                                    src={`https://www.youtube.com/embed/${job.youtubeVideoId || String(job.youtubeUrl).replace(/^.*v=/, '').slice(0, 11)}`}
+                                                    className="w-full h-full"
+                                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                    allowFullScreen
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {Array.isArray(job.updateHistory) && job.updateHistory.length > 0 && (
+                                        <div className="bg-white border rounded-3xl p-5 shadow-sm">
+                                            <h2 className="text-sm font-black mb-3">Update history</h2>
+                                            <ul className="space-y-2 text-xs text-slate-600">
+                                                {job.updateHistory.slice().reverse().slice(0, 8).map((entry, idx) => (
+                                                    <li key={idx} className="border-b border-slate-50 pb-2">
+                                                        <span className="font-black uppercase tracking-widest text-[10px] text-slate-400">{entry.reason}</span>
+                                                        {entry.at && <span className="ml-2">{entry.at.slice(0, 10)}</span>}
+                                                        {(entry.changes || []).slice(0, 4).map((change) => (
+                                                            <p key={change.field}>{change.field}: {change.from || '—'} → {change.to || '—'}</p>
+                                                        ))}
+                                                    </li>
+                                                ))}
+                                            </ul>
                                         </div>
                                     )}
 

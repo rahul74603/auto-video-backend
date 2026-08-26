@@ -164,6 +164,23 @@ function buildSchema(meta, data, type) {
   };
 
   if (type === "job") {
+    const lastDateMs = (() => {
+      const iso = isoDate(data.lastDate);
+      return iso ? new Date(iso).getTime() : NaN;
+    })();
+    const expired = data.includeJobPostingSchema === false
+      || (Number.isFinite(lastDateMs) && lastDateMs < Date.now());
+    if (expired) {
+      return {
+        ...common,
+        "@type": "Article",
+        headline: meta.title,
+        image: meta.image,
+        datePublished: isoDate(data.createdAt) || undefined,
+        dateModified: isoDate(data.updatedAt || data.createdAt) || undefined,
+        author: { "@type": "Organization", name: data.authorName || data.author || "StudyGyaan Editorial Team" }
+      };
+    }
     // Fix structured data validation errors (410 errors in Ahrefs)
     // Ensure required fields: title, description, hiringOrganization, jobLocation, datePosted
     const orgName = (data.organization || "Government Organization").toString().slice(0, 100) || "Government Organization";
@@ -299,6 +316,7 @@ function injectSeo(template, meta, data, type) {
     `<meta property="og:title" content="${escapeHtml(meta.title)}">`,
     `<meta property="og:description" content="${escapeHtml(meta.description)}">`,
     `<meta property="og:image" content="${escapeHtml(meta.image)}">`,
+    `<meta property="og:image:alt" content="${escapeHtml(meta.imageAlt || meta.title)}">`,
     ...(meta.imageType ? [
       `<meta property="og:image:type" content="${escapeHtml(meta.imageType)}">`,
       '<meta property="og:image:width" content="1200">',
@@ -314,14 +332,29 @@ function injectSeo(template, meta, data, type) {
     `<meta name="twitter:title" content="${escapeHtml(meta.title)}">`,
     `<meta name="twitter:description" content="${escapeHtml(meta.description)}">`,
     `<meta name="twitter:image" content="${escapeHtml(meta.image)}">`,
-    `<meta name="twitter:image:alt" content="${escapeHtml(meta.title)}">`,
+    `<meta name="twitter:image:alt" content="${escapeHtml(meta.imageAlt || meta.title)}">`,
     `<script type="application/ld+json">${JSON.stringify(schema).replace(/</g, "\\u003c")}</script>`
-  ].join("\n");
+  ];
+  if (Array.isArray(data?.faqs) && data.faqs.length) {
+    const faqEntity = data.faqs.slice(0, 10).map((faq) => ({
+      "@type": "Question",
+      name: String(faq.question || "").slice(0, 300),
+      acceptedAnswer: { "@type": "Answer", text: String(faq.answer || "").slice(0, 1000) }
+    })).filter((faq) => faq.name && faq.acceptedAnswer.text);
+    if (faqEntity.length) {
+      tags.push(`<script type="application/ld+json">${JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: faqEntity
+      }).replace(/</g, "\\u003c")}</script>`);
+    }
+  }
+  const tagsHtml = tags.join("\n");
 
   let html = removeManagedHeadTags(template);
   html = html.includes("</head>")
-    ? html.replace("</head>", `${tags}\n</head>`)
-    : html.replace("<body", `<head>${tags}</head><body`);
+    ? html.replace("</head>", `${tagsHtml}\n</head>`)
+    : html.replace("<body", `<head>${tagsHtml}</head><body`);
 
   // Fix orphan pages (1170) — add more internal links for SEO
   const relatedLinks = [
@@ -397,6 +430,7 @@ function createMeta(route, result) {
     title: stripHtml(data.seoTitle || data.title || data.post_name || "StudyGyaan Update").slice(0, 180),
     description: buildDescription(data, route.type),
     image: ownImage || (dynamicOg ? buildOgImageUrl(route.canonical, slug) : `${SITE_URL}/og-image.jpg`),
+    imageAlt: stripHtml(data.imageAlt || data.title || "StudyGyaan update").slice(0, 120),
     imageType: ownImage || !dynamicOg ? null : "image/webp"
   };
 }

@@ -57,3 +57,37 @@ export function checkIsExpired(lastDateStr: string): boolean {
 
     return parsedDate < today;
 }
+
+export type JobLifecycleStatus =
+    | 'UPCOMING'
+    | 'OPEN'
+    | 'CLOSING_SOON'
+    | 'CLOSED'
+    | 'EXPIRED'
+    | 'UNKNOWN';
+
+export function classifyJobLifecycle(
+    lastDateStr: string,
+    startDateStr?: string,
+    now: Date = new Date()
+): { status: JobLifecycleStatus; daysUntilLastDate: number | null } {
+    const last = parseJobDate(lastDateStr);
+    if (!last) return { status: 'UNKNOWN', daysUntilLastDate: null };
+
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    last.setHours(0, 0, 0, 0);
+    const daysUntilLastDate = Math.round((last.getTime() - today.getTime()) / 86400000);
+
+    const start = startDateStr ? parseJobDate(startDateStr) : null;
+    if (start) start.setHours(0, 0, 0, 0);
+    const daysUntilStart = start ? Math.round((start.getTime() - today.getTime()) / 86400000) : null;
+
+    if (daysUntilLastDate > 7 && daysUntilStart !== null && daysUntilStart > 0) {
+        return { status: 'UPCOMING', daysUntilLastDate };
+    }
+    if (daysUntilLastDate > 7) return { status: 'OPEN', daysUntilLastDate };
+    if (daysUntilLastDate >= 0) return { status: 'CLOSING_SOON', daysUntilLastDate };
+    if (daysUntilLastDate >= -30) return { status: 'CLOSED', daysUntilLastDate };
+    return { status: 'EXPIRED', daysUntilLastDate };
+}

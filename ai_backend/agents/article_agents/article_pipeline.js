@@ -48,6 +48,10 @@ const {
   repairArticleDeterministically,
   splitReviewIssues
 } = require("./article_repairer");
+const { enrichContentDocument } = require("../seo_intelligence/enrich");
+const { buildHistoryEntry, mergeUpdateHistory } = require("../seo_intelligence/update_history");
+const { selectRelatedLinks, canonicalPath } = require("../seo_intelligence/linking_engine");
+const { detectExamFamily, detectContentKind } = require("../seo_intelligence/taxonomy");
 
 const DRAFT_COLLECTION = "ai_article_drafts";
 
@@ -423,7 +427,19 @@ function buildJobPublishPayload(draft, draftId) {
   if (typeof mapped.applicationFee === "string") {
     mapped.applicationFee = mapped.applicationFee.replace(/₹\s*₹+/g, "₹").trim();
   }
-  return stripEmpty(mapped);
+  const seo = enrichContentDocument({
+    type: "JOB",
+    title: mapped.title,
+    h1: draft.h1,
+    seoTitle: draft.seoTitle,
+    metaDescription: mapped.metaDescription,
+    facts: draft.facts || {},
+    faqs: mapped.faqs,
+    wordCount: mapped.wordCount,
+    sourceUrl: mapped.sourceUrl,
+    articleHtml: mapped.articleHtml
+  });
+  return stripEmpty({ ...mapped, ...seo });
 }
 
 /** Map a passed FAST_TRACK draft to the existing `fast_track` document shape. */
@@ -466,6 +482,44 @@ function buildPublishPayload(draft, draftId) {
  * Review gate PHIR se lagta hai (assertPublishable) — console/telegram dono safe.
  * db + FieldValue parameter se lete hain (module unit-testable rehta hai).
  */
+function catalogItemFromDoc(doc, collectionName) {
+  const data = typeof doc.data === "function" ? doc.data() : doc;
+  const title = data.title || "";
+  return {
+    id: doc.id,
+    title,
+    slug: data.slug || doc.id,
+    status: data.status || "published",
+    category: data.category || "",
+    organization: data.organization || data.org || "",
+    type: collectionName === "jobs" ? "JOB" : collectionName === "mock_tests" ? "MOCK_TEST" : "FAST_TRACK",
+    examFamily: data.examFamily || detectExamFamily({ title, category: data.category, organization: data.organization || data.org }),
+    contentKind: data.contentKind || detectContentKind({
+      type: collectionName === "jobs" ? "JOB" : collectionName === "mock_tests" ? "MOCK_TEST" : "FAST_TRACK",
+      title,
+      category: data.category
+    })
+  };
+}
+
+async function loadRelatedCatalog(db) {
+  const catalog = [];
+  const reads = [
+    ["jobs", 40],
+    ["fast_track", 20],
+    ["mock_tests", 15]
+  ];
+  for (const [name, limitCount] of reads) {
+    try {
+      const snap = await db.collection(name).orderBy("createdAt", "desc").limit(limitCount).get();
+      (snap.docs || []).forEach((doc) => catalog.push(catalogItemFromDoc(doc, name)));
+    } catch {
+      /* best-effort — publish must not fail because related links failed */
+    }
+  }
+  return catalog;
+}
+
 async function publishDraftRecord(db, FieldValue, draft, draftId) {
   assertPublishable(draft);
 
@@ -473,14 +527,42 @@ async function publishDraftRecord(db, FieldValue, draft, draftId) {
   const targetId = draft.publishedDocId
     || `${draft.type === "JOB" ? "job" : "ft"}-${String(draft.slug || draftId).slice(0, 90)}`;
 
+  let existing = null;
+  try {
+    const existingSnap = await db.collection(collection).doc(targetId).get();
+    if (existingSnap.exists) existing = existingSnap.data();
+  } catch {
+    existing = null;
+  }
+
+  const historyEntry = buildHistoryEntry(existing, payload, {
+    reason: existing ? "updated" : "published"
+  });
+  const updateHistory = mergeUpdateHistory(existing?.updateHistory, historyEntry);
+
+  let relatedLinks = Array.isArray(payload.relatedLinks) ? payload.relatedLinks : [];
+  try {
+    const catalog = await loadRelatedCatalog(db);
+    relatedLinks = selectRelatedLinks(
+      { ...payload, id: targetId, type: draft.type === "JOB" ? "JOB" : "FAST_TRACK" },
+      catalog,
+      8
+    );
+  } catch {
+    /* keep payload relatedLinks */
+  }
+
   await db
     .collection(collection)
     .doc(targetId)
     .set(
       {
         ...payload,
-        createdAt: FieldValue.serverTimestamp(),
-        publishedAt: FieldValue.serverTimestamp()
+        updateHistory,
+        relatedLinks,
+        createdAt: existing?.createdAt || FieldValue.serverTimestamp(),
+        publishedAt: existing?.publishedAt || FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
       },
       { merge: true }
     );

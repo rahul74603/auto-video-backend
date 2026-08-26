@@ -1,4 +1,6 @@
 import { auth, db } from '@/firebase/config';
+import { enrichPublicDocument } from '@/features/seo-intelligence/taxonomy';
+import { classifyJobLifecycle } from '@/utils/jobExpiry';
 import {
   addDoc,
   collection,
@@ -204,6 +206,14 @@ function stripEmpty<T extends Record<string, unknown>>(obj: T): T {
 
 export function buildJobPublishPayload(draft: AIArticleDraftRecord): Record<string, unknown> {
   const facts = draft.facts || {};
+  const seo = enrichPublicDocument({
+    type: 'JOB',
+    title: draft.title,
+    category: facts.category,
+    organization: facts.organization,
+    sourceUrl: draft.sourceUrl,
+  });
+  const life = classifyJobLifecycle(String(facts.lastDate || ''), facts.startDate);
   return stripEmpty({
     title: draft.title,
     slug: draft.slug,
@@ -243,11 +253,21 @@ export function buildJobPublishPayload(draft: AIArticleDraftRecord): Record<stri
     applyLink: facts.applyLink,
     notificationLink: facts.notificationLink,
     officialSiteLink: facts.officialSiteLink,
+    ...seo,
+    lifecycleStatus: life.status,
+    lifecycleDays: life.daysUntilLastDate,
   });
 }
 
 export function buildFastTrackPublishPayload(draft: AIArticleDraftRecord): Record<string, unknown> {
   const facts = draft.facts || {};
+  const seo = enrichPublicDocument({
+    type: 'FAST_TRACK',
+    title: draft.title,
+    category: facts.category,
+    org: facts.org,
+    sourceUrl: draft.sourceUrl,
+  });
   return stripEmpty({
     title: draft.title,
     slug: draft.slug,
@@ -268,6 +288,7 @@ export function buildFastTrackPublishPayload(draft: AIArticleDraftRecord): Recor
     wordCount: draft.wordCount || 0,
     sourceUrl: draft.sourceUrl || '',
     publishedFromDraftId: draft.id,
+    ...seo,
   });
 }
 

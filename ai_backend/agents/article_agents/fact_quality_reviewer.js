@@ -36,6 +36,7 @@ const {
   countTags,
   listAnchorHrefs
 } = require("./article_html_utils");
+const { reviewEditorialQuality } = require("../seo_intelligence/editorial_quality_gate");
 
 // ---------- text helpers ----------
 
@@ -629,6 +630,12 @@ function reviewArticle({ type, article, source, existing }) {
   checkKeywordStuffing(ctx);
   checkOfficialLinks(ctx);
 
+  // Human-editorial usefulness (not an AI-detector). Extra issues still block publish.
+  const editorial = reviewEditorialQuality({ type, article });
+  issues.push(...(editorial.issues || []));
+  warnings.push(...(editorial.warnings || []));
+  Object.assign(metrics, editorial.metrics || {});
+
   const score = Math.max(0, 100 - issues.length * 12 - warnings.length * 3);
   return {
     verdict: issues.length ? "fail" : "pass",
@@ -730,6 +737,26 @@ const ISSUE_GUIDANCE = [
   {
     re: /^organization:partial-match/,
     fix: () => "Organization ka naam EXACT wahi likho jo source me likha hai (apna mat banao)."
+  },
+  {
+    re: /^editorial:clickbait-title/,
+    fix: () => "Title natural rakho — shocking/viral/click-here type clickbait mat likho."
+  },
+  {
+    re: /^editorial:hedging-title/,
+    fix: () => "Title me 'संभावित/expected' mat likho jab tak source me ghoshit fact na ho."
+  },
+  {
+    re: /^editorial:placeholder-content/,
+    fix: () => "TODO/lorem/coming-soon placeholder hatao — sirf source-grounded useful prose likho."
+  },
+  {
+    re: /^editorial:repeated-boilerplate/,
+    fix: () => "Same sentence baar-baar mat repeat karo. Har paragraph nayi useful baat bataye."
+  },
+  {
+    re: /^faq:placeholder-answers/,
+    fix: () => "FAQ answers 'Official Notification देखें' par mat chhodo — source wali short fact likho."
   }
 ];
 
