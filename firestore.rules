@@ -6,6 +6,13 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.email == "rahulkumar74603@gmail.com";
     }
 
+    function isSeoInternalPath(collectionId, documentId) {
+      return (collectionId == "system_settings" &&
+          (documentId == "seo_intelligence" || documentId == "seo_search_console")) ||
+        collectionId == "seo_recommendations" ||
+        collectionId == "seo_intelligence_runs";
+    }
+
     match /orders/{orderId} {
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
       allow read, update: if request.auth != null && (resource.data.userId == request.auth.uid || isAdmin());
@@ -42,8 +49,8 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    match /{path=**} {
-      allow read: if true;
+    match /{collectionId}/{documentId}/{path=**} {
+      allow read: if !isSeoInternalPath(collectionId, documentId);
       allow write: if isAdmin();
     }
   }
