@@ -392,20 +392,34 @@ function getPositionalCTA(position, options = {}) {
 /**
  * Generate multiple CTAs for a video
  */
+function pickClosingCTA(options, intent, contentType) {
+    if (forbidsApplyLanguage(intent)) {
+        const keys = closingKeysForIntent(intent).filter((key) => CTA_TEMPLATES[key]);
+        const key = keys[Math.floor(Math.random() * keys.length)] || 'read_more';
+        const info = CTA_TEMPLATES[key];
+        return {
+            key,
+            ...info,
+            template: getRandomTemplate(info.templates)
+        };
+    }
+    return selectCTA({
+        contentType,
+        contentAngle: options.contentAngle,
+        urgencyLevel: options.urgencyLevel
+    });
+}
+
 function generateVideoCTAs(options = {}) {
     const intent = resolveCtaIntent(options);
     const contentType = forbidsApplyLanguage(intent)
         ? intent
         : (options.contentType || intent || 'JOB');
-    
+
     return {
         opening: getPositionalCTA('opening', { ...options, contentType }),
         middle: getPositionalCTA('middle', { ...options, contentType }),
-        closing: selectCTA({
-            contentType,
-            contentAngle: options.contentAngle,
-            urgencyLevel: options.urgencyLevel
-        })
+        closing: pickClosingCTA(options, intent, contentType)
     };
 }
 
