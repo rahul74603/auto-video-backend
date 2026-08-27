@@ -32,6 +32,8 @@
  * - Deadline urgency
  */
 
+const { detectContentIntent, forbidsApplyLanguage } = require('./content_intent');
+
 const ANGLE_DEFINITIONS = {
     'basic_alert': {
         name: 'Basic Job Alert',
@@ -144,7 +146,7 @@ const ANGLE_DEFINITIONS = {
     'admit_card_update': {
         name: 'Admit Card Update',
         description: 'Card release announcement',
-        requiredData: ['admitCardDate'],
+        requiredData: ['title'],
         priority: 9,
         bestFor: ['ADMIT_CARD'],
         hookStyle: 'breaking'
@@ -153,10 +155,91 @@ const ANGLE_DEFINITIONS = {
     'result_update': {
         name: 'Result Update',
         description: 'Result announcement',
-        requiredData: ['resultDate'],
+        requiredData: ['title'],
         priority: 10,
         bestFor: ['RESULT'],
         hookStyle: 'breaking'
+    },
+
+    'result_check': {
+        name: 'Result Check',
+        description: 'How to check the result',
+        requiredData: ['title'],
+        priority: 10,
+        bestFor: ['RESULT'],
+        hookStyle: 'instructional'
+    },
+
+    'official_result': {
+        name: 'Official Result',
+        description: 'Official result announcement',
+        requiredData: ['title'],
+        priority: 9,
+        bestFor: ['RESULT'],
+        hookStyle: 'breaking'
+    },
+
+    'scorecard': {
+        name: 'Scorecard',
+        description: 'Scorecard / marksheet check',
+        requiredData: ['title'],
+        priority: 8,
+        bestFor: ['RESULT'],
+        hookStyle: 'informational'
+    },
+
+    'merit_list': {
+        name: 'Merit List',
+        description: 'Merit / selection list',
+        requiredData: ['title'],
+        priority: 8,
+        bestFor: ['RESULT'],
+        hookStyle: 'informational'
+    },
+
+    'selection': {
+        name: 'Selection List',
+        description: 'Selection status',
+        requiredData: ['title'],
+        priority: 7,
+        bestFor: ['RESULT'],
+        hookStyle: 'informational'
+    },
+
+    'cutoff': {
+        name: 'Cutoff',
+        description: 'Cutoff marks',
+        requiredData: ['title'],
+        priority: 7,
+        bestFor: ['RESULT'],
+        hookStyle: 'informational'
+    },
+
+    'common_result_mistake': {
+        name: 'Common Result Mistake',
+        description: 'Mistakes while checking result',
+        requiredData: ['title'],
+        priority: 4,
+        bestFor: ['RESULT'],
+        hookStyle: 'warning'
+    },
+
+    'answer_key_update': {
+        name: 'Answer Key Update',
+        description: 'Answer key / objection window',
+        requiredData: ['title'],
+        priority: 10,
+        bestFor: ['ANSWER_KEY'],
+        hookStyle: 'breaking'
+    },
+
+    'syllabus_update': {
+        name: 'Syllabus Update',
+        description: 'Syllabus / exam pattern',
+        requiredData: ['title'],
+        priority: 9,
+        bestFor: ['SYLLABUS'],
+        hookStyle: 'informational'
     },
     
     'faq': {
@@ -192,6 +275,8 @@ const ANGLE_DEFINITIONS = {
  */
 function identifyAvailableAngles(jobData) {
     const availableAngles = [];
+    const intent = detectContentIntent(jobData);
+    const titleText = String(jobData.title || jobData.topic || '').toLowerCase();
     
     for (const [angleKey, angleInfo] of Object.entries(ANGLE_DEFINITIONS)) {
         // Check if all required data is available
@@ -201,12 +286,29 @@ function identifyAvailableAngles(jobData) {
             jobData[field] !== ''
         );
         
-        if (hasAllData) {
-            availableAngles.push({
-                key: angleKey,
-                ...angleInfo
-            });
+        if (!hasAllData) continue;
+
+        if (forbidsApplyLanguage(intent)) {
+            if (!angleInfo.bestFor.includes(intent) && !angleInfo.bestFor.includes('ALL')) {
+                continue;
+            }
+        } else {
+            const exclusive = ['RESULT', 'ADMIT_CARD', 'ANSWER_KEY', 'SYLLABUS'];
+            if (angleInfo.bestFor.length && angleInfo.bestFor.every((b) => exclusive.includes(b))) {
+                continue;
+            }
         }
+
+        // Result announcements must not fall to "common mistake" copy unless
+        // the content is actually about a mistake.
+        if (angleKey === 'common_result_mistake' && !/mistake|error|गलती|wrong/.test(titleText)) {
+            continue;
+        }
+        
+        availableAngles.push({
+            key: angleKey,
+            ...angleInfo
+        });
     }
     
     // Sort by priority (descending)
@@ -222,7 +324,19 @@ function selectBestAngle(jobData, recentAngles = [], performanceData = null) {
     const availableAngles = identifyAvailableAngles(jobData);
     
     if (availableAngles.length === 0) {
-        // Fallback to basic alert
+        const intent = detectContentIntent(jobData);
+        if (intent === 'RESULT') {
+            return { key: 'result_update', ...ANGLE_DEFINITIONS.result_update };
+        }
+        if (intent === 'ADMIT_CARD') {
+            return { key: 'admit_card_update', ...ANGLE_DEFINITIONS.admit_card_update };
+        }
+        if (intent === 'ANSWER_KEY') {
+            return { key: 'answer_key_update', ...ANGLE_DEFINITIONS.answer_key_update };
+        }
+        if (intent === 'SYLLABUS') {
+            return { key: 'syllabus_update', ...ANGLE_DEFINITIONS.syllabus_update };
+        }
         return {
             key: 'basic_alert',
             ...ANGLE_DEFINITIONS['basic_alert']
@@ -329,9 +443,54 @@ function generateAngleHook(angle, jobData) {
         ],
         
         'result_update': [
-            `${jobData.organization} result जारी!`,
-            `Result Declared for ${jobData.organization}`,
+            `${jobData.organization || jobData.title || 'Result'} result जारी!`,
+            `Result Declared for ${jobData.organization || jobData.title || 'exam'}`,
             ` Check Your Result!`
+        ],
+        'result_check': [
+            `${jobData.title || 'Result'} कैसे चेक करें?`,
+            `Check result: ${jobData.title || ''}`,
+            ` Result check करें`
+        ],
+        'official_result': [
+            `${jobData.title || 'Official Result'} जारी`,
+            `Official result: ${jobData.organization || jobData.title || ''}`,
+            ` Official Result Out`
+        ],
+        'scorecard': [
+            `${jobData.title || 'Result'} का scorecard देखें`,
+            `Scorecard out: ${jobData.organization || ''}`,
+            ` Scorecard Check`
+        ],
+        'merit_list': [
+            `${jobData.title || 'Result'} merit list जारी`,
+            `Merit list: ${jobData.organization || ''}`,
+            ` Merit List Out`
+        ],
+        'selection': [
+            `${jobData.title || 'Result'} selection list`,
+            `Selection list: ${jobData.organization || ''}`,
+            ` Selection List`
+        ],
+        'cutoff': [
+            `${jobData.title || 'Result'} की cutoff क्या रही?`,
+            `Cutoff: ${jobData.organization || ''}`,
+            ` Cutoff Marks`
+        ],
+        'common_result_mistake': [
+            `${jobData.title || 'Result'} चेक करते समय ये गलती मत करना`,
+            `Common mistakes while checking ${jobData.title || 'result'}`,
+            ` Result check mistakes`
+        ],
+        'answer_key_update': [
+            `${jobData.organization || jobData.title || 'Answer Key'} answer key जारी!`,
+            `Answer Key Out for ${jobData.organization || jobData.title || ''}`,
+            ` Check Answer Key`
+        ],
+        'syllabus_update': [
+            `${jobData.organization || jobData.title || 'Syllabus'} syllabus जारी`,
+            `Syllabus update: ${jobData.organization || jobData.title || ''}`,
+            ` New Syllabus`
         ],
         
         'faq': [
@@ -414,7 +573,16 @@ function generateAngleScript(angle, jobData) {
         
         'admit_card_update': `${jobData.organization} ka admit card jari ho gaya hai. Download karne ke liye description mein link hai.`,
         
-        'result_update': `${jobData.organization} ka result declare ho gaya hai. Check karne ke liye description mein link hai.`,
+        'result_update': `${jobData.organization || jobData.title || 'Result'} ka result declare ho gaya hai. Check karne ke liye description mein link hai.`,
+        'result_check': `${jobData.title || 'Result'} ka result abhi check karein. Scorecard aur merit list description mein hain.`,
+        'official_result': `${jobData.title || 'Official result'} officially declare ho gaya hai. Official result description mein check karein.`,
+        'scorecard': `${jobData.title || 'Result'} ka scorecard check karein. Marks description mein available hain.`,
+        'merit_list': `${jobData.title || 'Result'} ki merit list aa gayi hai. Apna naam list mein check karein.`,
+        'selection': `${jobData.title || 'Result'} ki selection list declare ho gayi hai. Selection status description mein hai.`,
+        'cutoff': `${jobData.title || 'Result'} ki cutoff check karein. Details description mein hain.`,
+        'common_result_mistake': `${jobData.title || 'Result'} check karte waqt ye common mistakes avoid karein. Details description mein hain.`,
+        'answer_key_update': `${jobData.organization || jobData.title || 'Answer Key'} ki answer key jari ho gayi hai. Answers milayein aur objection window check karein.`,
+        'syllabus_update': `${jobData.organization || jobData.title || 'Syllabus'} ka syllabus update ho gaya hai. Exam pattern description mein hai.`,
         
         'faq': `Aapke sawal ka jawab: ${jobData.title}. Details description mein hain.`,
         

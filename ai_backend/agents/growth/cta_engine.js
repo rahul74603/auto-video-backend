@@ -29,6 +29,8 @@
  * - Mobile-friendly
  */
 
+const { detectContentIntent, forbidsApplyLanguage } = require('./content_intent');
+
 const CTA_TEMPLATES = {
     'apply_now': {
         templates: [
@@ -247,6 +249,10 @@ function selectCTA(options = {}) {
         
         // Score the CTA
         let score = 0;
+
+        if (ctaInfo.bestFor.includes(contentType) && contentType !== 'ALL') {
+            score += 4;
+        }
         
         // Prefer action-oriented CTAs for high urgency
         if (urgencyLevel === 'high' && ctaInfo.action === 'click_link') {
@@ -334,20 +340,41 @@ function generateCTAText(cta, jobData = {}) {
     return text;
 }
 
+function resolveCtaIntent(options = {}) {
+    if (options.jobData) return detectContentIntent(options.jobData);
+    return detectContentIntent({
+        type: options.contentType,
+        category: options.contentType,
+        title: options.title
+    });
+}
+
+function closingKeysForIntent(intent) {
+    if (intent === 'RESULT') return ['check_result', 'share', 'visit_website'];
+    if (intent === 'ADMIT_CARD') return ['download_now', 'share', 'visit_website'];
+    if (intent === 'ANSWER_KEY') return ['check_result', 'read_more', 'share'];
+    if (intent === 'SYLLABUS') return ['read_more', 'visit_website', 'share'];
+    return ['apply_now', 'download_now', 'check_result', 'share', 'save_for_later'];
+}
+
 /**
  * Get CTA for specific position in video
  */
 function getPositionalCTA(position, options = {}) {
+    const intent = resolveCtaIntent(options);
     const positionPreferences = {
         'opening': ['subscribe', 'join_telegram'],
-        'middle': ['read_more', 'eligibility_check', 'comment_question'],
-        'closing': ['apply_now', 'download_now', 'check_result', 'share', 'save_for_later']
+        'middle': forbidsApplyLanguage(intent)
+            ? ['read_more', 'comment_question']
+            : ['read_more', 'eligibility_check', 'comment_question'],
+        'closing': closingKeysForIntent(intent)
     };
     
     const preferredKeys = positionPreferences[position] || ['read_more'];
     
     // Find matching CTA
     for (const key of preferredKeys) {
+        if (key === 'apply_now' && forbidsApplyLanguage(intent)) continue;
         if (CTA_TEMPLATES[key]) {
             const cta = {
                 key,
@@ -366,20 +393,18 @@ function getPositionalCTA(position, options = {}) {
  * Generate multiple CTAs for a video
  */
 function generateVideoCTAs(options = {}) {
-    const {
-        contentType,
-        contentAngle,
-        urgencyLevel,
-        jobData
-    } = options;
+    const intent = resolveCtaIntent(options);
+    const contentType = forbidsApplyLanguage(intent)
+        ? intent
+        : (options.contentType || intent || 'JOB');
     
     return {
-        opening: getPositionalCTA('opening', options),
-        middle: getPositionalCTA('middle', options),
+        opening: getPositionalCTA('opening', { ...options, contentType }),
+        middle: getPositionalCTA('middle', { ...options, contentType }),
         closing: selectCTA({
             contentType,
-            contentAngle,
-            urgencyLevel
+            contentAngle: options.contentAngle,
+            urgencyLevel: options.urgencyLevel
         })
     };
 }

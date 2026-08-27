@@ -14,6 +14,7 @@
  */
 
 const flags = require('./feature_flags');
+const { detectContentIntent } = require('./content_intent');
 
 const SCRIPT_STRUCTURES = {
     BREAKING_SHORT: {
@@ -99,7 +100,28 @@ function extractScriptFacts(content, opportunity) {
     };
 }
 
+function resolveScriptIntent(opportunity, facts) {
+    return detectContentIntent({
+        category: opportunity?.category || facts?.category,
+        type: opportunity?.contentType,
+        title: facts?.topic
+    });
+}
+
 function generateDefaultHook(opportunity, facts) {
+    const intent = resolveScriptIntent(opportunity, facts);
+    if (intent === 'RESULT') {
+        return `${facts.topic || 'Result'} जारी हो गया है — अभी चेक करें`;
+    }
+    if (intent === 'ADMIT_CARD') {
+        return `${facts.topic || 'Admit Card'} जारी — अभी download करें`;
+    }
+    if (intent === 'ANSWER_KEY') {
+        return `${facts.topic || 'Answer Key'} जारी — अभी चेक करें`;
+    }
+    if (intent === 'SYLLABUS') {
+        return `${facts.topic || 'Syllabus'} जारी — exam pattern देखें`;
+    }
     if (opportunity.urgency === 'CRITICAL') {
         return `⚡ ${facts.topic || 'Breaking Update'} — ${facts.vacancies ? facts.vacancies + ' पद' : 'important news'}`;
     }
@@ -110,15 +132,31 @@ function generateDefaultHook(opportunity, facts) {
 }
 
 function buildContext(facts, opportunity) {
+    const intent = resolveScriptIntent(opportunity, facts);
     const parts = [];
     if (facts.org) parts.push(`${facts.org} ने`);
-    if (opportunity.category === 'RESULT') parts.push('result declare कर दिया है');
-    else if (opportunity.category === 'ADMIT_CARD') parts.push('admit card release कर दिया है');
+    if (intent === 'RESULT') parts.push('result declare कर दिया है');
+    else if (intent === 'ADMIT_CARD') parts.push('admit card release कर दिया है');
+    else if (intent === 'ANSWER_KEY') parts.push('answer key जारी कर दी है');
+    else if (intent === 'SYLLABUS') parts.push('syllabus update कर दिया है');
     else parts.push('नई भर्ती निकाली है');
     return parts.join(' ') + '।';
 }
 
 function buildMainFact(facts, opportunity) {
+    const intent = resolveScriptIntent(opportunity, facts);
+    if (intent === 'RESULT') {
+        return `${facts.topic || 'Result'} जारी हो गया है। अपना Result, Scorecard और Merit List चेक करें।`;
+    }
+    if (intent === 'ADMIT_CARD') {
+        return `${facts.topic || 'Admit Card'} जारी हो गया है। अपना Admit Card download करें और exam center चेक करें।`;
+    }
+    if (intent === 'ANSWER_KEY') {
+        return `${facts.topic || 'Answer Key'} जारी हो गई है। Answer Key चेक करें और objection window देखें।`;
+    }
+    if (intent === 'SYLLABUS') {
+        return `${facts.topic || 'Syllabus'} जारी हो गया है। Exam pattern और topics चेक करें।`;
+    }
     const parts = [];
     if (facts.vacancies) parts.push(`कुल ${facts.vacancies} पदों पर भर्ती है`);
     if (facts.qualification) parts.push(`योग्यता: ${facts.qualification}`);
@@ -137,11 +175,21 @@ function buildImportantFacts(facts) {
 }
 
 function buildCTA(facts, opportunity, opts) {
-    if (opportunity.category === 'RESULT') {
+    void opts;
+    const intent = resolveScriptIntent(opportunity, facts);
+    // Spoken brand is applied later in tts_engine.normalizeSpeechText.
+    // Keep studygyaan.in here so captions / display copy stay as the real URL.
+    if (intent === 'RESULT') {
         return `Result check करने के लिए studygyaan.in visit करें।`;
     }
-    if (opportunity.category === 'ADMIT_CARD') {
+    if (intent === 'ADMIT_CARD') {
         return `Admit Card download करने के लिए studygyaan.in पर जाएं।`;
+    }
+    if (intent === 'ANSWER_KEY') {
+        return `Answer Key चेक करने के लिए studygyaan.in visit करें।`;
+    }
+    if (intent === 'SYLLABUS') {
+        return `Syllabus देखने के लिए studygyaan.in visit करें।`;
     }
     if (facts.lastDate) {
         return `Last Date ${facts.lastDate} से पहले apply करें। Details studygyaan.in पर।`;
@@ -154,6 +202,7 @@ module.exports = {
     buildScript,
     extractScriptFacts,
     generateDefaultHook,
+    resolveScriptIntent,
     buildContext,
     buildMainFact,
     buildImportantFacts,

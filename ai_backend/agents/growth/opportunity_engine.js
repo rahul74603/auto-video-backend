@@ -41,6 +41,12 @@ function detectCategory(content) {
     const combined = `${cat} ${title}`;
 
     const categories = [
+        // Result-style updates first so "Railway Result" / "SSC GD Result Out"
+        // are not classified as a job family (which then gets Apply language).
+        { name: 'RESULT', keywords: ['result', 'merit list', 'selection list', 'scorecard', 'cutoff'] },
+        { name: 'ADMIT_CARD', keywords: ['admit card', 'hall ticket', 'call letter'] },
+        { name: 'ANSWER_KEY', keywords: ['answer key', 'objection'] },
+        { name: 'SYLLABUS', keywords: ['syllabus'] },
         { name: 'SSC', keywords: ['ssc', 'staff selection'] },
         { name: 'RAILWAY', keywords: ['railway', 'rrb', 'rrc'] },
         { name: 'BANKING', keywords: ['bank', 'ibps', 'sbi', 'rbi'] },
@@ -49,9 +55,7 @@ function detectCategory(content) {
         { name: 'POLICE', keywords: ['police', 'constable', 'si '] },
         { name: 'TEACHING', keywords: ['teacher', 'tet', 'ctet', 'ktet', 'education'] },
         { name: 'ENGINEERING', keywords: ['engineer', 'je ', 'ae ', 'gate'] },
-        { name: 'STATE', keywords: ['uttar pradesh', 'up ssc', 'up police', 'up gov', 'mp police', 'bihar', 'rajasthan', 'maharashtra', 'cg police', 'chhattisgarh'] },
-        { name: 'RESULT', keywords: ['result', 'merit list', 'selection list'] },
-        { name: 'ADMIT_CARD', keywords: ['admit card', 'hall ticket', 'call letter'] }
+        { name: 'STATE', keywords: ['uttar pradesh', 'up ssc', 'up police', 'up gov', 'mp police', 'bihar', 'rajasthan', 'maharashtra', 'cg police', 'chhattisgarh'] }
     ];
 
     for (const cat of categories) {
@@ -103,7 +107,9 @@ function computeOpportunityScore(scores) {
 
 function recommendFormat(urgency, category) {
     if (urgency.score >= 3) return { format: 'BREAKING_SHORT', duration: 15 };
-    if (category === 'RESULT' || category === 'ADMIT_CARD') return { format: 'UPDATE', duration: 20 };
+    if (category === 'RESULT' || category === 'ADMIT_CARD' || category === 'ANSWER_KEY' || category === 'SYLLABUS') {
+        return { format: 'UPDATE', duration: 20 };
+    }
     if (urgency.score >= 2) return { format: 'JOB_ALERT', duration: 30 };
     return { format: 'DETAILED', duration: 45 };
 }
@@ -163,10 +169,23 @@ async function detectOpportunity(content, opts = {}) {
 }
 
 function recommendHookTypes(urgency, category) {
+    if (category === 'RESULT') {
+        const types = [];
+        if (urgency.score >= 3) types.push('urgency');
+        types.push('direct_answer', 'surprising_fact', 'curiosity');
+        return [...new Set(types)].slice(0, 5);
+    }
+    if (category === 'ADMIT_CARD') {
+        return [...new Set(['urgency', 'direct_answer', 'benefit'])].slice(0, 5);
+    }
+    if (category === 'ANSWER_KEY') {
+        return ['direct_answer', 'urgency', 'curiosity', 'question'].slice(0, 5);
+    }
+    if (category === 'SYLLABUS') {
+        return ['direct_answer', 'curiosity', 'benefit'].slice(0, 5);
+    }
     const types = [];
     if (urgency.score >= 3) types.push('urgency', 'deadline');
-    if (category === 'RESULT') types.push('direct_answer', 'surprising_fact');
-    if (category === 'ADMIT_CARD') types.push('urgency', 'benefit');
     types.push('eligibility', 'question', 'audience_specific');
     if (types.length < 3) types.push('curiosity', 'benefit');
     return [...new Set(types)].slice(0, 5);

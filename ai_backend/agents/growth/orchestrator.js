@@ -41,6 +41,7 @@ const ctaEngine = require('./cta_engine');
 const motionEngine = require('./motion_engine');
 const costControlEngine = require('./cost_control_engine');
 const contentSimilarityDetector = require('./content_similarity_detector');
+const { detectContentIntent } = require('./content_intent');
 
 async function processContent(content, opts = {}) {
     const runId = opts.runId || `growth-${Date.now()}`;
@@ -157,8 +158,8 @@ async function processContent(content, opts = {}) {
             // count this as a new generation.
             const stablePath = aiVisualEngine.getStableCachePath(opts.contentId, imageFingerprint);
             if (aiVisualEngine.validateImage(stablePath)) {
-                aiVisual = { path: stablePath, cached: true, reused: true };
-                log.stage('ai_visual_cache_hit', { path: stablePath, reused: true });
+                aiVisual = { path: stablePath, cached: true, reused: true, generation: 'cache', applied: false };
+                log.stage('ai_visual_cache_hit', { path: stablePath, reused: true, generation: 'cache', applied: false });
             } else {
                 // STEP 2 — No validated cache. Apply cost control, then try
                 // to generate a new image.
@@ -168,7 +169,25 @@ async function processContent(content, opts = {}) {
                 });
 
                 if (!costCheck.allowed) {
-                    log.stage('ai_visual_blocked', { reason: costCheck.reason });
+                    log.stage('ai_visual_blocked', { reason: costCheck.reason, generation: 'skipped' });
+                    const fallback = aiVisualEngine.resolveCategoryVisualFallback(content, {
+                        contentId: opts.contentId,
+                        seed: visualPlan?.seed
+                    });
+                    aiVisual = {
+                        success: false,
+                        path: null,
+                        generation: 'skipped',
+                        applied: false,
+                        fallback: fallback.kind,
+                        categoryVisual: fallback
+                    };
+                    log.stage('ai_visual_category_fallback', {
+                        fallback: fallback.kind,
+                        variant: fallback.variant,
+                        generation: 'skipped',
+                        applied: false
+                    });
                 } else {
                     // Check Firestore cache for a cross-run record. It may
                     // point at a stale /tmp/ path — we will overwrite it with
@@ -181,18 +200,19 @@ async function processContent(content, opts = {}) {
                         // Firestore pointed at a still-valid file (rare in
                         // GitHub Actions, but possible if the same runner
                         // processed two dispatcher runs in a row). Reuse it.
-                        aiVisual = { path: cacheCheck.path, cached: true, reused: true };
-                        log.stage('ai_visual_firestore_cache_hit', { path: cacheCheck.path });
+                        aiVisual = { path: cacheCheck.path, cached: true, reused: true, generation: 'cache', applied: false };
+                        log.stage('ai_visual_firestore_cache_hit', { path: cacheCheck.path, generation: 'cache' });
                     } else {
                         // STEP 3 — Generate a new image (deterministic seed).
                         const imageResult = await aiVisualEngine.generateImage(imagePrompt, {
                             outputPath: stablePath,
                             timeout: 30000,
-                            seed: visualPlan.seed
+                            seed: visualPlan.seed,
+                            maxAttempts: 2
                         });
 
                         if (imageResult.success) {
-                            aiVisual = imageResult;
+                            aiVisual = { ...imageResult, generation: 'success', applied: false };
                             // Update Firestore cache to point at the stable
                             // path so subsequent runs have the best chance
                             // of finding a usable file.
@@ -223,11 +243,30 @@ async function processContent(content, opts = {}) {
                                 provider: imageResult.provider,
                                 size: imageResult.size,
                                 path: stablePath,
-                                seed: visualPlan.seed
+                                seed: visualPlan.seed,
+                                generation: 'success',
+                                applied: false
                             });
                         } else {
-                            log.stage('ai_visual_failed', { error: imageResult.error });
-                            // Fall through — autoVideo.js will use gradient.
+                            log.stage('ai_visual_failed', { error: imageResult.error, generation: 'failed' });
+                            const fallback = aiVisualEngine.resolveCategoryVisualFallback(content, {
+                                contentId: opts.contentId,
+                                seed: visualPlan?.seed
+                            });
+                            aiVisual = {
+                                success: false,
+                                path: null,
+                                generation: 'failed',
+                                applied: false,
+                                fallback: fallback.kind,
+                                categoryVisual: fallback
+                            };
+                            log.stage('ai_visual_category_fallback', {
+                                fallback: fallback.kind,
+                                variant: fallback.variant,
+                                generation: 'failed',
+                                applied: false
+                            });
                         }
                     }
                 }
@@ -250,7 +289,7 @@ async function processContent(content, opts = {}) {
 
         // NEW: Motion profile selection
         let motionProfile = null;
-        if (flags.isEnabled('MOTION_ENGINE_ENABLED') && aiVisual) {
+        if (flags.isEnabled('MOTION_ENGINE_ENABLED') && aiVisual?.path) {
             motionProfile = motionEngine.getMotionRecommendation({
                 contentType: content.type || 'JOB',
                 hasAIImage: true,
@@ -286,7 +325,7 @@ async function processContent(content, opts = {}) {
         let cta = null;
         if (flags.isEnabled('CTA_ENGINE_ENABLED')) {
             cta = ctaEngine.generateVideoCTAs({
-                contentType: content.type || 'JOB',
+                contentType: detectContentIntent(content),
                 contentAngle: contentAngle?.key || 'basic_alert',
                 urgencyLevel: deadlineInfo?.state === 'TODAY' || deadlineInfo?.state === 'TOMORROW' ? 'high' : 'medium',
                 jobData: content
@@ -334,7 +373,7 @@ async function processContent(content, opts = {}) {
             breaking: recommendation.breaking,
             contentAngle: contentAngle?.key,
             layout: layout?.key,
-            hasAIVisual: !!aiVisual,
+            hasAIVisual: !!(aiVisual && aiVisual.path),
             deadlineState: deadlineInfo?.state
         });
 
@@ -365,7 +404,7 @@ async function processContent(content, opts = {}) {
             hookType: recommendation.hook?.hookType,
             contentAngle: contentAngle?.key,
             layout: layout?.key,
-            hasAIVisual: !!aiVisual,
+            hasAIVisual: !!(aiVisual && aiVisual.path),
             deadlineState: deadlineInfo?.state
         });
 

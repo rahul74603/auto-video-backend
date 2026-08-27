@@ -56,6 +56,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { detectContentIntent } = require('./content_intent');
 
 // -------------------------------------------------------------------------
 // A. SCENE / ENVIRONMENT pools (per category + reusable Default pool)
@@ -783,68 +784,140 @@ function buildImageUrl(prompt, options = {}) {
  *
  * Fallback: returns null on failure
  */
+function isRetryableImageError(err) {
+    const status = err?.response?.status || err?.status;
+    if (status === 500 || status === 502 || status === 503 || status === 429) return true;
+    const msg = String(err?.message || err || '');
+    return /status code 500|status code 502|status code 503|status code 429/i.test(msg);
+}
+
 async function generateImage(prompt, options = {}) {
     const timeout = options.timeout || 30000; // 30 seconds default
     const outputPath = options.outputPath;
+    const maxAttempts = Number.isFinite(options.maxAttempts) ? options.maxAttempts : 2;
 
     if (!outputPath) {
         throw new Error('outputPath is required');
     }
 
-    try {
-        // Pollinations.ai - free image generation
-        const imageUrl = buildImageUrl(prompt, options);
-        const httpClient = options.httpClient || axios;
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            // Pollinations.ai - free image generation
+            const imageUrl = buildImageUrl(prompt, options);
+            const httpClient = options.httpClient || axios;
 
-        const response = await httpClient({
-            method: 'GET',
-            url: imageUrl,
-            responseType: 'arraybuffer',
-            timeout: timeout,
-            maxContentLength: 5 * 1024 * 1024 // 5MB limit
-        });
+            const response = await httpClient({
+                method: 'GET',
+                url: imageUrl,
+                responseType: 'arraybuffer',
+                timeout: timeout,
+                maxContentLength: 5 * 1024 * 1024 // 5MB limit
+            });
 
-        // Validate image
-        const buffer = Buffer.from(response.data);
+            // Validate image
+            const buffer = Buffer.from(response.data);
 
-        if (buffer.length < 1000) {
-            throw new Error('Image too small, likely invalid');
+            if (buffer.length < 1000) {
+                throw new Error('Image too small, likely invalid');
+            }
+
+            // Check if it's actually an image (magic bytes)
+            const isJpeg = buffer[0] === 0xFF && buffer[1] === 0xD8;
+            const isPng = buffer[0] === 0x89 && buffer[1] === 0x50;
+
+            if (!isJpeg && !isPng) {
+                throw new Error('Response is not a valid image');
+            }
+
+            // Save to disk
+            fs.writeFileSync(outputPath, buffer);
+
+            return {
+                success: true,
+                path: outputPath,
+                size: buffer.length,
+                provider: 'pollinations',
+                url: imageUrl,
+                seed: options.seed !== undefined ? Number(options.seed) : null,
+                generation: 'success',
+                attempt
+            };
+
+        } catch (err) {
+            lastError = err;
+            console.log(`⚠️ AI image generation failed (attempt ${attempt}/${maxAttempts}): ${err.message || err}`);
+
+            if (fs.existsSync(outputPath)) {
+                try { fs.unlinkSync(outputPath); } catch { /* ignore */ }
+            }
+
+            if (attempt < maxAttempts && isRetryableImageError(err)) {
+                continue;
+            }
+            break;
         }
-
-        // Check if it's actually an image (magic bytes)
-        const isJpeg = buffer[0] === 0xFF && buffer[1] === 0xD8;
-        const isPng = buffer[0] === 0x89 && buffer[1] === 0x50;
-
-        if (!isJpeg && !isPng) {
-            throw new Error('Response is not a valid image');
-        }
-
-        // Save to disk
-        fs.writeFileSync(outputPath, buffer);
-
-        return {
-            success: true,
-            path: outputPath,
-            size: buffer.length,
-            provider: 'pollinations',
-            url: imageUrl,
-            seed: options.seed !== undefined ? Number(options.seed) : null
-        };
-
-    } catch (err) {
-        console.log(`⚠️ AI image generation failed: ${err.message || err}`);
-
-        // Cleanup partial file if exists
-        if (fs.existsSync(outputPath)) {
-            try { fs.unlinkSync(outputPath); } catch { /* ignore */ }
-        }
-
-        return {
-            success: false,
-            error: err.message || 'Unknown error',
-            provider: 'pollinations'
-        };
     }
+
+    return {
+        success: false,
+        error: lastError?.message || 'Unknown error',
+        provider: 'pollinations',
+        generation: 'failed'
+    };
+}
+
+// Category visual palettes used when AI generation fails. Seeded by content
+// fingerprint so different Result videos are not identical, while same-content
+// retries stay stable. This is NOT a random shuffle.
+const CATEGORY_VISUAL_PALETTES = {
+    RESULT: [
+        { id: 'result_navy_gold', bg1: '#1a1a2e', bg2: '#16213e', bg3: '#0f3460', accent: '#00d4ff', badgeBg: '#e94560' },
+        { id: 'result_emerald', bg1: '#0b3d2e', bg2: '#14532d', bg3: '#166534', accent: '#86efac', badgeBg: '#15803d' },
+        { id: 'result_royal', bg1: '#1e1b4b', bg2: '#312e81', bg3: '#1e3a8a', accent: '#fbbf24', badgeBg: '#b45309' }
+    ],
+    ADMIT_CARD: [
+        { id: 'admit_plum', bg1: '#2d132c', bg2: '#3d1c4a', bg3: '#4a1f5c', accent: '#ffd700', badgeBg: '#ff6b6b' },
+        { id: 'admit_wine', bg1: '#3b0764', bg2: '#6b21a8', bg3: '#4c1d95', accent: '#fde68a', badgeBg: '#db2777' }
+    ],
+    ANSWER_KEY: [
+        { id: 'key_blue', bg1: '#1e3c72', bg2: '#2a5298', bg3: '#1e3c72', accent: '#ffa500', badgeBg: '#ff8c00' },
+        { id: 'key_slate', bg1: '#0f172a', bg2: '#1e3a8a', bg3: '#1d4ed8', accent: '#fb923c', badgeBg: '#c2410c' }
+    ],
+    SYLLABUS: [
+        { id: 'syllabus_teal', bg1: '#134e5e', bg2: '#2a6b7c', bg3: '#134e5e', accent: '#00ff88', badgeBg: '#00cc6a' },
+        { id: 'syllabus_pine', bg1: '#064e3b', bg2: '#0f766e', bg3: '#115e59', accent: '#6ee7b7', badgeBg: '#047857' }
+    ],
+    JOB: [
+        { id: 'job_midnight', bg1: '#0f0c29', bg2: '#302b63', bg3: '#24243e', accent: '#00d4ff', badgeBg: '#ff006e' },
+        { id: 'job_indigo', bg1: '#1e1b4b', bg2: '#3730a3', bg3: '#312e81', accent: '#38bdf8', badgeBg: '#db2777' }
+    ],
+    Default: [
+        { id: 'generic_dark', bg1: '#0f0c29', bg2: '#302b63', bg3: '#24243e', accent: '#00d4ff', badgeBg: '#ff006e' }
+    ]
+};
+
+function resolveCategoryVisualFallback(content, options = {}) {
+    const intent = detectContentIntent(content);
+    const palettes = CATEGORY_VISUAL_PALETTES[intent] || CATEGORY_VISUAL_PALETTES.Default;
+    const seedSource = Number.isFinite(Number(options.seed))
+        ? Number(options.seed) >>> 0
+        : visualFingerprint(content, options.contentId).seed;
+    const variant = seedSource % palettes.length;
+    const palette = palettes[variant];
+    const kind = CATEGORY_VISUAL_PALETTES[intent]
+        ? `${intent}_CATEGORY_VISUAL`
+        : 'GENERIC_GRADIENT';
+
+    return {
+        kind,
+        intent,
+        variant,
+        paletteId: palette.id,
+        colors: palette,
+        seed: seedSource,
+        applied: false
+    };
 }
 
 // Stable cache directory for AI images. On GitHub Actions the runner is
@@ -947,6 +1020,9 @@ module.exports = {
     generatePrompt,
     buildImageUrl,
     generateImage,
+    isRetryableImageError,
+    CATEGORY_VISUAL_PALETTES,
+    resolveCategoryVisualFallback,
     getTempImagePath,
     getStableCachePath,
     getStableCacheDir,

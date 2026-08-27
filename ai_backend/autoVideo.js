@@ -10,6 +10,8 @@ const V = require('./video_state');
 const ttsEngine = require('./tts_engine');
 const flags = require('./agents/growth/feature_flags');
 const motionEngine = require('./agents/growth/motion_engine');
+const aiVisualEngine = require('./agents/growth/ai_visual_engine');
+const { containsApplyLanguage } = require('./agents/growth/content_intent');
 require("dotenv").config();
 
 // ✅ Approved anchor files only — never pick up unrelated MP4s from the folder.
@@ -392,55 +394,71 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
     };
 
     const theme = themes[jobCat] || themes['Default'];
+    const aiVisualMeta = growthRec?.enhancements?.aiVisual || null;
+    const categoryVisual = aiVisualMeta?.categoryVisual
+        || aiVisualEngine.resolveCategoryVisualFallback({
+            title: jobData.title,
+            category: jobCat,
+            type: jobData.type,
+            slug: jobData.slug,
+            id: jobData.id,
+            documentId: jobData.id
+        }, { seed: growthRec?.enhancements?.visualPlan?.seed });
+    if (categoryVisual?.colors) {
+        theme.bg1 = categoryVisual.colors.bg1 || theme.bg1;
+        theme.bg2 = categoryVisual.colors.bg2 || theme.bg2;
+        theme.bg3 = categoryVisual.colors.bg3 || theme.bg3;
+        theme.accent = categoryVisual.colors.accent || theme.accent;
+        if (categoryVisual.colors.badgeBg) theme.badgeBg = categoryVisual.colors.badgeBg;
+    }
 
-    // ✅ 1. BACKGROUND — AI image if available, else gradient
-    if (growthRec?.enhancements?.aiVisual?.path) {
-        const aiPath = growthRec.enhancements.aiVisual.path;
-        console.log(`🔍 AI Visual check: path=${aiPath}, exists=${fs.existsSync(aiPath)}`);
-        if (fs.existsSync(aiPath)) {
-            try {
-                const { Image } = require('canvas');
-                const aiImg = new Image();
-                aiImg.src = fs.readFileSync(aiPath);
-                // Scale to fill 1080x1920 while maintaining aspect ratio
-                const scale = Math.max(width / aiImg.width, height / aiImg.height);
-                const drawW = aiImg.width * scale;
-                const drawH = aiImg.height * scale;
-                const drawX = (width - drawW) / 2;
-                const drawY = (height - drawH) / 2;
-                ctx.drawImage(aiImg, drawX, drawY, drawW, drawH);
-                // Add subtle dark overlay for text readability
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-                ctx.fillRect(0, 0, width, height);
-                console.log('🖼️ AI image used as poster background');
-            } catch (err) {
-                console.log(`⚠️ AI image load failed, using gradient: ${err.message || err}`);
-                // Fallback to gradient
-                const grad = ctx.createLinearGradient(0, 0, 0, height);
-                grad.addColorStop(0, theme.bg1);
-                grad.addColorStop(0.5, theme.bg2);
-                grad.addColorStop(1, theme.bg3);
-                ctx.fillStyle = grad;
-                ctx.fillRect(0, 0, width, height);
-            }
-        } else {
-            console.log(`⚠️ AI image file missing at: ${aiPath}`);
-            const grad = ctx.createLinearGradient(0, 0, 0, height);
-            grad.addColorStop(0, theme.bg1);
-            grad.addColorStop(0.5, theme.bg2);
-            grad.addColorStop(1, theme.bg3);
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, width, height);
-        }
-    } else {
-        console.log('🎨 No AI visual in growthRec, using gradient background');
-        // Fallback gradient
+    function fillCategoryBackground() {
         const grad = ctx.createLinearGradient(0, 0, 0, height);
         grad.addColorStop(0, theme.bg1);
         grad.addColorStop(0.5, theme.bg2);
         grad.addColorStop(1, theme.bg3);
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, width, height);
+    }
+
+    // 1. BACKGROUND — AI image if available, else category visual, else gradient
+    let posterApplied = false;
+    if (aiVisualMeta?.path) {
+        const aiPath = aiVisualMeta.path;
+        const exists = fs.existsSync(aiPath);
+        console.log(`🔍 AI Visual check: path=${aiPath}, exists=${exists}, generation=${aiVisualMeta.generation || 'unknown'}`);
+        if (exists) {
+            try {
+                const { Image } = require('canvas');
+                const aiImg = new Image();
+                aiImg.src = fs.readFileSync(aiPath);
+                const scale = Math.max(width / aiImg.width, height / aiImg.height);
+                const drawW = aiImg.width * scale;
+                const drawH = aiImg.height * scale;
+                const drawX = (width - drawW) / 2;
+                const drawY = (height - drawH) / 2;
+                ctx.drawImage(aiImg, drawX, drawY, drawW, drawH);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+                ctx.fillRect(0, 0, width, height);
+                posterApplied = true;
+                console.log(`AI_VISUAL: generation=success path=${aiPath} exists=true loaded=true applied=true`);
+                console.log('🖼️ AI image used as poster background');
+            } catch (err) {
+                console.log(`⚠️ AI image load failed, using category visual: ${err.message || err}`);
+                fillCategoryBackground();
+                posterApplied = true;
+                console.log(`POSTER: fallback=${categoryVisual.kind} variant=${categoryVisual.variant} applied=true generation=failed`);
+            }
+        } else {
+            console.log(`⚠️ AI image file missing at: ${aiPath}`);
+            fillCategoryBackground();
+            posterApplied = true;
+            console.log(`POSTER: fallback=${categoryVisual.kind} variant=${categoryVisual.variant} applied=true generation=failed`);
+        }
+    } else {
+        fillCategoryBackground();
+        posterApplied = true;
+        console.log(`POSTER: fallback=${categoryVisual.kind} variant=${categoryVisual.variant} applied=${posterApplied} generation=${aiVisualMeta?.generation || 'none'}`);
     }
 
     function drawRoundedRect(x, y, w, h, r) {
@@ -580,26 +598,27 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
 
     // ✅ 7. DYNAMIC CTA BUTTON (from CTA engine or fallback)
     const ctaY = infoBoxY + 380;
-    let ctaText = 'APPLY NOW';
-    let ctaColor = '#FF4444';
+    const ctaTexts = {
+        'Result':     { text: 'CHECK RESULT',  color: '#00FF88' },
+        'Admit Card': { text: 'DOWNLOAD NOW',  color: '#FFD700' },
+        'Answer Key': { text: 'VIEW KEY',      color: '#FFA500' },
+        'Syllabus':   { text: 'GET PDF',       color: '#00FF88' },
+        'Default':    { text: 'APPLY NOW',     color: '#FF4444' }
+    };
+    const fallbackCta = ctaTexts[jobCat] || ctaTexts['Default'];
+    let ctaText = fallbackCta.text;
+    let ctaColor = fallbackCta.color;
     
     if (growthRec?.enhancements?.cta?.closing?.template) {
-        // Use CTA from engine
         const ctaTemplate = growthRec.enhancements.cta.closing.template;
-        ctaText = ctaTemplate.toUpperCase().replace(/[^A-Z0-9\s!]/g, '').substring(0, 25);
-        ctaColor = growthRec.enhancements.cta.closing.color || '#FF4444';
-    } else {
-        // Fallback to static CTAs
-        const ctaTexts = {
-            'Result':     { text: 'CHECK RESULT',  color: '#00FF88' },
-            'Admit Card': { text: 'DOWNLOAD NOW',  color: '#FFD700' },
-            'Answer Key': { text: 'VIEW KEY',      color: '#FFA500' },
-            'Syllabus':   { text: 'GET PDF',       color: '#00FF88' },
-            'Default':    { text: 'APPLY NOW',     color: '#FF4444' }
-        };
-        const cta = ctaTexts[jobCat] || ctaTexts['Default'];
-        ctaText = cta.text;
-        ctaColor = cta.color;
+        const nonApplyCats = ['Result', 'Admit Card', 'Answer Key', 'Syllabus'];
+        if (nonApplyCats.includes(jobCat) && containsApplyLanguage(ctaTemplate)) {
+            ctaText = fallbackCta.text;
+            ctaColor = fallbackCta.color;
+        } else {
+            ctaText = ctaTemplate.toUpperCase().replace(/[^A-Z0-9\s!]/g, '').substring(0, 25);
+            ctaColor = growthRec.enhancements.cta.closing.color || fallbackCta.color;
+        }
     }
 
     drawRoundedRect(150, ctaY, 780, 110, 55);
