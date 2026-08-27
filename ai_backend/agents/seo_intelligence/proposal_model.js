@@ -22,8 +22,44 @@ const {
 const PROPOSAL_VERSION = 1;
 const MAX_PROPOSALS_PER_PAGE = 6;
 const MAX_PROPOSALS = 80;
-const STATUSES = Object.freeze(["pending", "approved", "rejected"]);
+const MAX_APPLY_BATCH = 5;
+const SNAPSHOT_COLLECTION = "seo_apply_snapshots";
+const QUEUE_COLLECTION = "seo_apply_queue";
+const STATUSES = Object.freeze(["pending", "approved", "rejected", "applied", "failed", "rolled_back"]);
 const LEVELS = Object.freeze(["A", "B", "C"]);
+const REVIEW_STATUSES = Object.freeze(["approved", "rejected"]);
+const TERMINAL_STATUSES = Object.freeze(["applied", "rolled_back", "rejected"]);
+
+const CONTENT_COLLECTION_MAP = Object.freeze({
+  BLOG: "blogs",
+  JOB: "jobs",
+  FAST_TRACK: "fast_track",
+  MOCK_TEST: "mock_tests",
+  STUDY_MATERIAL: "study_materials",
+  COURSE: "courses",
+  EBOOK: "jobs",
+  WEB_STORY: "web_stories"
+});
+
+const APPLYABLE_FIELDS = Object.freeze([
+  "seoTitle",
+  "metaDescription",
+  "h1",
+  "authorName",
+  "imageAlt",
+  "faqs",
+  "relatedLinks",
+  "includeJobPostingSchema",
+  "schemaMarkup",
+  "howToApply"
+]);
+
+const PLAN_ONLY_FIELDS = Object.freeze([
+  "contentPlan",
+  "headingPlan",
+  "contentTable",
+  "howToApplySection"
+]);
 
 const FACT_FIELDS = Object.freeze([
   "organization",
@@ -50,6 +86,18 @@ const FACT_FIELDS = Object.freeze([
 
 function isFactField(field) {
   return FACT_FIELDS.includes(String(field || ""));
+}
+
+function collectionForContentType(contentType) {
+  return CONTENT_COLLECTION_MAP[String(contentType || "").toUpperCase()] || null;
+}
+
+function isApplyableField(field) {
+  return APPLYABLE_FIELDS.includes(String(field || ""));
+}
+
+function isPlanOnlyField(field) {
+  return PLAN_ONLY_FIELDS.includes(String(field || ""));
 }
 
 function assertAllowedProposalWrite(collectionName) {
@@ -112,7 +160,11 @@ function compactProposal(proposal) {
     level: record.level,
     requiresReview: record.requiresReview,
     status: record.status,
-    applied: false,
+    applied: Boolean(proposal && proposal.applied),
+    snapshotId: proposal && proposal.snapshotId ? String(proposal.snapshotId).slice(0, 120) : null,
+    appliedAt: proposal && proposal.appliedAt ? proposal.appliedAt : null,
+    rolledBackAt: proposal && proposal.rolledBackAt ? proposal.rolledBackAt : null,
+    lastError: proposal && proposal.lastError ? String(proposal.lastError).slice(0, 300) : null,
     createdAt: record.createdAt,
     auditVersion: record.auditVersion
   };
@@ -121,7 +173,7 @@ function compactProposal(proposal) {
 function summarizeProposals(proposals) {
   const list = Array.isArray(proposals) ? proposals : [];
   const byLevel = { A: 0, B: 0, C: 0 };
-  const byStatus = { pending: 0, approved: 0, rejected: 0 };
+  const byStatus = { pending: 0, approved: 0, rejected: 0, applied: 0, failed: 0, rolled_back: 0 };
   for (const item of list) {
     if (byLevel[item.level] !== undefined) byLevel[item.level] += 1;
     if (byStatus[item.status] !== undefined) byStatus[item.status] += 1;
@@ -133,8 +185,9 @@ function summarizeProposals(proposals) {
     byLevel,
     byStatus,
     storage: "system_settings/seo_intelligence.optimizationProposals",
-    preferredCollectionBlocked: "seo_optimization_proposals requires admin-only Firestore rules before use",
-    note: "Phase 3 proposals are reviewable only. Approved does not apply. No public content writes."
+    snapshots: SNAPSHOT_COLLECTION,
+    preferredCollectionBlocked: "seo_optimization_proposals remains unused (would be public-read under catch-all rules)",
+    note: "Approve never writes public content. Only applyProposal after snapshot + fact/quality gate may write allowlisted fields."
   };
 }
 
@@ -146,10 +199,19 @@ function mergeProposalStatuses(previous, next) {
   const prevById = new Map((Array.isArray(previous) ? previous : []).map((item) => [item && item.id, item]));
   return (Array.isArray(next) ? next : []).map((item) => {
     const old = prevById.get(item && item.id);
-    if (old && (old.status === "approved" || old.status === "rejected") && (!item.status || item.status === "pending")) {
-      return { ...item, status: old.status, applied: false, reviewedAt: old.reviewedAt || null };
+    if (old && ["approved", "rejected", "applied", "failed", "rolled_back"].includes(old.status)
+      && (!item.status || item.status === "pending")) {
+      return {
+        ...item,
+        status: old.status,
+        applied: Boolean(old.applied),
+        snapshotId: old.snapshotId || item.snapshotId || null,
+        appliedAt: old.appliedAt || null,
+        rolledBackAt: old.rolledBackAt || null,
+        reviewedAt: old.reviewedAt || null
+      };
     }
-    return { ...item, applied: false };
+    return { ...item, applied: Boolean(item.applied) };
   });
 }
 
@@ -182,13 +244,24 @@ module.exports = {
   PROPOSAL_VERSION,
   MAX_PROPOSALS_PER_PAGE,
   MAX_PROPOSALS,
+  MAX_APPLY_BATCH,
+  SNAPSHOT_COLLECTION,
+  QUEUE_COLLECTION,
   STATUSES,
   LEVELS,
+  REVIEW_STATUSES,
+  TERMINAL_STATUSES,
   FACT_FIELDS,
+  CONTENT_COLLECTION_MAP,
+  APPLYABLE_FIELDS,
+  PLAN_ONLY_FIELDS,
   PUBLIC_CONTENT_COLLECTIONS,
   AUDIT_WRITE_ALLOWLIST,
   MAX_PAGE_AUDITS,
   isFactField,
+  isApplyableField,
+  isPlanOnlyField,
+  collectionForContentType,
   assertAllowedProposalWrite,
   slugId,
   buildProposal,

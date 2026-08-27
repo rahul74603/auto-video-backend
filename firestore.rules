@@ -10,7 +10,9 @@ service cloud.firestore {
       return (collectionId == "system_settings" &&
           (documentId == "seo_intelligence" || documentId == "seo_search_console")) ||
         collectionId == "seo_recommendations" ||
-        collectionId == "seo_intelligence_runs";
+        collectionId == "seo_intelligence_runs" ||
+        collectionId == "seo_apply_snapshots" ||
+        collectionId == "seo_apply_queue";
     }
 
     match /orders/{orderId} {
@@ -45,6 +47,16 @@ service cloud.firestore {
     }
 
     match /seo_intelligence_runs/{runId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /seo_apply_snapshots/{snapId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /seo_apply_queue/{jobId} {
       allow read: if isAdmin();
       allow write: if isAdmin();
     }

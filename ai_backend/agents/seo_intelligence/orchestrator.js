@@ -38,6 +38,7 @@ const {
   persistOptimizationProposals
 } = require("./optimizer");
 const { summarizeProposals } = require("./proposal_model");
+const { analyzeGscRows } = require("./gsc_insights");
 
 const RUNS = "seo_intelligence_runs";
 const RECS = "seo_recommendations";
@@ -291,6 +292,7 @@ async function runSeoIntelligence(db, FieldValue, options = {}) {
     catalog: auditSample
   });
   const optimizationProposalSummary = summarizeProposals(optimizationProposals);
+  const gscInsights = analyzeGscRows(gsc.rows || []);
 
   let lifecycleUpdates = 0;
   let relatedUpdates = 0;
@@ -333,6 +335,12 @@ async function runSeoIntelligence(db, FieldValue, options = {}) {
     optimizationProposalCount: optimizationProposals.length,
     optimizationProposalWrites,
     optimizationProposalSummary,
+    gscInsights: {
+      status: gscInsights.status,
+      reason: gscInsights.reason,
+      insightCount: (gscInsights.insights || []).length,
+      fabricated: false
+    },
     searchConsole: { enabled: Boolean(gsc.enabled), rowCount: (gsc.rows || []).length },
     topRecommendations: recs.slice(0, 8),
     policy: {
@@ -340,7 +348,8 @@ async function runSeoIntelligence(db, FieldValue, options = {}) {
       autoCreatePages: false,
       inventFacts: false,
       pageAuditApply: false,
-      optimizationApply: false
+      optimizationApply: false,
+      autoApply: false
     }
   });
 
@@ -352,7 +361,13 @@ async function runSeoIntelligence(db, FieldValue, options = {}) {
         createdAt: FieldValue.serverTimestamp()
       });
       await db.collection(SETTINGS).doc(SETTINGS_DOC).set(
-        { lastRun: summary, lastRunAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() },
+        {
+          lastRun: summary,
+          lastRunAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+          gscInsights,
+          optimizationApply: false
+        },
         { merge: true }
       );
     } catch (error) {

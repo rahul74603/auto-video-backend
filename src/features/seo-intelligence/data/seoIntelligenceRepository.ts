@@ -75,11 +75,33 @@ export type SeoOptimizationProposal = {
   confidence?: string;
   level?: 'A' | 'B' | 'C' | string;
   requiresReview?: boolean;
-  status?: 'pending' | 'approved' | 'rejected' | string;
+  status?: 'pending' | 'approved' | 'rejected' | 'applied' | 'failed' | 'rolled_back' | string;
   applied?: boolean;
+  snapshotId?: string | null;
+  appliedAt?: string | null;
+  rolledBackAt?: string | null;
+  lastError?: string | null;
   createdAt?: string;
   auditVersion?: number;
   source?: string;
+};
+
+export type SeoGscInsight = {
+  kind?: string;
+  page?: string;
+  query?: string;
+  reason?: string;
+  impressions?: number;
+  ctr?: number;
+  position?: number;
+};
+
+export type SeoApplyHistoryItem = {
+  proposalId?: string;
+  status?: string;
+  snapshotId?: string | null;
+  at?: string;
+  field?: string | null;
 };
 
 export type SeoOptimizationProposalSummary = {
@@ -138,6 +160,8 @@ export type SeoDashboard = {
   pageAuditSummary?: SeoPageAuditSummary;
   optimizationProposals?: SeoOptimizationProposal[];
   optimizationProposalSummary?: SeoOptimizationProposalSummary;
+  gscInsights?: { status?: string; reason?: string | null; insights?: SeoGscInsight[]; fabricated?: boolean };
+  applyHistory?: SeoApplyHistoryItem[];
   searchConsole?: { enabled?: boolean; rowCount?: number; error?: string | null; source?: string; ingestedAt?: string | null };
   intelligence?: Record<string, unknown> | null;
   scan?: SeoScanStatus;
@@ -292,6 +316,10 @@ export async function fetchSeoDashboard(): Promise<SeoDashboard> {
     optimizationProposalSummary: settings.optimizationProposalSummary && typeof settings.optimizationProposalSummary === 'object'
       ? settings.optimizationProposalSummary as SeoOptimizationProposalSummary
       : undefined,
+    gscInsights: settings.gscInsights && typeof settings.gscInsights === 'object'
+      ? settings.gscInsights as SeoDashboard['gscInsights']
+      : undefined,
+    applyHistory: Array.isArray(settings.applyHistory) ? settings.applyHistory as SeoApplyHistoryItem[] : [],
     searchConsole: {
       enabled: Boolean(gscRows.length || runnerSearchConsole.enabled),
       rowCount: gscRows.length || Number(runnerSearchConsole.rowCount || 0),
@@ -339,6 +367,135 @@ export async function setOptimizationProposalStatus(
     return { ...item, status, applied: false, reviewedAt: new Date().toISOString() };
   });
   await setDoc(ref, { optimizationProposals: next, optimizationApply: false }, { merge: true });
+  return next;
+}
+
+const CONTENT_COLLECTION_MAP: Record<string, string> = {
+  BLOG: 'blogs',
+  JOB: 'jobs',
+  FAST_TRACK: 'fast_track',
+  MOCK_TEST: 'mock_tests',
+  STUDY_MATERIAL: 'study_materials',
+  COURSE: 'courses',
+  EBOOK: 'jobs',
+  WEB_STORY: 'web_stories',
+};
+
+const APPLYABLE_FIELDS = new Set([
+  'seoTitle', 'metaDescription', 'h1', 'authorName', 'imageAlt', 'faqs', 'relatedLinks', 'includeJobPostingSchema', 'schemaMarkup', 'howToApply',
+]);
+
+const FACT_FIELDS = new Set([
+  'organization', 'vacancies', 'salary', 'qualification', 'eligibility', 'dates', 'lastDate', 'startDate', 'fees', 'fee', 'age', 'applyLink', 'notificationLink', 'officialSiteLink', 'directLink', 'advtNo', 'selectionProcess', 'questions', 'answers', 'officialFacts',
+]);
+
+const SNAPSHOTS_COLLECTION = 'seo_apply_snapshots';
+
+function buildClientPatch(proposal: SeoOptimizationProposal): Record<string, unknown> {
+  const field = String(proposal.field || '');
+  if (FACT_FIELDS.has(field)) throw new Error(`Fact field ${field} is locked`);
+  if (field === 'contentPlan' || field === 'headingPlan' || field === 'contentTable' || field === 'howToApplySection') {
+    throw new Error(`${field} is a review plan and is not auto-written into public HTML`);
+  }
+  if (proposal.level === 'C') throw new Error('Level C proposals are never applied');
+  if (field === 'schemaMarkup' || field === 'includeJobPostingSchema') return { includeJobPostingSchema: false };
+  if (field === 'relatedLinks') {
+    const links = (Array.isArray(proposal.proposedValue) ? proposal.proposedValue : []).filter((item) => {
+      const rec = item as { url?: string };
+      return Boolean(rec && rec.url && rec.url.startsWith('/') && !rec.url.startsWith('//'));
+    });
+    return { relatedLinks: links };
+  }
+  if (!APPLYABLE_FIELDS.has(field)) throw new Error(`Field ${field} is not allowlisted for apply`);
+  return { [field]: proposal.proposedValue };
+}
+
+export function previewOptimizationProposal(proposal: SeoOptimizationProposal): {
+  oldValue: unknown;
+  proposedValue: unknown;
+  applyable: boolean;
+  reason: string;
+} {
+  try {
+    if (proposal.status !== 'approved') {
+      return { oldValue: proposal.oldValue, proposedValue: proposal.proposedValue, applyable: false, reason: 'Approve first. Approval does not write public content.' };
+    }
+    buildClientPatch(proposal);
+    return { oldValue: proposal.oldValue, proposedValue: proposal.proposedValue, applyable: true, reason: 'Ready to apply allowlisted fields after snapshot.' };
+  } catch (error) {
+    return { oldValue: proposal.oldValue, proposedValue: proposal.proposedValue, applyable: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function applyOptimizationProposal(proposalId: string): Promise<SeoOptimizationProposal[]> {
+  const id = String(proposalId || '').trim();
+  if (!id) throw new Error('Proposal id is required');
+  const settingsRef = doc(db, SETTINGS_COLLECTION, SEO_SETTINGS_DOC);
+  const settingsSnap = await getDoc(settingsRef);
+  if (!settingsSnap.exists()) throw new Error('SEO intelligence settings document is missing');
+  const settings = asRecord(settingsSnap.data());
+  const current = Array.isArray(settings.optimizationProposals) ? settings.optimizationProposals as SeoOptimizationProposal[] : [];
+  const proposal = current.find((item) => item.id === id);
+  if (!proposal) throw new Error('Proposal not found');
+  if (proposal.status !== 'approved') throw new Error('Only approved proposals can be applied');
+  const patch = buildClientPatch(proposal);
+  const collectionName = CONTENT_COLLECTION_MAP[String(proposal.contentType || '').toUpperCase()];
+  if (!collectionName || !proposal.contentId) throw new Error('Proposal is missing a public document mapping');
+
+  const pageRef = doc(db, collectionName, proposal.contentId);
+  const pageSnap = await getDoc(pageRef);
+  const page = pageSnap.exists() ? asRecord(pageSnap.data()) : {};
+  const oldValues: Record<string, unknown> = {};
+  for (const field of Object.keys(patch)) oldValues[field] = page[field] ?? null;
+  const snapshotId = `snap-${id}`.slice(0, 120);
+  const at = new Date().toISOString();
+  await setDoc(doc(db, SNAPSHOTS_COLLECTION, snapshotId), {
+    id: snapshotId,
+    proposalId: id,
+    collection: collectionName,
+    documentId: proposal.contentId,
+    url: proposal.url || '',
+    field: proposal.field,
+    oldValues,
+    newValues: patch,
+    createdAt: at,
+    actor: 'admin-dashboard',
+    restored: false,
+  });
+  await setDoc(pageRef, { ...patch, seoAppliedAt: at, contentUpdatedAt: at }, { merge: true });
+  const next = current.map((item) => item.id === id
+    ? { ...item, status: 'applied', applied: true, snapshotId, appliedAt: at, lastError: null }
+    : item);
+  const history = [{ proposalId: id, status: 'applied', snapshotId, at, field: proposal.field }, ...(Array.isArray(settings.applyHistory) ? settings.applyHistory as SeoApplyHistoryItem[] : [])].slice(0, 20);
+  await setDoc(settingsRef, { optimizationProposals: next, applyHistory: history, optimizationApply: false }, { merge: true });
+  return next;
+}
+
+export async function rollbackOptimizationProposal(proposalId: string): Promise<SeoOptimizationProposal[]> {
+  const id = String(proposalId || '').trim();
+  const settingsRef = doc(db, SETTINGS_COLLECTION, SEO_SETTINGS_DOC);
+  const settingsSnap = await getDoc(settingsRef);
+  if (!settingsSnap.exists()) throw new Error('SEO intelligence settings document is missing');
+  const settings = asRecord(settingsSnap.data());
+  const current = Array.isArray(settings.optimizationProposals) ? settings.optimizationProposals as SeoOptimizationProposal[] : [];
+  const proposal = current.find((item) => item.id === id);
+  if (!proposal || !proposal.snapshotId) throw new Error('Applied proposal with snapshot is required for rollback');
+  const snap = await getDoc(doc(db, SNAPSHOTS_COLLECTION, proposal.snapshotId));
+  if (!snap.exists()) throw new Error('Snapshot not found');
+  const snapshot = asRecord(snap.data());
+  const collectionName = String(snapshot.collection || CONTENT_COLLECTION_MAP[String(proposal.contentType || '').toUpperCase()] || '');
+  const documentId = String(snapshot.documentId || proposal.contentId || '');
+  const oldValues = asRecord(snapshot.oldValues);
+  delete oldValues.articleHtml;
+  delete oldValues.contentHtml;
+  const at = new Date().toISOString();
+  await setDoc(doc(db, collectionName, documentId), { ...oldValues, seoRolledBackAt: at, contentUpdatedAt: at }, { merge: true });
+  await setDoc(doc(db, SNAPSHOTS_COLLECTION, proposal.snapshotId), { restored: true, restoredAt: at }, { merge: true });
+  const next = current.map((item) => item.id === id
+    ? { ...item, status: 'rolled_back', applied: false, rolledBackAt: at }
+    : item);
+  const history = [{ proposalId: id, status: 'rolled_back', snapshotId: proposal.snapshotId, at, field: proposal.field }, ...(Array.isArray(settings.applyHistory) ? settings.applyHistory as SeoApplyHistoryItem[] : [])].slice(0, 20);
+  await setDoc(settingsRef, { optimizationProposals: next, applyHistory: history, optimizationApply: false }, { merge: true });
   return next;
 }
 

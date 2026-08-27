@@ -87,6 +87,25 @@ Phase 3 `seo_intelligence` optimizer may only create reviewable proposals on
 
 ---
 
+## Rule 6 — SEO apply only after approval + snapshot + fact lock
+
+Apply engine (`apply_engine.js`) public content tabhi likhe jab:
+
+1. Proposal `approved` ho (Approve khud public write nahi karta)
+2. Actor set ho
+3. Field allowlisted ho (seoTitle/meta/h1/author/imageAlt/faqs/relatedLinks/omit JobPosting)
+4. Fact fields lock rahein
+5. Level C kabhi apply na ho
+6. Snapshot `seo_apply_snapshots` me save ho **pehle**
+7. Batch max 5, Level B mass-apply nahi
+8. IndexNow/sitemap ping request hai, ranking claim nahi
+9. Auto-apply / auto-publish / auto-create pages OFF
+
+`firestore.rules` me `seo_apply_snapshots` aur `seo_apply_queue` admin-only hain.
+Optimizer ab bhi khud apply nahi karta.
+
+---
+
 ## Quick checklist (har task)
 
 - [ ] Branch: `arena/01a0409f-auto-video-backend` (sirf yahi)

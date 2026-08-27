@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react';
 import { ExternalLink, RefreshCw, Search, ShieldCheck, AlertTriangle, Play, Clipboard } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
+  applyOptimizationProposal,
   fetchSeoDashboard,
   getSeoIntelligenceWorkflowUrl,
   prepareSearchConsoleImport,
+  previewOptimizationProposal,
+  rollbackOptimizationProposal,
   setOptimizationProposalStatus,
   type SeoDashboard,
   type SeoOptimizationProposal,
@@ -64,6 +67,9 @@ const AdminSeoDashboard = () => {
   const [gscText, setGscText] = useState('');
   const [preparedGscJson, setPreparedGscJson] = useState('');
   const [loadError, setLoadError] = useState('');
+  const [selectedProposal, setSelectedProposal] = useState<SeoOptimizationProposal | null>(null);
+  const [statusBusy, setStatusBusy] = useState('');
+  const [typeFilter, setTypeFilter] = useState('ALL');
   const workflowUrl = getSeoIntelligenceWorkflowUrl();
 
   const load = async () => {
@@ -141,6 +147,43 @@ const AdminSeoDashboard = () => {
     }
   };
 
+  const handleApply = async (proposal: SeoOptimizationProposal) => {
+    if (!proposal.id) return;
+    const preview = previewOptimizationProposal(proposal);
+    if (!preview.applyable) {
+      toast.error(preview.reason);
+      return;
+    }
+    setStatusBusy(`${proposal.id}:apply`);
+    try {
+      const next = await applyOptimizationProposal(proposal.id);
+      setDashboard((current) => current ? { ...current, optimizationProposals: next } : current);
+      setSelectedProposal(next.find((item) => item.id === proposal.id) || null);
+      toast.success('Applied allowlisted fields after snapshot. Indexing was requested only as best-effort — not a ranking claim.');
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error(`Apply: ${msg}`);
+    } finally {
+      setStatusBusy('');
+    }
+  };
+
+  const handleRollback = async (proposal: SeoOptimizationProposal) => {
+    if (!proposal.id) return;
+    setStatusBusy(`${proposal.id}:rollback`);
+    try {
+      const next = await rollbackOptimizationProposal(proposal.id);
+      setDashboard((current) => current ? { ...current, optimizationProposals: next } : current);
+      setSelectedProposal(next.find((item) => item.id === proposal.id) || null);
+      toast.success('Rolled back from snapshot. Public fields restored.');
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error(`Rollback: ${msg}`);
+    } finally {
+      setStatusBusy('');
+    }
+  };
+
   if (loading && !dashboard && !loadError) {
     return (
       <div className="py-16 flex flex-col items-center justify-center bg-white rounded-[2rem] border">
@@ -173,6 +216,20 @@ const AdminSeoDashboard = () => {
   const scan = dashboard?.scan;
   const failed = scan?.lastStatus === 'failed';
   const running = scan?.lastStatus === 'running';
+  const audits = dashboard?.pageAudits || [];
+  const proposals = dashboard?.optimizationProposals || [];
+  const filteredAudits = typeFilter === 'ALL' ? audits : audits.filter((item) => item.contentType === typeFilter);
+  const filteredProposals = typeFilter === 'ALL' ? proposals : proposals.filter((item) => item.contentType === typeFilter);
+  const healthCounts = {
+    audited: audits.length,
+    healthy: audits.filter((item) => item.health?.label === 'healthy').length,
+    blockers: audits.filter((item) => (item.criticalCount || item.summary?.criticalCount || 0) > 0).length,
+    high: audits.filter((item) => (item.highCount || item.summary?.highCount || 0) > 0).length,
+    pending: proposals.filter((item) => item.status === 'pending').length,
+    approved: proposals.filter((item) => item.status === 'approved').length,
+    applied: proposals.filter((item) => item.status === 'applied').length,
+    failedApply: proposals.filter((item) => item.status === 'failed').length,
+  };
 
   return (
     <div className="space-y-6">
@@ -293,10 +350,9 @@ const AdminSeoDashboard = () => {
         <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Page SEO Health (diagnostic)</h3>
         <p className="text-xs text-gray-500 mb-4">
           Page SEO Health is a StudyGyaan diagnostic score, not a Google ranking score and not an AI Overview / GEO / LLMO claim.
-          Phase 2 is read-only: no Apply, no auto-fix, no title/meta rewrite. Live HTTP audit is off by default, so technical status may be unavailable.
-          GSC findings appear only when imported Search Console rows exist for that URL.
+          Live HTTP audit is off by default. GSC findings appear only when imported Search Console rows exist for that URL.
         </p>
-        {(dashboard?.pageAudits || []).length === 0 ? (
+        {filteredAudits.length === 0 ? (
           <p className="text-sm text-gray-400 font-medium">No page audits yet — run the GitHub Actions scan. Sample is capped at 40 published pages.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -312,7 +368,7 @@ const AdminSeoDashboard = () => {
                 </tr>
               </thead>
               <tbody>
-                {[...(dashboard?.pageAudits || [])]
+                {[...filteredAudits]
                   .sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0))
                   .slice(0, 40)
                   .map((audit: SeoPageAudit, idx) => (
@@ -361,12 +417,12 @@ const AdminSeoDashboard = () => {
       </div>
 
       <div className="bg-white border rounded-[2rem] p-6">
-        <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Optimization Proposals (review only)</h3>
+        <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Optimization Proposals</h3>
         <p className="text-xs text-gray-500 mb-4">
-          Proposals are generated from page audits. Approve/Reject only changes proposal status on the admin SEO settings document.
-          Approved does not apply, publish, rewrite, or write jobs/blogs/fast_track/mock tests. There is no Apply / Auto Fix / Publish control.
+          Approve/Reject only change proposal status. Apply writes allowlisted fields after a snapshot. Rollback restores that snapshot.
+          Level C and fact fields never apply. Auto-apply stays OFF. Indexing after apply is a request, not a ranking claim.
         </p>
-        {(dashboard?.optimizationProposals || []).length === 0 ? (
+        {filteredProposals.length === 0 ? (
           <p className="text-sm text-gray-400 font-medium">No optimization proposals yet — run the GitHub Actions scan after page audits exist.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -383,7 +439,7 @@ const AdminSeoDashboard = () => {
                 </tr>
               </thead>
               <tbody>
-                {(dashboard?.optimizationProposals || []).slice(0, 80).map((proposal, idx) => (
+                {filteredProposals.slice(0, 80).map((proposal, idx) => (
                   <tr
                     key={proposal.id || idx}
                     className={`border-b last:border-0 align-top cursor-pointer ${selectedProposal?.id === proposal.id ? 'bg-violet-50' : ''}`}
@@ -452,6 +508,37 @@ const AdminSeoDashboard = () => {
           </p>
         )}
       </div>
+
+      {(dashboard?.gscInsights?.insights || []).length > 0 && (
+        <div className="bg-white border rounded-[2rem] p-6">
+          <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Search Console insights (imported rows only)</h3>
+          <p className="text-xs text-gray-500 mb-3">
+            Status: {dashboard?.gscInsights?.status}. Missing GSC stays unavailable. Nothing here is fabricated and nothing is a ranking claim.
+          </p>
+          <ul className="space-y-2 text-xs text-slate-600">
+            {(dashboard?.gscInsights?.insights || []).slice(0, 12).map((item, idx) => (
+              <li key={`${item.kind}-${item.page}-${idx}`} className="border rounded-xl p-3">
+                <span className="font-black uppercase text-[10px] text-gray-400">{item.kind}</span>
+                <p className="mt-1">{item.reason}</p>
+                <p className="text-gray-400 mt-1">{item.page} {item.query ? `· ${item.query}` : ''}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {(dashboard?.applyHistory || []).length > 0 && (
+        <div className="bg-white border rounded-[2rem] p-6">
+          <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Apply / rollback history</h3>
+          <ul className="text-xs text-slate-600 space-y-1">
+            {(dashboard?.applyHistory || []).slice(0, 15).map((item, idx) => (
+              <li key={`${item.proposalId}-${idx}`}>
+                {item.at} · {item.status} · {item.field} · {item.proposalId} {item.snapshotId ? `· snap ${item.snapshotId}` : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="bg-white border rounded-[2rem] p-6">
         <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Search Console Data Import</h3>

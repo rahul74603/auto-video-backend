@@ -31,6 +31,8 @@ import {
   ingestSearchConsoleRows,
   normalizeSearchConsoleRows,
   prepareSearchConsoleImport,
+  previewOptimizationProposal,
+  setOptimizationProposalStatus,
 } from '@/features/seo-intelligence/data/seoIntelligenceRepository';
 
 describe('SEO dashboard Firestore repository', () => {
@@ -154,6 +156,25 @@ describe('SEO dashboard Firestore repository', () => {
     expect(payload.optimizationApply).toBe(false);
     expect(payload.optimizationProposals[0].applied).toBe(false);
     expect(opts).toEqual({ merge: true });
+  });
+
+  it('preview refuses apply until approved and never treats pending as a public write', () => {
+    const pending = previewOptimizationProposal({
+      id: 'p1',
+      field: 'metaDescription',
+      proposedValue: 'SSC CGL 2026 apply online',
+      status: 'pending',
+      level: 'B',
+    });
+    expect(pending.applyable).toBe(false);
+    const fact = previewOptimizationProposal({
+      id: 'p2',
+      field: 'salary',
+      proposedValue: '₹1',
+      status: 'approved',
+      level: 'C',
+    });
+    expect(fact.applyable).toBe(false);
   });
 
   it('validates manual GSC rows and rejects foreign URLs', () => {

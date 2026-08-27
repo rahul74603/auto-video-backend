@@ -14,5 +14,10 @@ module.exports = {
   ...require("./ecosystem"),
   ...require("./enrich"),
   ...require("./orchestrator"),
+  ...require("./proposal_model"),
+  ...require("./optimizer"),
+  ...require("./proposal_gate"),
+  ...require("./apply_engine"),
+  ...require("./gsc_insights"),
   ...require("./routes")
 };
