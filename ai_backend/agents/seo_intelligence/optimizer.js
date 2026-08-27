@@ -5,7 +5,9 @@
  *
  * Consumes page auditor findings. Never applies. Never publishes.
  * Never invents GSC/HTTP/facts. Never writes public content.
- * AI is not used: proposals are deterministic from source + findings.
+ * Default: deterministic proposals from source + findings.
+ * Optional AI articleHtml via injected generateJson / options.useAi.
+ * AI never writes production content.
  */
 
 const { detectExamFamily, detectContentKind, hubForFamily } = require("./taxonomy");
@@ -25,10 +27,20 @@ const {
   sortFindings,
   isFactField,
   assertAllowedProposalWrite,
+  assertAllowedApplyWrite,
+  extractArticleHtml,
   MAX_PROPOSALS_PER_PAGE,
   MAX_PROPOSALS,
+  MAX_HTML_PROPOSALS,
+  HTML_INLINE_CHARS,
+  BODY_COLLECTION,
   FACT_FIELDS
 } = require("./proposal_model");
+const {
+  buildBlogArticleProposal,
+  buildJobArticleEnhancement,
+  buildFastTrackHtml
+} = require("./blog_html");
 
 const SETTINGS = "system_settings";
 const SETTINGS_DOC = "seo_intelligence";
@@ -60,7 +72,6 @@ function skipIfNoSource(value) {
 
 function classifyShortBlog(page, words) {
   const kind = page.contentKind || detectContentKind({
-    type: "BLOG",
     title: titleOf(page),
     category: page.category
   });
@@ -279,13 +290,22 @@ function proposalFromFinding(finding, audit, page, options) {
 
   if (finding.id === "content:thin-blog") {
     if (pageType !== "BLOG") return null;
+    const htmlProposal = buildBlogArticleProposal(page, finding, options);
+    const oldHtml = String(page.articleHtml || page.contentHtml || page.content || "");
     return buildProposal({
       ...base,
-      field: "contentPlan",
-      oldValue: { words: finding.evidence.words },
-      proposedValue: blogPlan(page, finding),
-      reason: "Do not expand to a word-count target. Plan useful sections only if this is an unfinished guide.",
-      level: "B"
+      field: "articleHtml",
+      oldValue: oldHtml || { words: finding.evidence.words },
+      proposedValue: {
+        articleHtml: htmlProposal.articleHtml,
+        insufficientSource: Boolean(htmlProposal.insufficientSource),
+        contentPlan: htmlProposal.contentPlan || blogPlan(page, finding),
+        preview: htmlProposal.preview || null,
+        htmlSource: htmlProposal.htmlSource
+      },
+      reason: htmlProposal.reason || "Restructure existing on-page text. Do not expand to a word-count target.",
+      level: "B",
+      source: htmlProposal.htmlSource || "deterministic-html"
     });
   }
 
@@ -305,6 +325,23 @@ function proposalFromFinding(finding, audit, page, options) {
   }
 
   if (finding.id === "content:job-missing-apply-help") {
+    const enhanced = buildJobArticleEnhancement(page, options);
+    if (enhanced && enhanced.articleHtml) {
+      return buildProposal({
+        ...base,
+        field: "articleHtml",
+        oldValue: page.articleHtml || page.contentHtml || null,
+        proposedValue: {
+          articleHtml: enhanced.articleHtml,
+          preview: enhanced.preview || null,
+          htmlSource: enhanced.htmlSource,
+          insufficientSource: false
+        },
+        reason: enhanced.reason,
+        level: "B",
+        source: "deterministic-html"
+      });
+    }
     const url = page.applyLink || page.directLink;
     if (!url) return null;
     return buildProposal({
@@ -412,6 +449,25 @@ function proposalFromFinding(finding, audit, page, options) {
     if (!(page.directLink || page.applyLink || page.shortInfo || page.description)) {
       return null;
     }
+    if (pageType === "FAST_TRACK") {
+      const html = buildFastTrackHtml(page);
+      if (html && html.articleHtml) {
+        return buildProposal({
+          ...base,
+          field: "articleHtml",
+          oldValue: page.articleHtml || page.shortInfo || null,
+          proposedValue: {
+            articleHtml: html.articleHtml,
+            preview: html.preview || null,
+            htmlSource: html.htmlSource,
+            insufficientSource: false
+          },
+          reason: html.reason,
+          level: "B",
+          source: "deterministic-html"
+        });
+      }
+    }
   }
 
   return null;
@@ -430,6 +486,8 @@ function generateProposals(audit, page, options = {}) {
     if (proposal.proposedValue == null && proposal.level !== "C") continue;
     if (usedFields.has(proposal.field) && proposal.field !== "contentTable") continue;
     if (SHORT_OK_TYPES.has(pageType) && proposal.field === "contentPlan") continue;
+    if (pageType !== "BLOG" && pageType !== "JOB" && pageType !== "FAST_TRACK" && proposal.field === "articleHtml") continue;
+    if (pageType === "MOCK_TEST" && proposal.field === "articleHtml") continue;
     if (pageType === "MOCK_TEST" && (proposal.field === "questions" || proposal.field === "answers")) {
       if (proposal.proposedValue != null) continue;
     }
@@ -450,6 +508,7 @@ function generateProposalsForAudits(audits, pages, options = {}) {
   const pageList = Array.isArray(pages) ? pages : [];
   const byId = new Map(pageList.map((page) => [String(page.id || page.contentId || ""), page]));
   const all = [];
+  let htmlCount = 0;
   for (const audit of Array.isArray(audits) ? audits : []) {
     if (all.length >= MAX_PROPOSALS) break;
     const page = byId.get(String(audit.contentId || "")) || pageList.find((item) => item.url === audit.url);
@@ -457,10 +516,54 @@ function generateProposalsForAudits(audits, pages, options = {}) {
     const batch = generateProposals(audit, page, options);
     for (const proposal of batch) {
       if (all.length >= MAX_PROPOSALS) break;
+      if (proposal.field === "articleHtml") {
+        if (htmlCount >= MAX_HTML_PROPOSALS) continue;
+        htmlCount += 1;
+      }
       all.push(proposal);
     }
   }
   return all;
+}
+
+async function enrichProposalsWithAi(proposals, pages, options = {}) {
+  if (options.useAi !== true && typeof options.generateJson !== "function") {
+    return Array.isArray(proposals) ? proposals : [];
+  }
+  const { enrichBlogHtmlProposal } = require("./content_ai");
+  const pageList = Array.isArray(pages) ? pages : [];
+  const byId = new Map(pageList.map((page) => [String(page.id || page.contentId || ""), page]));
+  const out = [];
+  for (const proposal of Array.isArray(proposals) ? proposals : []) {
+    if (!proposal || proposal.field !== "articleHtml" || proposal.contentType !== "BLOG") {
+      out.push(proposal);
+      continue;
+    }
+    const page = byId.get(String(proposal.contentId || "")) || {};
+    const finding = { id: "content:thin-blog", evidence: { words: 0 } };
+    const enriched = await enrichBlogHtmlProposal(page, finding, {
+      articleHtml: extractArticleHtml(proposal.proposedValue),
+      contentPlan: proposal.proposedValue && proposal.proposedValue.contentPlan,
+      insufficientSource: proposal.insufficientSource,
+      htmlSource: proposal.htmlSource,
+      reason: proposal.reason,
+      preview: proposal.proposedValue && proposal.proposedValue.preview
+    }, options);
+    out.push(compactProposal({
+      ...proposal,
+      proposedValue: {
+        articleHtml: enriched.articleHtml,
+        insufficientSource: Boolean(enriched.insufficientSource),
+        contentPlan: enriched.contentPlan || (proposal.proposedValue && proposal.proposedValue.contentPlan),
+        preview: enriched.preview || null,
+        htmlSource: enriched.htmlSource
+      },
+      reason: enriched.reason || proposal.reason,
+      source: enriched.htmlSource || proposal.source,
+      confidence: enriched.confidence || proposal.confidence
+    }));
+  }
+  return out;
 }
 
 function refuseFactMutation(field, value) {
@@ -492,6 +595,26 @@ async function persistOptimizationProposals(db, FieldValue, proposals, options =
     }
   }
   const compact = mergeProposalStatuses(previous, (proposals || []).map(compactProposal)).slice(0, MAX_PROPOSALS);
+  for (const item of compact) {
+    if (!item || item.field !== "articleHtml") continue;
+    const html = extractArticleHtml(item.proposedValue);
+    if (!html || html.length <= HTML_INLINE_CHARS) continue;
+    assertAllowedApplyWrite(BODY_COLLECTION);
+    const bodyId = String(item.id || "proposal").slice(0, 120);
+    await db.collection(BODY_COLLECTION).doc(bodyId).set({
+      proposalId: bodyId,
+      url: item.url || "",
+      articleHtml: html.slice(0, 200000),
+      oldArticleHtml: typeof item.oldValue === "string" ? item.oldValue.slice(0, 200000) : null,
+      createdAt: FieldValue && FieldValue.serverTimestamp ? FieldValue.serverTimestamp() : new Date().toISOString()
+    }, { merge: true });
+    item.proposedValue = {
+      ...(item.proposedValue && typeof item.proposedValue === "object" ? item.proposedValue : {}),
+      htmlRef: bodyId,
+      articleHtml: html.slice(0, 1500),
+      previewText: html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 280)
+    };
+  }
   const summary = summarizeProposals(compact);
   const stamp = FieldValue ? FieldValue.serverTimestamp() : new Date().toISOString();
   await db.collection(SETTINGS).doc(SETTINGS_DOC).set(
@@ -522,6 +645,7 @@ async function persistOptimizationProposals(db, FieldValue, proposals, options =
 module.exports = {
   generateProposals,
   generateProposalsForAudits,
+  enrichProposalsWithAi,
   persistOptimizationProposals,
   setProposalStatus,
   mergeProposalStatuses,

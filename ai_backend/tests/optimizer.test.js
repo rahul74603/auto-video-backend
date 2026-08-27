@@ -79,7 +79,7 @@ test("1 meta: missing job meta proposes copy from existing facts only", () => {
   assert.equal(meta.applied, false);
 });
 
-test("2 short-blog: plan sections, never expand to 1500 words", () => {
+test("2 short-blog: articleHtml proposal, never expand to 1500 words", () => {
   const page = {
     id: "blog-thin",
     collection: "blogs",
@@ -91,14 +91,25 @@ test("2 short-blog: plan sections, never expand to 1500 words", () => {
   };
   const audit = auditPage(page, { now: NOW });
   const proposals = generateProposals(audit, page, { now: NOW });
-  const plan = proposals.find((item) => item.field === "contentPlan");
-  assert.ok(plan);
-  const blob = JSON.stringify(plan.proposedValue);
-  assert.equal(/1500|word-count target|pad to/i.test(blob + plan.reason), /pad to|word-count target/i.test(plan.reason) || /not a 1500-word quota/i.test(blob));
-  assert.equal(/expand to 1500/i.test(blob + plan.reason), false);
-  assert.ok(Array.isArray(plan.proposedValue.suggestedSections));
-  assert.ok(plan.proposedValue.suggestedSections.length >= 1);
-  assert.match(String(plan.proposedValue.likelyReason || ""), /incomplete|structure|stub|short/i);
+  const html = proposals.find((item) => item.field === "articleHtml");
+  assert.ok(html, "thin blog must propose articleHtml, not only a plan");
+  assert.ok(!proposals.some((item) => item.field === "contentPlan"));
+  const blob = JSON.stringify(html.proposedValue) + html.reason;
+  assert.equal(/expand to 1500/i.test(blob), false);
+  assert.equal(/pad to a word-count target/i.test(blob), false);
+  assert.ok(html.proposedValue && (html.proposedValue.articleHtml || html.proposedValue.insufficientSource));
+  if (html.proposedValue.articleHtml) {
+    assert.match(String(html.proposedValue.articleHtml), /<h1/i);
+    assert.equal(/<script/i.test(html.proposedValue.articleHtml), false);
+    assert.equal(/₹50,000|5432 vacancies|invented/i.test(html.proposedValue.articleHtml), false);
+  }
+  const plan = html.proposedValue.contentPlan;
+  assert.ok(plan && Array.isArray(plan.suggestedSections));
+  assert.ok(plan.suggestedSections.length >= 1);
+  assert.match(String(plan.likelyReason || ""), /incomplete|structure|stub|short/i);
+  assert.equal(html.level, "B");
+  assert.equal(html.requiresReview, true);
+  assert.equal(html.applied, false);
 });
 
 test("3 job title already aligned is left alone", () => {
@@ -179,6 +190,7 @@ test("6 short fast-track is not expanded", () => {
   const audit = auditPage(page, { now: NOW });
   const proposals = generateProposals(audit, page, { now: NOW });
   assert.ok(!fieldsOf(proposals).includes("contentPlan"));
+  assert.ok(!fieldsOf(proposals).includes("articleHtml"));
   assert.ok(!proposals.some((item) => /1500|expand/i.test(JSON.stringify(item.proposedValue || "") + item.reason)));
 });
 
@@ -197,6 +209,7 @@ test("7 mock missing questions stay level C with no invented items", () => {
   assert.equal(questions.proposedValue, null);
   assert.equal(questions.level, "C");
   assert.equal(questions.requiresReview, true);
+  assert.ok(!fieldsOf(proposals).includes("articleHtml"));
 });
 
 test("8 study material short copy is acceptable", () => {
@@ -212,6 +225,7 @@ test("8 study material short copy is acceptable", () => {
   const audit = auditPage(page, { now: NOW });
   const proposals = generateProposals(audit, page, { now: NOW });
   assert.ok(!fieldsOf(proposals).includes("contentPlan"));
+  assert.ok(!fieldsOf(proposals).includes("articleHtml"));
 });
 
 test("9 no fake GSC proposal when Search Console rows are missing", () => {
@@ -401,4 +415,97 @@ test("15 catalog recommendations still persist; proposals stay off public conten
   assert.ok(writes.some((w) => w.collection === "system_settings" && Array.isArray(w.data.optimizationProposals)));
   assert.ok(!writes.some((w) => ["jobs", "blogs", "fast_track", "mock_tests", "seo_optimization_proposals"].includes(w.collection)));
   assert.equal(generateProposalsForAudits([], [], {}).length, 0);
+});
+
+test("16 news/update blog stays short and does not invent facts", () => {
+  const page = {
+    id: "blog-result",
+    collection: "blogs",
+    title: "SSC CGL Result 2026 Declared",
+    articleHtml: "<p>SSC CGL result is out. Check the official website.</p>",
+    sourceUrl: "https://ssc.gov.in/result",
+    wordCount: 12,
+    status: "published",
+    url: "/blog/ssc-cgl-result-2026"
+  };
+  const audit = auditPage(page, { now: NOW });
+  const proposals = generateProposals(audit, page, { now: NOW });
+  const html = proposals.find((item) => item.field === "articleHtml");
+  assert.ok(html);
+  const body = String(html.proposedValue && html.proposedValue.articleHtml || "");
+  assert.ok(body.length < 2500);
+  assert.equal(/₹|vacancies|1500 words|eligibility age/i.test(body), false);
+  assert.match(body, /ssc\.gov\.in\/result/i);
+  assert.match(String(html.proposedValue.contentPlan && html.proposedValue.contentPlan.likelyReason || ""), /stub|short|news/i);
+});
+
+test("17 insufficient source blog does not invent HTML", () => {
+  const page = {
+    id: "blog-emptyish",
+    collection: "blogs",
+    title: "Note",
+    articleHtml: "",
+    wordCount: 0,
+    status: "published",
+    url: "/blog/note"
+  };
+  const audit = auditPage(page, { now: NOW });
+  const proposals = generateProposals(audit, page, { now: NOW });
+  const html = proposals.find((item) => item.field === "articleHtml");
+  if (html) {
+    assert.equal(html.proposedValue.insufficientSource, true);
+    assert.equal(html.proposedValue.articleHtml, null);
+    assert.equal(html.applied, false);
+  }
+});
+
+test("18 injected AI generateJson can propose HTML but never marks applied", async () => {
+  const { enrichProposalsWithAi } = require("../agents/seo_intelligence/optimizer");
+  const page = {
+    id: "blog-ai",
+    collection: "blogs",
+    title: "How to fill SSC CGL form",
+    articleHtml: "<p>Use the official website only.</p>",
+    wordCount: 11,
+    status: "published",
+    url: "/blog/ssc-cgl-form-ai"
+  };
+  const audit = auditPage(page, { now: NOW });
+  const proposals = generateProposals(audit, page, { now: NOW });
+  const generateJson = async () => ({
+    articleHtml: "<h1>How to fill SSC CGL form</h1><p>Use the official website only.</p><h2>Official source</h2><p>Confirm on the official website already named on this page.</p>",
+    invented: false,
+    insufficientSource: false,
+    confidence: "ai",
+    usedFacts: ["official website"]
+  });
+  const enriched = await enrichProposalsWithAi(proposals, [page], { generateJson });
+  const html = enriched.find((item) => item.field === "articleHtml");
+  assert.ok(html);
+  assert.equal(html.applied, false);
+  assert.equal(html.status, "pending");
+  assert.match(String(html.proposedValue.articleHtml || ""), /official website only/i);
+  assert.equal(/₹50,000|invented vacancy/i.test(String(html.proposedValue.articleHtml || "")), false);
+});
+
+test("19 AI that invents numbers is discarded", async () => {
+  const { enrichProposalsWithAi } = require("../agents/seo_intelligence/optimizer");
+  const page = {
+    id: "blog-ai-bad",
+    collection: "blogs",
+    title: "How to fill SSC CGL form",
+    articleHtml: "<p>Use the official website only.</p>",
+    status: "published",
+    url: "/blog/ssc-cgl-form-bad"
+  };
+  const audit = auditPage(page, { now: NOW });
+  const proposals = generateProposals(audit, page, { now: NOW });
+  const generateJson = async () => ({
+    articleHtml: "<h1>How to fill SSC CGL form</h1><p>Salary is 54000 and 1234 vacancies.</p>",
+    invented: false
+  });
+  const enriched = await enrichProposalsWithAi(proposals, [page], { generateJson });
+  const html = enriched.find((item) => item.field === "articleHtml");
+  assert.ok(html);
+  assert.equal(/54000|1234 vacancies/i.test(String(html.proposedValue.articleHtml || "")), false);
 });

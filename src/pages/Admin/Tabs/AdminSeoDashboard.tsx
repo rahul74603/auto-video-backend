@@ -6,6 +6,7 @@ import {
   fetchSeoDashboard,
   getSeoIntelligenceWorkflowUrl,
   prepareSearchConsoleImport,
+  fetchProposalArticleHtml,
   previewOptimizationProposal,
   rollbackOptimizationProposal,
   setOptimizationProposalStatus,
@@ -41,7 +42,21 @@ const formatProposedChange = (value: unknown): string => {
     }).join('; ');
   }
   if (typeof value === 'object') {
-    const rec = value as { suggestedSections?: string[]; suggestedH2?: string[]; heading?: string; note?: string };
+    const rec = value as {
+      suggestedSections?: string[];
+      suggestedH2?: string[];
+      heading?: string;
+      note?: string;
+      articleHtml?: string | null;
+      previewText?: string;
+      insufficientSource?: boolean;
+      headings?: string[];
+    };
+    if (rec.insufficientSource) return 'Insufficient source — HTML not generated (review only)';
+    if (typeof rec.articleHtml === 'string' && rec.articleHtml) {
+      return rec.previewText || rec.articleHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180);
+    }
+    if (Array.isArray(rec.headings) && rec.headings.length) return rec.headings.join('; ');
     if (Array.isArray(rec.suggestedSections)) return rec.suggestedSections.join('; ');
     if (Array.isArray(rec.suggestedH2)) return rec.suggestedH2.join('; ');
     if (rec.heading) return rec.heading;
@@ -70,6 +85,8 @@ const AdminSeoDashboard = () => {
   const [selectedProposal, setSelectedProposal] = useState<SeoOptimizationProposal | null>(null);
   const [statusBusy, setStatusBusy] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
+  const [htmlPreview, setHtmlPreview] = useState('');
+  const [htmlPreviewError, setHtmlPreviewError] = useState('');
   const workflowUrl = getSeoIntelligenceWorkflowUrl();
 
   const load = async () => {
@@ -107,6 +124,23 @@ const AdminSeoDashboard = () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHtmlPreview('');
+    setHtmlPreviewError('');
+    if (!selectedProposal || selectedProposal.field !== 'articleHtml') return () => { cancelled = true; };
+    void fetchProposalArticleHtml(selectedProposal)
+      .then((html) => {
+        if (!cancelled) setHtmlPreview(html);
+      })
+      .catch((error) => {
+        if (!cancelled) setHtmlPreviewError(error instanceof Error ? error.message : String(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProposal]);
 
   const handleRunInstructions = () => {
     window.open(workflowUrl, '_blank', 'noopener,noreferrer');
@@ -286,6 +320,22 @@ const AdminSeoDashboard = () => {
           <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700">
             Page audits: {dashboard?.pageAuditSummary?.count || dashboard?.pageAudits?.length || 0}
           </span>
+          <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700">Healthy {healthCounts.healthy}</span>
+          <span className="px-3 py-1 rounded-full bg-red-50 text-red-700">Blockers {healthCounts.blockers}</span>
+          <span className="px-3 py-1 rounded-full bg-violet-50 text-violet-700">Pending {healthCounts.pending}</span>
+          <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700">Applied {healthCounts.applied}</span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {['ALL', 'BLOG', 'JOB', 'FAST_TRACK', 'MOCK_TEST', 'STUDY_MATERIAL'].map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setTypeFilter(type)}
+              className={`px-3 py-1 rounded-full text-[10px] font-black uppercase border ${typeFilter === type ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`}
+            >
+              {type.replace('_', ' ')}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -477,8 +527,28 @@ const AdminSeoDashboard = () => {
             <p className="text-xs text-slate-600"><span className="font-black">Proposed:</span> {formatProposedChange(selectedProposal.proposedValue)}</p>
             <p className="text-xs text-slate-600"><span className="font-black">Reason:</span> {selectedProposal.reason || '—'}</p>
             <p className="text-xs text-slate-600"><span className="font-black">Evidence:</span> {(selectedProposal.evidenceIds || []).join(', ') || '—'}</p>
-            <p className="text-xs text-slate-600"><span className="font-black">Source:</span> {selectedProposal.source || 'deterministic-optimizer'}</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Source:</span> {selectedProposal.source || selectedProposal.htmlSource || 'deterministic-optimizer'}</p>
             <p className="text-xs text-slate-600"><span className="font-black">Level:</span> {selectedProposal.level} · requiresReview: {selectedProposal.requiresReview ? 'yes' : 'no'}</p>
+            {selectedProposal.field === 'articleHtml' && (
+              <div className="grid md:grid-cols-2 gap-3 pt-2">
+                <div className="bg-white border rounded-xl p-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">OLD HTML</p>
+                  <pre className="text-[11px] whitespace-pre-wrap break-words max-h-64 overflow-auto text-slate-700">
+                    {typeof selectedProposal.oldValue === 'string' ? selectedProposal.oldValue : formatProposedChange(selectedProposal.oldValue)}
+                  </pre>
+                </div>
+                <div className="bg-white border rounded-xl p-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">PROPOSED HTML</p>
+                  {htmlPreviewError ? (
+                    <p className="text-[11px] text-amber-700">{htmlPreviewError}</p>
+                  ) : (
+                    <pre className="text-[11px] whitespace-pre-wrap break-words max-h-64 overflow-auto text-slate-700">
+                      {htmlPreview || formatProposedChange(selectedProposal.proposedValue)}
+                    </pre>
+                  )}
+                </div>
+              </div>
+            )}
             {selectedProposal.status === 'pending' && (
               <div className="flex flex-wrap gap-2 pt-2">
                 <button
@@ -499,7 +569,33 @@ const AdminSeoDashboard = () => {
                 </button>
               </div>
             )}
-            <p className="text-[11px] text-gray-400">Approve never writes public pages. Phase 4 apply/rollback is not implemented.</p>
+            {selectedProposal.status === 'approved' && (
+              <div className="flex flex-wrap gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={Boolean(statusBusy)}
+                  onClick={() => void handleApply(selectedProposal)}
+                  className="px-4 py-2 rounded-xl bg-blue-600 text-white font-black text-xs disabled:opacity-50"
+                >
+                  Apply (snapshot first)
+                </button>
+              </div>
+            )}
+            {selectedProposal.status === 'applied' && selectedProposal.snapshotId && (
+              <div className="flex flex-wrap gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={Boolean(statusBusy)}
+                  onClick={() => void handleRollback(selectedProposal)}
+                  className="px-4 py-2 rounded-xl bg-white border font-black text-xs disabled:opacity-50"
+                >
+                  Rollback snapshot
+                </button>
+              </div>
+            )}
+            <p className="text-[11px] text-gray-400">
+              Approve never writes public pages. Apply writes allowlisted fields after a snapshot. articleHtml is never batch-applied.
+            </p>
           </div>
         )}
         {dashboard?.optimizationProposalSummary?.storage && (

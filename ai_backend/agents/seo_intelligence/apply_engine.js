@@ -13,11 +13,14 @@ const {
   isApplyableField,
   isPlanOnlyField,
   collectionForContentType,
+  extractArticleHtml,
   PUBLIC_CONTENT_COLLECTIONS,
   MAX_APPLY_BATCH,
-  SNAPSHOT_COLLECTION
+  SNAPSHOT_COLLECTION,
+  BODY_COLLECTION
 } = require("./proposal_model");
 const { gateProposal, previewProposal } = require("./proposal_gate");
+const { sanitizeProposalHtml, tryNormalizeWithCheerio } = require("./html_safety");
 const { buildSnapshot, persistSnapshot, loadSnapshot, markSnapshotRestored } = require("./snapshot_store");
 const { requestIndexingAfterApply } = require("./indexing_hooks");
 const { runReaudit } = require("./reaudit");
@@ -74,7 +77,33 @@ function buildPatch(proposal) {
       .slice(0, 8);
     return { relatedLinks: links };
   }
+  if (field === "articleHtml") {
+    const html = extractArticleHtml(proposal.proposedValue);
+    if (!html || !html.trim()) throw applyError("APPLY_NO_VALUE", "articleHtml is missing");
+    const safe = sanitizeProposalHtml(html);
+    if (!safe.ok) throw applyError("APPLY_UNSAFE_HTML", (safe.issues || []).join("; ") || "unsafe HTML");
+    const normalized = tryNormalizeWithCheerio(safe.html, proposal.h1 || null);
+    return { articleHtml: normalized };
+  }
   return { [field]: proposal.proposedValue };
+}
+
+async function resolveProposalBody(db, proposal) {
+  const value = proposal && proposal.proposedValue;
+  if (!value || typeof value !== "object" || !value.htmlRef || extractArticleHtml(value).length > 2000) {
+    return proposal;
+  }
+  if (!db) return proposal;
+  const snap = await db.collection(BODY_COLLECTION).doc(String(value.htmlRef)).get();
+  const exists = snap && (typeof snap.exists === "function" ? snap.exists() : snap.exists);
+  if (!exists) throw applyError("APPLY_HTML_BODY_MISSING", "seo_proposal_bodies document is missing");
+  const data = typeof snap.data === "function" ? snap.data() : {};
+  const html = typeof data.articleHtml === "string" ? data.articleHtml : "";
+  if (!html) throw applyError("APPLY_NO_VALUE", "proposal body has no articleHtml");
+  return {
+    ...proposal,
+    proposedValue: { ...value, articleHtml: html }
+  };
 }
 
 function assertActor(actor) {
@@ -147,11 +176,12 @@ async function applyProposal(db, FieldValue, proposal, options = {}) {
   if (!collectionName) throw applyError("APPLY_NO_COLLECTION", `No collection mapping for ${proposal.contentType}`);
   if (!proposal.contentId) throw applyError("APPLY_NO_DOCUMENT", "proposal contentId is required");
 
+  const resolved = await resolveProposalBody(db, proposal);
   const page = options.page || await readDocument(db, collectionName, proposal.contentId) || {};
-  const gate = gateProposal(proposal, { ...page, contentType: proposal.contentType }, options.source || page.source || null);
+  const gate = gateProposal(resolved, { ...page, contentType: resolved.contentType }, options.source || page.source || null);
   if (!gate.ok) throw applyError(gate.code, gate.issues[0] || "quality gate failed");
 
-  const patch = buildPatch(proposal);
+  const patch = buildPatch(resolved);
   const fields = Object.keys(patch);
   const oldValues = pickOldValues(page, fields);
   const snapshot = buildSnapshot({
@@ -238,7 +268,6 @@ async function rollbackProposal(db, FieldValue, proposal, options = {}) {
   }
   const stamp = FieldValue && FieldValue.serverTimestamp ? FieldValue.serverTimestamp() : nowIso(options.now);
   const restore = { ...snapshot.oldValues };
-  delete restore.articleHtml;
   await writePublicPatch(db, collectionName, snapshot.documentId || proposal.contentId, {
     ...restore,
     seoRolledBackAt: stamp
@@ -272,6 +301,10 @@ async function applyBatch(db, FieldValue, proposals, options = {}) {
     if (processed >= max) break;
     if (!proposal || proposal.status !== "approved") continue;
     if (proposal.level === "C") continue;
+    if (proposal.field === "articleHtml") {
+      results.push({ id: proposal.id, skipped: "articleHtml-not-batched" });
+      continue;
+    }
     if (proposal.level === "B" && options.allowLevelB !== true) {
       results.push({ id: proposal.id, skipped: "level-B-not-batched" });
       continue;
@@ -291,6 +324,7 @@ async function applyBatch(db, FieldValue, proposals, options = {}) {
 module.exports = {
   previewProposal,
   buildPatch,
+  resolveProposalBody,
   applyProposal,
   rollbackProposal,
   applyBatch,

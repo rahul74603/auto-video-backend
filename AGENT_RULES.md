@@ -93,7 +93,7 @@ Apply engine (`apply_engine.js`) public content tabhi likhe jab:
 
 1. Proposal `approved` ho (Approve khud public write nahi karta)
 2. Actor set ho
-3. Field allowlisted ho (seoTitle/meta/h1/author/imageAlt/faqs/relatedLinks/omit JobPosting)
+3. Field allowlisted ho (seoTitle/meta/h1/author/imageAlt/faqs/relatedLinks/omit JobPosting/articleHtml)
 4. Fact fields lock rahein
 5. Level C kabhi apply na ho
 6. Snapshot `seo_apply_snapshots` me save ho **pehle**
@@ -101,8 +101,23 @@ Apply engine (`apply_engine.js`) public content tabhi likhe jab:
 8. IndexNow/sitemap ping request hai, ranking claim nahi
 9. Auto-apply / auto-publish / auto-create pages OFF
 
-`firestore.rules` me `seo_apply_snapshots` aur `seo_apply_queue` admin-only hain.
+`firestore.rules` me `seo_apply_snapshots`, `seo_apply_queue`, aur `seo_proposal_bodies` admin-only hain.
 Optimizer ab bhi khud apply nahi karta.
+
+---
+
+## Rule 7 — Blog articleHtml is a proposal, never a silent publish
+
+Thin/incomplete **BLOG** pages may get a proposed `articleHtml` (OLD vs PROPOSED).
+
+- Reuse `model_client.generateJson` + `article_html_utils` sanitizers. No new agent/service.
+- Default generator is deterministic (`blog_html.js`). AI is optional (`content_ai.js`) and never writes production.
+- No filler, no 1500-word quota, no invented facts. Insufficient source → human-review proposal, do not invent.
+- JOB/FT: title/meta/headings/table/FAQ/links + optional HTML enhancement from existing facts. Fact fields stay locked.
+- MOCK: never invent Q/A. MATERIAL/COURSE/EBOOK/STORY: no long-article conversion.
+- `articleHtml` is Level B, human-review, **never batch-applied**.
+- Rollback restores the exact previous `articleHtml` from `seo_apply_snapshots`.
+- Large HTML bodies may live in admin-only `seo_proposal_bodies`. Do not use a public-read collection.
 
 ---
 

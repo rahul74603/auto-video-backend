@@ -239,3 +239,111 @@ test("runQueuedApplies does not apply level B", async () => {
   const result = await runQueuedApplies(null, null, [approvedMeta()], { actor: "rahul@test", dryRun: true });
   assert.equal(result.applied, 0);
 });
+
+function approvedBlogHtml(html) {
+  return buildProposal({
+    id: "p-html",
+    url: "/blog/ssc-cgl-form",
+    contentType: "BLOG",
+    contentId: "blog-1",
+    field: "articleHtml",
+    oldValue: "<p>Use the official website only.</p>",
+    proposedValue: {
+      articleHtml: html,
+      insufficientSource: false,
+      htmlSource: "deterministic-html"
+    },
+    evidenceIds: ["content:thin-blog"],
+    level: "B",
+    status: "approved"
+  });
+}
+
+test("unsafe articleHtml is rejected by the gate", () => {
+  const proposal = approvedBlogHtml('<p>Hi</p><script>alert(1)</script>');
+  const gate = gateProposal(proposal, {
+    contentType: "BLOG",
+    title: "How to fill SSC CGL form",
+    articleHtml: "<p>Use the official website only.</p>"
+  });
+  assert.equal(gate.ok, false);
+  assert.match(gate.code, /UNSAFE|NO_VALUE|UNGROUNDED/i);
+});
+
+test("articleHtml apply snapshots full HTML and rollback restores it", async () => {
+  const writes = [];
+  const html = "<h1>How to fill SSC CGL form</h1><p>Use the official website only.</p>";
+  const proposal = approvedBlogHtml(html);
+  const docs = {
+    "blogs/blog-1": { title: "How to fill SSC CGL form", articleHtml: "<p>Use the official website only.</p>" },
+    "system_settings/seo_intelligence": { optimizationProposals: [proposal] }
+  };
+  const db = mockDb(docs, writes);
+  const result = await applyProposal(db, { serverTimestamp: () => "ts" }, proposal, {
+    actor: "rahul@test",
+    now: NOW,
+    skipNetwork: true,
+    reaudit: false,
+    page: docs["blogs/blog-1"]
+  });
+  assert.equal(result.applied, true);
+  const snapWrite = writes.find((w) => w.collection === "seo_apply_snapshots");
+  const blogWrite = writes.find((w) => w.collection === "blogs");
+  assert.ok(snapWrite);
+  assert.equal(snapWrite.data.oldValues.articleHtml, "<p>Use the official website only.</p>");
+  assert.equal(blogWrite.data.articleHtml.includes("How to fill SSC CGL form"), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(blogWrite.data, "salary"), false);
+
+  const applied = { ...proposal, status: "applied", applied: true, snapshotId: result.snapshotId };
+  const rb = await rollbackProposal(db, { serverTimestamp: () => "ts" }, applied, {
+    actor: "rahul@test",
+    now: NOW,
+    snapshot: snapWrite.data
+  });
+  assert.equal(rb.rolledBack, true);
+  const restore = writes.filter((w) => w.collection === "blogs").pop();
+  assert.equal(restore.data.articleHtml, "<p>Use the official website only.</p>");
+});
+
+test("articleHtml is never batch-applied even when Level B is allowed", async () => {
+  const proposal = approvedBlogHtml("<h1>How to fill SSC CGL form</h1><p>Use the official website only.</p>");
+  const result = await applyBatch(null, null, [proposal], {
+    actor: "rahul@test",
+    dryRun: true,
+    allowLevelB: true,
+    max: 5
+  });
+  assert.equal(result.applied, 0);
+  assert.ok(result.results.some((row) => row.skipped === "articleHtml-not-batched"));
+});
+
+test("mock tests cannot apply articleHtml", () => {
+  const proposal = buildProposal({
+    id: "p-mock-html",
+    contentType: "MOCK_TEST",
+    contentId: "m1",
+    field: "articleHtml",
+    proposedValue: { articleHtml: "<h1>Fake</h1><p>Invented answers.</p>" },
+    evidenceIds: ["content:thin-blog"],
+    level: "B",
+    status: "approved"
+  });
+  const gate = gateProposal(proposal, { contentType: "MOCK_TEST" });
+  assert.equal(gate.ok, false);
+});
+
+test("insufficient source articleHtml cannot apply", () => {
+  const proposal = buildProposal({
+    id: "p-thin",
+    contentType: "BLOG",
+    contentId: "b1",
+    field: "articleHtml",
+    proposedValue: { articleHtml: null, insufficientSource: true, contentPlan: { suggestedSections: ["Steps"] } },
+    evidenceIds: ["content:thin-blog"],
+    level: "B",
+    status: "approved"
+  });
+  const gate = gateProposal(proposal, { contentType: "BLOG", title: "Note" });
+  assert.equal(gate.ok, false);
+  assert.match(gate.code, /INSUFFICIENT|NO_VALUE/i);
+});

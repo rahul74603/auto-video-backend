@@ -84,6 +84,9 @@ export type SeoOptimizationProposal = {
   createdAt?: string;
   auditVersion?: number;
   source?: string;
+  htmlSource?: string;
+  insufficientSource?: boolean;
+  htmlRef?: string;
 };
 
 export type SeoGscInsight = {
@@ -382,16 +385,52 @@ const CONTENT_COLLECTION_MAP: Record<string, string> = {
 };
 
 const APPLYABLE_FIELDS = new Set([
-  'seoTitle', 'metaDescription', 'h1', 'authorName', 'imageAlt', 'faqs', 'relatedLinks', 'includeJobPostingSchema', 'schemaMarkup', 'howToApply',
+  'seoTitle', 'metaDescription', 'h1', 'authorName', 'imageAlt', 'faqs', 'relatedLinks', 'includeJobPostingSchema', 'schemaMarkup', 'howToApply', 'articleHtml',
 ]);
+
+const SNAPSHOTS_COLLECTION = 'seo_apply_snapshots';
+const BODIES_COLLECTION = 'seo_proposal_bodies';
+
+function extractArticleHtml(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object' && typeof (value as { articleHtml?: unknown }).articleHtml === 'string') {
+    return (value as { articleHtml: string }).articleHtml;
+  }
+  return '';
+}
+
+function assertSafeArticleHtml(html: string): string {
+  const value = String(html || '');
+  if (!value.trim()) throw new Error('No articleHtml to apply');
+  if (/<script|javascript:|vbscript:|<iframe|<object|<embed|\son[a-z]+\s*=/i.test(value)) {
+    throw new Error('Proposed articleHtml failed the HTML safety check');
+  }
+  return value;
+}
+
+export async function fetchProposalArticleHtml(proposal: SeoOptimizationProposal): Promise<string> {
+  const value = proposal.proposedValue;
+  if (value && typeof value === 'object' && (value as { insufficientSource?: boolean }).insufficientSource) {
+    throw new Error('Insufficient source — HTML was not generated');
+  }
+  const htmlRef = value && typeof value === 'object' ? String((value as { htmlRef?: string }).htmlRef || '') : '';
+  if (htmlRef) {
+    const snap = await getDoc(doc(db, BODIES_COLLECTION, htmlRef));
+    if (snap.exists()) {
+      const data = asRecord(snap.data());
+      if (typeof data.articleHtml === 'string' && data.articleHtml.trim()) {
+        return assertSafeArticleHtml(data.articleHtml);
+      }
+    }
+  }
+  return assertSafeArticleHtml(extractArticleHtml(value));
+}
 
 const FACT_FIELDS = new Set([
   'organization', 'vacancies', 'salary', 'qualification', 'eligibility', 'dates', 'lastDate', 'startDate', 'fees', 'fee', 'age', 'applyLink', 'notificationLink', 'officialSiteLink', 'directLink', 'advtNo', 'selectionProcess', 'questions', 'answers', 'officialFacts',
 ]);
 
-const SNAPSHOTS_COLLECTION = 'seo_apply_snapshots';
-
-function buildClientPatch(proposal: SeoOptimizationProposal): Record<string, unknown> {
+function buildClientPatch(proposal: SeoOptimizationProposal, articleHtml?: string): Record<string, unknown> {
   const field = String(proposal.field || '');
   if (FACT_FIELDS.has(field)) throw new Error(`Fact field ${field} is locked`);
   if (field === 'contentPlan' || field === 'headingPlan' || field === 'contentTable' || field === 'howToApplySection') {
@@ -405,6 +444,13 @@ function buildClientPatch(proposal: SeoOptimizationProposal): Record<string, unk
       return Boolean(rec && rec.url && rec.url.startsWith('/') && !rec.url.startsWith('//'));
     });
     return { relatedLinks: links };
+  }
+  if (field === 'articleHtml') {
+    const html = articleHtml || extractArticleHtml(proposal.proposedValue);
+    if (proposal.insufficientSource || (proposal.proposedValue && typeof proposal.proposedValue === 'object' && (proposal.proposedValue as { insufficientSource?: boolean }).insufficientSource)) {
+      throw new Error('Insufficient source — articleHtml is not applied');
+    }
+    return { articleHtml: assertSafeArticleHtml(html) };
   }
   if (!APPLYABLE_FIELDS.has(field)) throw new Error(`Field ${field} is not allowlisted for apply`);
   return { [field]: proposal.proposedValue };
@@ -438,7 +484,8 @@ export async function applyOptimizationProposal(proposalId: string): Promise<Seo
   const proposal = current.find((item) => item.id === id);
   if (!proposal) throw new Error('Proposal not found');
   if (proposal.status !== 'approved') throw new Error('Only approved proposals can be applied');
-  const patch = buildClientPatch(proposal);
+  const articleHtml = proposal.field === 'articleHtml' ? await fetchProposalArticleHtml(proposal) : undefined;
+  const patch = buildClientPatch(proposal, articleHtml);
   const collectionName = CONTENT_COLLECTION_MAP[String(proposal.contentType || '').toUpperCase()];
   if (!collectionName || !proposal.contentId) throw new Error('Proposal is missing a public document mapping');
 
@@ -486,8 +533,6 @@ export async function rollbackOptimizationProposal(proposalId: string): Promise<
   const collectionName = String(snapshot.collection || CONTENT_COLLECTION_MAP[String(proposal.contentType || '').toUpperCase()] || '');
   const documentId = String(snapshot.documentId || proposal.contentId || '');
   const oldValues = asRecord(snapshot.oldValues);
-  delete oldValues.articleHtml;
-  delete oldValues.contentHtml;
   const at = new Date().toISOString();
   await setDoc(doc(db, collectionName, documentId), { ...oldValues, seoRolledBackAt: at, contentUpdatedAt: at }, { merge: true });
   await setDoc(doc(db, SNAPSHOTS_COLLECTION, proposal.snapshotId), { restored: true, restoredAt: at }, { merge: true });

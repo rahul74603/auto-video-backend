@@ -25,6 +25,10 @@ const MAX_PROPOSALS = 80;
 const MAX_APPLY_BATCH = 5;
 const SNAPSHOT_COLLECTION = "seo_apply_snapshots";
 const QUEUE_COLLECTION = "seo_apply_queue";
+const BODY_COLLECTION = "seo_proposal_bodies";
+const MAX_HTML_PROPOSALS = 12;
+const MAX_HTML_CHARS = 20000;
+const HTML_INLINE_CHARS = 8000;
 const STATUSES = Object.freeze(["pending", "approved", "rejected", "applied", "failed", "rolled_back"]);
 const LEVELS = Object.freeze(["A", "B", "C"]);
 const REVIEW_STATUSES = Object.freeze(["approved", "rejected"]);
@@ -51,7 +55,16 @@ const APPLYABLE_FIELDS = Object.freeze([
   "relatedLinks",
   "includeJobPostingSchema",
   "schemaMarkup",
-  "howToApply"
+  "howToApply",
+  "articleHtml"
+]);
+
+const APPLY_WRITE_ALLOWLIST = Object.freeze([
+  "system_settings",
+  "seo_intelligence_runs",
+  SNAPSHOT_COLLECTION,
+  QUEUE_COLLECTION,
+  BODY_COLLECTION
 ]);
 
 const PLAN_ONLY_FIELDS = Object.freeze([
@@ -104,6 +117,53 @@ function assertAllowedProposalWrite(collectionName) {
   return assertAllowedAuditWrite(collectionName);
 }
 
+function assertAllowedApplyWrite(collectionName) {
+  const name = String(collectionName || "");
+  if (PUBLIC_CONTENT_COLLECTIONS.includes(name)) {
+    const err = new Error(`apply internals refused to treat public content as a snapshot store: ${name}`);
+    err.code = "APPLY_WRITE_FORBIDDEN";
+    throw err;
+  }
+  if (!APPLY_WRITE_ALLOWLIST.includes(name) && !AUDIT_WRITE_ALLOWLIST.includes(name)) {
+    const err = new Error(`apply internals may only persist to ${APPLY_WRITE_ALLOWLIST.join(", ")} (got ${name})`);
+    err.code = "APPLY_WRITE_FORBIDDEN";
+    throw err;
+  }
+  return true;
+}
+
+function extractArticleHtml(value) {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && typeof value.articleHtml === "string") {
+    return value.articleHtml;
+  }
+  return "";
+}
+
+function compactHtmlProposed(value) {
+  if (typeof value === "string") {
+    const html = value.slice(0, MAX_HTML_CHARS);
+    return {
+      articleHtml: html,
+      previewText: html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 280)
+    };
+  }
+  if (!value || typeof value !== "object") return value;
+  const html = typeof value.articleHtml === "string" ? value.articleHtml.slice(0, MAX_HTML_CHARS) : value.articleHtml;
+  const preview = value.preview && typeof value.preview === "object" ? value.preview : {};
+  return {
+    articleHtml: html,
+    previewText: value.previewText
+      || (typeof html === "string" ? html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 280) : ""),
+    headings: Array.isArray(preview.headings) ? preview.headings.slice(0, 12) : (Array.isArray(value.headings) ? value.headings.slice(0, 12) : []),
+    wordCount: preview.wordCount != null ? preview.wordCount : (value.wordCount != null ? value.wordCount : null),
+    contentPlan: value.contentPlan || null,
+    insufficientSource: Boolean(value.insufficientSource),
+    htmlSource: value.htmlSource || null,
+    htmlRef: value.htmlRef || null
+  };
+}
+
 function slugId(parts) {
   return String(parts.filter(Boolean).join("-"))
     .toLowerCase()
@@ -145,14 +205,17 @@ function buildProposal(raw = {}) {
 
 function compactProposal(proposal) {
   const record = buildProposal(proposal);
+  const isHtml = record.field === "articleHtml";
   return {
     id: record.id,
     url: record.url,
     contentType: record.contentType,
     contentId: record.contentId,
     field: record.field,
-    oldValue: typeof record.oldValue === "string" ? record.oldValue.slice(0, 280) : record.oldValue,
-    proposedValue: record.proposedValue,
+    oldValue: typeof record.oldValue === "string"
+      ? record.oldValue.slice(0, isHtml ? 2000 : 280)
+      : record.oldValue,
+    proposedValue: isHtml ? compactHtmlProposed(record.proposedValue) : record.proposedValue,
     reason: record.reason,
     evidenceIds: record.evidenceIds,
     severity: record.severity,
@@ -166,7 +229,10 @@ function compactProposal(proposal) {
     rolledBackAt: proposal && proposal.rolledBackAt ? proposal.rolledBackAt : null,
     lastError: proposal && proposal.lastError ? String(proposal.lastError).slice(0, 300) : null,
     createdAt: record.createdAt,
-    auditVersion: record.auditVersion
+    auditVersion: record.auditVersion,
+    source: record.source,
+    htmlSource: proposal && proposal.htmlSource ? String(proposal.htmlSource).slice(0, 40) : (record.source || null),
+    insufficientSource: Boolean(proposal && (proposal.insufficientSource || (proposal.proposedValue && proposal.proposedValue.insufficientSource)))
   };
 }
 
@@ -247,6 +313,11 @@ module.exports = {
   MAX_APPLY_BATCH,
   SNAPSHOT_COLLECTION,
   QUEUE_COLLECTION,
+  BODY_COLLECTION,
+  APPLY_WRITE_ALLOWLIST,
+  MAX_HTML_PROPOSALS,
+  MAX_HTML_CHARS,
+  HTML_INLINE_CHARS,
   STATUSES,
   LEVELS,
   REVIEW_STATUSES,
@@ -263,6 +334,9 @@ module.exports = {
   isPlanOnlyField,
   collectionForContentType,
   assertAllowedProposalWrite,
+  assertAllowedApplyWrite,
+  extractArticleHtml,
+  compactHtmlProposed,
   slugId,
   buildProposal,
   compactProposal,

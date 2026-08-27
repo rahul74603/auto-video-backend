@@ -17,8 +17,11 @@ const {
   isFactField,
   isApplyableField,
   isPlanOnlyField,
+  extractArticleHtml,
   FACT_FIELDS
 } = require("./proposal_model");
+const { htmlSafetyIssues } = require("./html_safety");
+const { inventedNumbers, sourceBlob } = require("./content_ai");
 
 function fail(code, message) {
   return { ok: false, verdict: "fail", code, issues: [message], warnings: [] };
@@ -98,6 +101,34 @@ function gateProposal(proposal, page = {}, source = null) {
   }
   if (proposal.proposedValue == null && field !== "schemaMarkup" && field !== "includeJobPostingSchema") {
     return fail("APPLY_NO_VALUE", "No proposed value to apply");
+  }
+
+  if (field === "articleHtml") {
+    if (["MOCK_TEST", "STUDY_MATERIAL", "COURSE", "EBOOK", "WEB_STORY"].includes(contentType)) {
+      return fail("APPLY_HTML_TYPE", "This content type does not receive articleHtml applies");
+    }
+    if (proposal.proposedValue && proposal.proposedValue.insufficientSource) {
+      return fail("APPLY_INSUFFICIENT_SOURCE", "Source too thin to generate HTML without inventing facts");
+    }
+    const html = extractArticleHtml(proposal.proposedValue);
+    if (!html || !String(html).trim()) {
+      return fail("APPLY_NO_VALUE", "No articleHtml to apply");
+    }
+    const issues = htmlSafetyIssues(html);
+    if (issues.length) {
+      return fail("APPLY_UNSAFE_HTML", issues.join("; "));
+    }
+    if (contentType === "BLOG" || contentType === "JOB" || contentType === "FAST_TRACK") {
+      const blob = sourceBlob(page) || textOfProposed(page.articleHtml || page.title || "");
+      const extras = inventedNumbers(html, blob);
+      if (extras.length) {
+        return fail("APPLY_UNGROUNDED", `Proposed articleHtml has facts not in the source: ${extras[0]}`);
+      }
+    }
+    if (contentType !== "BLOG" && contentType !== "JOB" && contentType !== "FAST_TRACK") {
+      return fail("APPLY_HTML_TYPE", `articleHtml apply is not allowed for ${contentType}`);
+    }
+    warnings.push("articleHtml-gate: Level B/C never batch-applied; human review required");
   }
 
   if (field === "seoTitle" || field === "h1") {
