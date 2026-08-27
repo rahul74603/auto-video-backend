@@ -1,8 +1,8 @@
-const functions = require("firebase-functions");
+const functions = require("firebase-functions/v1");
 // v1 Firestore triggers work on Spark plan (125K reads / 50K writes per month free).
 // Replaced the v2 noop with a real v1 trigger so JOB publish instantly
 // dispatches to GitHub Actions without requiring Blaze billing.
-const onDocumentCreated = (documentPath) => functions.firestore.document(documentPath).onCreate;
+const onDocumentCreated = (documentPath) => (handler) => functions.firestore.document(documentPath).onCreate(handler);
 const admin = require("firebase-admin");
 const axios = require("axios");
 const { google } = require("googleapis");
