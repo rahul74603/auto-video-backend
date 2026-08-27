@@ -163,23 +163,6 @@ const AdminSeoDashboard = () => {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    setHtmlPreview('');
-    setHtmlPreviewError('');
-    if (!selectedProposal || selectedProposal.field !== 'articleHtml') return () => { cancelled = true; };
-    void fetchProposalArticleHtml(selectedProposal)
-      .then((html) => {
-        if (!cancelled) setHtmlPreview(html);
-      })
-      .catch((error) => {
-        if (!cancelled) setHtmlPreviewError(error instanceof Error ? error.message : String(error));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedProposal]);
-
   const handleRunInstructions = () => {
     window.open(workflowUrl, '_blank', 'noopener,noreferrer');
     toast('GitHub Actions page opened. Choose “Run workflow” to scan without Cloud Run.');
