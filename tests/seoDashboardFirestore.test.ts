@@ -51,6 +51,23 @@ describe('SEO dashboard Firestore repository', () => {
             lifecycleSummary: { OPEN: 2, CLOSED: 1 },
             freshness: { ok: true, stats: { recentJobs24h: 2 }, issues: [] },
             lastRun: { generatedAt: '2026-08-26T01:45:00.000Z', searchConsole: { enabled: true, rowCount: 1 } },
+            pageAudits: [{
+              url: '/job/ssc-cgl-2026',
+              contentType: 'JOB',
+              contentId: 'job-1',
+              health: { score: 82, label: 'fair', note: 'Page SEO Health is a StudyGyaan diagnostic score, not a Google ranking score.' },
+              priority: 45,
+              mainOpportunity: 'Add contextual internal links',
+              criticalCount: 0,
+              highCount: 0,
+              findings: [{ id: 'internalLinks:none-in-source', dimension: 'internalLinks', severity: 'medium' }],
+            }],
+            pageAuditSummary: {
+              count: 1,
+              max: 40,
+              storage: 'system_settings/seo_intelligence.pageAudits',
+              preferredCollectionBlocked: 'seo_page_audits requires admin-only Firestore rules before use',
+            },
           }),
         });
       }
@@ -75,10 +92,15 @@ describe('SEO dashboard Firestore repository', () => {
     expect(dashboard.scan?.runner).toBe('github-actions');
     expect(dashboard.lifecycle?.OPEN).toBe(2);
     expect(dashboard.recommendations).toHaveLength(1);
+    expect(dashboard.pageAudits).toHaveLength(1);
+    expect(dashboard.pageAudits?.[0].contentType).toBe('JOB');
+    expect(dashboard.pageAuditSummary?.storage).toContain('system_settings');
     expect(dashboard.searchConsole?.rowCount).toBe(1);
     expect(dashboard.policy?.autoPublish).toBe(false);
     expect(dashboard.policy?.autoCreatePages).toBe(false);
     expect(dashboard.policy?.inventFacts).toBe(false);
+    expect(dashboard.policy?.pageAuditApply).toBe(false);
+    expect(mockGetDocs).toHaveBeenCalledTimes(1);
   });
 
   it('validates manual GSC rows and rejects foreign URLs', () => {

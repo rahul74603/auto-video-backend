@@ -7,11 +7,13 @@
  *   - classify job lifecycle (writes lifecycleStatus only)
  *   - compute content gaps / CTR recs / mock-test / youtube suggestions
  *   - persist seo_recommendations (never executed automatically)
+ *   - Phase 2: read-only page SEO audits (max 40) persisted separately
  *
  * DOES NOT:
  *   - publish or rewrite article HTML
  *   - create new public pages
  *   - invent Search Console numbers
+ *   - apply page-audit fixes / rewrite titles or meta
  *   - log secrets
  */
 
@@ -27,6 +29,8 @@ const {
   redactSecrets
 } = require("./intelligence");
 const { findRelatedMockTests, extractYoutubeRef } = require("./ecosystem");
+const { selectAuditSample, auditPages, persistPageAudits } = require("./page_auditor");
+const { compactAudit, summarizeAudits, MAX_PAGE_AUDITS } = require("./audit_model");
 
 const RUNS = "seo_intelligence_runs";
 const RECS = "seo_recommendations";
@@ -38,8 +42,16 @@ function mapDoc(doc, collectionName) {
   const data = typeof doc.data === "function" ? doc.data() : doc;
   const id = doc.id;
   const title = data.title || data.h1 || "";
+  const typeHint = collectionName === "jobs"
+    ? "JOB"
+    : collectionName === "mock_tests"
+      ? "MOCK_TEST"
+      : collectionName === "blogs"
+        ? "BLOG"
+        : "FAST_TRACK";
   const mapped = {
     id,
+    collection: collectionName,
     title,
     slug: data.slug || id,
     status: data.status || "published",
@@ -47,20 +59,46 @@ function mapDoc(doc, collectionName) {
     organization: data.organization || data.org || "",
     lastDate: data.lastDate || "",
     startDate: data.startDate || "",
-    type: collectionName === "jobs" ? "JOB" : collectionName === "mock_tests" ? "MOCK_TEST" : collectionName === "blogs" ? "BLOG" : "FAST_TRACK",
+    type: typeHint,
+    typeRaw: data.type || data.articleType || typeHint,
     youtubeUrl: data.youtubeUrl || "",
     youtubeVideoId: data.youtubeVideoId || "",
     views: data.views || 0,
     wordCount: data.wordCount || 0,
-    articleHtml: data.articleHtml || "",
+    articleHtml: data.articleHtml || data.contentHtml || data.content || "",
+    contentHtml: data.contentHtml || "",
+    description: data.description || "",
+    shortInfo: data.shortInfo || "",
+    excerpt: data.excerpt || "",
+    seoTitle: data.seoTitle || "",
+    metaDescription: data.metaDescription || "",
+    h1: data.h1 || "",
+    noIndex: data.noIndex === true,
+    applyLink: data.applyLink || "",
+    directLink: data.directLink || "",
+    officialLinks: data.officialLinks || [],
+    schemaMarkup: data.schemaMarkup || data.structuredData || "",
+    structuredData: data.structuredData || "",
+    relatedLinks: data.relatedLinks || [],
+    imageUrl: data.imageUrl || data.image || data.coverImage || "",
+    authorName: data.authorName || data.author || "",
+    author: data.author || "",
+    sourceUrl: data.sourceUrl || "",
+    sourceCitation: data.sourceCitation || null,
+    questions: data.questions || [],
+    totalQuestions: data.totalQuestions || 0,
+    pages: data.pages || data.slides || [],
     faqs: data.faqs || [],
     lifecycleStatus: data.lifecycleStatus || "",
     lifecycleDays: data.lifecycleDays,
     includeJobPostingSchema: data.includeJobPostingSchema,
     sitemapPriority: data.sitemapPriority,
+    updatedAt: data.updatedAt || null,
+    publishedAt: data.publishedAt || null,
+    createdAt: data.createdAt || null,
     examFamily: data.examFamily || detectExamFamily({ title, category: data.category, organization: data.organization || data.org }),
     contentKind: data.contentKind || detectContentKind({
-      type: collectionName === "jobs" ? "JOB" : collectionName === "mock_tests" ? "MOCK_TEST" : collectionName === "fast_track" ? "FAST_TRACK" : "BLOG",
+      type: typeHint,
       title,
       category: data.category
     })
@@ -230,13 +268,33 @@ async function runSeoIntelligence(db, FieldValue, options = {}) {
     mockTestRecs(jobs, tests)
   ]);
 
+  const auditSample = selectAuditSample(
+    { jobs, blogs, fast_track: updates, mock_tests: tests },
+    { max: MAX_PAGE_AUDITS, perType: 10 }
+  );
+  const pageAudits = auditPages(auditSample, {
+    now,
+    gscRows: gsc.rows || [],
+    catalog: auditSample
+  });
+  const compactPageAudits = pageAudits.map(compactAudit);
+  const pageAuditSummary = summarizeAudits(compactPageAudits);
+
   let lifecycleUpdates = 0;
   let relatedUpdates = 0;
   let recWrites = 0;
+  let pageAuditWrites = 0;
+  const runId = now.toISOString().replace(/[:.]/g, "-");
   if (db && !options.dryRun) {
     lifecycleUpdates = await refreshLifecycleFields(db, jobs, now);
     relatedUpdates = await refreshRelatedLinks(db, [...jobs.slice(0, 20), ...updates.slice(0, 10)], catalog);
     recWrites = await persistRecommendations(db, FieldValue, recs);
+    try {
+      const persisted = await persistPageAudits(db, FieldValue, pageAudits, { runId });
+      pageAuditWrites = persisted.written;
+    } catch (error) {
+      console.warn("[seo-intelligence] page audit persist failed:", error.message);
+    }
   }
 
   const summary = redactSecrets({
@@ -250,14 +308,26 @@ async function runSeoIntelligence(db, FieldValue, options = {}) {
     relatedUpdates,
     recommendationCount: recs.length,
     recWrites,
+    pageAuditCount: pageAudits.length,
+    pageAuditWrites,
+    pageAuditSummary,
     searchConsole: { enabled: Boolean(gsc.enabled), rowCount: (gsc.rows || []).length },
-    topRecommendations: recs.slice(0, 8)
+    topRecommendations: recs.slice(0, 8),
+    policy: {
+      autoPublish: false,
+      autoCreatePages: false,
+      inventFacts: false,
+      pageAuditApply: false
+    }
   });
 
   if (db && FieldValue && !options.dryRun) {
     try {
-      const runId = now.toISOString().replace(/[:.]/g, "-");
-      await db.collection(RUNS).doc(runId).set({ ...summary, createdAt: FieldValue.serverTimestamp() });
+      await db.collection(RUNS).doc(runId).set({
+        ...summary,
+        pageAudits: compactPageAudits,
+        createdAt: FieldValue.serverTimestamp()
+      });
       await db.collection(SETTINGS).doc(SETTINGS_DOC).set(
         { lastRun: summary, lastRunAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() },
         { merge: true }

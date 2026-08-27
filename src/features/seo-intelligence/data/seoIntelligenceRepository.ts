@@ -29,6 +29,48 @@ export type SeoRecommendation = {
   priority?: number;
 };
 
+export type SeoPageAuditFinding = {
+  id?: string;
+  dimension?: string;
+  severity?: string;
+  confidence?: string;
+  evidence?: Record<string, unknown>;
+  suggestedAction?: string;
+  autoFixLevel?: string;
+};
+
+export type SeoPageAudit = {
+  url?: string;
+  contentType?: string;
+  contentId?: string;
+  auditedAt?: string;
+  auditVersion?: number;
+  health?: { score?: number; label?: string; note?: string };
+  priority?: number;
+  summary?: {
+    mainOpportunity?: string;
+    criticalCount?: number;
+    highCount?: number;
+    counts?: Record<string, number>;
+  };
+  findings?: SeoPageAuditFinding[];
+  dimensionStatus?: Record<string, string | undefined>;
+  mainOpportunity?: string;
+  criticalCount?: number;
+  highCount?: number;
+};
+
+export type SeoPageAuditSummary = {
+  count?: number;
+  max?: number;
+  auditVersion?: number;
+  avgHealth?: number | null;
+  blockerPages?: number;
+  storage?: string;
+  preferredCollectionBlocked?: string;
+  note?: string;
+};
+
 export type SearchConsoleRow = {
   query: string;
   page: string;
@@ -59,10 +101,12 @@ export type SeoDashboard = {
   gaps?: SeoRecommendation[];
   ctr?: SeoRecommendation[];
   recommendations?: SeoRecommendation[];
+  pageAudits?: SeoPageAudit[];
+  pageAuditSummary?: SeoPageAuditSummary;
   searchConsole?: { enabled?: boolean; rowCount?: number; error?: string | null; source?: string; ingestedAt?: string | null };
   intelligence?: Record<string, unknown> | null;
   scan?: SeoScanStatus;
-  policy?: { autoPublish?: boolean; autoCreatePages?: boolean; inventFacts?: boolean; hideAiUsage?: boolean };
+  policy?: { autoPublish?: boolean; autoCreatePages?: boolean; inventFacts?: boolean; hideAiUsage?: boolean; pageAuditApply?: boolean };
 };
 
 function timestampToIso(value: unknown): string | null {
@@ -203,6 +247,10 @@ export async function fetchSeoDashboard(): Promise<SeoDashboard> {
     gaps: recommendations.filter((r) => r.kind === 'CONTENT_GAP').slice(0, 20),
     ctr: recommendations.filter((r) => r.kind === 'CTR').slice(0, 20),
     recommendations,
+    pageAudits: Array.isArray(settings.pageAudits) ? settings.pageAudits as SeoPageAudit[] : [],
+    pageAuditSummary: settings.pageAuditSummary && typeof settings.pageAuditSummary === 'object'
+      ? settings.pageAuditSummary as SeoPageAuditSummary
+      : undefined,
     searchConsole: {
       enabled: Boolean(gscRows.length || runnerSearchConsole.enabled),
       rowCount: gscRows.length || Number(runnerSearchConsole.rowCount || 0),
@@ -217,6 +265,7 @@ export async function fetchSeoDashboard(): Promise<SeoDashboard> {
       autoCreatePages: false,
       inventFacts: false,
       hideAiUsage: false,
+      pageAuditApply: false,
     },
   };
 }

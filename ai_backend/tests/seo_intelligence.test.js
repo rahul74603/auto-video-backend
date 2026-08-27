@@ -324,8 +324,17 @@ test("intelligence orchestrator live scan writes no relatedLinks and does not th
   assert.equal(report.ok, true);
   assert.equal(report.relatedUpdates, 0);
   assert.equal(report.lifecycleUpdates, 0);
+  assert.ok(report.pageAuditCount >= 1);
+  assert.equal(report.policy.pageAuditApply, false);
   assert.ok(!writes.some((w) => w.data && Object.prototype.hasOwnProperty.call(w.data, "relatedLinks")));
   assert.ok(!writes.some((w) => w.collection === "jobs"));
+  assert.ok(!writes.some((w) => w.collection === "blogs"));
+  assert.ok(!writes.some((w) => w.collection === "fast_track"));
+  assert.ok(!writes.some((w) => w.collection === "mock_tests"));
+  assert.ok(!writes.some((w) => w.collection === "seo_page_audits"));
+  assert.ok(writes.some((w) => w.collection === "system_settings" && Array.isArray(w.data.pageAudits)));
+  assert.ok(writes.some((w) => w.collection === "seo_intelligence_runs" && Array.isArray(w.data.pageAudits)));
+  assert.ok(writes.some((w) => w.collection === "seo_recommendations"), "catalog recommendations must still persist");
 });
 
 test("editorial issues do not fire on a well-structured grounded article body", () => {

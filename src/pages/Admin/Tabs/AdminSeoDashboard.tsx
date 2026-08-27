@@ -6,8 +6,17 @@ import {
   getSeoIntelligenceWorkflowUrl,
   prepareSearchConsoleImport,
   type SeoDashboard,
+  type SeoPageAudit,
   type SeoRecommendation,
 } from '@/features/seo-intelligence/data/seoIntelligenceRepository';
+
+const healthClass = (label?: string) => {
+  if (label === 'healthy') return 'bg-green-100 text-green-800';
+  if (label === 'fair') return 'bg-slate-100 text-slate-700';
+  if (label === 'needs-work') return 'bg-amber-100 text-amber-800';
+  if (label === 'critical') return 'bg-red-100 text-red-800';
+  return 'bg-gray-100 text-gray-600';
+};
 
 const formatDate = (value?: string | null) => {
   if (!value) return 'Not available';
@@ -165,6 +174,12 @@ const AdminSeoDashboard = () => {
           <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 flex items-center gap-1">
             <ShieldCheck size={12} /> Auto-publish: OFF
           </span>
+          <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 flex items-center gap-1">
+            <ShieldCheck size={12} /> Page-audit Apply: OFF
+          </span>
+          <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700">
+            Page audits: {dashboard?.pageAuditSummary?.count || dashboard?.pageAudits?.length || 0}
+          </span>
         </div>
       </div>
 
@@ -222,6 +237,77 @@ const AdminSeoDashboard = () => {
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      <div className="bg-white border rounded-[2rem] p-6">
+        <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Page SEO Health (diagnostic)</h3>
+        <p className="text-xs text-gray-500 mb-4">
+          Page SEO Health is a StudyGyaan diagnostic score, not a Google ranking score and not an AI Overview / GEO / LLMO claim.
+          Phase 2 is read-only: no Apply, no auto-fix, no title/meta rewrite. Live HTTP audit is off by default, so technical status may be unavailable.
+          GSC findings appear only when imported Search Console rows exist for that URL.
+        </p>
+        {(dashboard?.pageAudits || []).length === 0 ? (
+          <p className="text-sm text-gray-400 font-medium">No page audits yet — run the GitHub Actions scan. Sample is capped at 40 published pages.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="text-[10px] uppercase tracking-widest text-gray-400 border-b">
+                  <th className="py-2 pr-3 font-black">Type</th>
+                  <th className="py-2 pr-3 font-black">Page</th>
+                  <th className="py-2 pr-3 font-black">Health</th>
+                  <th className="py-2 pr-3 font-black">Priority</th>
+                  <th className="py-2 pr-3 font-black">Main opportunity</th>
+                  <th className="py-2 font-black">Findings</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...(dashboard?.pageAudits || [])]
+                  .sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0))
+                  .slice(0, 40)
+                  .map((audit: SeoPageAudit, idx) => (
+                    <tr key={audit.contentId || audit.url || idx} className="border-b last:border-0 align-top">
+                      <td className="py-3 pr-3">
+                        <span className="text-[10px] font-black uppercase bg-gray-100 px-2 py-1 rounded-full">{audit.contentType || 'OTHER'}</span>
+                      </td>
+                      <td className="py-3 pr-3 font-medium text-slate-700">
+                        <span className="block max-w-[220px] truncate">{audit.url || audit.contentId || '—'}</span>
+                      </td>
+                      <td className="py-3 pr-3">
+                        <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase ${healthClass(audit.health?.label)}`}>
+                          {audit.health?.score ?? '—'} {audit.health?.label || ''}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-3 font-black">{audit.priority ?? '—'}</td>
+                      <td className="py-3 pr-3 text-xs text-slate-600 max-w-[280px]">
+                        {audit.mainOpportunity || audit.summary?.mainOpportunity || 'No issues detected in this diagnostic pass.'}
+                      </td>
+                      <td className="py-3 text-xs text-slate-500">
+                        <p>
+                          blockers {audit.criticalCount ?? audit.summary?.criticalCount ?? 0}
+                          {' · '}
+                          high {audit.highCount ?? audit.summary?.highCount ?? 0}
+                        </p>
+                        <ul className="mt-1 space-y-0.5">
+                          {(audit.findings || []).slice(0, 4).map((finding) => (
+                            <li key={finding.id}>
+                              <span className="font-bold uppercase text-[10px] text-gray-400">{finding.severity}</span>{' '}
+                              {finding.id}
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {dashboard?.pageAuditSummary?.preferredCollectionBlocked && (
+          <p className="mt-3 text-[11px] text-gray-400">
+            Storage: {dashboard.pageAuditSummary.storage}. {dashboard.pageAuditSummary.preferredCollectionBlocked}.
+          </p>
         )}
       </div>
 
