@@ -76,6 +76,46 @@ const formatDate = (value?: string | null) => {
   return date.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
 };
 
+const ProposalArticleHtmlPreview = ({ proposal }: { proposal: SeoOptimizationProposal }) => {
+  const [htmlPreview, setHtmlPreview] = useState('');
+  const [htmlPreviewError, setHtmlPreviewError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchProposalArticleHtml(proposal)
+      .then((html) => {
+        if (!cancelled) setHtmlPreview(html);
+      })
+      .catch((error) => {
+        if (!cancelled) setHtmlPreviewError(error instanceof Error ? error.message : String(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [proposal]);
+
+  return (
+    <div className="grid md:grid-cols-2 gap-3 pt-2">
+      <div className="bg-white border rounded-xl p-3">
+        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">OLD HTML</p>
+        <pre className="text-[11px] whitespace-pre-wrap break-words max-h-64 overflow-auto text-slate-700">
+          {typeof proposal.oldValue === 'string' ? proposal.oldValue : formatProposedChange(proposal.oldValue)}
+        </pre>
+      </div>
+      <div className="bg-white border rounded-xl p-3">
+        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">PROPOSED HTML</p>
+        {htmlPreviewError ? (
+          <p className="text-[11px] text-amber-700">{htmlPreviewError}</p>
+        ) : (
+          <pre className="text-[11px] whitespace-pre-wrap break-words max-h-64 overflow-auto text-slate-700">
+            {htmlPreview || formatProposedChange(proposal.proposedValue)}
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const AdminSeoDashboard = () => {
   const [dashboard, setDashboard] = useState<SeoDashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,8 +125,6 @@ const AdminSeoDashboard = () => {
   const [selectedProposal, setSelectedProposal] = useState<SeoOptimizationProposal | null>(null);
   const [statusBusy, setStatusBusy] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
-  const [htmlPreview, setHtmlPreview] = useState('');
-  const [htmlPreviewError, setHtmlPreviewError] = useState('');
   const workflowUrl = getSeoIntelligenceWorkflowUrl();
 
   const load = async () => {
@@ -530,24 +568,10 @@ const AdminSeoDashboard = () => {
             <p className="text-xs text-slate-600"><span className="font-black">Source:</span> {selectedProposal.source || selectedProposal.htmlSource || 'deterministic-optimizer'}</p>
             <p className="text-xs text-slate-600"><span className="font-black">Level:</span> {selectedProposal.level} · requiresReview: {selectedProposal.requiresReview ? 'yes' : 'no'}</p>
             {selectedProposal.field === 'articleHtml' && (
-              <div className="grid md:grid-cols-2 gap-3 pt-2">
-                <div className="bg-white border rounded-xl p-3">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">OLD HTML</p>
-                  <pre className="text-[11px] whitespace-pre-wrap break-words max-h-64 overflow-auto text-slate-700">
-                    {typeof selectedProposal.oldValue === 'string' ? selectedProposal.oldValue : formatProposedChange(selectedProposal.oldValue)}
-                  </pre>
-                </div>
-                <div className="bg-white border rounded-xl p-3">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">PROPOSED HTML</p>
-                  {htmlPreviewError ? (
-                    <p className="text-[11px] text-amber-700">{htmlPreviewError}</p>
-                  ) : (
-                    <pre className="text-[11px] whitespace-pre-wrap break-words max-h-64 overflow-auto text-slate-700">
-                      {htmlPreview || formatProposedChange(selectedProposal.proposedValue)}
-                    </pre>
-                  )}
-                </div>
-              </div>
+              <ProposalArticleHtmlPreview
+                key={selectedProposal.id || selectedProposal.contentId || 'articleHtml'}
+                proposal={selectedProposal}
+              />
             )}
             {selectedProposal.status === 'pending' && (
               <div className="flex flex-wrap gap-2 pt-2">
