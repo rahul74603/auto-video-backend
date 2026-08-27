@@ -8,12 +8,14 @@
  *   - compute content gaps / CTR recs / mock-test / youtube suggestions
  *   - persist seo_recommendations (never executed automatically)
  *   - Phase 2: read-only page SEO audits (max 40) persisted separately
+ *   - Phase 3: reviewable optimization proposals (never applied)
  *
  * DOES NOT:
  *   - publish or rewrite article HTML
  *   - create new public pages
  *   - invent Search Console numbers
  *   - apply page-audit fixes / rewrite titles or meta
+ *   - apply optimization proposals
  *   - log secrets
  */
 
@@ -31,6 +33,11 @@ const {
 const { findRelatedMockTests, extractYoutubeRef } = require("./ecosystem");
 const { selectAuditSample, auditPages, persistPageAudits } = require("./page_auditor");
 const { compactAudit, summarizeAudits, MAX_PAGE_AUDITS } = require("./audit_model");
+const {
+  generateProposalsForAudits,
+  persistOptimizationProposals
+} = require("./optimizer");
+const { summarizeProposals } = require("./proposal_model");
 
 const RUNS = "seo_intelligence_runs";
 const RECS = "seo_recommendations";
@@ -279,11 +286,17 @@ async function runSeoIntelligence(db, FieldValue, options = {}) {
   });
   const compactPageAudits = pageAudits.map(compactAudit);
   const pageAuditSummary = summarizeAudits(compactPageAudits);
+  const optimizationProposals = generateProposalsForAudits(pageAudits, auditSample, {
+    now,
+    catalog: auditSample
+  });
+  const optimizationProposalSummary = summarizeProposals(optimizationProposals);
 
   let lifecycleUpdates = 0;
   let relatedUpdates = 0;
   let recWrites = 0;
   let pageAuditWrites = 0;
+  let optimizationProposalWrites = 0;
   const runId = now.toISOString().replace(/[:.]/g, "-");
   if (db && !options.dryRun) {
     lifecycleUpdates = await refreshLifecycleFields(db, jobs, now);
@@ -294,6 +307,12 @@ async function runSeoIntelligence(db, FieldValue, options = {}) {
       pageAuditWrites = persisted.written;
     } catch (error) {
       console.warn("[seo-intelligence] page audit persist failed:", error.message);
+    }
+    try {
+      const persistedProposals = await persistOptimizationProposals(db, FieldValue, optimizationProposals, { runId });
+      optimizationProposalWrites = persistedProposals.written;
+    } catch (error) {
+      console.warn("[seo-intelligence] optimization proposal persist failed:", error.message);
     }
   }
 
@@ -311,13 +330,17 @@ async function runSeoIntelligence(db, FieldValue, options = {}) {
     pageAuditCount: pageAudits.length,
     pageAuditWrites,
     pageAuditSummary,
+    optimizationProposalCount: optimizationProposals.length,
+    optimizationProposalWrites,
+    optimizationProposalSummary,
     searchConsole: { enabled: Boolean(gsc.enabled), rowCount: (gsc.rows || []).length },
     topRecommendations: recs.slice(0, 8),
     policy: {
       autoPublish: false,
       autoCreatePages: false,
       inventFacts: false,
-      pageAuditApply: false
+      pageAuditApply: false,
+      optimizationApply: false
     }
   });
 

@@ -1,8 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-const { mockGetDoc, mockGetDocs, mockFetch } = vi.hoisted(() => ({
+const { mockGetDoc, mockGetDocs, mockSetDoc, mockFetch } = vi.hoisted(() => ({
   mockGetDoc: vi.fn(),
   mockGetDocs: vi.fn(),
+  mockSetDoc: vi.fn(),
   mockFetch: vi.fn(),
 }));
 
@@ -11,6 +12,7 @@ vi.mock('firebase/firestore', () => ({
   doc: vi.fn((_db: unknown, collectionName: string, id: string) => ({ collectionName, id })),
   getDoc: mockGetDoc,
   getDocs: mockGetDocs,
+  setDoc: mockSetDoc,
   query: vi.fn((...args: unknown[]) => ({ type: 'query', args })),
   orderBy: vi.fn((field: string, direction?: string) => ({ field, direction })),
   limit: vi.fn((count: number) => ({ count })),
@@ -68,6 +70,27 @@ describe('SEO dashboard Firestore repository', () => {
               storage: 'system_settings/seo_intelligence.pageAudits',
               preferredCollectionBlocked: 'seo_page_audits requires admin-only Firestore rules before use',
             },
+            optimizationProposals: [{
+              id: 'p1',
+              url: '/job/ssc-cgl-2026',
+              contentType: 'JOB',
+              field: 'metaDescription',
+              oldValue: '',
+              proposedValue: 'SSC CGL 2026 apply online. Last date 31/12/2026.',
+              reason: 'Add a meta description using existing facts.',
+              evidenceIds: ['metadata:missing-description'],
+              level: 'B',
+              confidence: 'observed',
+              requiresReview: true,
+              status: 'pending',
+              applied: false,
+              source: 'deterministic-optimizer',
+            }],
+            optimizationProposalSummary: {
+              count: 1,
+              storage: 'system_settings/seo_intelligence.optimizationProposals',
+              preferredCollectionBlocked: 'seo_optimization_proposals requires admin-only Firestore rules before use',
+            },
           }),
         });
       }
@@ -100,7 +123,37 @@ describe('SEO dashboard Firestore repository', () => {
     expect(dashboard.policy?.autoCreatePages).toBe(false);
     expect(dashboard.policy?.inventFacts).toBe(false);
     expect(dashboard.policy?.pageAuditApply).toBe(false);
+    expect(dashboard.policy?.optimizationApply).toBe(false);
+    expect(dashboard.optimizationProposals).toHaveLength(1);
+    expect(dashboard.optimizationProposals?.[0].status).toBe('pending');
     expect(mockGetDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it('approve/reject changes proposal status on admin settings only and never applies', async () => {
+    mockGetDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({
+        optimizationProposals: [{
+          id: 'p1',
+          url: '/job/ssc-cgl-2026',
+          field: 'metaDescription',
+          status: 'pending',
+          applied: false,
+        }],
+      }),
+    });
+    mockSetDoc.mockResolvedValue(undefined);
+
+    const next = await setOptimizationProposalStatus('p1', 'approved');
+    expect(next[0].status).toBe('approved');
+    expect(next[0].applied).toBe(false);
+    expect(mockSetDoc).toHaveBeenCalledTimes(1);
+    const [ref, payload, opts] = mockSetDoc.mock.calls[0];
+    expect(ref.collectionName).toBe('system_settings');
+    expect(ref.id).toBe('seo_intelligence');
+    expect(payload.optimizationApply).toBe(false);
+    expect(payload.optimizationProposals[0].applied).toBe(false);
+    expect(opts).toEqual({ merge: true });
   });
 
   it('validates manual GSC rows and rejects foreign URLs', () => {

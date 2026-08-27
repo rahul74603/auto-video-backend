@@ -73,6 +73,20 @@ Rahul jab naya rule bole:
 
 ---
 
+## Rule 5 — SEO optimizer proposals never apply themselves
+
+Phase 3 `seo_intelligence` optimizer may only create reviewable proposals on
+`system_settings/seo_intelligence.optimizationProposals`.
+
+- Public content collections (jobs / blogs / fast_track / mock_tests / materials / courses / ebooks / web_stories) par optimizer write **mat** kare
+- Approve/Reject **sirf status** badle (`pending` → `approved` | `rejected`). `applied: true` mat set karo
+- Apply / rollback / auto-fix / auto-publish Phase 4 se pehle **mat** implement karo
+- Fact fields (salary, vacancies, dates, applyLink, questions, …) lock hain — invented replacement mat do
+- `firestore.rules` mat badlo. Nayi public-read collection (`seo_optimization_proposals`) mat banao
+- Live production content is turn me modify **mat** karo
+
+---
+
 ## Quick checklist (har task)
 
 - [ ] Branch: `arena/01a0409f-auto-video-backend` (sirf yahi)

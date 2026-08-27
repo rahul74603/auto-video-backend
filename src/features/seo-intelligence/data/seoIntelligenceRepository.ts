@@ -7,6 +7,7 @@ import {
   limit,
   orderBy,
   query,
+  setDoc,
 } from 'firebase/firestore';
 
 const SETTINGS_COLLECTION = 'system_settings';
@@ -60,6 +61,38 @@ export type SeoPageAudit = {
   highCount?: number;
 };
 
+export type SeoOptimizationProposal = {
+  id?: string;
+  url?: string;
+  contentType?: string;
+  contentId?: string;
+  field?: string;
+  oldValue?: unknown;
+  proposedValue?: unknown;
+  reason?: string;
+  evidenceIds?: string[];
+  severity?: string;
+  confidence?: string;
+  level?: 'A' | 'B' | 'C' | string;
+  requiresReview?: boolean;
+  status?: 'pending' | 'approved' | 'rejected' | string;
+  applied?: boolean;
+  createdAt?: string;
+  auditVersion?: number;
+  source?: string;
+};
+
+export type SeoOptimizationProposalSummary = {
+  count?: number;
+  max?: number;
+  perPage?: number;
+  byLevel?: Record<string, number>;
+  byStatus?: Record<string, number>;
+  storage?: string;
+  preferredCollectionBlocked?: string;
+  note?: string;
+};
+
 export type SeoPageAuditSummary = {
   count?: number;
   max?: number;
@@ -103,10 +136,12 @@ export type SeoDashboard = {
   recommendations?: SeoRecommendation[];
   pageAudits?: SeoPageAudit[];
   pageAuditSummary?: SeoPageAuditSummary;
+  optimizationProposals?: SeoOptimizationProposal[];
+  optimizationProposalSummary?: SeoOptimizationProposalSummary;
   searchConsole?: { enabled?: boolean; rowCount?: number; error?: string | null; source?: string; ingestedAt?: string | null };
   intelligence?: Record<string, unknown> | null;
   scan?: SeoScanStatus;
-  policy?: { autoPublish?: boolean; autoCreatePages?: boolean; inventFacts?: boolean; hideAiUsage?: boolean; pageAuditApply?: boolean };
+  policy?: { autoPublish?: boolean; autoCreatePages?: boolean; inventFacts?: boolean; hideAiUsage?: boolean; pageAuditApply?: boolean; optimizationApply?: boolean };
 };
 
 function timestampToIso(value: unknown): string | null {
@@ -251,6 +286,12 @@ export async function fetchSeoDashboard(): Promise<SeoDashboard> {
     pageAuditSummary: settings.pageAuditSummary && typeof settings.pageAuditSummary === 'object'
       ? settings.pageAuditSummary as SeoPageAuditSummary
       : undefined,
+    optimizationProposals: Array.isArray(settings.optimizationProposals)
+      ? settings.optimizationProposals as SeoOptimizationProposal[]
+      : [],
+    optimizationProposalSummary: settings.optimizationProposalSummary && typeof settings.optimizationProposalSummary === 'object'
+      ? settings.optimizationProposalSummary as SeoOptimizationProposalSummary
+      : undefined,
     searchConsole: {
       enabled: Boolean(gscRows.length || runnerSearchConsole.enabled),
       rowCount: gscRows.length || Number(runnerSearchConsole.rowCount || 0),
@@ -266,8 +307,39 @@ export async function fetchSeoDashboard(): Promise<SeoDashboard> {
       inventFacts: false,
       hideAiUsage: false,
       pageAuditApply: false,
+      optimizationApply: false,
     },
   };
+}
+
+/**
+ * Approve/reject a proposal status on the admin SEO settings doc only.
+ * Never writes public content. Never sets applied=true. Does not apply the change.
+ */
+export async function setOptimizationProposalStatus(
+  proposalId: string,
+  status: 'approved' | 'rejected',
+): Promise<SeoOptimizationProposal[]> {
+  if (status !== 'approved' && status !== 'rejected') {
+    throw new Error('Proposal status must be approved or rejected');
+  }
+  const id = String(proposalId || '').trim();
+  if (!id) throw new Error('Proposal id is required');
+
+  const ref = doc(db, SETTINGS_COLLECTION, SEO_SETTINGS_DOC);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) {
+    throw new Error('SEO intelligence settings document is missing');
+  }
+  const data = asRecord(snap.data());
+  const current = Array.isArray(data.optimizationProposals) ? data.optimizationProposals as SeoOptimizationProposal[] : [];
+  const next = current.map((item) => {
+    if (!item || item.id !== id) return item;
+    if (item.status !== 'pending') return item;
+    return { ...item, status, applied: false, reviewedAt: new Date().toISOString() };
+  });
+  await setDoc(ref, { optimizationProposals: next, optimizationApply: false }, { merge: true });
+  return next;
 }
 
 export async function runSeoIntelligence(): Promise<Record<string, unknown>> {

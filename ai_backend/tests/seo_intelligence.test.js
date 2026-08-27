@@ -334,7 +334,10 @@ test("intelligence orchestrator live scan writes no relatedLinks and does not th
   assert.ok(!writes.some((w) => w.collection === "seo_page_audits"));
   assert.ok(writes.some((w) => w.collection === "system_settings" && Array.isArray(w.data.pageAudits)));
   assert.ok(writes.some((w) => w.collection === "seo_intelligence_runs" && Array.isArray(w.data.pageAudits)));
+  assert.ok(writes.some((w) => w.collection === "system_settings" && Array.isArray(w.data.optimizationProposals)));
   assert.ok(writes.some((w) => w.collection === "seo_recommendations"), "catalog recommendations must still persist");
+  assert.equal(report.policy.optimizationApply, false);
+  assert.ok(!writes.some((w) => w.collection === "seo_optimization_proposals"));
 });
 
 test("editorial issues do not fire on a well-structured grounded article body", () => {

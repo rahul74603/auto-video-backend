@@ -5,7 +5,9 @@ import {
   fetchSeoDashboard,
   getSeoIntelligenceWorkflowUrl,
   prepareSearchConsoleImport,
+  setOptimizationProposalStatus,
   type SeoDashboard,
+  type SeoOptimizationProposal,
   type SeoPageAudit,
   type SeoRecommendation,
 } from '@/features/seo-intelligence/data/seoIntelligenceRepository';
@@ -16,6 +18,37 @@ const healthClass = (label?: string) => {
   if (label === 'needs-work') return 'bg-amber-100 text-amber-800';
   if (label === 'critical') return 'bg-red-100 text-red-800';
   return 'bg-gray-100 text-gray-600';
+};
+
+const levelClass = (level?: string) => {
+  if (level === 'A') return 'bg-green-100 text-green-800';
+  if (level === 'B') return 'bg-amber-100 text-amber-800';
+  if (level === 'C') return 'bg-red-100 text-red-800';
+  return 'bg-gray-100 text-gray-600';
+};
+
+const formatProposedChange = (value: unknown): string => {
+  if (value == null) return 'No replacement (review only)';
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      if (!item || typeof item !== 'object') return String(item);
+      const rec = item as { url?: string; question?: string; title?: string };
+      return rec.url || rec.question || rec.title || JSON.stringify(item);
+    }).join('; ');
+  }
+  if (typeof value === 'object') {
+    const rec = value as { suggestedSections?: string[]; suggestedH2?: string[]; heading?: string; note?: string };
+    if (Array.isArray(rec.suggestedSections)) return rec.suggestedSections.join('; ');
+    if (Array.isArray(rec.suggestedH2)) return rec.suggestedH2.join('; ');
+    if (rec.heading) return rec.heading;
+    if (rec.note) return rec.note;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return 'See details';
+  }
 };
 
 const formatDate = (value?: string | null) => {
@@ -89,6 +122,22 @@ const AdminSeoDashboard = () => {
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       toast.error(`GSC import: ${msg}`);
+    }
+  };
+
+  const handleProposalStatus = async (proposal: SeoOptimizationProposal, status: 'approved' | 'rejected') => {
+    if (!proposal.id) return;
+    setStatusBusy(`${proposal.id}:${status}`);
+    try {
+      const next = await setOptimizationProposalStatus(proposal.id, status);
+      setDashboard((current) => current ? { ...current, optimizationProposals: next } : current);
+      setSelectedProposal(next.find((item) => item.id === proposal.id) || null);
+      toast.success(`Proposal ${status}. This does not apply or publish anything.`);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error(`Proposal status: ${msg}`);
+    } finally {
+      setStatusBusy('');
     }
   };
 
@@ -307,6 +356,99 @@ const AdminSeoDashboard = () => {
         {dashboard?.pageAuditSummary?.preferredCollectionBlocked && (
           <p className="mt-3 text-[11px] text-gray-400">
             Storage: {dashboard.pageAuditSummary.storage}. {dashboard.pageAuditSummary.preferredCollectionBlocked}.
+          </p>
+        )}
+      </div>
+
+      <div className="bg-white border rounded-[2rem] p-6">
+        <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Optimization Proposals (review only)</h3>
+        <p className="text-xs text-gray-500 mb-4">
+          Proposals are generated from page audits. Approve/Reject only changes proposal status on the admin SEO settings document.
+          Approved does not apply, publish, rewrite, or write jobs/blogs/fast_track/mock tests. There is no Apply / Auto Fix / Publish control.
+        </p>
+        {(dashboard?.optimizationProposals || []).length === 0 ? (
+          <p className="text-sm text-gray-400 font-medium">No optimization proposals yet — run the GitHub Actions scan after page audits exist.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="text-[10px] uppercase tracking-widest text-gray-400 border-b">
+                  <th className="py-2 pr-3 font-black">Page</th>
+                  <th className="py-2 pr-3 font-black">Type</th>
+                  <th className="py-2 pr-3 font-black">Issue</th>
+                  <th className="py-2 pr-3 font-black">Proposed Change</th>
+                  <th className="py-2 pr-3 font-black">Level</th>
+                  <th className="py-2 pr-3 font-black">Confidence</th>
+                  <th className="py-2 font-black">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(dashboard?.optimizationProposals || []).slice(0, 80).map((proposal, idx) => (
+                  <tr
+                    key={proposal.id || idx}
+                    className={`border-b last:border-0 align-top cursor-pointer ${selectedProposal?.id === proposal.id ? 'bg-violet-50' : ''}`}
+                    onClick={() => setSelectedProposal(proposal)}
+                  >
+                    <td className="py-3 pr-3 font-medium text-slate-700">
+                      <span className="block max-w-[200px] truncate">{proposal.url || proposal.contentId || '—'}</span>
+                    </td>
+                    <td className="py-3 pr-3">
+                      <span className="text-[10px] font-black uppercase bg-gray-100 px-2 py-1 rounded-full">{proposal.contentType || 'OTHER'}</span>
+                    </td>
+                    <td className="py-3 pr-3 text-xs text-slate-600 max-w-[180px]">
+                      {(proposal.evidenceIds || [])[0] || proposal.field || '—'}
+                    </td>
+                    <td className="py-3 pr-3 text-xs text-slate-600 max-w-[260px]">
+                      <span className="block line-clamp-2">{formatProposedChange(proposal.proposedValue)}</span>
+                    </td>
+                    <td className="py-3 pr-3">
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase ${levelClass(proposal.level)}`}>
+                        {proposal.level || '—'}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-3 text-xs">{proposal.confidence || '—'}</td>
+                    <td className="py-3 text-xs font-black uppercase">{proposal.status || 'pending'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {selectedProposal && (
+          <div className="mt-4 border rounded-2xl p-4 bg-slate-50 space-y-2">
+            <p className="font-black text-sm">Proposal details</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Old:</span> {formatProposedChange(selectedProposal.oldValue)}</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Proposed:</span> {formatProposedChange(selectedProposal.proposedValue)}</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Reason:</span> {selectedProposal.reason || '—'}</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Evidence:</span> {(selectedProposal.evidenceIds || []).join(', ') || '—'}</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Source:</span> {selectedProposal.source || 'deterministic-optimizer'}</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Level:</span> {selectedProposal.level} · requiresReview: {selectedProposal.requiresReview ? 'yes' : 'no'}</p>
+            {selectedProposal.status === 'pending' && (
+              <div className="flex flex-wrap gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={Boolean(statusBusy)}
+                  onClick={() => void handleProposalStatus(selectedProposal, 'approved')}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-black text-xs disabled:opacity-50"
+                >
+                  Approve (status only)
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(statusBusy)}
+                  onClick={() => void handleProposalStatus(selectedProposal, 'rejected')}
+                  className="px-4 py-2 rounded-xl bg-white border font-black text-xs disabled:opacity-50"
+                >
+                  Reject
+                </button>
+              </div>
+            )}
+            <p className="text-[11px] text-gray-400">Approve never writes public pages. Phase 4 apply/rollback is not implemented.</p>
+          </div>
+        )}
+        {dashboard?.optimizationProposalSummary?.storage && (
+          <p className="mt-3 text-[11px] text-gray-400">
+            Storage: {dashboard.optimizationProposalSummary.storage}. {dashboard.optimizationProposalSummary.preferredCollectionBlocked}.
           </p>
         )}
       </div>

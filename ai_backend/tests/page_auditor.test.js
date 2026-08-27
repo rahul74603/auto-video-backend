@@ -321,7 +321,9 @@ test("orchestrator still writes catalog recs and stores page audits off public c
   assert.ok(writes.some((w) => w.collection === "seo_recommendations"));
   assert.ok(writes.some((w) => w.collection === "system_settings" && Array.isArray(w.data.pageAudits)));
   assert.ok(writes.some((w) => w.collection === "seo_intelligence_runs" && Array.isArray(w.data.pageAudits)));
-  assert.ok(!writes.some((w) => ["jobs", "blogs", "fast_track", "mock_tests", "seo_page_audits"].includes(w.collection)));
+  assert.ok(writes.some((w) => w.collection === "system_settings" && Array.isArray(w.data.optimizationProposals)));
+  assert.ok(!writes.some((w) => ["jobs", "blogs", "fast_track", "mock_tests", "seo_page_audits", "seo_optimization_proposals"].includes(w.collection)));
+  assert.equal(report.policy.optimizationApply, false);
 });
 
 test("empty mock test is flagged for missing questions, not thin copy", () => {
