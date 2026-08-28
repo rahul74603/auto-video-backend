@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, RefreshCw, Search, ShieldCheck, AlertTriangle, Play, Clipboard } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
@@ -69,6 +69,12 @@ const formatProposedChange = (value: unknown): string => {
   }
 };
 
+const proposalSelectionKey = (proposal?: SeoOptimizationProposal | null) => {
+  if (!proposal) return '';
+  if (proposal.id) return String(proposal.id);
+  return [proposal.contentId, proposal.field, proposal.url].filter(Boolean).join(':');
+};
+
 const formatDate = (value?: string | null) => {
   if (!value) return 'Not available';
   const date = new Date(value);
@@ -125,6 +131,7 @@ const AdminSeoDashboard = () => {
   const [selectedProposal, setSelectedProposal] = useState<SeoOptimizationProposal | null>(null);
   const [statusBusy, setStatusBusy] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
+  const proposalDetailsRef = useRef<HTMLDivElement | null>(null);
   const workflowUrl = getSeoIntelligenceWorkflowUrl();
 
   const load = async () => {
@@ -162,6 +169,13 @@ const AdminSeoDashboard = () => {
       cancelled = true;
     };
   }, []);
+
+  const selectProposal = (proposal: SeoOptimizationProposal) => {
+    setSelectedProposal(proposal);
+    window.setTimeout(() => {
+      proposalDetailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 0);
+  };
 
   const handleRunInstructions = () => {
     window.open(workflowUrl, '_blank', 'noopener,noreferrer');
@@ -490,69 +504,31 @@ const AdminSeoDashboard = () => {
       <div className="bg-white border rounded-[2rem] p-6">
         <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Optimization Proposals</h3>
         <p className="text-xs text-gray-500 mb-4">
-          Approve/Reject only change proposal status. Apply writes allowlisted fields after a snapshot. Rollback restores that snapshot.
+          Click a row or View details to inspect a proposal. Approve/Reject only change proposal status. Apply writes allowlisted fields after a snapshot. Rollback restores that snapshot.
           Level C and fact fields never apply. Auto-apply stays OFF. Indexing after apply is a request, not a ranking claim.
         </p>
-        {filteredProposals.length === 0 ? (
-          <p className="text-sm text-gray-400 font-medium">No optimization proposals yet — run the GitHub Actions scan after page audits exist.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="text-[10px] uppercase tracking-widest text-gray-400 border-b">
-                  <th className="py-2 pr-3 font-black">Page</th>
-                  <th className="py-2 pr-3 font-black">Type</th>
-                  <th className="py-2 pr-3 font-black">Issue</th>
-                  <th className="py-2 pr-3 font-black">Proposed Change</th>
-                  <th className="py-2 pr-3 font-black">Level</th>
-                  <th className="py-2 pr-3 font-black">Confidence</th>
-                  <th className="py-2 font-black">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredProposals.slice(0, 80).map((proposal, idx) => (
-                  <tr
-                    key={proposal.id || idx}
-                    className={`border-b last:border-0 align-top cursor-pointer ${selectedProposal?.id === proposal.id ? 'bg-violet-50' : ''}`}
-                    onClick={() => setSelectedProposal(proposal)}
-                  >
-                    <td className="py-3 pr-3 font-medium text-slate-700">
-                      <span className="block max-w-[200px] truncate">{proposal.url || proposal.contentId || '—'}</span>
-                    </td>
-                    <td className="py-3 pr-3">
-                      <span className="text-[10px] font-black uppercase bg-gray-100 px-2 py-1 rounded-full">{proposal.contentType || 'OTHER'}</span>
-                    </td>
-                    <td className="py-3 pr-3 text-xs text-slate-600 max-w-[180px]">
-                      {(proposal.evidenceIds || [])[0] || proposal.field || '—'}
-                    </td>
-                    <td className="py-3 pr-3 text-xs text-slate-600 max-w-[260px]">
-                      <span className="block line-clamp-2">{formatProposedChange(proposal.proposedValue)}</span>
-                    </td>
-                    <td className="py-3 pr-3">
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase ${levelClass(proposal.level)}`}>
-                        {proposal.level || '—'}
-                      </span>
-                    </td>
-                    <td className="py-3 pr-3 text-xs">{proposal.confidence || '—'}</td>
-                    <td className="py-3 text-xs font-black uppercase">{proposal.status || 'pending'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
         {selectedProposal && (
-          <div className="mt-4 border rounded-2xl p-4 bg-slate-50 space-y-2">
+          <div
+            id="seo-proposal-details"
+            ref={proposalDetailsRef}
+            className="mb-4 border rounded-2xl p-4 bg-slate-50 space-y-2"
+          >
             <p className="font-black text-sm">Proposal details</p>
-            <p className="text-xs text-slate-600"><span className="font-black">Old:</span> {formatProposedChange(selectedProposal.oldValue)}</p>
-            <p className="text-xs text-slate-600"><span className="font-black">Proposed:</span> {formatProposedChange(selectedProposal.proposedValue)}</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Page:</span> {selectedProposal.url || selectedProposal.contentId || '—'}</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Type:</span> {selectedProposal.contentType || 'OTHER'}</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Issue:</span> {(selectedProposal.evidenceIds || [])[0] || selectedProposal.field || '—'}</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Old value:</span> {formatProposedChange(selectedProposal.oldValue)}</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Proposed value:</span> {formatProposedChange(selectedProposal.proposedValue)}</p>
             <p className="text-xs text-slate-600"><span className="font-black">Reason:</span> {selectedProposal.reason || '—'}</p>
             <p className="text-xs text-slate-600"><span className="font-black">Evidence:</span> {(selectedProposal.evidenceIds || []).join(', ') || '—'}</p>
             <p className="text-xs text-slate-600"><span className="font-black">Source:</span> {selectedProposal.source || selectedProposal.htmlSource || 'deterministic-optimizer'}</p>
-            <p className="text-xs text-slate-600"><span className="font-black">Level:</span> {selectedProposal.level} · requiresReview: {selectedProposal.requiresReview ? 'yes' : 'no'}</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Level:</span> {selectedProposal.level || '—'}</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Confidence:</span> {selectedProposal.confidence || '—'}</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Requires review:</span> {selectedProposal.requiresReview ? 'yes' : 'no'}</p>
+            <p className="text-xs text-slate-600"><span className="font-black">Status:</span> {selectedProposal.status || 'pending'}</p>
             {selectedProposal.field === 'articleHtml' && (
               <ProposalArticleHtmlPreview
-                key={selectedProposal.id || selectedProposal.contentId || 'articleHtml'}
+                key={proposalSelectionKey(selectedProposal) || 'articleHtml'}
                 proposal={selectedProposal}
               />
             )}
@@ -603,6 +579,72 @@ const AdminSeoDashboard = () => {
             <p className="text-[11px] text-gray-400">
               Approve never writes public pages. Apply writes allowlisted fields after a snapshot. articleHtml is never batch-applied.
             </p>
+          </div>
+        )}
+        {filteredProposals.length === 0 ? (
+          <p className="text-sm text-gray-400 font-medium">No optimization proposals yet — run the GitHub Actions scan after page audits exist.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="text-[10px] uppercase tracking-widest text-gray-400 border-b">
+                  <th className="py-2 pr-3 font-black">Page</th>
+                  <th className="py-2 pr-3 font-black">Type</th>
+                  <th className="py-2 pr-3 font-black">Issue</th>
+                  <th className="py-2 pr-3 font-black">Proposed Change</th>
+                  <th className="py-2 pr-3 font-black">Level</th>
+                  <th className="py-2 pr-3 font-black">Confidence</th>
+                  <th className="py-2 pr-3 font-black">Status</th>
+                  <th className="py-2 font-black">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredProposals.slice(0, 80).map((proposal, idx) => {
+                  const selected = proposalSelectionKey(selectedProposal) === proposalSelectionKey(proposal)
+                    && Boolean(proposalSelectionKey(proposal));
+                  return (
+                  <tr
+                    key={proposalSelectionKey(proposal) || idx}
+                    className={`border-b last:border-0 align-top cursor-pointer hover:bg-violet-50 ${selected ? 'bg-violet-50' : ''}`}
+                    onClick={() => selectProposal(proposal)}
+                    aria-selected={selected}
+                  >
+                    <td className="py-3 pr-3 font-medium text-slate-700">
+                      <span className="block max-w-[200px] truncate">{proposal.url || proposal.contentId || '—'}</span>
+                    </td>
+                    <td className="py-3 pr-3">
+                      <span className="text-[10px] font-black uppercase bg-gray-100 px-2 py-1 rounded-full">{proposal.contentType || 'OTHER'}</span>
+                    </td>
+                    <td className="py-3 pr-3 text-xs text-slate-600 max-w-[180px]">
+                      {(proposal.evidenceIds || [])[0] || proposal.field || '—'}
+                    </td>
+                    <td className="py-3 pr-3 text-xs text-slate-600 max-w-[260px]">
+                      <span className="block line-clamp-2">{formatProposedChange(proposal.proposedValue)}</span>
+                    </td>
+                    <td className="py-3 pr-3">
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase ${levelClass(proposal.level)}`}>
+                        {proposal.level || '—'}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-3 text-xs">{proposal.confidence || '—'}</td>
+                    <td className="py-3 pr-3 text-xs font-black uppercase">{proposal.status || 'pending'}</td>
+                    <td className="py-3">
+                      <button
+                        type="button"
+                        className="px-3 py-1 rounded-lg border bg-white font-black text-[10px] uppercase tracking-widest"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          selectProposal(proposal);
+                        }}
+                      >
+                        View details
+                      </button>
+                    </td>
+                  </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
         {dashboard?.optimizationProposalSummary?.storage && (
