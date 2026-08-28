@@ -4,14 +4,14 @@
  * Auto-Optimizer Admin Routes.
  *
  * Endpoints:
- *   POST /seo/auto-optimizer/backfill       — run backfill batch (dry-run by default)
- *   POST /seo/auto-optimizer/optimize       — optimize a single page
+ *   POST /seo/auto-optimizer/backfill       — run backfill batch (dry-run default)
+ *   POST /seo/auto-optimizer/optimize       — optimize a single page (full loop)
  *   POST /seo/auto-optimizer/new-content    — process newly published content
  *   POST /seo/auto-optimizer/status         — get optimizer status
  *   POST /seo/auto-optimizer/progress       — get backfill progress
  *
- * Auth: same article-admin middleware (Firebase ID token / agent token).
- * Never auto-applies Level B/C. Never invents facts.
+ * Auth: same article-admin middleware.
+ * Never auto-applies Level C. Never invents facts.
  */
 
 const admin = require("firebase-admin");
@@ -19,12 +19,12 @@ const { authorizeArticleRequest } = require("../article_agents/article_auth");
 const { createSeoLimiters } = require("./rate_limit");
 const {
   runBackfill,
-  autoOptimizePage,
+  optimizePage,
   processNewContent,
   getOptimizerStatus
 } = require("./auto_optimizer");
-const { runBackfillBatch, getBackfillProgress, countProcessedPages } = require("./backfill_processor");
-const { scorePage, classifyQuality } = require("./content_quality_scorer");
+const { runOptimizationBatch } = require("./auto_optimizer");
+const { getBackfillProgress, countProcessedPages } = require("./backfill_processor");
 
 function fail(res, status, message) {
   return res.status(status).json({ success: false, error: message });
@@ -54,20 +54,18 @@ function registerAutoOptimizerRoutes(app, db, deps = {}) {
   /**
    * POST /seo/auto-optimizer/backfill
    * Run backfill batch. Default: dry-run.
-   * Body: { batchSize?, maxBatches?, dryRun?, collections? }
+   * Body: { batchSize?, maxBatches?, dryRun?, collections?, useAi? }
    */
   app.post("/seo/auto-optimizer/backfill", runLimit, protect, async (req, res) => {
     try {
-      const dryRun = req.body?.dryRun !== false; // default: dry-run
+      const dryRun = req.body?.dryRun !== false;
       const batchSize = Math.min(20, Number(req.body?.batchSize) || 10);
       const maxBatches = Math.min(5, Number(req.body?.maxBatches) || 1);
       const collections = Array.isArray(req.body?.collections) ? req.body.collections : undefined;
+      const useAi = req.body?.useAi === true;
 
       const report = await runBackfill(db, admin.firestore.FieldValue, {
-        dryRun,
-        batchSize,
-        maxBatches,
-        collections
+        dryRun, batchSize, maxBatches, collections, useAi
       });
 
       return ok(res, { report });
@@ -79,8 +77,8 @@ function registerAutoOptimizerRoutes(app, db, deps = {}) {
 
   /**
    * POST /seo/auto-optimizer/optimize
-   * Optimize a single page. Returns quality score + proposals.
-   * Body: { contentId, collection }
+   * Optimize a single page with full loop.
+   * Body: { contentId, collection, dryRun?, useAi?, maxPasses? }
    */
   app.post("/seo/auto-optimizer/optimize", readLimit, protect, async (req, res) => {
     try {
@@ -97,9 +95,12 @@ function registerAutoOptimizerRoutes(app, db, deps = {}) {
       const data = typeof snap.data === "function" ? snap.data() : {};
       const doc = { id: contentId, collection: collectionName, ...data };
 
-      const result = await autoOptimizePage(db, admin.firestore.FieldValue, doc, {
-        dryRun: true,
-        actor: req.articleAdmin?.email || req.articleAdmin?.via || "admin"
+      const result = await optimizePage(db, admin.firestore.FieldValue, doc, {
+        dryRun: req.body?.dryRun !== false,
+        actor: req.articleAdmin?.email || req.articleAdmin?.via || "admin",
+        useAi: req.body?.useAi === true,
+        maxPasses: req.body?.maxPasses,
+        collectionName
       });
 
       return ok(res, { result });
@@ -112,7 +113,7 @@ function registerAutoOptimizerRoutes(app, db, deps = {}) {
   /**
    * POST /seo/auto-optimizer/new-content
    * Process newly published content.
-   * Body: { contentId, collection }
+   * Body: { contentId, collection, useAi? }
    */
   app.post("/seo/auto-optimizer/new-content", readLimit, protect, async (req, res) => {
     try {
@@ -130,7 +131,9 @@ function registerAutoOptimizerRoutes(app, db, deps = {}) {
       const doc = { id: contentId, collection: collectionName, ...data };
 
       const result = await processNewContent(db, admin.firestore.FieldValue, doc, {
-        actor: req.articleAdmin?.email || req.articleAdmin?.via || "admin"
+        actor: req.articleAdmin?.email || req.articleAdmin?.via || "admin",
+        useAi: req.body?.useAi === true,
+        collectionName
       });
 
       return ok(res, { result });
@@ -142,21 +145,18 @@ function registerAutoOptimizerRoutes(app, db, deps = {}) {
 
   /**
    * POST /seo/auto-optimizer/status
-   * Get optimizer status.
    */
   app.post("/seo/auto-optimizer/status", readLimit, protect, async (req, res) => {
     try {
       const status = await getOptimizerStatus(db);
       return ok(res, { status });
     } catch (error) {
-      console.error("[seo/auto-optimizer/status]", error);
       return fail(res, 500, error.message);
     }
   });
 
   /**
    * POST /seo/auto-optimizer/progress
-   * Get backfill progress.
    */
   app.post("/seo/auto-optimizer/progress", readLimit, protect, async (req, res) => {
     try {
@@ -164,7 +164,6 @@ function registerAutoOptimizerRoutes(app, db, deps = {}) {
       const counts = await countProcessedPages(db);
       return ok(res, { progress, counts });
     } catch (error) {
-      console.error("[seo/auto-optimizer/progress]", error);
       return fail(res, 500, error.message);
     }
   });
