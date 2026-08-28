@@ -989,3 +989,167 @@ export async function runSeoIntelligence(): Promise<Record<string, unknown>> {
     message: 'SEO scans run through GitHub Actions now; no browser Cloud Run API is required.',
   };
 }
+
+// ─── Auto-Content-Optimizer ──────────────────────────────────────────
+
+export const AUTO_OPTIMIZER_WORKFLOW_URL =
+  'https://github.com/rahul74603/auto-video-backend/actions/workflows/auto_content_optimizer.yml';
+
+export type AutoOptimizerPass = {
+  pass?: number;
+  status?: string;
+  beforeScore?: number;
+  afterScore?: number;
+  qualityDelta?: number;
+  changes?: Array<{
+    field?: string;
+    level?: string;
+    status?: string;
+    reason?: string;
+    oldValue?: unknown;
+    newValue?: unknown;
+  }>;
+  comparison?: {
+    improved?: boolean;
+    degraded?: boolean;
+    overallBefore?: number;
+    overallAfter?: number;
+    overallDelta?: number;
+    dimensionsImproved?: number;
+    dimensionsDegraded?: number;
+    details?: Record<string, { before?: number; after?: number; delta?: number }>;
+  };
+  duplicateCheck?: { ok?: boolean; risk?: string; maxSimilarity?: number; reason?: string };
+  keepDecision?: { keep?: boolean; reason?: string };
+  snapshotIds?: string[];
+  rolledBack?: boolean;
+  error?: string;
+  skipped?: boolean;
+};
+
+export type AutoOptimizerPageResult = {
+  ok?: boolean;
+  dryRun?: boolean;
+  contentId?: string;
+  collectionName?: string;
+  originalScore?: number;
+  finalScore?: number;
+  qualityDelta?: number;
+  passes?: AutoOptimizerPass[];
+  totalPasses?: number;
+  totalApplied?: number;
+  totalRolledBack?: number;
+  status?: string;
+  error?: string;
+};
+
+export type AutoOptimizerBatchReport = {
+  ok?: boolean;
+  dryRun?: boolean;
+  processed?: number;
+  improved?: number;
+  skipped?: number;
+  rolledBack?: number;
+  failed?: number;
+  results?: AutoOptimizerPageResult[];
+  message?: string;
+};
+
+export type AutoOptimizerBackfillReport = {
+  ok?: boolean;
+  dryRun?: boolean;
+  batches?: number;
+  totalProcessed?: number;
+  totalImproved?: number;
+  totalSkipped?: number;
+  totalRolledBack?: number;
+  totalFailed?: number;
+  results?: AutoOptimizerPageResult[];
+};
+
+export type AutoOptimizerStatus = {
+  backfillProgress?: {
+    lastBatchSize?: number;
+    lastBatchImproved?: number;
+    lastBatchSkipped?: number;
+    lastBatchRolledBack?: number;
+    lastBatchFailed?: number;
+    lastBatchAt?: string;
+    updatedAt?: unknown;
+  } | null;
+  lastRun?: Record<string, unknown> | null;
+  optimizationApply?: boolean;
+  autoOptimizerVersion?: number;
+  optimizerRunner?: {
+    runner?: string;
+    lastStatus?: string;
+    lastRunAt?: string;
+    successAt?: string;
+    failedAt?: string;
+    runningAt?: string;
+    durationMs?: number;
+    dryRun?: boolean;
+    totalProcessed?: number;
+    totalImproved?: number;
+    totalSkipped?: number;
+    totalRolledBack?: number;
+    totalFailed?: number;
+    lastReport?: AutoOptimizerBackfillReport;
+    lastError?: { message?: string; name?: string; code?: string };
+    github?: { actor?: string; runId?: string; sha?: string };
+    preRun?: { counts?: { total?: number; processed?: number } };
+    postRun?: { counts?: { total?: number; processed?: number } };
+  };
+};
+
+export type BackfillProgress = {
+  lastBatchSize?: number;
+  lastBatchProcessed?: number;
+  lastBatchImproved?: number;
+  lastBatchSkipped?: number;
+  lastBatchNeedsReview?: number;
+  lastBatchRolledBack?: number;
+  lastBatchFailed?: number;
+  lastBatchAt?: string;
+  updatedAt?: unknown;
+};
+
+export type BackfillCounts = {
+  total?: number;
+  processed?: number;
+};
+
+/**
+ * Fetch auto-optimizer status from Firestore.
+ */
+export async function fetchAutoOptimizerStatus(): Promise<AutoOptimizerStatus> {
+  const snap = await getDoc(doc(db, SETTINGS_COLLECTION, SEO_SETTINGS_DOC));
+  if (!snap.exists()) return {};
+  const data = asRecord(snap.data());
+  return {
+    backfillProgress: data.backfillProgress && typeof data.backfillProgress === 'object'
+      ? data.backfillProgress as AutoOptimizerStatus['backfillProgress']
+      : null,
+    lastRun: data.lastRun && typeof data.lastRun === 'object' ? data.lastRun as Record<string, unknown> : null,
+    optimizationApply: Boolean(data.optimizationApply),
+    autoOptimizerVersion: Number(data.autoOptimizerVersion || 0) || undefined,
+    optimizerRunner: data.optimizerRunner && typeof data.optimizerRunner === 'object'
+      ? data.optimizerRunner as AutoOptimizerStatus['optimizerRunner']
+      : undefined,
+  };
+}
+
+/**
+ * Fetch backfill progress from Firestore.
+ */
+export async function fetchBackfillProgress(): Promise<{
+  progress: BackfillProgress | null;
+  counts: BackfillCounts;
+}> {
+  const snap = await getDoc(doc(db, SETTINGS_COLLECTION, SEO_SETTINGS_DOC));
+  const data = snap.exists() ? asRecord(snap.data()) : {};
+  const progress = data.backfillProgress && typeof data.backfillProgress === 'object'
+    ? data.backfillProgress as BackfillProgress
+    : null;
+  return { progress, counts: { total: 0, processed: 0 } };
+}

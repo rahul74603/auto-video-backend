@@ -13,7 +13,8 @@ service cloud.firestore {
         collectionId == "seo_intelligence_runs" ||
         collectionId == "seo_apply_snapshots" ||
         collectionId == "seo_apply_queue" ||
-        collectionId == "seo_proposal_bodies";
+        collectionId == "seo_proposal_bodies" ||
+        collectionId == "seo_backfill_tracker";
     }
 
     match /orders/{orderId} {
@@ -63,6 +64,11 @@ service cloud.firestore {
     }
 
     match /seo_proposal_bodies/{bodyId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /seo_backfill_tracker/{trackerId} {
       allow read: if isAdmin();
       allow write: if isAdmin();
     }
