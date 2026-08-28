@@ -25,6 +25,7 @@ vi.mock('@/firebase/config', () => ({
 }));
 
 import {
+  applyOptimizationProposal,
   applyOptimizationProposals,
   approveOptimizationProposals,
   checkOptimizationProposal,
@@ -179,5 +180,89 @@ describe('SEO proposal CHECK / bulk approve / bulk apply', () => {
     expect(proposals.find((item) => item.id === 'ok')?.status).toBe('applied');
     expect(proposals.find((item) => item.id === 'pending')?.status).toBe('pending');
     expect(proposals.find((item) => item.id === 'fail')?.status).toBe('approved');
+  });
+
+  it('bulk apply skips Level B / Level C / pending / articleHtml and still applies approved Level A after snapshot', async () => {
+    const writes: Array<{ collectionName: string; id: string }> = [];
+    let proposals: SeoOptimizationProposal[] = [
+      base({ id: 'a-ok', field: 'metaDescription', status: 'approved', level: 'A', requiresReview: false, contentId: 'job-a' }),
+      base({ id: 'b-skip', field: 'metaDescription', status: 'approved', level: 'B', requiresReview: true, contentId: 'job-b' }),
+      base({ id: 'c-skip', field: 'salary', status: 'approved', level: 'C', requiresReview: true, proposedValue: '₹1', contentId: 'job-c' }),
+      base({ id: 'pending-skip', field: 'metaDescription', status: 'pending', level: 'A', requiresReview: false, contentId: 'job-pending' }),
+      base({ id: 'html-skip', field: 'articleHtml', status: 'approved', level: 'A', requiresReview: false, proposedValue: { articleHtml: '<p>safe</p>' }, contentId: 'job-html' }),
+    ];
+
+    mockGetDoc.mockImplementation((ref: { id: string; collectionName: string }) => {
+      if (ref.id === 'seo_intelligence') {
+        return Promise.resolve({
+          exists: () => true,
+          data: () => ({ optimizationProposals: proposals, applyHistory: [] }),
+        });
+      }
+      return Promise.resolve({
+        exists: () => true,
+        data: () => ({ metaDescription: 'old' }),
+      });
+    });
+    mockSetDoc.mockImplementation((ref: { id: string; collectionName: string }, payload: Record<string, unknown>) => {
+      writes.push({ collectionName: ref.collectionName, id: ref.id });
+      if (ref.id === 'seo_intelligence' && Array.isArray(payload.optimizationProposals)) {
+        proposals = payload.optimizationProposals as SeoOptimizationProposal[];
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const { results } = await applyOptimizationProposals(['b-skip', 'c-skip', 'pending-skip', 'html-skip', 'a-ok']);
+    expect(results.find((item) => item.id === 'b-skip')?.outcome).toBe('skipped');
+    expect(results.find((item) => item.id === 'b-skip')?.reason).toMatch(/level-B-not-batched/);
+    expect(results.find((item) => item.id === 'c-skip')?.outcome).toBe('skipped');
+    expect(results.find((item) => item.id === 'pending-skip')?.outcome).toBe('skipped');
+    expect(results.find((item) => item.id === 'html-skip')?.outcome).toBe('skipped');
+    expect(results.find((item) => item.id === 'a-ok')?.outcome).toBe('applied');
+    expect(results.find((item) => item.id === 'a-ok')?.snapshotId).toBe('snap-a-ok');
+
+    expect(writes.some((item) => item.collectionName === 'jobs' && item.id === 'job-b')).toBe(false);
+    expect(writes.some((item) => item.collectionName === 'jobs' && item.id === 'job-c')).toBe(false);
+    expect(writes.some((item) => item.collectionName === 'jobs' && item.id === 'job-pending')).toBe(false);
+    expect(writes.some((item) => item.collectionName === 'jobs' && item.id === 'job-html')).toBe(false);
+
+    const snapIdx = writes.findIndex((item) => item.collectionName === 'seo_apply_snapshots' && item.id === 'snap-a-ok');
+    const pageIdx = writes.findIndex((item) => item.collectionName === 'jobs' && item.id === 'job-a');
+    expect(snapIdx).toBeGreaterThan(-1);
+    expect(pageIdx).toBeGreaterThan(snapIdx);
+    expect(proposals.find((item) => item.id === 'b-skip')?.status).toBe('approved');
+    expect(proposals.find((item) => item.id === 'a-ok')?.status).toBe('applied');
+  });
+
+  it('individual Apply still allows approved Level B after snapshot and does not use the bulk skip', async () => {
+    let proposals: SeoOptimizationProposal[] = [
+      base({ id: 'b-ok', field: 'metaDescription', status: 'approved', level: 'B', requiresReview: true, contentId: 'job-b-ok' }),
+    ];
+    const writes: Array<{ collectionName: string; id: string }> = [];
+    mockGetDoc.mockImplementation((ref: { id: string; collectionName: string }) => {
+      if (ref.id === 'seo_intelligence') {
+        return Promise.resolve({
+          exists: () => true,
+          data: () => ({ optimizationProposals: proposals, applyHistory: [] }),
+        });
+      }
+      return Promise.resolve({ exists: () => true, data: () => ({ metaDescription: 'old B' }) });
+    });
+    mockSetDoc.mockImplementation((ref: { id: string; collectionName: string }, payload: Record<string, unknown>) => {
+      writes.push({ collectionName: ref.collectionName, id: ref.id });
+      if (ref.id === 'seo_intelligence' && Array.isArray(payload.optimizationProposals)) {
+        proposals = payload.optimizationProposals as SeoOptimizationProposal[];
+      }
+      return Promise.resolve(undefined);
+    });
+
+    expect(previewOptimizationProposal(proposals[0]).applyable).toBe(true);
+    const next = await applyOptimizationProposal('b-ok');
+    expect(next[0].status).toBe('applied');
+    expect(next[0].snapshotId).toBe('snap-b-ok');
+    const snapIdx = writes.findIndex((item) => item.collectionName === 'seo_apply_snapshots');
+    const pageIdx = writes.findIndex((item) => item.collectionName === 'jobs' && item.id === 'job-b-ok');
+    expect(snapIdx).toBeGreaterThan(-1);
+    expect(pageIdx).toBeGreaterThan(snapIdx);
   });
 });

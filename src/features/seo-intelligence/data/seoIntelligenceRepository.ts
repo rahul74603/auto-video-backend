@@ -867,7 +867,9 @@ export async function approveOptimizationProposals(proposalIds: string[]): Promi
 
 /**
  * Apply approved proposals one-by-one using the existing snapshot-before-write path.
- * A failure does not abort the rest of the batch. articleHtml is never bulk-applied.
+ * A failure does not abort the rest of the batch.
+ * Matches backend applyBatch: Level B, Level C, articleHtml, facts, pending, and
+ * missing mappings are never bulk-applied. Individual applyOptimizationProposal is unchanged.
  */
 export async function applyOptimizationProposals(proposalIds: string[]): Promise<{
   proposals: SeoOptimizationProposal[];
@@ -899,6 +901,15 @@ export async function applyOptimizationProposals(proposalIds: string[]): Promise
         id,
         outcome: 'skipped',
         reason: 'articleHtml is never bulk-applied — use individual Apply after CHECK.',
+        field: proposal.field,
+      });
+      continue;
+    }
+    if (proposal.level === 'B') {
+      results.push({
+        id,
+        outcome: 'skipped',
+        reason: 'level-B-not-batched — use individual Apply after CHECK.',
         field: proposal.field,
       });
       continue;

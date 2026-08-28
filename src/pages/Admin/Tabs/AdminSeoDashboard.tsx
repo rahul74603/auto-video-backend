@@ -410,7 +410,7 @@ const AdminSeoDashboard = () => {
         toast.success('Applied allowlisted fields after snapshot. Indexing was requested only as best-effort — not a ranking claim.');
         return;
       }
-      const ids = fresh.items.filter((item) => item.applyable && item.field !== 'articleHtml').map((item) => item.proposalId);
+      const ids = fresh.items.filter((item) => item.applyable && item.field !== 'articleHtml' && item.level !== 'B').map((item) => item.proposalId);
       const { proposals, results } = await applyOptimizationProposals(ids);
       syncProposals(proposals);
       setApplyPreview(null);
@@ -517,8 +517,9 @@ const AdminSeoDashboard = () => {
     rejected: proposals.filter((item) => item.status === 'rejected').length,
   };
   const selectedCheck = selectedProposal ? checkOptimizationProposals([selectedProposal]).items[0] : null;
-  const applyCounts = applyPreview ? summarizeApplyPreview(applyPreview.items.filter((item) => item.applyable && item.field !== 'articleHtml')) : null;
-  const applyablePreviewCount = applyPreview ? applyPreview.items.filter((item) => item.applyable && (applyPreview.scope === 'INDIVIDUAL' || item.field !== 'articleHtml')).length : 0;
+  const bulkApplyable = (item: SeoProposalCheck) => item.applyable && item.field !== 'articleHtml' && item.level !== 'B';
+  const applyCounts = applyPreview ? summarizeApplyPreview(applyPreview.items.filter((item) => applyPreview.scope === 'INDIVIDUAL' ? item.applyable : bulkApplyable(item))) : null;
+  const applyablePreviewCount = applyPreview ? applyPreview.items.filter((item) => applyPreview.scope === 'INDIVIDUAL' ? item.applyable : bulkApplyable(item)).length : 0;
   const blockedPreviewCount = applyPreview ? applyPreview.items.length - applyablePreviewCount : 0;
   const approveSafeCount = approvePreview ? approvePreview.items.filter((item) => item.approvable).length : 0;
 
@@ -856,7 +857,7 @@ const AdminSeoDashboard = () => {
               <div className="space-y-3 max-h-[28rem] overflow-auto">
                 {applyPreview.items.map((item, idx) => (
                   <div key={item.proposalId} className="bg-white border rounded-xl p-3 text-xs space-y-1">
-                    <p className="font-black">{idx + 1}. PAGE: {item.page || '—'} · FIELD: {item.field} · {item.applyable && (applyPreview.scope === 'INDIVIDUAL' || item.field !== 'articleHtml') ? 'WILL APPLY' : `SKIP · ${item.field === 'articleHtml' && applyPreview.scope !== 'INDIVIDUAL' ? 'articleHtml is never bulk-applied' : item.applyReason}`}</p>
+                    <p className="font-black">{idx + 1}. PAGE: {item.page || '—'} · FIELD: {item.field} · {applyPreview.scope === 'INDIVIDUAL' ? (item.applyable ? 'WILL APPLY' : `SKIP · ${item.applyReason}`) : (bulkApplyable(item) ? 'WILL APPLY' : `SKIP · ${item.field === 'articleHtml' ? 'articleHtml is never bulk-applied' : item.level === 'B' ? 'level-B-not-batched' : item.applyReason}`)}</p>
                     <div className="grid md:grid-cols-2 gap-2">
                       <ProofValue label="OLD" value={item.oldValue} field={item.field} expanded={expandedProof[`aold-${item.proposalId}`]} onToggle={() => setExpandedProof((current) => ({ ...current, [`aold-${item.proposalId}`]: !current[`aold-${item.proposalId}`] }))} />
                       <ProofValue label="NEW" value={item.proposedValue} field={item.field} expanded={expandedProof[`anew-${item.proposalId}`]} onToggle={() => setExpandedProof((current) => ({ ...current, [`anew-${item.proposalId}`]: !current[`anew-${item.proposalId}`] }))} />
