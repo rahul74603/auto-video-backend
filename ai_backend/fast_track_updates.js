@@ -874,6 +874,17 @@ exports.onFastTrackApprovedSendTelegram = onDocumentWritten("fast_track/{docId}"
         console.error("❌ STEP 7 error:", tsErr.message);
     }
 
+    // STEP 8 - Auto-optimizer: fire-and-forget SEO improvement after fast_track publish.
+    // NEVER blocks or fails the trigger. Errors are logged only.
+    try {
+        const { triggerOptimizerNonBlocking } = require("./agents/seo_intelligence/publish_hook");
+        const publishedDoc = { id: docId, collection: "fast_track", ...item };
+        triggerOptimizerNonBlocking(db, admin.firestore.FieldValue, publishedDoc, "fast_track");
+        console.log("✅ STEP 8: Auto-optimizer triggered");
+    } catch (hookErr) {
+        console.warn("⚠️ STEP 8 optimizer hook failed (non-blocking):", hookErr.message);
+    }
+
     console.log(`\n${'='.repeat(50)}`);
     console.log(`🎉 All steps complete: ${item.title}`);
     console.log(`${'='.repeat(50)}\n`);

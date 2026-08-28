@@ -1,0 +1,66 @@
+name: Auto Content Optimizer
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true = test run without Firestore writes; false = apply improvements"
+        required: false
+        default: "true"
+      batch_size:
+        description: "Pages per batch (1-20, default 5)"
+        required: false
+        default: "5"
+      max_batches:
+        description: "Max batches per run (1-10, default 2)"
+        required: false
+        default: "2"
+      use_ai:
+        description: "true = use Gemini AI for Level B improvements; false = deterministic only"
+        required: false
+        default: "false"
+  schedule:
+    # Conservative: 3:15 AM IST daily. Processes oldest pending content.
+    - cron: "15 21 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  auto-content-optimizer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install backend dependencies
+        working-directory: ai_backend
+        run: npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+
+      - name: Run Auto Content Optimizer
+        working-directory: ai_backend
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          OPTIMIZER_DRY_RUN: ${{ github.event.inputs.dry_run || 'true' }}
+          OPTIMIZER_BATCH_SIZE: ${{ github.event.inputs.batch_size || '5' }}
+          OPTIMIZER_MAX_BATCHES: ${{ github.event.inputs.max_batches || '2' }}
+          OPTIMIZER_USE_AI: ${{ github.event.inputs.use_ai || 'false' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node run_auto_optimizer.js
+
+      - name: Upload optimizer summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-optimizer-summary
+          path: ai_backend/auto_optimizer_summary.json
+          if-no-files-found: ignore
+          retention-days: 14

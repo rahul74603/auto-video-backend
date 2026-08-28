@@ -22,5 +22,10 @@ module.exports = {
   ...require("./proposal_gate"),
   ...require("./apply_engine"),
   ...require("./gsc_insights"),
-  ...require("./routes")
+  ...require("./routes"),
+  ...require("./content_quality_scorer"),
+  ...require("./backfill_processor"),
+  ...require("./auto_optimizer"),
+  ...require("./auto_optimizer_routes"),
+  ...require("./publish_hook")
 };

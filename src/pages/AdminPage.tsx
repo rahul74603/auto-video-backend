@@ -36,6 +36,7 @@ import AdminPaymentApproval from './Admin/Tabs/AdminPaymentApproval';
 // 🛑 Automation Control Tab
 import AdminAutomationControl from './Admin/Tabs/AdminAutomationControl';
 import AdminSeoDashboard from './Admin/Tabs/AdminSeoDashboard';
+import AdminAutoOptimizer from './Admin/Tabs/AdminAutoOptimizer';
 
 const AdminPage = () => {
     const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -47,7 +48,7 @@ const AdminPage = () => {
     const location = useLocation(); 
 
     // ✅ Active Tab State — AI Article Studio अब JOBS AI tab के अंदर ही है + Automation Control
-    type AdminTab = 'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'PAYMENTS' | 'AUTOMATION' | 'VIDEO' | 'SEO';
+    type AdminTab = 'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'PAYMENTS' | 'AUTOMATION' | 'VIDEO' | 'SEO' | 'OPTIMIZER';
     const [activeTab, setActiveTab] = useState<AdminTab>('BROWSE');
 
     const { content: siteContent, updateContent: updateSiteContent } = useSiteContent();
@@ -70,7 +71,7 @@ const AdminPage = () => {
         setPrevUrlSearch(currentUrlSearch);
         const params = new URLSearchParams(currentUrlSearch);
         const urlTab = params.get('tab');
-        if (urlTab && (['BROWSE', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'HOMEPAGE', 'FAST TRACK', 'WEB STORIES', 'CUSTOMIZE', 'MOCK TEST', 'STORAGE', 'JOBS AI', 'PAYMENTS', 'AUTOMATION', 'VIDEO', 'SEO'] as AdminTab[]).includes(urlTab as AdminTab)) {
+        if (urlTab && (['BROWSE', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'HOMEPAGE', 'FAST TRACK', 'WEB STORIES', 'CUSTOMIZE', 'MOCK TEST', 'STORAGE', 'JOBS AI', 'PAYMENTS', 'AUTOMATION', 'VIDEO', 'SEO', 'OPTIMIZER'] as AdminTab[]).includes(urlTab as AdminTab)) {
             setActiveTab(urlTab as AdminTab);
         }
     }
@@ -151,7 +152,7 @@ const AdminPage = () => {
                     
                     {/* NAVIGATION TABS (Added PAYMENTS + AUTOMATION) */}
                     <div className="flex flex-wrap gap-1 md:gap-2 w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scroll-smooth items-center no-scrollbar">
-                        {['BROWSE', 'JOBS AI', 'SEO', 'AUTOMATION', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE', 'VIDEO'].map(t => (
+                        {['BROWSE', 'JOBS AI', 'SEO', 'OPTIMIZER', 'AUTOMATION', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE', 'VIDEO'].map(t => (
                             <button 
                                 key={t} 
                                 onClick={() => setActiveTab(t as AdminTab)} 
@@ -159,6 +160,7 @@ const AdminPage = () => {
                             >
                                 {t === 'JOBS AI' ? <span className="flex items-center gap-1"><Sparkles size={12}/> JOBS AI</span> :
                                  t === 'AUTOMATION' ? <span className="flex items-center gap-1 text-red-500 group-hover:text-white"><Power size={12}/> AUTOMATION</span> :
+                                 t === 'OPTIMIZER' ? <span className="flex items-center gap-1"><Zap size={12}/> OPTIMIZER</span> :
                                  t === 'FAST TRACK' ? <span className="flex items-center gap-1"><Zap size={12}/> FAST TRACK</span> : 
                                  t === 'WEB STORIES' ? <span className="flex items-center gap-1"><Layers size={12}/> WEB STORIES</span> : 
                                  t === 'PAYMENTS' ? <span className="flex items-center gap-1 text-green-500 group-hover:text-white"><IndianRupee size={12}/> PAYMENTS</span> :
@@ -205,6 +207,7 @@ const AdminPage = () => {
                     {/* 🎬 Video Control Center */}
                     {activeTab === 'VIDEO' && <VideoControlCenter />}
                     {activeTab === 'SEO' && <AdminSeoDashboard />}
+                    {activeTab === 'OPTIMIZER' && <AdminAutoOptimizer />}
                 </div>
             </div>
             

@@ -50,6 +50,7 @@ const {
 } = require("./article_repairer");
 const { enrichContentDocument } = require("../seo_intelligence/enrich");
 const { buildHistoryEntry, mergeUpdateHistory } = require("../seo_intelligence/update_history");
+const { triggerOptimizerNonBlocking } = require("../seo_intelligence/publish_hook");
 
 const DRAFT_COLLECTION = "ai_article_drafts";
 
@@ -528,6 +529,13 @@ async function publishDraftRecord(db, FieldValue, draft, draftId) {
       },
       { merge: true }
     );
+
+  // ⭐ Auto-optimizer: fire-and-forget SEO improvement after publish.
+  // NEVER blocks or fails the publish. Errors are logged only.
+  try {
+    const publishedDoc = { id: targetId, ...payload };
+    triggerOptimizerNonBlocking(db, FieldValue, publishedDoc, collection);
+  } catch { /* optimizer hook must never fail publish */ }
 
   // ⭐ Publish ke turant baad draft DELETE — duplicate records nahi rehte.
   await db
