@@ -265,4 +265,96 @@ describe('SEO proposal CHECK / bulk approve / bulk apply', () => {
     expect(snapIdx).toBeGreaterThan(-1);
     expect(pageIdx).toBeGreaterThan(snapIdx);
   });
+
+  it('individual Apply blocks articleHtml for protected content types before any public write', async () => {
+    const blocked = [
+      { type: 'MOCK_TEST', collection: 'mock_tests', contentId: 'mock-1' },
+      { type: 'STUDY_MATERIAL', collection: 'study_materials', contentId: 'sm-1' },
+      { type: 'COURSE', collection: 'courses', contentId: 'course-1' },
+      { type: 'EBOOK', collection: 'jobs', contentId: 'ebook-1' },
+      { type: 'WEB_STORY', collection: 'web_stories', contentId: 'ws-1' },
+    ] as const;
+
+    for (const row of blocked) {
+      vi.clearAllMocks();
+      const proposal = base({
+        id: `html-${row.type}`,
+        field: 'articleHtml',
+        status: 'approved',
+        level: 'B',
+        requiresReview: true,
+        contentType: row.type,
+        contentId: row.contentId,
+        proposedValue: { articleHtml: '<p>safe</p>' },
+      });
+      mockGetDoc.mockImplementation((ref: { id: string; collectionName: string }) => {
+        if (ref.id === 'seo_intelligence') {
+          return Promise.resolve({
+            exists: () => true,
+            data: () => ({ optimizationProposals: [proposal], applyHistory: [] }),
+          });
+        }
+        return Promise.resolve({ exists: () => true, data: () => ({ articleHtml: '<p>old</p>' }) });
+      });
+
+      expect(previewOptimizationProposal(proposal).applyable).toBe(false);
+      expect(previewOptimizationProposal(proposal).reason).toMatch(/does not receive articleHtml/i);
+      expect(checkOptimizationProposal(proposal).applyable).toBe(false);
+      await expect(applyOptimizationProposal(proposal.id as string)).rejects.toThrow(/does not receive articleHtml/i);
+      expect(mockSetDoc).not.toHaveBeenCalled();
+      expect(mockSetDoc.mock.calls.some((call) => {
+        const ref = call[0] as { collectionName?: string; id?: string };
+        return ref.collectionName === row.collection && ref.id === row.contentId;
+      })).toBe(false);
+    }
+  });
+
+  it('individual Apply still allows articleHtml for JOB, BLOG, and FAST_TRACK after snapshot', async () => {
+    const allowed = [
+      { type: 'JOB', collection: 'jobs', contentId: 'job-html-ok' },
+      { type: 'BLOG', collection: 'blogs', contentId: 'blog-html-ok' },
+      { type: 'FAST_TRACK', collection: 'fast_track', contentId: 'ft-html-ok' },
+    ] as const;
+
+    for (const row of allowed) {
+      vi.clearAllMocks();
+      let proposals: SeoOptimizationProposal[] = [
+        base({
+          id: `html-${row.type}-ok`,
+          field: 'articleHtml',
+          status: 'approved',
+          level: 'B',
+          requiresReview: true,
+          contentType: row.type,
+          contentId: row.contentId,
+          proposedValue: { articleHtml: '<p>safe</p>' },
+        }),
+      ];
+      const writes: Array<{ collectionName: string; id: string }> = [];
+      mockGetDoc.mockImplementation((ref: { id: string; collectionName: string }) => {
+        if (ref.id === 'seo_intelligence') {
+          return Promise.resolve({
+            exists: () => true,
+            data: () => ({ optimizationProposals: proposals, applyHistory: [] }),
+          });
+        }
+        return Promise.resolve({ exists: () => true, data: () => ({ articleHtml: '<p>old</p>' }) });
+      });
+      mockSetDoc.mockImplementation((ref: { id: string; collectionName: string }, payload: Record<string, unknown>) => {
+        writes.push({ collectionName: ref.collectionName, id: ref.id });
+        if (ref.id === 'seo_intelligence' && Array.isArray(payload.optimizationProposals)) {
+          proposals = payload.optimizationProposals as SeoOptimizationProposal[];
+        }
+        return Promise.resolve(undefined);
+      });
+
+      expect(previewOptimizationProposal(proposals[0]).applyable).toBe(true);
+      const next = await applyOptimizationProposal(proposals[0].id as string);
+      expect(next[0].status).toBe('applied');
+      const snapIdx = writes.findIndex((item) => item.collectionName === 'seo_apply_snapshots');
+      const pageIdx = writes.findIndex((item) => item.collectionName === row.collection && item.id === row.contentId);
+      expect(snapIdx).toBeGreaterThan(-1);
+      expect(pageIdx).toBeGreaterThan(snapIdx);
+    }
+  });
 });

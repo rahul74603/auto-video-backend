@@ -384,6 +384,23 @@ const CONTENT_COLLECTION_MAP: Record<string, string> = {
   WEB_STORY: 'web_stories',
 };
 
+/** Matches backend proposal_gate APPLY_HTML_TYPE. JOB/BLOG/FAST_TRACK stay allowed. */
+const ARTICLE_HTML_BLOCKED_CONTENT_TYPES = new Set([
+  'MOCK_TEST',
+  'STUDY_MATERIAL',
+  'COURSE',
+  'EBOOK',
+  'WEB_STORY',
+]);
+
+function assertArticleHtmlAllowedForContentType(proposal: SeoOptimizationProposal) {
+  if (String(proposal.field || '') !== 'articleHtml') return;
+  const contentType = String(proposal.contentType || '').toUpperCase();
+  if (ARTICLE_HTML_BLOCKED_CONTENT_TYPES.has(contentType)) {
+    throw new Error('This content type does not receive articleHtml applies');
+  }
+}
+
 const APPLYABLE_FIELDS = new Set([
   'seoTitle', 'metaDescription', 'h1', 'authorName', 'imageAlt', 'faqs', 'relatedLinks', 'includeJobPostingSchema', 'schemaMarkup', 'howToApply', 'articleHtml',
 ]);
@@ -710,6 +727,7 @@ function buildClientPatch(proposal: SeoOptimizationProposal, articleHtml?: strin
     return { relatedLinks: links };
   }
   if (field === 'articleHtml') {
+    assertArticleHtmlAllowedForContentType(proposal);
     const html = articleHtml || extractArticleHtml(proposal.proposedValue);
     if (proposal.insufficientSource || (proposal.proposedValue && typeof proposal.proposedValue === 'object' && (proposal.proposedValue as { insufficientSource?: boolean }).insufficientSource)) {
       throw new Error('Insufficient source — articleHtml is not applied');
@@ -748,6 +766,7 @@ export async function applyOptimizationProposal(proposalId: string): Promise<Seo
   const proposal = current.find((item) => item.id === id);
   if (!proposal) throw new Error('Proposal not found');
   if (proposal.status !== 'approved') throw new Error('Only approved proposals can be applied');
+  assertArticleHtmlAllowedForContentType(proposal);
   const articleHtml = proposal.field === 'articleHtml' ? await fetchProposalArticleHtml(proposal) : undefined;
   const patch = buildClientPatch(proposal, articleHtml);
   const collectionName = CONTENT_COLLECTION_MAP[String(proposal.contentType || '').toUpperCase()];
