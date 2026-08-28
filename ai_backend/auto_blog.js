@@ -1226,6 +1226,16 @@ async function generateDailyBlog() {
         await db.collection("blogs").doc(slug).set(blogDocument);
         console.log(`💾 Saved to Firestore: ${slug}`);
 
+        // ⭐ Auto-optimizer: fire-and-forget SEO improvement after blog publish.
+        // NEVER blocks or fails the blog generation. Errors are logged only.
+        try {
+          const { triggerOptimizerNonBlocking } = require("./agents/seo_intelligence/publish_hook");
+          const publishedDoc = { id: slug, collection: "blogs", ...blogDocument };
+          triggerOptimizerNonBlocking(db, admin.firestore.FieldValue, publishedDoc, "blogs");
+        } catch (hookErr) {
+          console.warn("[auto-blog] optimizer hook failed (non-blocking):", hookErr.message);
+        }
+
         // 🌐 STEP 17: Google Indexing
         await notifyGoogle(blogUrl);
 

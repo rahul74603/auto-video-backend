@@ -6,6 +6,8 @@ import { blogRepository } from '@/features/blogs/data/blogRepository';
 import type { BlogRecord } from '@/features/blogs/data/blogRepository';
 import { storyRepository } from '@/features/stories/data/storyRepository';
 import { ARTICLE_API_BASE } from '@/features/ai-articles/data/aiArticleRepository';
+import { triggerOptimizerAfterPublish } from '@/features/seo-intelligence/data/seoIntelligenceRepository';
+import { auth } from '../../../firebase/config';
 import { Layers, Plus, RefreshCw, Save, X, Zap } from 'lucide-react';
 import { asText } from '@/types/firestore';
 
@@ -237,8 +239,15 @@ const AdminWebStories = () => {
                 publisher: 'StudyGyaan',
                 publisherLogo: 'https://studygyaan.in/story-assets/publisher-logo.png',
             };
-            await storyRepository.createStory(payload);
+            const newStoryId = await storyRepository.createStory(payload);
             alert("✅ Web Story Live! Google Discover ready.");
+            // Fire-and-forget: trigger SEO optimizer for the new web story
+            if (newStoryId) {
+                triggerOptimizerAfterPublish(newStoryId, 'web_stories', async () => {
+                    const user = auth.currentUser;
+                    return user ? user.getIdToken() : null;
+                });
+            }
             setShowForm(false);
             void refreshStories();
         } catch (err) { alert(errMsg(err)); } finally { setLoading(false); }

@@ -4,10 +4,12 @@ import { storage } from '../../../firebase/config';
 import { serverTimestamp } from 'firebase/firestore';
 import { mockTestRepository } from '@/features/mock-tests/data/mockTestRepository';
 import { ARTICLE_API_BASE } from '@/features/ai-articles/data/aiArticleRepository';
+import { triggerOptimizerAfterPublish } from '@/features/seo-intelligence/data/seoIntelligenceRepository';
 import type { MockTestRecord } from '@/features/mock-tests/data/mockTestRepository';
 import type { MockQuestion } from '@/types/firestore';
 import { asText } from '@/types/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth } from '../../../firebase/config';
 import {
     BookOpen, PlusCircle, Trash2, Clock,
     Target, Copy, ImageIcon, Loader2, X,
@@ -275,8 +277,15 @@ const addQuestion = () => {
                 await mockTestRepository.updateMockTest(editingTestId, testData);
                 toast.success("🔥 Test Updated Successfully!");
             } else {
-                await mockTestRepository.createMockTest({ ...testData, createdAt: serverTimestamp() });
+                const newTestId = await mockTestRepository.createMockTest({ ...testData, createdAt: serverTimestamp() });
                 toast.success("🔥 New Mock Test Published!");
+                // Fire-and-forget: trigger SEO optimizer for the new mock test
+                if (newTestId) {
+                    triggerOptimizerAfterPublish(newTestId, 'mock_tests', async () => {
+                        const user = auth.currentUser;
+                        return user ? user.getIdToken() : null;
+                    });
+                }
             }
 
             setEditingTestId(null);

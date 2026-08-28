@@ -26,5 +26,6 @@ module.exports = {
   ...require("./content_quality_scorer"),
   ...require("./backfill_processor"),
   ...require("./auto_optimizer"),
-  ...require("./auto_optimizer_routes")
+  ...require("./auto_optimizer_routes"),
+  ...require("./publish_hook")
 };

@@ -1153,3 +1153,57 @@ export async function fetchBackfillProgress(): Promise<{
     : null;
   return { progress, counts: { total: 0, processed: 0 } };
 }
+
+// ─── Publish-Hook: Fire-and-Forget Optimizer Trigger ────────────────
+
+/**
+ * Fire-and-forget: trigger the auto-optimizer for a newly published document.
+ * Called after a successful Firestore write from the admin panel.
+ * NEVER blocks or fails the caller. Errors are logged only.
+ *
+ * @param contentId - Document ID
+ * @param collection - Firestore collection name (e.g., 'mock_tests', 'web_stories')
+ * @param getAuthToken - Function that returns the current user's Firebase ID token
+ */
+export function triggerOptimizerAfterPublish(
+  contentId: string,
+  collection: string,
+  getAuthToken: () => Promise<string | null>,
+): void {
+  // Fire-and-forget: don't await, don't block
+  (async () => {
+    try {
+      const token = await getAuthToken();
+      if (!token) {
+        console.log('[publish-hook] no auth token, skipping optimizer trigger');
+        return;
+      }
+
+      // Use the backend API base URL (same as AI article studio)
+      const apiBase = import.meta.env.VITE_ARTICLE_API_BASE || '';
+      if (!apiBase) {
+        console.log('[publish-hook] no API base URL configured, skipping');
+        return;
+      }
+
+      const response = await fetch(`${apiBase}/seo/auto-optimizer/new-content`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ contentId, collection }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`[publish-hook] optimizer triggered for ${contentId}:`, data?.result?.status || 'ok');
+      } else {
+        console.warn(`[publish-hook] optimizer returned ${response.status} for ${contentId}`);
+      }
+    } catch (err) {
+      // NEVER let optimizer failure affect the caller
+      console.warn('[publish-hook] optimizer trigger failed (non-blocking):', err);
+    }
+  })();
+}
