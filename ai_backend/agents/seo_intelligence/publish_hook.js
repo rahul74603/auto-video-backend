@@ -89,7 +89,7 @@ async function triggerOptimizerAfterPublish(db, FieldValue, doc, collectionName,
     // Quick score check — skip if already high quality
     const quickScore = scorePage(doc, { now: new Date() });
     if (!needsImprovement(quickScore, QUALITY_THRESHOLD)) {
-      console.log(`[publish-hook] ${doc.id} already high quality (${quickScore.overall}), skipping`);
+      console.log("[publish-hook] %s already high quality (%s), skipping", doc.id, quickScore.overall);
       return {
         skipped: true,
         reason: "already-high-quality",
@@ -98,7 +98,7 @@ async function triggerOptimizerAfterPublish(db, FieldValue, doc, collectionName,
       };
     }
 
-    console.log(`[publish-hook] ${doc.id} quality=${quickScore.overall}, running optimizer (type=${contentType})`);
+    console.log("[publish-hook] %s quality=%s, running optimizer (type=%s)", doc.id, quickScore.overall, contentType);
 
     const result = await processNewContent(db, FieldValue, doc, {
       actor: OPTIMIZER_ACTOR,
@@ -125,19 +125,19 @@ async function triggerOptimizerAfterPublish(db, FieldValue, doc, collectionName,
         optimizerAt: stamp
       }, { merge: true });
     } catch (recordErr) {
-      console.warn(`[publish-hook] failed to record result on ${doc.id}:`, recordErr.message);
+      console.warn("[publish-hook] failed to record result on %s:", doc.id, recordErr.message);
     }
 
     console.log(
-      `[publish-hook] ${doc.id} done: status=${result.status} ` +
-      `score=${result.originalScore}→${result.finalScore} (Δ${result.qualityDelta}) ` +
-      `applied=${result.totalApplied} rolledBack=${result.totalRolledBack}`
+      "[publish-hook] %s done: status=%s score=%s→%s (Δ%s) applied=%s rolledBack=%s",
+      doc.id, result.status, result.originalScore, result.finalScore,
+      result.qualityDelta, result.totalApplied, result.totalRolledBack
     );
 
     return result;
   } catch (error) {
     // NEVER let optimizer failure affect the caller
-    console.error(`[publish-hook] optimizer failed for ${doc.id}:`, error.message);
+    console.error("[publish-hook] optimizer failed for %s:", doc.id, error.message);
 
     // Record failure on the document (best-effort)
     try {
@@ -168,7 +168,7 @@ async function triggerOptimizerAfterPublish(db, FieldValue, doc, collectionName,
 function triggerOptimizerNonBlocking(db, FieldValue, doc, collectionName, options = {}) {
   triggerOptimizerAfterPublish(db, FieldValue, doc, collectionName, options)
     .catch((err) => {
-      console.error(`[publish-hook] non-blocking trigger failed for ${doc?.id}:`, err.message);
+      console.error("[publish-hook] non-blocking trigger failed for %s:", doc && doc.id, err.message);
     });
 }
 
