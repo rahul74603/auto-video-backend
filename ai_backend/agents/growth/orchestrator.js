@@ -141,7 +141,6 @@ async function processContent(content, opts = {}) {
                 recentVisualHistory: recentAiVisuals,
                 contentId: opts.contentId
             });
-            const imagePrompt = visualPlan.prompt;
             const imageFingerprint = visualPlan.cacheKey;
 
             log.stage('ai_visual_plan', {
@@ -157,12 +156,15 @@ async function processContent(content, opts = {}) {
             // costs nothing, so we bypass cost control entirely and do NOT
             // count this as a new generation.
             const stablePath = aiVisualEngine.getStableCachePath(opts.contentId, imageFingerprint);
-            if (aiVisualEngine.validateImage(stablePath)) {
-                aiVisual = { path: stablePath, cached: true, reused: true, generation: 'cache', applied: false };
-                log.stage('ai_visual_cache_hit', { path: stablePath, reused: true, generation: 'cache', applied: false });
+            if (aiVisualEngine.isUsableImage(stablePath)) {
+                aiVisual = { path: stablePath, visualSource: 'ai', cached: true, reused: true, generation: 'cache', applied: false };
+                log.stage('ai_visual_cache_hit', { path: stablePath, reused: true, generation: 'cache', applied: false, visualSource: 'ai' });
+                console.log(`visual_source=ai provider=cache seed=${visualPlan.seed} path=${stablePath}`);
             } else {
-                // STEP 2 — No validated cache. Apply cost control, then try
-                // to generate a new image.
+                // STEP 2 — No validated cache. Apply cost control, then run
+                // the hardened visual chain (AI → local fallback → category
+                // fallback → background → template). AI is optional; when the
+                // budget blocks it we run the SAME chain with tryAi:false.
                 const costCheck = await costControlEngine.checkImageGenerationAllowed(db, {
                     budgetTier: opts.budgetTier || 'free',
                     jobId: opts.contentId
@@ -170,21 +172,30 @@ async function processContent(content, opts = {}) {
 
                 if (!costCheck.allowed) {
                     log.stage('ai_visual_blocked', { reason: costCheck.reason, generation: 'skipped' });
-                    const fallback = aiVisualEngine.resolveCategoryVisualFallback(content, {
+                    const resolved = await aiVisualEngine.resolveVisualBackground(content, {
                         contentId: opts.contentId,
-                        seed: visualPlan?.seed
+                        visualPlan,
+                        tryAi: false,
+                        httpClient: opts.aiVisualHttpClient,
+                        localOutputPath: opts.aiVisualLocalOutputPath
                     });
                     aiVisual = {
                         success: false,
-                        path: null,
+                        path: resolved.path || null,
+                        visualSource: resolved.visualSource,
                         generation: 'skipped',
                         applied: false,
-                        fallback: fallback.kind,
-                        categoryVisual: fallback
+                        fallback: resolved.categoryFallback
+                            ? resolved.categoryFallback.kind
+                            : resolved.visualSource,
+                        categoryVisual: resolved.categoryFallback || null,
+                        localFallback: resolved.localFallback || null
                     };
-                    log.stage('ai_visual_category_fallback', {
-                        fallback: fallback.kind,
-                        variant: fallback.variant,
+                    log.stage(`ai_visual_${resolved.visualSource}`, {
+                        visualSource: resolved.visualSource,
+                        variant: resolved.categoryFallback?.variant ?? resolved.localFallback?.variant ?? null,
+                        seed: resolved.seed,
+                        path: resolved.path || null,
                         generation: 'skipped',
                         applied: false
                     });
@@ -196,27 +207,35 @@ async function processContent(content, opts = {}) {
                         budgetTier: opts.budgetTier || 'free'
                     }).catch(() => ({ cached: false }));
 
-                    if (cacheCheck?.cached && aiVisualEngine.validateImage(cacheCheck.path)) {
+                    if (cacheCheck?.cached && aiVisualEngine.isUsableImage(cacheCheck.path)) {
                         // Firestore pointed at a still-valid file (rare in
                         // GitHub Actions, but possible if the same runner
                         // processed two dispatcher runs in a row). Reuse it.
-                        aiVisual = { path: cacheCheck.path, cached: true, reused: true, generation: 'cache', applied: false };
-                        log.stage('ai_visual_firestore_cache_hit', { path: cacheCheck.path, generation: 'cache' });
+                        aiVisual = { path: cacheCheck.path, visualSource: 'ai', cached: true, reused: true, generation: 'cache', applied: false };
+                        log.stage('ai_visual_firestore_cache_hit', { path: cacheCheck.path, generation: 'cache', visualSource: 'ai' });
+                        console.log(`visual_source=ai provider=firestore-cache seed=${visualPlan.seed} path=${cacheCheck.path}`);
                     } else {
-                        // STEP 3 — Generate a new image (deterministic seed).
-                        const imageResult = await aiVisualEngine.generateImage(imagePrompt, {
-                            outputPath: stablePath,
+                        // STEP 3 — Full hardened chain: AI attempt (with the
+                        // image acceptance gate), then deterministic local
+                        // fallback, then category fallback, then the existing
+                        // background/template layers. Never throws.
+                        const resolved = await aiVisualEngine.resolveVisualBackground(content, {
+                            contentId: opts.contentId,
+                            visualPlan,
+                            tryAi: true,
                             timeout: 30000,
-                            seed: visualPlan.seed,
-                            maxAttempts: 2
+                            maxAttempts: 2,
+                            httpClient: opts.aiVisualHttpClient,
+                            localOutputPath: opts.aiVisualLocalOutputPath
                         });
 
-                        if (imageResult.success) {
-                            aiVisual = { ...imageResult, generation: 'success', applied: false };
+                        if (resolved.visualSource === 'ai') {
+                            const imageResult = resolved.ai;
+                            aiVisual = { ...imageResult, visualSource: 'ai', generation: 'success', applied: false };
                             // Update Firestore cache to point at the stable
                             // path so subsequent runs have the best chance
                             // of finding a usable file.
-                            await costControlEngine.storeImageInCache(db, imageFingerprint, stablePath, {
+                            await costControlEngine.storeImageInCache(db, imageFingerprint, resolved.path, {
                                 provider: imageResult.provider
                             }).catch(() => {});
                             await costControlEngine.logImageGeneration(db, {
@@ -242,28 +261,39 @@ async function processContent(content, opts = {}) {
                             log.stage('ai_visual_generated', {
                                 provider: imageResult.provider,
                                 size: imageResult.size,
-                                path: stablePath,
+                                path: resolved.path,
                                 seed: visualPlan.seed,
                                 generation: 'success',
-                                applied: false
+                                applied: false,
+                                visualSource: 'ai'
                             });
                         } else {
-                            log.stage('ai_visual_failed', { error: imageResult.error, generation: 'failed' });
-                            const fallback = aiVisualEngine.resolveCategoryVisualFallback(content, {
-                                contentId: opts.contentId,
-                                seed: visualPlan?.seed
+                            // AI failed (or produced an invalid file) — the
+                            // chain already fell through to a guaranteed
+                            // local/category/background/template layer. The
+                            // pipeline continues normally with that layer.
+                            log.stage('ai_visual_failed', {
+                                error: resolved.aiFailure || 'AI attempt failed',
+                                generation: 'failed',
+                                visualSource: resolved.visualSource
                             });
                             aiVisual = {
                                 success: false,
-                                path: null,
+                                path: resolved.path || null,
+                                visualSource: resolved.visualSource,
                                 generation: 'failed',
                                 applied: false,
-                                fallback: fallback.kind,
-                                categoryVisual: fallback
+                                fallback: resolved.categoryFallback
+                                    ? resolved.categoryFallback.kind
+                                    : resolved.visualSource,
+                                categoryVisual: resolved.categoryFallback || null,
+                                localFallback: resolved.localFallback || null
                             };
-                            log.stage('ai_visual_category_fallback', {
-                                fallback: fallback.kind,
-                                variant: fallback.variant,
+                            log.stage(`ai_visual_${resolved.visualSource}`, {
+                                visualSource: resolved.visualSource,
+                                variant: resolved.categoryFallback?.variant ?? resolved.localFallback?.variant ?? null,
+                                seed: resolved.seed,
+                                path: resolved.path || null,
                                 generation: 'failed',
                                 applied: false
                             });
@@ -389,6 +419,7 @@ async function processContent(content, opts = {}) {
                 deadlineState: deadlineInfo?.state,
                 faqTopic: faqOpportunity?.selected ? faqOpportunity.faq.topic : null,
                 aiVisualProvider: aiVisual?.provider,
+                aiVisualSource: aiVisual?.visualSource || null,
                 aiVisualScene: visualPlan?.scene,
                 aiVisualCombination: visualPlan?.combinationKey,
                 aiVisualSeed: visualPlan?.seed,
