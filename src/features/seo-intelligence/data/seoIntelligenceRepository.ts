@@ -430,6 +430,270 @@ const FACT_FIELDS = new Set([
   'organization', 'vacancies', 'salary', 'qualification', 'eligibility', 'dates', 'lastDate', 'startDate', 'fees', 'fee', 'age', 'applyLink', 'notificationLink', 'officialSiteLink', 'directLink', 'advtNo', 'selectionProcess', 'questions', 'answers', 'officialFacts',
 ]);
 
+const PLAN_ONLY_FIELDS = new Set([
+  'contentPlan', 'headingPlan', 'contentTable', 'howToApplySection',
+]);
+
+export type SeoProposalCheck = {
+  proposalId: string;
+  page: string;
+  contentType: string;
+  field: string;
+  oldValue: unknown;
+  proposedValue: unknown;
+  level: string;
+  confidence: string;
+  status: string;
+  applyable: boolean;
+  applyReason: string;
+  approvable: boolean;
+  approveReason: string;
+  isFactField: boolean;
+  isLevelC: boolean;
+  requiresReview: boolean;
+  articleHtmlApplyable: boolean | null;
+  articleHtmlReason: string | null;
+  hasDocumentMapping: boolean;
+  blocked: boolean;
+  blockedReason: string;
+  category: 'ready' | 'needs_approval' | 'needs_review' | 'blocked' | 'applied' | 'rejected' | 'failed' | 'rolled_back';
+};
+
+export type SeoProposalCheckSummary = {
+  total: number;
+  readyToApply: number;
+  needsApproval: number;
+  needsReview: number;
+  blocked: number;
+  levelC: number;
+  factFieldsBlocked: number;
+  invalidMapping: number;
+  alreadyApplied: number;
+  rejected: number;
+  failed: number;
+  rolledBack: number;
+};
+
+export type SeoProposalBulkResult = {
+  id: string;
+  outcome: 'approved' | 'applied' | 'skipped' | 'failed';
+  reason: string;
+  snapshotId?: string | null;
+  field?: string | null;
+};
+
+export type SeoApplySnapshot = {
+  id?: string;
+  proposalId?: string;
+  collection?: string;
+  documentId?: string;
+  url?: string;
+  field?: string;
+  oldValues?: Record<string, unknown>;
+  newValues?: Record<string, unknown>;
+  createdAt?: string;
+  restored?: boolean;
+  restoredAt?: string;
+};
+
+function uniqueIds(ids: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of ids) {
+    const id = String(raw || '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+export function isSeoFactField(field?: string | null): boolean {
+  return FACT_FIELDS.has(String(field || ''));
+}
+
+export function hasPublicDocumentMapping(proposal: SeoOptimizationProposal): boolean {
+  const collectionName = CONTENT_COLLECTION_MAP[String(proposal.contentType || '').toUpperCase()];
+  return Boolean(collectionName && proposal.contentId);
+}
+
+function inspectArticleHtml(proposal: SeoOptimizationProposal): { ok: boolean; reason: string } | null {
+  if (String(proposal.field || '') !== 'articleHtml') return null;
+  if (proposal.insufficientSource || (proposal.proposedValue && typeof proposal.proposedValue === 'object' && (proposal.proposedValue as { insufficientSource?: boolean }).insufficientSource)) {
+    return { ok: false, reason: 'Insufficient source — articleHtml is not applied' };
+  }
+  const html = extractArticleHtml(proposal.proposedValue);
+  const htmlRef = proposal.proposedValue && typeof proposal.proposedValue === 'object'
+    ? String((proposal.proposedValue as { htmlRef?: string }).htmlRef || proposal.htmlRef || '')
+    : String(proposal.htmlRef || '');
+  if (!html.trim() && htmlRef) {
+    return { ok: false, reason: 'HTML is stored by reference — use individual Check/Apply which loads seo_proposal_bodies' };
+  }
+  try {
+    assertSafeArticleHtml(html);
+    return { ok: true, reason: 'Proposed HTML passed the safety check' };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function inspectSafety(proposal: SeoOptimizationProposal): { ok: boolean; reason: string } {
+  try {
+    buildClientPatch(proposal);
+    return { ok: true, reason: 'Allowlisted field passed safety checks.' };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export function checkOptimizationProposal(proposal: SeoOptimizationProposal): SeoProposalCheck {
+  const field = String(proposal.field || '');
+  const status = String(proposal.status || 'pending');
+  const isLevelC = proposal.level === 'C';
+  const hasMapping = hasPublicDocumentMapping(proposal);
+  const html = inspectArticleHtml(proposal);
+  const safety = inspectSafety(proposal);
+  const preview = previewOptimizationProposal(proposal);
+  const blockedReason = !hasMapping
+    ? 'Proposal is missing a public document mapping'
+    : (!safety.ok ? safety.reason : (html && !html.ok ? html.reason : ''));
+  const applyable = preview.applyable && hasMapping && !(html && !html.ok);
+  const applyReason = applyable
+    ? preview.reason
+    : (blockedReason || preview.reason);
+  let approveReason = 'Not pending.';
+  let approvable = false;
+  if (status !== 'pending') {
+    approveReason = `Status is ${status}. Bulk safe-approve only changes pending proposals.`;
+  } else if (isLevelC) {
+    approveReason = 'Level C proposals are never bulk-approved.';
+  } else if (FACT_FIELDS.has(field)) {
+    approveReason = `Fact field ${field} is locked.`;
+  } else if (PLAN_ONLY_FIELDS.has(field)) {
+    approveReason = `${field} is a review plan and is not auto-approved.`;
+  } else if (!hasMapping) {
+    approveReason = 'Proposal is missing a public document mapping.';
+  } else if (!APPLYABLE_FIELDS.has(field) && field !== 'schemaMarkup') {
+    approveReason = safety.reason;
+  } else if (html && !html.ok) {
+    approveReason = html.reason;
+  } else if (!safety.ok) {
+    approveReason = safety.reason;
+  } else if (proposal.requiresReview) {
+    approveReason = 'Requires review — use individual Approve (status only). Bulk safe-approve skips review-required proposals.';
+  } else {
+    approvable = true;
+    approveReason = 'Safe to approve. Approval does not write public content.';
+  }
+
+  let category: SeoProposalCheck['category'] = 'blocked';
+  if (status === 'applied') category = 'applied';
+  else if (status === 'rejected') category = 'rejected';
+  else if (status === 'failed') category = 'failed';
+  else if (status === 'rolled_back') category = 'rolled_back';
+  else if (applyable) category = 'ready';
+  else if (Boolean(blockedReason) || isLevelC || FACT_FIELDS.has(field) || PLAN_ONLY_FIELDS.has(field) || !hasMapping) category = 'blocked';
+  else if (proposal.requiresReview || (status === 'pending' && !approvable)) category = 'needs_review';
+  else if (status === 'pending') category = 'needs_approval';
+  else category = 'blocked';
+
+  return {
+    proposalId: String(proposal.id || ''),
+    page: String(proposal.url || proposal.contentId || ''),
+    contentType: String(proposal.contentType || 'OTHER'),
+    field,
+    oldValue: proposal.oldValue,
+    proposedValue: proposal.proposedValue,
+    level: String(proposal.level || '—'),
+    confidence: String(proposal.confidence || '—'),
+    status,
+    applyable,
+    applyReason,
+    approvable,
+    approveReason,
+    isFactField: FACT_FIELDS.has(field),
+    isLevelC,
+    requiresReview: Boolean(proposal.requiresReview),
+    articleHtmlApplyable: html ? html.ok : null,
+    articleHtmlReason: html ? html.reason : null,
+    hasDocumentMapping: hasMapping,
+    blocked: category === 'blocked',
+    blockedReason: category === 'blocked' ? (blockedReason || applyReason || approveReason) : '',
+    category,
+  };
+}
+
+export function summarizeProposalChecks(items: SeoProposalCheck[]): SeoProposalCheckSummary {
+  const summary: SeoProposalCheckSummary = {
+    total: items.length,
+    readyToApply: 0,
+    needsApproval: 0,
+    needsReview: 0,
+    blocked: 0,
+    levelC: 0,
+    factFieldsBlocked: 0,
+    invalidMapping: 0,
+    alreadyApplied: 0,
+    rejected: 0,
+    failed: 0,
+    rolledBack: 0,
+  };
+  for (const item of items) {
+    if (item.category === 'ready') summary.readyToApply += 1;
+    if (item.category === 'needs_approval') summary.needsApproval += 1;
+    if (item.category === 'needs_review') summary.needsReview += 1;
+    if (item.category === 'blocked') summary.blocked += 1;
+    if (item.isLevelC) summary.levelC += 1;
+    if (item.isFactField) summary.factFieldsBlocked += 1;
+    if (!item.hasDocumentMapping) summary.invalidMapping += 1;
+    if (item.category === 'applied') summary.alreadyApplied += 1;
+    if (item.category === 'rejected') summary.rejected += 1;
+    if (item.category === 'failed') summary.failed += 1;
+    if (item.category === 'rolled_back') summary.rolledBack += 1;
+  }
+  return summary;
+}
+
+export function checkOptimizationProposals(proposals: SeoOptimizationProposal[]): {
+  items: SeoProposalCheck[];
+  summary: SeoProposalCheckSummary;
+} {
+  const items = (Array.isArray(proposals) ? proposals : []).map((item) => checkOptimizationProposal(item));
+  return { items, summary: summarizeProposalChecks(items) };
+}
+
+function fieldGroup(field: string): string {
+  if (field === 'relatedLinks') return 'internal-link';
+  if (field === 'articleHtml') return 'articleHtml';
+  if (FACT_FIELDS.has(field)) return 'factual';
+  if (field === 'seoTitle' || field === 'metaDescription' || field === 'h1' || field === 'authorName' || field === 'imageAlt') return 'metadata';
+  if (field === 'schemaMarkup' || field === 'includeJobPostingSchema') return 'schema';
+  return 'other';
+}
+
+export function summarizeApplyPreview(items: SeoProposalCheck[]): Record<string, number> {
+  const counts = {
+    metadata: 0,
+    'internal-link': 0,
+    factual: 0,
+    levelC: 0,
+    articleHtml: 0,
+    unsafeHtml: 0,
+    other: 0,
+  };
+  for (const item of items) {
+    if (item.isLevelC) counts.levelC += 1;
+    if (item.articleHtmlApplyable === false) counts.unsafeHtml += 1;
+    const group = fieldGroup(item.field);
+    if (group === 'metadata') counts.metadata += 1;
+    else if (group === 'internal-link') counts['internal-link'] += 1;
+    else if (group === 'factual') counts.factual += 1;
+    else if (group === 'articleHtml') counts.articleHtml += 1;
+    else counts.other += 1;
+  }
+  return counts;
+}
+
 function buildClientPatch(proposal: SeoOptimizationProposal, articleHtml?: string): Record<string, unknown> {
   const field = String(proposal.field || '');
   if (FACT_FIELDS.has(field)) throw new Error(`Fact field ${field} is locked`);
@@ -542,6 +806,150 @@ export async function rollbackOptimizationProposal(proposalId: string): Promise<
   const history = [{ proposalId: id, status: 'rolled_back', snapshotId: proposal.snapshotId, at, field: proposal.field }, ...(Array.isArray(settings.applyHistory) ? settings.applyHistory as SeoApplyHistoryItem[] : [])].slice(0, 20);
   await setDoc(settingsRef, { optimizationProposals: next, applyHistory: history, optimizationApply: false }, { merge: true });
   return next;
+}
+
+export async function fetchSeoApplySnapshot(snapshotId: string): Promise<SeoApplySnapshot> {
+  const id = String(snapshotId || '').trim();
+  if (!id) throw new Error('Snapshot id is required');
+  const snap = await getDoc(doc(db, SNAPSHOTS_COLLECTION, id));
+  if (!snap.exists()) throw new Error('Snapshot not found');
+  return { id, ...asRecord(snap.data()) } as SeoApplySnapshot;
+}
+
+/**
+ * Bulk-approve only pending proposals that pass the existing safety model.
+ * Never writes public content. Never sets applied=true.
+ * Fetches latest settings before writing so a stale admin list cannot clobber newer statuses.
+ */
+export async function approveOptimizationProposals(proposalIds: string[]): Promise<{
+  proposals: SeoOptimizationProposal[];
+  results: SeoProposalBulkResult[];
+}> {
+  const ids = uniqueIds(proposalIds);
+  const ref = doc(db, SETTINGS_COLLECTION, SEO_SETTINGS_DOC);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error('SEO intelligence settings document is missing');
+  const data = asRecord(snap.data());
+  const current = Array.isArray(data.optimizationProposals) ? data.optimizationProposals as SeoOptimizationProposal[] : [];
+  const byId = new Map(current.map((item) => [String(item.id || ''), item]));
+  const results: SeoProposalBulkResult[] = [];
+  const approved = new Set<string>();
+  for (const id of ids) {
+    const proposal = byId.get(id);
+    if (!proposal) {
+      results.push({ id, outcome: 'failed', reason: 'Proposal not found in loaded SEO settings.' });
+      continue;
+    }
+    const check = checkOptimizationProposal(proposal);
+    if (!check.approvable) {
+      results.push({ id, outcome: 'skipped', reason: check.approveReason, field: proposal.field });
+      continue;
+    }
+    approved.add(id);
+    results.push({
+      id,
+      outcome: 'approved',
+      reason: 'Approved. Public content was not changed.',
+      field: proposal.field,
+    });
+  }
+  if (!approved.size) {
+    return { proposals: current, results };
+  }
+  const at = new Date().toISOString();
+  const next = current.map((item) => {
+    if (!item.id || !approved.has(item.id) || item.status !== 'pending') return item;
+    return { ...item, status: 'approved', applied: false, reviewedAt: at };
+  });
+  await setDoc(ref, { optimizationProposals: next, optimizationApply: false }, { merge: true });
+  return { proposals: next, results };
+}
+
+/**
+ * Apply approved proposals one-by-one using the existing snapshot-before-write path.
+ * A failure does not abort the rest of the batch. articleHtml is never bulk-applied.
+ */
+export async function applyOptimizationProposals(proposalIds: string[]): Promise<{
+  proposals: SeoOptimizationProposal[];
+  results: SeoProposalBulkResult[];
+}> {
+  const ids = uniqueIds(proposalIds);
+  const settingsRef = doc(db, SETTINGS_COLLECTION, SEO_SETTINGS_DOC);
+  const results: SeoProposalBulkResult[] = [];
+  let latest: SeoOptimizationProposal[] = [];
+
+  const readLatest = async () => {
+    const settingsSnap = await getDoc(settingsRef);
+    if (!settingsSnap.exists()) throw new Error('SEO intelligence settings document is missing');
+    const settings = asRecord(settingsSnap.data());
+    latest = Array.isArray(settings.optimizationProposals) ? settings.optimizationProposals as SeoOptimizationProposal[] : [];
+    return latest;
+  };
+
+  await readLatest();
+
+  for (const id of ids) {
+    const proposal = latest.find((item) => item.id === id);
+    if (!proposal) {
+      results.push({ id, outcome: 'failed', reason: 'Proposal not found in loaded SEO settings.' });
+      continue;
+    }
+    if (proposal.field === 'articleHtml') {
+      results.push({
+        id,
+        outcome: 'skipped',
+        reason: 'articleHtml is never bulk-applied — use individual Apply after CHECK.',
+        field: proposal.field,
+      });
+      continue;
+    }
+    const preview = previewOptimizationProposal(proposal);
+    const mapping = hasPublicDocumentMapping(proposal);
+    if (!preview.applyable || !mapping) {
+      results.push({
+        id,
+        outcome: 'skipped',
+        reason: mapping ? preview.reason : 'Proposal is missing a public document mapping',
+        field: proposal.field,
+      });
+      continue;
+    }
+    try {
+      latest = await applyOptimizationProposal(id);
+      const applied = latest.find((item) => item.id === id);
+      if (applied?.status !== 'applied') {
+        results.push({
+          id,
+          outcome: 'failed',
+          reason: applied?.lastError || 'Apply did not mark the proposal as applied.',
+          snapshotId: applied?.snapshotId || null,
+          field: proposal.field,
+        });
+        continue;
+      }
+      results.push({
+        id,
+        outcome: 'applied',
+        reason: 'Applied allowlisted fields after snapshot.',
+        snapshotId: applied.snapshotId || null,
+        field: proposal.field,
+      });
+    } catch (error) {
+      results.push({
+        id,
+        outcome: 'failed',
+        reason: error instanceof Error ? error.message : String(error),
+        field: proposal.field,
+      });
+      try {
+        await readLatest();
+      } catch {
+        // Keep last known list so later iterations can still attempt apply.
+      }
+    }
+  }
+
+  return { proposals: latest, results };
 }
 
 export async function runSeoIntelligence(): Promise<Record<string, unknown>> {

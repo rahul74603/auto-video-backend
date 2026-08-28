@@ -53,5 +53,8 @@ describe('Admin SEO Optimization Proposal row selection', () => {
     expect(dashboardSource).toContain('Reject');
     expect(dashboardSource).toContain('Apply (snapshot first)');
     expect(dashboardSource).not.toContain('onClick={() => setSelectedProposal(proposal)}');
+    expect(dashboardSource).toContain('Check selected');
+    expect(dashboardSource).toContain('Select all loaded/filtered proposals');
+    expect(dashboardSource).toContain('event.stopPropagation()');
   });
 });
