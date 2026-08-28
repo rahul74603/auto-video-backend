@@ -31,11 +31,17 @@
  *   this. If persistent binary reuse is required later it must be added as a
  *   separate, deliberate change.
  *
- * Fallback order (unchanged):
- * 1. AI-generated image (when provider available)
- * 2. Existing category visual
- * 3. Existing background
- * 4. Existing video template
+ * Fallback order (hardened):
+ * 1. AI-generated image (when provider available + file passes validation)
+ * 2. Deterministic LOCAL fallback image (SVG + sharp, no network)  [NEW]
+ * 3. Existing category visual (seeded palette)
+ * 4. Existing background (static poster theme gradient)
+ * 5. Existing video template (poster template always renders)
+ *
+ * At least one non-network fallback is ALWAYS capable of producing an
+ * image, so AI being down/timeout/rate-limited can never block a video.
+ * Every result carries visualSource = ai | local_fallback |
+ * category_fallback | background_fallback | template_fallback.
  *
  * Cost guards (unchanged):
  * - Max 1 AI image per video
@@ -57,6 +63,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { detectContentIntent } = require('./content_intent');
+const localVisualGenerator = require('./local_visual_generator');
 
 // -------------------------------------------------------------------------
 // A. SCENE / ENVIRONMENT pools (per category + reusable Default pool)
@@ -920,6 +927,169 @@ function resolveCategoryVisualFallback(content, options = {}) {
     };
 }
 
+/**
+ * Unified, never-throwing visual background chain.
+ *
+ *   1. AI image            (try, validate)        -> visual_source=ai
+ *   2. Local fallback      (deterministic PNG)    -> visual_source=local_fallback
+ *   3. Category fallback   (seeded palette)       -> visual_source=category_fallback
+ *   4. Background fallback (static poster theme)  -> visual_source=background_fallback
+ *   5. Template fallback   (poster template)      -> visual_source=template_fallback
+ *
+ * At least ONE non-network layer is always capable of producing an image:
+ * the deterministic local generator (sharp + SVG, both already installed)
+ * and, behind it, the poster template itself. AI is an optional enhancement;
+ * a failed AI request never throws and never blocks video rendering.
+ *
+ * @param {object} content
+ * @param {object} options
+ *   contentId, visualPlan, placement, seed, tryAi (default true),
+ *   reuseCache (default true), aiOutputPath, localOutputPath, timeout,
+ *   maxAttempts, httpClient, allowLocalFallback, allowCategoryFallback,
+ *   allowBackgroundFallback
+ * @returns {Promise<object>} { visualSource, path, seed, plan, ai,
+ *   aiFailure, localFallback, categoryFallback }
+ */
+async function resolveVisualBackground(content, options = {}) {
+    const contentId = options.contentId || '';
+    const fingerprint = visualFingerprint(content, contentId);
+    const plan = options.visualPlan
+        || buildVisualPlan(content, { contentId, placement: options.placement || 'bottom' });
+    const seed = Number.isFinite(Number(options.seed)) ? Number(options.seed) >>> 0 : plan.seed;
+
+    const chain = {
+        contentId,
+        fingerprint,
+        seed,
+        visualSource: null,
+        path: null,
+        plan,
+        ai: null,
+        aiFailure: null,
+        localFallback: null,
+        categoryFallback: null
+    };
+
+    // ---------------------------------------------------------------------
+    // STEP 1 — AI image (optional enhancement, never mandatory)
+    // ---------------------------------------------------------------------
+    if (options.tryAi !== false) {
+        const aiOutputPath = options.aiOutputPath || getStableCachePath(contentId, plan.cacheKey);
+        let aiResult = null;
+        let aiFailure = null;
+        try {
+            if (options.reuseCache !== false && isUsableImage(aiOutputPath)) {
+                // Same-run retry reuse: the file was written earlier and still
+                // passes the full acceptance gate.
+                aiResult = { success: true, path: aiOutputPath, cached: true, generation: 'cache' };
+            } else {
+                aiResult = await generateImage(plan.prompt, {
+                    outputPath: aiOutputPath,
+                    timeout: options.timeout || 30000,
+                    seed,
+                    maxAttempts: options.maxAttempts || 2,
+                    httpClient: options.httpClient,
+                    model: options.model
+                });
+            }
+
+            if (aiResult?.success) {
+                const gate = inspectImage(aiResult.path);
+                if (gate.ok) {
+                    chain.visualSource = 'ai';
+                    chain.path = aiResult.path;
+                    chain.ai = aiResult;
+                    console.log(
+                        `visual_source=ai provider=${aiResult.provider || 'cache'} ` +
+                        `generation=${aiResult.generation || 'success'} seed=${seed} path=${aiResult.path}`
+                    );
+                    return chain;
+                }
+                // Invalid/corrupt AI file => treated EXACTLY like AI failure.
+                aiFailure = `invalid image file (${gate.reason || 'failed acceptance gate'})`;
+                if (aiResult.path && fs.existsSync(aiResult.path)) {
+                    try { fs.unlinkSync(aiResult.path); } catch { /* ignore */ }
+                }
+            } else {
+                aiFailure = aiResult?.error || 'AI generation failed';
+            }
+        } catch (err) {
+            // Defense-in-depth: an AI attempt must NEVER throw out of the chain.
+            aiFailure = err?.message || 'unexpected AI error';
+        }
+        chain.ai = aiResult;
+        chain.aiFailure = aiFailure;
+        const shortReason = String(aiFailure || 'unknown').replace(/\s+/g, ' ').substring(0, 160);
+        console.log(`ai_visual_failed reason=${shortReason}`);
+    } else {
+        chain.aiFailure = 'AI disabled or cost-blocked';
+    }
+
+    // ---------------------------------------------------------------------
+    // STEP 2 — Deterministic LOCAL visual fallback (no network, no cost)
+    // ---------------------------------------------------------------------
+    if (options.allowLocalFallback !== false) {
+        const localOutputPath = options.localOutputPath
+            || getLocalFallbackPath(contentId, fingerprint.hash);
+        try {
+            const local = await localVisualGenerator.generateLocalVisual(content, {
+                seed,
+                outputPath: localOutputPath,
+                width: options.localWidth,
+                height: options.localHeight,
+                category: content?.category
+            });
+            if (local?.success && isUsableImage(local.path)) {
+                chain.visualSource = 'local_fallback';
+                chain.path = local.path;
+                chain.localFallback = local;
+                console.log(
+                    `visual_source=local_fallback variant=${local.variant} ` +
+                    `composition=${local.composition} seed=${seed} path=${local.path}`
+                );
+                return chain;
+            }
+            chain.localFallback = local;
+            console.log(
+                `local_visual_failed reason=${String(local?.error || 'invalid output').replace(/\s+/g, ' ').substring(0, 120)} seed=${seed}`
+            );
+        } catch (err) {
+            chain.localFallback = { success: false, error: err?.message || 'unexpected local generator error' };
+            console.log(`local_visual_failed reason=${String(err?.message || err).replace(/\s+/g, ' ').substring(0, 120)} seed=${seed}`);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // STEP 3 — Category visual variant fallback (seeded palette, no file)
+    // ---------------------------------------------------------------------
+    if (options.allowCategoryFallback !== false) {
+        const categoryFallback = resolveCategoryVisualFallback(content, { contentId, seed });
+        chain.visualSource = 'category_fallback';
+        chain.categoryFallback = categoryFallback;
+        console.log(
+            `visual_source=category_fallback variant=${categoryFallback.variant} kind=${categoryFallback.kind} seed=${seed}`
+        );
+        return chain;
+    }
+
+    // ---------------------------------------------------------------------
+    // STEP 4 — Existing static background fallback (poster theme gradient)
+    // ---------------------------------------------------------------------
+    if (options.allowBackgroundFallback !== false) {
+        chain.visualSource = 'background_fallback';
+        console.log('visual_source=background_fallback (static poster theme gradient)');
+        return chain;
+    }
+
+    // ---------------------------------------------------------------------
+    // STEP 5 — Existing video template fallback (the poster template itself
+    // always renders an image locally — the final guarantee).
+    // ---------------------------------------------------------------------
+    chain.visualSource = 'template_fallback';
+    console.log('visual_source=template_fallback (poster template guarantees an image)');
+    return chain;
+}
+
 // Stable cache directory for AI images. On GitHub Actions the runner is
 // ephemeral, but WITHIN a single workflow run the workspace + GITHUB_WORKSPACE
 // path persists across all jobs/steps. We place cached images under a
@@ -958,8 +1128,10 @@ function getTempImagePath(jobId) {
 }
 
 /**
- * Validate a cached image file is usable: exists, non-empty, and a valid JPEG.
- * Returns true only when the file can safely be used as a poster background.
+ * Validate a cached image file is usable: exists, non-empty, and a valid
+ * JPEG or PNG. Returns true only when the file can safely be used as a
+ * poster background. This is the quick check used by cache paths; the full
+ * acceptance gate (dimensions etc.) lives in inspectImage().
  */
 function validateImage(imagePath) {
     if (!imagePath || typeof imagePath !== 'string') return false;
@@ -967,15 +1139,155 @@ function validateImage(imagePath) {
     try {
         const stat = fs.statSync(imagePath);
         if (!stat.isFile() || stat.size < 100) return false; // corrupted/empty
-        // Quick header check — JPEG starts with FF D8
+        // Quick header check — JPEG starts with FF D8, PNG with 89 50 4E 47
         const fd = fs.openSync(imagePath, 'r');
-        const header = Buffer.alloc(2);
-        fs.readSync(fd, header, 0, 2, 0);
+        const header = Buffer.alloc(8);
+        const bytesRead = fs.readSync(fd, header, 0, 8, 0);
         fs.closeSync(fd);
-        return header[0] === 0xFF && header[1] === 0xD8;
+        if (bytesRead >= 2 && header[0] === 0xFF && header[1] === 0xD8) return true;
+        if (
+            bytesRead >= 8 &&
+            header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47
+        ) return true;
+        return false;
     } catch {
         return false;
     }
+}
+
+/**
+ * Read width/height from a JPEG (via its first SOF marker) or PNG (via IHDR)
+ * header. Returns { width, height } or null when dimensions cannot be parsed.
+ */
+function readImageDimensions(imagePath) {
+    try {
+        const buf = fs.readFileSync(imagePath);
+        if (buf.length >= 24 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) {
+            // PNG: IHDR width/height are big-endian uint32 at offsets 16 and 20.
+            return {
+                width: buf.readUInt32BE(16),
+                height: buf.readUInt32BE(20)
+            };
+        }
+        if (buf.length >= 4 && buf[0] === 0xFF && buf[1] === 0xD8) {
+            // JPEG: walk segments until a SOF marker (C0-CF except C4/C8/CC).
+            let offset = 2;
+            while (offset + 9 < buf.length) {
+                if (buf[offset] !== 0xFF) { offset += 1; continue; }
+                // Skip fill bytes (0xFF padding) and standalone markers.
+                let marker = buf[offset + 1];
+                while (marker === 0xFF && offset + 2 < buf.length) {
+                    offset += 1;
+                    marker = buf[offset + 1];
+                }
+                if (marker === 0xD8 || marker === 0xD9) { offset += 2; continue; }      // SOI/EOI
+                if (marker >= 0xD0 && marker <= 0xD7) { offset += 2; continue; }        // RSTn
+                if (marker === 0x01 || (marker >= 0xD0 && marker <= 0xD8)) { offset += 2; continue; }
+                const segmentLength = buf.readUInt16BE(offset + 2);
+                const isSof =
+                    marker >= 0xC0 && marker <= 0xCF &&
+                    marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC;              // skip DHT/JPG/DAC
+                if (isSof && offset + 9 < buf.length) {
+                    return {
+                        width: buf.readUInt16BE(offset + 7),
+                        height: buf.readUInt16BE(offset + 5)
+                    };
+                }
+                offset += 2 + segmentLength;
+            }
+            return null; // valid magic but no parseable SOF => corrupt
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Full image acceptance gate for the visual chain.
+ *
+ * An image is accepted only when it:
+ * - exists and is a readable file
+ * - is non-empty and within the existing 5MB size limit
+ * - has a valid JPEG/PNG signature
+ * - has parseable, reasonable dimensions (16..8192 px)
+ *
+ * If an AI provider returns an invalid or corrupt file this returns
+ * ok:false and the chain treats it EXACTLY like an AI failure.
+ */
+function inspectImage(imagePath) {
+    if (!imagePath || typeof imagePath !== 'string') {
+        return { ok: false, reason: 'no path' };
+    }
+    if (!fs.existsSync(imagePath)) {
+        return { ok: false, reason: 'missing file' };
+    }
+    let stat;
+    try {
+        stat = fs.statSync(imagePath);
+    } catch {
+        return { ok: false, reason: 'unreadable file' };
+    }
+    if (!stat.isFile()) {
+        return { ok: false, reason: 'not a file' };
+    }
+    if (stat.size < 100) {
+        return { ok: false, reason: 'empty or too small', size: stat.size };
+    }
+    const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // existing 5MB limit
+    if (stat.size > MAX_IMAGE_SIZE) {
+        return { ok: false, reason: 'over size limit', size: stat.size };
+    }
+    let format = null;
+    try {
+        const fd = fs.openSync(imagePath, 'r');
+        const header = Buffer.alloc(8);
+        const bytesRead = fs.readSync(fd, header, 0, 8, 0);
+        fs.closeSync(fd);
+        if (bytesRead >= 2 && header[0] === 0xFF && header[1] === 0xD8) format = 'jpeg';
+        else if (
+            bytesRead >= 8 &&
+            header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47
+        ) format = 'png';
+    } catch {
+        return { ok: false, reason: 'unreadable file' };
+    }
+    if (!format) {
+        return { ok: false, reason: 'not a valid image format', size: stat.size };
+    }
+    const dims = readImageDimensions(imagePath);
+    if (!dims || !dims.width || !dims.height) {
+        return { ok: false, reason: 'corrupt image (no parseable dimensions)', format, size: stat.size };
+    }
+    if (dims.width < 16 || dims.height < 16 || dims.width > 8192 || dims.height > 8192) {
+        return {
+            ok: false,
+            reason: 'unreasonable dimensions',
+            format,
+            width: dims.width,
+            height: dims.height,
+            size: stat.size
+        };
+    }
+    return { ok: true, format, width: dims.width, height: dims.height, size: stat.size };
+}
+
+/**
+ * Convenience wrapper: is this file acceptable as a poster background?
+ */
+function isUsableImage(imagePath) {
+    return inspectImage(imagePath).ok;
+}
+
+/**
+ * Deterministic stable path for a LOCAL fallback image (PNG). Same content
+ * resolves to the same path, so same-run retries reuse the file.
+ */
+function getLocalFallbackPath(contentId, fingerprint) {
+    const dir = getStableCacheDir();
+    const safe = String(contentId || 'unknown').replace(/[^a-z0-9_-]+/gi, '-').substring(0, 80);
+    const safeFp = String(fingerprint || 'default').substring(0, 40);
+    return path.join(dir, `ai-visual-local-${safe}-${safeFp}.png`);
 }
 
 /**
@@ -1023,10 +1335,16 @@ module.exports = {
     isRetryableImageError,
     CATEGORY_VISUAL_PALETTES,
     resolveCategoryVisualFallback,
+    resolveVisualBackground,
     getTempImagePath,
     getStableCachePath,
     getStableCacheDir,
+    getLocalFallbackPath,
     validateImage,
+    inspectImage,
+    isUsableImage,
+    readImageDimensions,
     cleanupImage,
-    hashString
+    hashString,
+    localVisualGenerator
 };

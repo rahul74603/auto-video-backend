@@ -395,15 +395,23 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
 
     const theme = themes[jobCat] || themes['Default'];
     const aiVisualMeta = growthRec?.enhancements?.aiVisual || null;
+    // The growth chain decides the layer. When it decided a lower layer
+    // (background/template) we honor that and keep the static theme; when it
+    // decided the category layer we reuse its palette. Only when there is no
+    // chain result at all do we keep the legacy seeded-palette behaviour.
     const categoryVisual = aiVisualMeta?.categoryVisual
-        || aiVisualEngine.resolveCategoryVisualFallback({
-            title: jobData.title,
-            category: jobCat,
-            type: jobData.type,
-            slug: jobData.slug,
-            id: jobData.id,
-            documentId: jobData.id
-        }, { seed: growthRec?.enhancements?.visualPlan?.seed });
+        || (
+            (!aiVisualMeta || aiVisualMeta.visualSource === 'category_fallback')
+                ? aiVisualEngine.resolveCategoryVisualFallback({
+                    title: jobData.title,
+                    category: jobCat,
+                    type: jobData.type,
+                    slug: jobData.slug,
+                    id: jobData.id,
+                    documentId: jobData.id
+                }, { seed: growthRec?.enhancements?.visualPlan?.seed })
+                : null
+        );
     if (categoryVisual?.colors) {
         theme.bg1 = categoryVisual.colors.bg1 || theme.bg1;
         theme.bg2 = categoryVisual.colors.bg2 || theme.bg2;
@@ -421,44 +429,58 @@ async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
         ctx.fillRect(0, 0, width, height);
     }
 
-    // 1. BACKGROUND — AI image if available, else category visual, else gradient
+    // 1. BACKGROUND — layered visual chain:
+    //    AI image (visual_source=ai) -> local fallback image
+    //    (visual_source=local_fallback) -> category palette
+    //    (visual_source=category_fallback) -> static theme gradient
+    //    (visual_source=background_fallback). The poster template itself is
+    //    the final guarantee (visual_source=template_fallback).
     let posterApplied = false;
-    if (aiVisualMeta?.path) {
-        const aiPath = aiVisualMeta.path;
-        const exists = fs.existsSync(aiPath);
-        console.log(`🔍 AI Visual check: path=${aiPath}, exists=${exists}, generation=${aiVisualMeta.generation || 'unknown'}`);
-        if (exists) {
-            try {
-                const { Image } = require('canvas');
-                const aiImg = new Image();
-                aiImg.src = fs.readFileSync(aiPath);
-                const scale = Math.max(width / aiImg.width, height / aiImg.height);
-                const drawW = aiImg.width * scale;
-                const drawH = aiImg.height * scale;
-                const drawX = (width - drawW) / 2;
-                const drawY = (height - drawH) / 2;
-                ctx.drawImage(aiImg, drawX, drawY, drawW, drawH);
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-                ctx.fillRect(0, 0, width, height);
-                posterApplied = true;
-                console.log(`AI_VISUAL: generation=success path=${aiPath} exists=true loaded=true applied=true`);
-                console.log('🖼️ AI image used as poster background');
-            } catch (err) {
-                console.log(`⚠️ AI image load failed, using category visual: ${err.message || err}`);
-                fillCategoryBackground();
-                posterApplied = true;
-                console.log(`POSTER: fallback=${categoryVisual.kind} variant=${categoryVisual.variant} applied=true generation=failed`);
-            }
-        } else {
-            console.log(`⚠️ AI image file missing at: ${aiPath}`);
+    let visualSource = 'template_fallback';
+    const bgImagePath = aiVisualMeta?.path || null;
+    const bgImageUsable = bgImagePath
+        && fs.existsSync(bgImagePath)
+        && aiVisualEngine.isUsableImage(bgImagePath);
+
+    const canvasFallbackSource = () => {
+        if (categoryVisual) return 'category_fallback';
+        if (aiVisualMeta?.visualSource === 'background_fallback') return 'background_fallback';
+        if (aiVisualMeta?.visualSource === 'template_fallback') return 'template_fallback';
+        return 'background_fallback';
+    };
+
+    if (bgImageUsable) {
+        try {
+            const { Image } = require('canvas');
+            const bgImg = new Image();
+            bgImg.src = fs.readFileSync(bgImagePath);
+            const scale = Math.max(width / bgImg.width, height / bgImg.height);
+            const drawW = bgImg.width * scale;
+            const drawH = bgImg.height * scale;
+            const drawX = (width - drawW) / 2;
+            const drawY = (height - drawH) / 2;
+            ctx.drawImage(bgImg, drawX, drawY, drawW, drawH);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+            ctx.fillRect(0, 0, width, height);
+            posterApplied = true;
+            visualSource = aiVisualMeta?.visualSource === 'ai' ? 'ai' : 'local_fallback';
+            console.log(`visual_source=${visualSource} path=${bgImagePath} loaded=true applied=true`);
+            console.log(`🖼️ ${visualSource === 'ai' ? 'AI' : 'Local fallback'} image used as poster background`);
+        } catch (err) {
+            console.log(`⚠️ Background image load failed (${err.message || err}) — falling back to canvas background`);
             fillCategoryBackground();
             posterApplied = true;
-            console.log(`POSTER: fallback=${categoryVisual.kind} variant=${categoryVisual.variant} applied=true generation=failed`);
+            visualSource = canvasFallbackSource();
+            console.log(`visual_source=${visualSource} variant=${categoryVisual?.variant ?? 'static'} applied=true`);
         }
     } else {
+        if (bgImagePath) {
+            console.log(`⚠️ Background image unusable/missing at: ${bgImagePath} — falling back to canvas background`);
+        }
         fillCategoryBackground();
         posterApplied = true;
-        console.log(`POSTER: fallback=${categoryVisual.kind} variant=${categoryVisual.variant} applied=${posterApplied} generation=${aiVisualMeta?.generation || 'none'}`);
+        visualSource = canvasFallbackSource();
+        console.log(`visual_source=${visualSource} variant=${categoryVisual?.variant ?? 'static'} applied=${posterApplied} generation=${aiVisualMeta?.generation || 'none'}`);
     }
 
     function drawRoundedRect(x, y, w, h, r) {
