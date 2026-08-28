@@ -180,3 +180,35 @@ test("empty text is rejected before any network call", async () => {
   await assert.rejects(() => tts.synthesize("", "/tmp/x.mp3", {}), /empty text/);
   await assert.rejects(() => tts.synthesize("   ", "/tmp/x.mp3", {}), /empty text/);
 });
+
+test("normalizeSpeechText turns studygyaan.in into StudyGyaan dot in without mutating the original", () => {
+  const original = "Result check करने के लिए https://studygyaan.in visit करें। Details studygyaan.in पर।";
+  const spoken = tts.normalizeSpeechText(original);
+  assert.match(spoken, /StudyGyaan dot in/);
+  assert.doesNotMatch(spoken, /https:\/\/studygyaan\.in/);
+  assert.doesNotMatch(spoken, /\bstudygyaan\.in\b/i);
+  assert.equal(original.includes("https://studygyaan.in"), true);
+});
+
+test("synthesize sends the spoken form to the engine, not the raw URL", async () => {
+  process.env.TTS_KEY_JSON = "{}";
+  delete process.env.TTS_ENGINE;
+  const captured = { text: null };
+  const realGoogle = tts._impl.google;
+  const realEdge = tts._impl.edge;
+  tts._impl.google = async (text, out) => {
+    captured.text = text;
+    fs.writeFileSync(out, "google-audio");
+    return { engine: "google", voice: "hi-IN-Neural2-A" };
+  };
+  const out = tmpFile();
+  try {
+    await tts.synthesize("Check result at https://studygyaan.in", out, { googleVoice: "hi-IN-Neural2-A" });
+    assert.match(captured.text, /StudyGyaan dot in/);
+    assert.doesNotMatch(captured.text, /https:\/\/studygyaan\.in/);
+  } finally {
+    tts._impl.google = realGoogle;
+    tts._impl.edge = realEdge;
+    try { fs.unlinkSync(out); } catch {}
+  }
+});

@@ -40,6 +40,20 @@ function isBillingError(err) {
         || /has not been used in project/i.test(msg);
 }
 
+/**
+ * Speech-only pronunciation layer. Applied at the script → TTS boundary.
+ * Never rewrite URLs in SEO, descriptions, comments, or on-screen copy.
+ * Display URL stays https://studygyaan.in.
+ */
+function normalizeSpeechText(text) {
+    let spoken = String(text || '');
+    spoken = spoken.replace(/https?:\/\/(?:www\.)?studygyaan\.in/gi, 'StudyGyaan dot in');
+    spoken = spoken.replace(/\bwww\.studygyaan\.in\b/gi, 'StudyGyaan dot in');
+    spoken = spoken.replace(/\bstudygyaan\.in\b/gi, 'StudyGyaan dot in');
+    spoken = spoken.replace(/(StudyGyaan dot in)(?:\s+\1)+/gi, '$1');
+    return spoken;
+}
+
 /** Map a Google voice name (or gender word) to a gender key. */
 function genderOf(voice) {
     const v = String(voice || '').toLowerCase();
@@ -139,11 +153,12 @@ async function synthesizeEdge(text, outputPath, opts = {}) {
 async function synthesize(text, outputPath, opts = {}) {
     if (!text || !String(text).trim()) throw new Error('TTS: empty text');
 
+    const spoken = normalizeSpeechText(text);
     const forced = (process.env.TTS_ENGINE || '').toLowerCase();
 
     if (forced === 'edge') {
         console.log('🎙️ TTS engine: Edge (forced via TTS_ENGINE=edge)');
-        const r = await _impl.edge(text, outputPath, opts);
+        const r = await _impl.edge(spoken, outputPath, opts);
         console.log(`✅ Audio ready (${r.engine} · ${r.voice})`);
         return r;
     }
@@ -151,7 +166,7 @@ async function synthesize(text, outputPath, opts = {}) {
     if (forced !== 'google') {
         // Default path: prefer Google, fall back automatically.
         try {
-            const r = await _impl.google(text, outputPath, opts);
+            const r = await _impl.google(spoken, outputPath, opts);
             console.log(`✅ Audio ready (${r.engine} · ${r.voice})`);
             return r;
         } catch (err) {
@@ -163,14 +178,14 @@ async function synthesize(text, outputPath, opts = {}) {
             } else {
                 console.log(`⚠️ Google TTS failed (${reason}) — Edge TTS try kar rahe hain.`);
             }
-            const r = await _impl.edge(text, outputPath, opts);
+            const r = await _impl.edge(spoken, outputPath, opts);
             console.log(`✅ Audio ready (${r.engine} · ${r.voice})`);
             return r;
         }
     }
 
     // TTS_ENGINE=google — no fallback, surface the real error.
-    const r = await _impl.google(text, outputPath, opts);
+    const r = await _impl.google(spoken, outputPath, opts);
     console.log(`✅ Audio ready (${r.engine} · ${r.voice})`);
     return r;
 }
@@ -186,6 +201,7 @@ module.exports = {
     synthesizeEdge,
     isBillingError,
     genderOf,
+    normalizeSpeechText,
     GOOGLE_VOICES,
     EDGE_VOICES
 };

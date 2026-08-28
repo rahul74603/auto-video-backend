@@ -1,57 +1,41 @@
-# WORKFLOW_COPY — Manual Workflow Backup (Owner Only)
+# WORKFLOW_COPY — Manual paste source (Owner only)
 
-## What this folder is
+GitHub Actions **is folder ko run nahi karta**. Ye sirf Rahul ke liye ready-to-paste `.txt` copies hain.
 
-`WORKFLOW_COPY/` is a **manual backup / copy folder for the repository owner**.
-It is NOT an active GitHub Actions location. GitHub completely ignores it.
-
-## The one active workflow location
+Active workflows sirf yahan chalte hain:
 
 ```
-.github/workflows/          ← ACTIVE GitHub Actions workflows (only this folder runs)
-WORKFLOW_COPY/              ← manual copy/backup for the owner ONLY (never runs)
-ai_backend/github_workflows/ ← old mirror, NOT active. Do not create new files there.
+.github/workflows/     ← ACTIVE (sirf ye run hota hai)
+WORKFLOW_COPY/         ← paste-source (kabhi run nahi hota)
 ```
 
-**There is only ONE active workflow folder: `.github/workflows/`**
-Never create another active workflow folder, and never duplicate a workflow
-inside `ai_backend/.github/workflows/`, `ai_backend/github_workflows/`, or
-anywhere else.
+## Kyun ye folder hai
 
-## Why this folder exists (GitHub App permission)
+Agent / GitHub App `.github/workflows/*` push nahi kar sakta (permission nahi).
+Isliye workflow change **yahan** `.yml.txt` me aati hai. Rahul manually copy-paste karta hai.
 
-The GitHub App used for automated PRs does **not** have permission to modify
-files under `.github/workflows/*` on `main`. So when an automated PR needs a
-workflow change, it cannot directly update the production workflow.
+## Rahul — kaise apply kare
 
-The workaround is this folder: the complete, final workflow is stored here as
-a ready-to-paste `.txt` file, and the repository owner copies it into place
-manually.
+1. `WORKFLOW_COPY/<name>.yml.txt` kholo
+2. Ctrl+A → Copy
+3. GitHub pe `.github/workflows/<name>.yml` kholo (ya VS Code me, **main** pe owner account se)
+4. Purani file replace karo
+5. Commit
 
-## How to apply a workflow change (owner manual step)
+Jab tak ye manual copy na ho, agent report karega:
+**ACTIVE WORKFLOW REQUIRES MANUAL COPY**
 
-1. Open `WORKFLOW_COPY/video_dispatcher.yml.txt`
-2. Select ALL content (Ctrl+A) and copy it
-3. Open `.github/workflows/video_dispatcher.yml` in the repository
-4. Select ALL old content and replace it with the copied content
-5. Commit the change to `main` (owner account has workflow permission)
-6. After committing, verify the file
-   `.github/workflows/video_dispatcher.yml` and
-   `WORKFLOW_COPY/video_dispatcher.yml.txt` are identical
-
-## Current status
+## Files
 
 | File | Purpose |
 |------|---------|
-| `video_dispatcher.yml.txt` | Complete ready-to-paste copy of the production video dispatcher workflow (with the fixed Hindi font packages: `fonts-noto-core`, `fonts-noto-extra`, `fonts-noto-cjk`, `fonts-noto-color-emoji`) |
+| `seo_intelligence.yml.txt` | SEO intelligence workflow paste-source |
 
-## Permanent rule
+Nayi workflow = naya `<name>.yml.txt` yahi folder me. Complete YAML, koi snippet nahi.
 
-Whenever a GitHub workflow permission problem appears in ANY future task:
+## Permanent rules
 
-1. NEVER create a second active workflow.
-2. NEVER pretend the workflow was pushed.
-3. ALWAYS maintain `WORKFLOW_COPY/<workflow-name>.yml.txt` with the COMPLETE
-   ready-to-paste workflow (no snippets, no `...`, no placeholders).
-4. Clearly report: **"ACTIVE WORKFLOW REQUIRES MANUAL COPY"** until the owner
-   has copied it into `.github/workflows/` on `main`.
+1. Doosri active workflow folder mat banao
+2. Agent workflow ko "pushed" mat pretend kare
+3. Hamesha complete `.yml.txt` rakho
+4. Details: `AGENT_RULES.md` Rule 2

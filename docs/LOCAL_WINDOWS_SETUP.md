@@ -9,9 +9,9 @@ git clone https://github.com/rahul74603/auto-video-backend.git
 cd auto-video-backend
 ```
 
-### Step 2: Branch Switch
+### Step 2: Branch Switch (is session ki branch)
 ```powershell
-git checkout arena/01a02390-auto-video-backend
+git checkout arena/01a0409f-auto-video-backend
 ```
 
 ### Step 3: Dependencies Install
@@ -62,12 +62,12 @@ Browser me jao: http://localhost:5173
 
 ## Roz Ka Kaam (Daily Workflow)
 
-### Jab Naya Code Aaye:
+### Jab Naya Code Aaye (yehi commands roz use karo):
 ```powershell
 cd C:\Users\Rahul\auto-video-backend
 git fetch origin
-git checkout arena/01a02390-auto-video-backend
-git pull origin arena/01a02390-auto-video-backend
+git checkout arena/01a0409f-auto-video-backend
+git pull origin arena/01a0409f-auto-video-backend
 npm install --legacy-peer-deps
 npm run dev
 ```
@@ -81,8 +81,8 @@ npm run dev
 
 ### Jab Production Deploy Karna Ho:
 ```powershell
-git checkout arena/01a02390-auto-video-backend
-git pull origin arena/01a02390-auto-video-backend
+git checkout arena/01a0409f-auto-video-backend
+git pull origin arena/01a0409f-auto-video-backend
 npm run build
 ```
 

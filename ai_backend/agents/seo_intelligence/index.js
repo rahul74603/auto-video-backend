@@ -14,5 +14,13 @@ module.exports = {
   ...require("./ecosystem"),
   ...require("./enrich"),
   ...require("./orchestrator"),
+  ...require("./proposal_model"),
+  ...require("./optimizer"),
+  ...require("./blog_html"),
+  ...require("./html_safety"),
+  ...require("./content_ai"),
+  ...require("./proposal_gate"),
+  ...require("./apply_engine"),
+  ...require("./gsc_insights"),
   ...require("./routes")
 };

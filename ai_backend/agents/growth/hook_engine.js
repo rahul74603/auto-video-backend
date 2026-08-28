@@ -9,6 +9,7 @@
  */
 
 const flags = require('./feature_flags');
+const { detectContentIntent, forbidsApplyLanguage, containsApplyLanguage } = require('./content_intent');
 
 const HOOK_TYPES = [
     'urgency', 'curiosity', 'eligibility', 'benefit', 'deadline',
@@ -79,6 +80,170 @@ const HOOK_TEMPLATES = {
     ]
 };
 
+// Category-aware hooks. JOB templates above keep Apply language.
+// RESULT / ADMIT_CARD / ANSWER_KEY / SYLLABUS never use Apply / भर्ती-apply copy.
+const INTENT_HOOK_TEMPLATES = {
+    RESULT: {
+        urgency: [
+            (f) => `⚡ Result Out: ${f.topic || 'Result'} — अभी चेक करें`,
+            (f) => `Breaking: ${f.topic || 'Result'} जारी हो गया है`,
+            (f) => `${f.org || ''} Result declared — अभी देखें`,
+            (f) => `URGENT: ${f.topic || 'Result'} — scorecard चेक करें`
+        ],
+        curiosity: [
+            (f) => `क्या आपका result आ गया? ${f.topic || ''}`,
+            (f) => `${f.topic || 'Result'} — merit list में नाम है क्या?`,
+            (f) => `${f.org || ''} result में cutoff क्या रही?`,
+            (f) => `${f.topic || 'Result'} का scorecard अभी देखें`
+        ],
+        benefit: [
+            (f) => `${f.topic || 'Result'} — official result + scorecard`,
+            (f) => `${f.org || ''} Result: merit list और cutoff चेक करें`,
+            (f) => `Selection list live — ${f.topic || 'Result'}`,
+            (f) => `${f.topic || 'Result'} declared — अपना नंबर देखें`
+        ],
+        question: [
+            (f) => `${f.topic || 'Result'} आ गया क्या?`,
+            (f) => `आपका ${f.org || ''} result निकला?`,
+            (f) => `${f.topic || 'Result'} में selection हुआ?`,
+            (f) => `Cutoff कितनी गई? ${f.topic || 'Result'} चेक करें`
+        ],
+        surprising_fact: [
+            (f) => `${f.topic || 'Result'} जारी — merit list चेक करें`,
+            (f) => `${f.org || ''} ने result declare कर दिया`,
+            (f) => `Scorecard + cutoff — ${f.topic || 'Result'}`,
+            (f) => `${f.topic || 'Result'} Out — official result देखें`
+        ],
+        direct_answer: [
+            (f) => `Result Out: ${f.topic || ''} — अभी चेक करें`,
+            (f) => `${f.topic || 'Result'} जारी हो गया है`,
+            (f) => `${f.org || ''} Result declared — scorecard देखें`,
+            (f) => `${f.topic || 'Result'} — merit list / selection list`
+        ]
+    },
+    ADMIT_CARD: {
+        urgency: [
+            (f) => `⚡ Admit Card Out: ${f.topic || ''} — अभी download करें`,
+            (f) => `Breaking: ${f.topic || 'Admit Card'} जारी`,
+            (f) => `${f.org || ''} hall ticket live — अभी चेक करें`,
+            (f) => `URGENT: ${f.topic || 'Admit Card'} download करें`
+        ],
+        curiosity: [
+            (f) => `${f.topic || 'Admit Card'} आ गया? Exam center चेक करें`,
+            (f) => `Hall ticket में क्या लिखा है? ${f.topic || ''}`,
+            (f) => `${f.org || ''} admit card — timing और center देखें`,
+            (f) => `${f.topic || 'Admit Card'} download हो गया क्या?`
+        ],
+        benefit: [
+            (f) => `${f.topic || 'Admit Card'} — exam center + timing`,
+            (f) => `Hall ticket download — ${f.org || ''}`,
+            (f) => `${f.topic || 'Admit Card'} जारी — documents तैयार रखें`,
+            (f) => `Call letter live — ${f.topic || 'Admit Card'}`
+        ],
+        question: [
+            (f) => `${f.topic || 'Admit Card'} download किया?`,
+            (f) => `Exam center पता है? ${f.org || ''} hall ticket देखें`,
+            (f) => `${f.topic || 'Admit Card'} आ गया क्या?`,
+            (f) => `बिना hall ticket entry? ${f.topic || ''} चेक करें`
+        ],
+        surprising_fact: [
+            (f) => `${f.topic || 'Admit Card'} जारी हो गया है`,
+            (f) => `${f.org || ''} ने hall ticket release कर दिया`,
+            (f) => `Exam date नज़दीक — ${f.topic || 'Admit Card'}`,
+            (f) => `${f.topic || 'Admit Card'} Out — अभी download करें`
+        ],
+        direct_answer: [
+            (f) => `Admit Card Out: ${f.topic || ''} — download करें`,
+            (f) => `${f.topic || 'Admit Card'} जारी — hall ticket चेक करें`,
+            (f) => `${f.org || ''} call letter live`,
+            (f) => `${f.topic || 'Admit Card'} — exam center देखें`
+        ]
+    },
+    ANSWER_KEY: {
+        urgency: [
+            (f) => `⚡ Answer Key Out: ${f.topic || ''} — अभी चेक करें`,
+            (f) => `Breaking: ${f.topic || 'Answer Key'} जारी`,
+            (f) => `Objection window खुली — ${f.topic || 'Answer Key'}`,
+            (f) => `URGENT: ${f.org || ''} official key देखें`
+        ],
+        curiosity: [
+            (f) => `${f.topic || 'Answer Key'} में कितने सही हुए?`,
+            (f) => `Cutoff का अंदाज़ा — ${f.topic || 'Answer Key'}`,
+            (f) => `${f.org || ''} key से objection डालना है?`,
+            (f) => `Provisional key आ गई? ${f.topic || ''}`
+        ],
+        benefit: [
+            (f) => `${f.topic || 'Answer Key'} — answers मिलाएं`,
+            (f) => `Official key + objection — ${f.org || ''}`,
+            (f) => `${f.topic || 'Answer Key'} से expected cutoff देखें`,
+            (f) => `Question paper + key — ${f.topic || 'Answer Key'}`
+        ],
+        question: [
+            (f) => `${f.topic || 'Answer Key'} चेक की?`,
+            (f) => `Objection डालना है? ${f.org || ''} key देखें`,
+            (f) => `${f.topic || 'Answer Key'} आ गई क्या?`,
+            (f) => `Expected cutoff कितनी? ${f.topic || ''} key चेक करें`
+        ],
+        surprising_fact: [
+            (f) => `${f.topic || 'Answer Key'} जारी हो गई है`,
+            (f) => `${f.org || ''} ने official key release कर दी`,
+            (f) => `Objection window — ${f.topic || 'Answer Key'}`,
+            (f) => `${f.topic || 'Answer Key'} Out — अभी मिलाएं`
+        ],
+        direct_answer: [
+            (f) => `Answer Key Out: ${f.topic || ''} — अभी चेक करें`,
+            (f) => `${f.topic || 'Answer Key'} जारी — objection देखें`,
+            (f) => `${f.org || ''} official / provisional key live`,
+            (f) => `${f.topic || 'Answer Key'} — answers चेक करें`
+        ]
+    },
+    SYLLABUS: {
+        urgency: [
+            (f) => `⚡ New Syllabus: ${f.topic || ''} — अभी देखें`,
+            (f) => `Exam pattern बदल गया — ${f.topic || 'Syllabus'}`,
+            (f) => `Breaking: ${f.org || ''} syllabus जारी`,
+            (f) => `URGENT: ${f.topic || 'Syllabus'} PDF चेक करें`
+        ],
+        curiosity: [
+            (f) => `${f.topic || 'Syllabus'} में नया क्या है?`,
+            (f) => `कौन से topics आए? ${f.topic || 'Syllabus'}`,
+            (f) => `${f.org || ''} exam pattern क्या है?`,
+            (f) => `${f.topic || 'Syllabus'} updated हो गया?`
+        ],
+        benefit: [
+            (f) => `${f.topic || 'Syllabus'} — topic-wise PDF`,
+            (f) => `Latest exam pattern — ${f.org || ''}`,
+            (f) => `${f.topic || 'Syllabus'} से तैयारी शुरू करें`,
+            (f) => `Updated syllabus — ${f.topic || ''}`
+        ],
+        question: [
+            (f) => `${f.topic || 'Syllabus'} देख लिया?`,
+            (f) => `नया pattern पता है? ${f.org || ''} syllabus चेक करें`,
+            (f) => `${f.topic || 'Syllabus'} बदल गया क्या?`,
+            (f) => `कौन से topics important हैं? ${f.topic || ''}`
+        ],
+        surprising_fact: [
+            (f) => `${f.topic || 'Syllabus'} जारी हो गया है`,
+            (f) => `${f.org || ''} ने exam pattern update कर दिया`,
+            (f) => `New syllabus — ${f.topic || ''}`,
+            (f) => `${f.topic || 'Syllabus'} Out — PDF चेक करें`
+        ],
+        direct_answer: [
+            (f) => `Syllabus Out: ${f.topic || ''} — अभी देखें`,
+            (f) => `${f.topic || 'Syllabus'} जारी — exam pattern चेक करें`,
+            (f) => `${f.org || ''} latest syllabus live`,
+            (f) => `${f.topic || 'Syllabus'} — topic list देखें`
+        ]
+    }
+};
+
+function templatesForIntent(intent, type) {
+    if (forbidsApplyLanguage(intent)) {
+        return (INTENT_HOOK_TEMPLATES[intent] && INTENT_HOOK_TEMPLATES[intent][type]) || [];
+    }
+    return HOOK_TEMPLATES[type] || [];
+}
+
 function extractHookFacts(content) {
     return {
         org: content.organization || content.org || '',
@@ -94,7 +259,8 @@ function extractHookFacts(content) {
         location: content.location || content.state || '',
         state: content.state || '',
         action: content.action || 'भर्ती',
-        type: content.type || 'JOB'  // JOB, FAST_TRACK, MOCK_TEST
+        type: content.type || 'JOB',  // JOB, FAST_TRACK, MOCK_TEST
+        intent: detectContentIntent(content)
     };
 }
 
@@ -104,25 +270,27 @@ function generateHooks(content, opts = {}) {
     }
 
     const facts = extractHookFacts(content);
+    const intent = facts.intent;
     const requestedTypes = opts.hookTypes || HOOK_TYPES;
     const hooks = [];
 
     for (const type of requestedTypes) {
-        const templates = HOOK_TEMPLATES[type];
-        if (!templates) continue;
+        const templates = templatesForIntent(intent, type);
+        if (!templates || templates.length === 0) continue;
 
         for (const template of templates) {
             try {
                 const text = template(facts).trim();
-                if (text.length > 5 && text.length < 200) {
-                    hooks.push({
-                        hookText: text,
-                        hookType: type,
-                        contentId: opts.contentId || '',
-                        topic: content.title || content.topic || '',
-                        version: hooks.length + 1
-                    });
-                }
+                if (text.length <= 5 || text.length >= 200) continue;
+                if (forbidsApplyLanguage(intent) && containsApplyLanguage(text)) continue;
+                hooks.push({
+                    hookText: text,
+                    hookType: type,
+                    contentId: opts.contentId || '',
+                    topic: content.title || content.topic || '',
+                    intent,
+                    version: hooks.length + 1
+                });
             } catch {
                 // Template rendering failed — skip this hook
             }
