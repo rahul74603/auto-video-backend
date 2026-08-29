@@ -30,6 +30,7 @@ Jab tak ye manual copy na ho, agent report karega:
 | File | Purpose |
 |------|---------|
 | `seo_intelligence.yml.txt` | SEO intelligence workflow paste-source |
+| `gsc_search_analytics_ingest.yml.txt` | GSC Search Analytics daily ingest paste-source (Phase 1 — data collection only, never optimizes) |
 
 Nayi workflow = naya `<name>.yml.txt` yahi folder me. Complete YAML, koi snippet nahi.
 

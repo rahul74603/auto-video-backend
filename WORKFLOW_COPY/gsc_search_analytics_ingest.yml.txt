@@ -1,0 +1,82 @@
+name: GSC Search Analytics Ingest
+
+# PHASE 1 — DATA COLLECTION ONLY. This workflow stores dated raw Google Search
+# Console Search Analytics rows (clicks, impressions, ctr, position). It NEVER
+# optimizes pages, NEVER applies SEO changes, and NEVER derives SEO scores.
+# ACTIVE WORKFLOW REQUIRES MANUAL COPY — see WORKFLOW_COPY/README.md (Rule 2).
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "daily = recent rolling window | backfill = bounded historical window | probe = read-only access check (no writes)"
+        required: false
+        default: "daily"
+      start_date:
+        description: "Backfill only: window start (YYYY-MM-DD, required for backfill)"
+        required: false
+        default: ""
+      end_date:
+        description: "Backfill only: window end (YYYY-MM-DD, required for backfill)"
+        required: false
+        default: ""
+      max_days_per_run:
+        description: "Backfill only: max NEW days collected per run (1-31, default 7; rerun to resume)"
+        required: false
+        default: "7"
+      force:
+        description: "Backfill only: true = re-collect dates that already have data"
+        required: false
+        default: "false"
+      dry_run:
+        description: "true = fetch from Google but write nothing to Firestore"
+        required: false
+        default: "false"
+  schedule:
+    # Daily at 10:00 AM IST (04:30 UTC). Search Console data is NOT real-time:
+    # the job collects a small rolling window of the most recent FINALIZED
+    # dates (default: 3 days ending 2 days ago) with dataState=final, so recent
+    # dates can legitimately return zero rows until Google finalizes them.
+    # High-frequency polling is deliberately avoided.
+    - cron: "30 4 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  gsc-search-analytics-ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install backend dependencies
+        working-directory: ai_backend
+        run: npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+
+      - name: Run GSC Search Analytics ingest
+        working-directory: ai_backend
+        env:
+          # SAME service account already used for URL Inspection + sitemap submit
+          # (scopes requested are webmasters.readonly for this job).
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          SEARCH_CONSOLE_SITE_URL: "sc-domain:studygyaan.in"
+          GSC_INGEST_MODE: ${{ github.event.inputs.mode || 'daily' }}
+          GSC_INGEST_START_DATE: ${{ github.event.inputs.start_date || '' }}
+          GSC_INGEST_END_DATE: ${{ github.event.inputs.end_date || '' }}
+          GSC_INGEST_MAX_DAYS_PER_RUN: ${{ github.event.inputs.max_days_per_run || '7' }}
+          GSC_INGEST_FORCE: ${{ github.event.inputs.force || 'false' }}
+          GSC_INGEST_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          ARGS="--mode=$GSC_INGEST_MODE"
+          if [ -n "$GSC_INGEST_START_DATE" ]; then ARGS="$ARGS --start-date=$GSC_INGEST_START_DATE"; fi
+          if [ -n "$GSC_INGEST_END_DATE" ]; then ARGS="$ARGS --end-date=$GSC_INGEST_END_DATE"; fi
+          ARGS="$ARGS --max-days-per-run=$GSC_INGEST_MAX_DAYS_PER_RUN --force=$GSC_INGEST_FORCE --dry-run=$GSC_INGEST_DRY_RUN"
+          node run_gsc_ingest.js $ARGS

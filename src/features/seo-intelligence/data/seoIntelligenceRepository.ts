@@ -14,6 +14,7 @@ const SETTINGS_COLLECTION = 'system_settings';
 const SEO_SETTINGS_DOC = 'seo_intelligence';
 const GSC_DOC = 'seo_search_console';
 const RECOMMENDATIONS_COLLECTION = 'seo_recommendations';
+const GSC_SEARCH_ANALYTICS_COLLECTION = 'gsc_search_analytics_daily';
 
 export const SEO_INTELLIGENCE_WORKFLOW_URL =
   'https://github.com/rahul74603/auto-video-backend/actions/workflows/seo_intelligence.yml';
@@ -403,6 +404,154 @@ export async function fetchSeoDashboard(): Promise<SeoDashboard> {
       pageAuditApply: false,
       optimizationApply: false,
     },
+  };
+}
+
+// ─── Google Search Console Search Analytics (Phase 1, read-only) ──────
+
+/** One collected day. Raw Google metrics live in the row documents; these are
+ *  the per-day metadata + clearly-labeled convenience aggregates. */
+export type GscSearchAnalyticsDay = {
+  date: string;
+  status: string;
+  rowCount: number;
+  clicks: number;
+  impressions: number;
+  positionImpressionSum: number;
+  pages: number;
+  queries: number;
+  supersededRows: number;
+  lastCollectedAt: string | null;
+  lastRun: {
+    at: string | null;
+    status: string | null;
+    errorType: string | null;
+    error: string | null;
+    requestedWindow: { startDate: string | null; endDate: string | null };
+    apiCalls: number;
+    rowsFetched: number;
+    truncated: boolean;
+  } | null;
+};
+
+export type GscSearchAnalyticsOverview = {
+  /** Newest-first day docs (max 31). */
+  days: GscSearchAnalyticsDay[];
+  latestDay: GscSearchAnalyticsDay | null;
+  coverage: {
+    daysWithData: number;
+    firstDate: string | null;
+    lastDate: string | null;
+  };
+  /** Honest impression-weighted aggregates over the most recent ≤7 days WITH data. */
+  recentTotals: {
+    days: number;
+    rows: number;
+    clicks: number;
+    impressions: number;
+    avgCtr: number | null;
+    avgPosition: number | null;
+  } | null;
+  latestRun: {
+    at: string | null;
+    status: string | null;
+    errorType: string | null;
+    error: string | null;
+    window: { startDate: string | null; endDate: string | null };
+  } | null;
+};
+
+function asGscDay(id: string, raw: Record<string, unknown>): GscSearchAnalyticsDay {
+  const aggregates = asRecord(raw.aggregates);
+  const lastRun = asRecord(raw.lastRun);
+  const requestedWindow = asRecord(lastRun.requestedWindow);
+  return {
+    date: typeof raw.date === 'string' ? raw.date : id,
+    status: typeof raw.status === 'string' ? raw.status : 'unknown',
+    rowCount: Number(raw.rowCount || 0) || 0,
+    clicks: Number(aggregates.clicks || 0) || 0,
+    impressions: Number(aggregates.impressions || 0) || 0,
+    positionImpressionSum: Number(aggregates.positionImpressionSum || 0) || 0,
+    pages: Number(aggregates.pages || 0) || 0,
+    queries: Number(aggregates.queries || 0) || 0,
+    supersededRows: Number(raw.supersededRows || 0) || 0,
+    lastCollectedAt: timestampToIso(raw.lastCollectedAt),
+    lastRun: lastRun.at || lastRun.status
+      ? {
+          at: timestampToIso(lastRun.at),
+          status: typeof lastRun.status === 'string' ? lastRun.status : null,
+          errorType: typeof lastRun.errorType === 'string' ? lastRun.errorType : null,
+          error: typeof lastRun.error === 'string' ? lastRun.error : null,
+          requestedWindow: {
+            startDate: typeof requestedWindow.startDate === 'string' ? requestedWindow.startDate : null,
+            endDate: typeof requestedWindow.endDate === 'string' ? requestedWindow.endDate : null,
+          },
+          apiCalls: Number(lastRun.apiCalls || 0) || 0,
+          rowsFetched: Number(lastRun.rowsFetched || 0) || 0,
+          truncated: Boolean(lastRun.truncated),
+        }
+      : null,
+  };
+}
+
+/**
+ * READ-ONLY overview of collected Google Search Console Search Analytics
+ * evidence (gsc_search_analytics_daily). Returns null when nothing has been
+ * collected yet — never fabricates zeros. Averages are impression-weighted
+ * aggregates of actually-collected rows, NOT Google ranking scores.
+ */
+export async function fetchGscSearchAnalyticsOverview(): Promise<GscSearchAnalyticsOverview | null> {
+  const snap = await getDocs(
+    query(collection(db, GSC_SEARCH_ANALYTICS_COLLECTION), orderBy('date', 'desc'), limit(31)),
+  );
+  const docs = snap.docs || [];
+  if (!docs.length) return null;
+
+  const days = docs.map((entry) => asGscDay(entry.id, asRecord(entry.data())));
+  const daysWithData = days.filter((day) => day.status === 'success');
+  const latestDay = days[0];
+
+  let latestRun: GscSearchAnalyticsOverview['latestRun'] = null;
+  for (const day of days) {
+    if (!day.lastRun) continue;
+    if (!latestRun || (day.lastRun.at || '') > (latestRun.at || '')) {
+      latestRun = {
+        at: day.lastRun.at,
+        status: day.lastRun.status,
+        errorType: day.lastRun.errorType,
+        error: day.lastRun.error,
+        window: day.lastRun.requestedWindow,
+      };
+    }
+  }
+
+  const recent = daysWithData.slice(0, 7);
+  let recentTotals: GscSearchAnalyticsOverview['recentTotals'] = null;
+  if (recent.length) {
+    const clicks = recent.reduce((sum, day) => sum + day.clicks, 0);
+    const impressions = recent.reduce((sum, day) => sum + day.impressions, 0);
+    const positionImpressionSum = recent.reduce((sum, day) => sum + day.positionImpressionSum, 0);
+    recentTotals = {
+      days: recent.length,
+      rows: recent.reduce((sum, day) => sum + day.rowCount, 0),
+      clicks,
+      impressions,
+      avgCtr: impressions > 0 ? clicks / impressions : null,
+      avgPosition: impressions > 0 ? positionImpressionSum / impressions : null,
+    };
+  }
+
+  const dates = days.map((day) => day.date).filter(Boolean).sort();
+  return {
+    days,
+    latestDay,
+    coverage: {
+      daysWithData: daysWithData.length,
+      firstDate: dates.length ? dates[0] : null,
+      lastDate: dates.length ? dates[dates.length - 1] : null,
+    },
+    recentTotals,
+    latestRun,
   };
 }
 

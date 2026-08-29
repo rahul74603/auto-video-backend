@@ -6,6 +6,7 @@ import {
   applyOptimizationProposals,
   approveOptimizationProposals,
   checkOptimizationProposals,
+  fetchGscSearchAnalyticsOverview,
   fetchSeoApplySnapshot,
   fetchSeoDashboard,
   getSeoIntelligenceWorkflowUrl,
@@ -15,6 +16,7 @@ import {
   rollbackOptimizationProposal,
   setOptimizationProposalStatus,
   summarizeApplyPreview,
+  type GscSearchAnalyticsOverview,
   type SeoApplySnapshot,
   type SeoDashboard,
   type SeoOptimizationProposal,
@@ -219,6 +221,8 @@ const ProposalArticleHtmlPreview = ({ proposal }: { proposal: SeoOptimizationPro
 
 const AdminSeoDashboard = () => {
   const [dashboard, setDashboard] = useState<SeoDashboard | null>(null);
+  const [gscAnalytics, setGscAnalytics] = useState<GscSearchAnalyticsOverview | null>(null);
+  const [gscAnalyticsLoaded, setGscAnalyticsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [gscText, setGscText] = useState('');
   const [preparedGscJson, setPreparedGscJson] = useState('');
@@ -268,6 +272,26 @@ const AdminSeoDashboard = () => {
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Read-only GSC Search Analytics evidence (Phase 1 measurement) — separate
+  // fetch so a failure here never blocks the main dashboard.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchGscSearchAnalyticsOverview()
+      .then((overview) => {
+        if (cancelled) return;
+        setGscAnalytics(overview);
+      })
+      .catch(() => {
+        if (!cancelled) setGscAnalytics(null);
+      })
+      .finally(() => {
+        if (!cancelled) setGscAnalyticsLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -1157,6 +1181,105 @@ const AdminSeoDashboard = () => {
           </ul>
         </div>
       )}
+
+      <div className="bg-white border rounded-[2rem] p-6">
+        <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Google Search Console Search Analytics</h3>
+        <p className="text-xs text-gray-500 mb-4">
+          Dated raw Search Analytics evidence collected by the scheduled ingest (clicks, impressions, CTR, position — exactly as Google returned them).
+          Measurement only: no SEO score, no ranking claim, no learning. Averages below are impression-weighted aggregates of collected rows, not Google metrics.
+        </p>
+        {!gscAnalyticsLoaded ? (
+          <p className="text-xs text-gray-400">Loading GSC Search Analytics…</p>
+        ) : !gscAnalytics ? (
+          <p className="text-xs text-gray-500">No GSC Search Analytics data collected yet.</p>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400">Latest collection</p>
+                <p className="font-bold mt-1">{gscAnalytics.latestRun?.at ? new Date(gscAnalytics.latestRun.at).toLocaleString() : '—'}</p>
+                <p className="text-gray-400">status: {gscAnalytics.latestRun?.status ?? '—'}</p>
+              </div>
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400">Date window</p>
+                <p className="font-bold mt-1">
+                  {gscAnalytics.latestRun?.window?.startDate ?? '—'} → {gscAnalytics.latestRun?.window?.endDate ?? '—'}
+                </p>
+                <p className="text-gray-400">requested window (per day)</p>
+              </div>
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400">Latest collected date</p>
+                <p className="font-bold mt-1">{gscAnalytics.latestDay?.date ?? '—'}</p>
+                <p className="text-gray-400">
+                  rows: {gscAnalytics.latestDay?.rowCount ?? 0} · pages: {gscAnalytics.latestDay?.pages ?? 0} · queries: {gscAnalytics.latestDay?.queries ?? 0}
+                </p>
+              </div>
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400">Coverage</p>
+                <p className="font-bold mt-1">{gscAnalytics.coverage.daysWithData} day(s) with data</p>
+                <p className="text-gray-400">{gscAnalytics.coverage.firstDate ?? '—'} → {gscAnalytics.coverage.lastDate ?? '—'}</p>
+              </div>
+            </div>
+            {gscAnalytics.recentTotals && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                <div className="border rounded-xl p-3">
+                  <p className="font-black uppercase text-[10px] text-gray-400">Clicks (last {gscAnalytics.recentTotals.days} collected day(s))</p>
+                  <p className="font-bold mt-1">{gscAnalytics.recentTotals.clicks}</p>
+                </div>
+                <div className="border rounded-xl p-3">
+                  <p className="font-black uppercase text-[10px] text-gray-400">Impressions</p>
+                  <p className="font-bold mt-1">{gscAnalytics.recentTotals.impressions}</p>
+                </div>
+                <div className="border rounded-xl p-3">
+                  <p className="font-black uppercase text-[10px] text-gray-400">Average CTR</p>
+                  <p className="font-bold mt-1">
+                    {gscAnalytics.recentTotals.avgCtr != null ? `${(gscAnalytics.recentTotals.avgCtr * 100).toFixed(2)}%` : '—'}
+                  </p>
+                </div>
+                <div className="border rounded-xl p-3">
+                  <p className="font-black uppercase text-[10px] text-gray-400">Average position</p>
+                  <p className="font-bold mt-1" title={gscAnalytics.recentTotals.avgPosition != null ? String(gscAnalytics.recentTotals.avgPosition) : undefined}>
+                    {gscAnalytics.recentTotals.avgPosition != null ? gscAnalytics.recentTotals.avgPosition.toFixed(1) : '—'}
+                  </p>
+                </div>
+              </div>
+            )}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-widest text-gray-400">
+                    <th className="py-1 pr-4">Date</th>
+                    <th className="py-1 pr-4">Status</th>
+                    <th className="py-1 pr-4">Rows</th>
+                    <th className="py-1 pr-4">Clicks</th>
+                    <th className="py-1 pr-4">Impressions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gscAnalytics.days.slice(0, 10).map((day) => (
+                    <tr key={day.date} className="border-t">
+                      <td className="py-1 pr-4 font-mono">{day.date}</td>
+                      <td className="py-1 pr-4">
+                        <span className={day.status === 'success' ? 'text-emerald-700' : day.status === 'error' ? 'text-red-600' : 'text-gray-500'}>
+                          {day.status}
+                        </span>
+                        {day.lastRun?.error ? <span className="text-gray-400"> ({day.lastRun.errorType})</span> : null}
+                      </td>
+                      <td className="py-1 pr-4">{day.rowCount}</td>
+                      <td className="py-1 pr-4">{day.clicks}</td>
+                      <td className="py-1 pr-4">{day.impressions}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[11px] text-gray-400">
+              Search Console data is not real-time — recent dates may legitimately show zero rows until Google finalizes them, and errors are recorded as errors.
+              Raw rows (page / query / country / device) stay in Firestore exactly as collected; this section derives nothing beyond the sums and weighted averages shown.
+            </p>
+          </div>
+        )}
+      </div>
 
       <div className="bg-white border rounded-[2rem] p-6">
         <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Search Console Data Import</h3>

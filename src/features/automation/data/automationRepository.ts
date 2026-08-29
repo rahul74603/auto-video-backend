@@ -46,6 +46,8 @@ export const DEFAULT_FEATURES: Record<string, { label: string; description: stri
   note_processor: { label: 'Note Processor', description: 'Notes processing workflow', icon: '📝', category: 'content' },
   seo_master: { label: 'SEO Master Agent (6hr + Daily)', description: 'Pure project SEO control, connections guardian, trending', icon: '🚀', category: 'seo' },
   seo_intelligence: { label: 'SEO Intelligence (lifecycle, gaps, recs)', description: 'Job lifecycle, content gaps, CTR recs — never auto-publishes', icon: '🧠', category: 'seo' },
+  seo_optimizer: { label: 'SEO Auto Optimizer + Publish Hook', description: 'Content quality optimizer — scheduled runs are dry-run; kill switch stops runner + post-publish hook', icon: '⚙️', category: 'seo' },
+  gsc_ingest: { label: 'GSC Search Analytics Ingest (read-only)', description: 'Dated raw Google Search Console data collection — measurement only, never optimizes pages', icon: '📊', category: 'seo' },
 };
 
 export const getDefaultSettings = (): AutomationSettings => ({
