@@ -9,12 +9,14 @@ import {
   query,
   setDoc,
 } from 'firebase/firestore';
+import { classifyJobLifecycle } from '@/utils/jobExpiry';
 
 const SETTINGS_COLLECTION = 'system_settings';
 const SEO_SETTINGS_DOC = 'seo_intelligence';
 const GSC_DOC = 'seo_search_console';
 const RECOMMENDATIONS_COLLECTION = 'seo_recommendations';
 const GSC_SEARCH_ANALYTICS_COLLECTION = 'gsc_search_analytics_daily';
+const SEO_CHANGE_EVENTS_COLLECTION = 'seo_change_events';
 
 export const SEO_INTELLIGENCE_WORKFLOW_URL =
   'https://github.com/rahul74603/auto-video-backend/actions/workflows/seo_intelligence.yml';
@@ -407,6 +409,330 @@ export async function fetchSeoDashboard(): Promise<SeoDashboard> {
   };
 }
 
+// ─── SEO Change Events Ledger (Phase 2 — change history / attribution) ──
+// Mirrors ai_backend/agents/seo_intelligence/change_events.js (schema v1).
+// Append-only: every APPLIED dashboard change and every rollback produces one
+// immutable event; CHECK/preview/rejected proposals never produce events;
+// retried applies are idempotent. Measurement foundation only — no outcomes,
+// no ranking claims, no automatic decisions.
+
+const SEO_CHANGE_EVENT_SCHEMA_VERSION = 1;
+const SEO_CHANGE_SITE_ORIGIN = 'https://studygyaan.in';
+const EVENT_INLINE_STRING_LIMIT = 800;
+const EVENT_INLINE_SERIALIZED_LIMIT = 1200;
+const EVENT_PREVIEW_LIMIT = 200;
+
+const SEO_EVENT_FIELD_GROUPS: Record<string, string> = {
+  seoTitle: 'metadata',
+  metaDescription: 'metadata',
+  h1: 'metadata',
+  authorName: 'metadata',
+  imageAlt: 'metadata',
+  articleHtml: 'content',
+  contentHtml: 'content',
+  relatedLinks: 'internal-links',
+  faqs: 'faq',
+  schemaMarkup: 'schema',
+  includeJobPostingSchema: 'schema',
+  structuredData: 'schema',
+  howToApply: 'how-to-apply',
+};
+
+/** EXPIRED (and UNKNOWN) pages are never automatic optimization targets. */
+export function isLifecycleEligibleForAutomaticOptimization(status: string | null | undefined): boolean {
+  const value = String(status || '').toUpperCase();
+  return value !== 'EXPIRED' && value !== 'UNKNOWN';
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || value === undefined) return 'null';
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(String(value));
+}
+
+/** Deterministic non-cryptographic hash (sync — browser-safe). */
+function fnv1aHex(value: string): string {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    h1 ^= code;
+    h1 = Math.imul(h1, 0x01000193) >>> 0;
+    h2 = (h2 + Math.imul(code + index, 0x85ebca6b)) >>> 0;
+  }
+  return (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).repeat(2).slice(0, 40);
+}
+
+function eventValueHash(value: unknown): string {
+  return fnv1aHex(stableStringify(value));
+}
+
+export type SeoEventValue =
+  | { kind: 'inline'; value: unknown }
+  | { kind: 'compact'; field: string; length: number; hash: string; preview: string; snapshotId: string | null };
+
+function toSeoEventValue(value: unknown, options: { snapshotId?: string | null; field?: string }): SeoEventValue {
+  const { snapshotId, field } = options;
+  if (value === null || value === undefined) return { kind: 'inline', value: null };
+  if (typeof value === 'number' || typeof value === 'boolean') return { kind: 'inline', value };
+  if (typeof value === 'string') {
+    if (value.length <= EVENT_INLINE_STRING_LIMIT) return { kind: 'inline', value };
+    return {
+      kind: 'compact',
+      field: String(field || ''),
+      length: value.length,
+      hash: eventValueHash(value),
+      preview: value.slice(0, EVENT_PREVIEW_LIMIT),
+      snapshotId: snapshotId ? String(snapshotId) : null,
+    };
+  }
+  const serialized = stableStringify(value);
+  if (serialized.length <= EVENT_INLINE_SERIALIZED_LIMIT) return { kind: 'inline', value };
+  return {
+    kind: 'compact',
+    field: String(field || ''),
+    length: serialized.length,
+    hash: eventValueHash(value),
+    preview: serialized.slice(0, EVENT_PREVIEW_LIMIT),
+    snapshotId: snapshotId ? String(snapshotId) : null,
+  };
+}
+
+function seoEventValueCore(eventValue: SeoEventValue | undefined): string {
+  if (!eventValue || typeof eventValue !== 'object') return String(eventValue);
+  if (eventValue.kind === 'inline') return stableStringify(eventValue.value);
+  return stableStringify({ kind: 'compact', hash: eventValue.hash, length: eventValue.length });
+}
+
+/**
+ * GSC join key — matches Phase 1's normalizedPageUrl on stored GSC rows.
+ * Path-only URLs are anchored to the site origin; query strings are preserved
+ * (different query strings are NEVER merged into another URL).
+ */
+export function buildSeoEventGscJoinKey(pageUrl: string | null | undefined): string {
+  const raw = String(pageUrl || '').trim();
+  if (!raw) return '';
+  const absolute = raw.startsWith('/') ? `${SEO_CHANGE_SITE_ORIGIN}${raw}` : raw;
+  try {
+    const url = new URL(absolute);
+    url.hash = '';
+    url.hostname = url.hostname.toLowerCase();
+    if ((url.protocol === 'https:' && url.port === '443') || (url.protocol === 'http:' && url.port === '80')) {
+      url.port = '';
+    }
+    if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, '');
+    return url.toString().replace(/\/$/, url.pathname === '/' ? '/' : '');
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Lifecycle at change time. Reuses the canonical frontend classifier
+ * (utils/jobExpiry — mirrors ai_backend job_lifecycle.js):
+ *   JOB → classified by lastDate/startDate; FAST_TRACK → same date rules via
+ *   lastDate/facts.lastDate (else UNKNOWN); other types → NOT_APPLICABLE.
+ */
+export function classifySeoEventLifecycle(
+  page: Record<string, unknown>,
+  contentType: string,
+  now: Date = new Date(),
+): { status: string; source: string; daysUntilLastDate: number | null; reason: string } {
+  const type = String(contentType || '').toUpperCase();
+  if (type === 'JOB' || type === 'JOBS') {
+    const life = classifyJobLifecycle(String(page.lastDate || ''), page.startDate ? String(page.startDate) : undefined, now);
+    return {
+      status: life.status,
+      source: 'job_lifecycle',
+      daysUntilLastDate: life.daysUntilLastDate,
+      reason: page.lastDate ? `lastDate:${String(page.lastDate)}` : 'no-last-date',
+    };
+  }
+  if (type === 'FAST_TRACK') {
+    const facts = (page.facts && typeof page.facts === 'object' ? page.facts : {}) as Record<string, unknown>;
+    const lastDate = String(page.lastDate || facts.lastDate || '');
+    if (!lastDate) return { status: 'UNKNOWN', source: 'fast-track-last-date', daysUntilLastDate: null, reason: 'no-last-date' };
+    const life = classifyJobLifecycle(lastDate, page.startDate ? String(page.startDate) : undefined, now);
+    return { status: life.status, source: 'fast-track-last-date', daysUntilLastDate: life.daysUntilLastDate, reason: `lastDate:${lastDate}` };
+  }
+  return { status: 'NOT_APPLICABLE', source: 'none', daysUntilLastDate: null, reason: `content-type:${type || 'unknown'}` };
+}
+
+export type SeoChangeEvent = {
+  schemaVersion: number;
+  eventId: string;
+  idempotencyKey: string;
+  kind: 'applied' | 'rolled_back';
+  eventType: string;
+  contentId: string;
+  collection: string;
+  contentType: string;
+  pageUrl: string;
+  gscJoinKey: string;
+  lifecycle: { status: string; source: string; daysUntilLastDate: number | null; reason: string };
+  eligibleForAutomaticOptimization: boolean;
+  field: string;
+  fieldGroup: string;
+  oldValue: SeoEventValue;
+  newValue: SeoEventValue;
+  proposalId: string | null;
+  proposalCreatedAt: string | null;
+  proposalLevel: string | null;
+  proposalConfidence: string | null;
+  proposalRequiresReview: boolean | null;
+  proposalReason: string | null;
+  proposalSource: string | null;
+  snapshotId: string | null;
+  actor: string;
+  source: string;
+  manualApproved: boolean;
+  autoApplied: boolean;
+  rollbackOfEventId: string | null;
+  rollbackOfIdempotencyKey: string | null;
+  status: string;
+  at: string;
+  createdAt: string;
+};
+
+function buildSeoIdempotencyKey(input: {
+  kind: string;
+  contentId: string;
+  field: string;
+  proposalId: string | null;
+  oldValue: unknown;
+  newValue: unknown;
+}): string {
+  return fnv1aHex([
+    input.kind || 'applied',
+    String(input.contentId || ''),
+    String(input.field || ''),
+    String(input.proposalId || ''),
+    eventValueHash(input.oldValue),
+    eventValueHash(input.newValue),
+  ].join('|')).slice(0, 40);
+}
+
+export function buildSeoChangeEvent(input: {
+  kind?: 'applied' | 'rolled_back';
+  proposal: Partial<SeoOptimizationProposal> & Record<string, unknown>;
+  collectionName: string;
+  contentId: string;
+  contentType: string;
+  pageUrl: string;
+  page: Record<string, unknown>;
+  field: string;
+  oldValue: unknown;
+  newValue: unknown;
+  snapshotId?: string | null;
+  actor?: string;
+  source?: string;
+  at: string;
+  rolledBackFrom?: { eventId?: string; idempotencyKey?: string } | null;
+}): SeoChangeEvent {
+  const record = (input.proposal && typeof input.proposal === 'object' ? input.proposal : {}) as Record<string, unknown>;
+  const kind = input.kind || 'applied';
+  const contentId = String(input.contentId || record.contentId || '').slice(0, 120);
+  const field = String(input.field || record.field || '');
+  const contentType = String(input.contentType || record.contentType || '').toUpperCase();
+  const pageUrl = String(input.pageUrl || record.url || '');
+  const lifecycle = classifySeoEventLifecycle(input.page || {}, contentType);
+  const idempotencyKey = buildSeoIdempotencyKey({
+    kind,
+    contentId,
+    field,
+    proposalId: record.id ? String(record.id) : null,
+    oldValue: input.oldValue,
+    newValue: input.newValue,
+  });
+  return {
+    schemaVersion: SEO_CHANGE_EVENT_SCHEMA_VERSION,
+    eventId: idempotencyKey,
+    idempotencyKey,
+    kind,
+    eventType: kind === 'rolled_back' ? 'seo-change-rolled-back' : 'seo-change-applied',
+    contentId,
+    collection: String(input.collectionName || '').slice(0, 80),
+    contentType,
+    pageUrl: pageUrl.slice(0, 300),
+    gscJoinKey: buildSeoEventGscJoinKey(pageUrl),
+    lifecycle,
+    eligibleForAutomaticOptimization: isLifecycleEligibleForAutomaticOptimization(lifecycle.status),
+    field,
+    fieldGroup: SEO_EVENT_FIELD_GROUPS[field] || 'other',
+    oldValue: toSeoEventValue(input.oldValue, { snapshotId: input.snapshotId, field }),
+    newValue: toSeoEventValue(input.newValue, { snapshotId: input.snapshotId, field }),
+    proposalId: record.id ? String(record.id).slice(0, 120) : null,
+    proposalCreatedAt: typeof record.createdAt === 'string' ? record.createdAt : null,
+    proposalLevel: typeof record.level === 'string' ? record.level : null,
+    proposalConfidence: typeof record.confidence === 'string' ? record.confidence : null,
+    proposalRequiresReview: typeof record.requiresReview === 'boolean' ? record.requiresReview : null,
+    proposalReason: record.reason ? String(record.reason).slice(0, 800) : null,
+    proposalSource: typeof record.source === 'string' ? record.source : null,
+    snapshotId: input.snapshotId ? String(input.snapshotId).slice(0, 120) : null,
+    actor: String(input.actor || 'unknown').slice(0, 120),
+    source: String(input.source || 'unknown').slice(0, 80),
+    manualApproved: record.status === 'approved' || record.status === 'applied',
+    autoApplied: input.source === 'auto-optimizer' || input.source === 'publish-hook',
+    rollbackOfEventId: input.rolledBackFrom?.eventId ? String(input.rolledBackFrom.eventId).slice(0, 60) : null,
+    rollbackOfIdempotencyKey: input.rolledBackFrom?.idempotencyKey ? String(input.rolledBackFrom.idempotencyKey).slice(0, 60) : null,
+    status: kind === 'rolled_back' ? 'rolled_back' : 'applied',
+    at: input.at,
+    createdAt: input.at,
+  };
+}
+
+function seoEventCoreIdentity(event: SeoChangeEvent): string {
+  return stableStringify({
+    kind: event.kind,
+    contentId: event.contentId,
+    field: event.field,
+    proposalId: event.proposalId,
+    oldValue: seoEventValueCore(event.oldValue),
+    newValue: seoEventValueCore(event.newValue),
+    rollbackOfEventId: event.rollbackOfEventId,
+  });
+}
+
+/**
+ * Append one event, idempotently: an identical re-execution of the same change
+ * is skipped; a same-key event with different content appends with a -2/-3…
+ * suffix (history is never rewritten). Ledger failures must not break an apply
+ * or rollback — callers wrap this in try/catch.
+ */
+export async function recordSeoChangeEvent(event: SeoChangeEvent): Promise<{ written: boolean; eventId: string | null }> {
+  const core = seoEventCoreIdentity(event);
+  let candidateId = event.eventId;
+  for (let attempt = 2; attempt <= 25; attempt += 1) {
+    const existingSnap = await getDoc(doc(db, SEO_CHANGE_EVENTS_COLLECTION, candidateId));
+    if (!existingSnap.exists()) {
+      await setDoc(doc(db, SEO_CHANGE_EVENTS_COLLECTION, candidateId), { ...event, eventId: candidateId });
+      return { written: true, eventId: candidateId };
+    }
+    const existing = existingSnap.data() as unknown as SeoChangeEvent;
+    if (seoEventCoreIdentity(existing) === core) {
+      return { written: false, eventId: candidateId };
+    }
+    candidateId = `${event.eventId}-${attempt}`;
+  }
+  return { written: false, eventId: null };
+}
+
+/** Best-effort ledger write — never throws into the apply/rollback flow. */
+async function tryRecordSeoChangeEvent(event: SeoChangeEvent, label: string): Promise<void> {
+  try {
+    await recordSeoChangeEvent(event);
+  } catch (error) {
+    console.warn(`[seo-change-events] ${label} ledger write failed (apply/rollback continues):`, error);
+  }
+}
+
 // ─── Google Search Console Search Analytics (Phase 1, read-only) ──────
 
 /** One collected day. Raw Google metrics live in the row documents; these are
@@ -552,6 +878,114 @@ export async function fetchGscSearchAnalyticsOverview(): Promise<GscSearchAnalyt
     },
     recentTotals,
     latestRun,
+  };
+}
+
+// ─── SEO Change History summary (Phase 2, read-only) ─────────────────
+
+export type SeoChangeHistorySummary = {
+  /** Newest-first ledger events (max 200). */
+  events: Array<SeoChangeEvent>;
+  totalApplied: number;
+  totalRolledBack: number;
+  byContentType: Record<string, number>;
+  byField: Record<string, number>;
+  byLifecycle: Record<string, number>;
+  bySource: Record<string, number>;
+  manualCount: number;
+  automaticCount: number;
+  /** Counted from the loaded proposal list (not the ledger) — shown separately. */
+  pendingProposalCount: number;
+};
+
+function asSeoChangeEvent(raw: Record<string, unknown>): SeoChangeEvent {
+  return {
+    schemaVersion: Number(raw.schemaVersion || 1),
+    eventId: String(raw.eventId || ''),
+    idempotencyKey: String(raw.idempotencyKey || ''),
+    kind: raw.kind === 'rolled_back' ? 'rolled_back' : 'applied',
+    eventType: String(raw.eventType || ''),
+    contentId: String(raw.contentId || ''),
+    collection: String(raw.collection || ''),
+    contentType: String(raw.contentType || ''),
+    pageUrl: String(raw.pageUrl || ''),
+    gscJoinKey: String(raw.gscJoinKey || ''),
+    lifecycle: raw.lifecycle && typeof raw.lifecycle === 'object'
+      ? raw.lifecycle as SeoChangeEvent['lifecycle']
+      : { status: 'UNKNOWN', source: 'none', daysUntilLastDate: null, reason: '' },
+    eligibleForAutomaticOptimization: Boolean(raw.eligibleForAutomaticOptimization),
+    field: String(raw.field || ''),
+    fieldGroup: String(raw.fieldGroup || 'other'),
+    oldValue: (raw.oldValue || { kind: 'inline', value: null }) as SeoEventValue,
+    newValue: (raw.newValue || { kind: 'inline', value: null }) as SeoEventValue,
+    proposalId: raw.proposalId ? String(raw.proposalId) : null,
+    proposalCreatedAt: raw.proposalCreatedAt ? String(raw.proposalCreatedAt) : null,
+    proposalLevel: raw.proposalLevel ? String(raw.proposalLevel) : null,
+    proposalConfidence: raw.proposalConfidence ? String(raw.proposalConfidence) : null,
+    proposalRequiresReview: typeof raw.proposalRequiresReview === 'boolean' ? raw.proposalRequiresReview : null,
+    proposalReason: raw.proposalReason ? String(raw.proposalReason) : null,
+    proposalSource: raw.proposalSource ? String(raw.proposalSource) : null,
+    snapshotId: raw.snapshotId ? String(raw.snapshotId) : null,
+    actor: String(raw.actor || ''),
+    source: String(raw.source || ''),
+    manualApproved: Boolean(raw.manualApproved),
+    autoApplied: Boolean(raw.autoApplied),
+    rollbackOfEventId: raw.rollbackOfEventId ? String(raw.rollbackOfEventId) : null,
+    rollbackOfIdempotencyKey: raw.rollbackOfIdempotencyKey ? String(raw.rollbackOfIdempotencyKey) : null,
+    status: String(raw.status || ''),
+    at: String(raw.at || ''),
+    createdAt: String(raw.createdAt || ''),
+  };
+}
+
+/**
+ * READ-ONLY aggregate of the SEO Change Events ledger. Counts are change
+ * history, NOT ranking measurements. Returns null when no events exist yet.
+ * Pending proposals are counted from the settings doc and shown separately.
+ */
+export async function fetchSeoChangeHistorySummary(): Promise<SeoChangeHistorySummary | null> {
+  const [eventsSnap, settingsSnap] = await Promise.all([
+    getDocs(query(collection(db, SEO_CHANGE_EVENTS_COLLECTION), orderBy('createdAt', 'desc'), limit(200))),
+    getDoc(doc(db, SETTINGS_COLLECTION, SEO_SETTINGS_DOC)),
+  ]);
+
+  const events = (eventsSnap.docs || []).map((entry) => asSeoChangeEvent(asRecord(entry.data())));
+  if (!events.length) return null;
+
+  const applied = events.filter((event) => event.kind === 'applied');
+  const rolledBack = events.filter((event) => event.kind === 'rolled_back');
+  const bump = (map: Record<string, number>, key: string) => {
+    const normalized = key || 'unknown';
+    map[normalized] = (map[normalized] || 0) + 1;
+  };
+
+  const byContentType: Record<string, number> = {};
+  const byField: Record<string, number> = {};
+  const byLifecycle: Record<string, number> = {};
+  const bySource: Record<string, number> = {};
+  for (const event of applied) {
+    bump(byContentType, event.contentType);
+    bump(byField, event.field);
+    bump(byLifecycle, event.lifecycle.status);
+    bump(bySource, event.source);
+  }
+
+  const settings = settingsSnap.exists() ? asRecord(settingsSnap.data()) : {};
+  const proposals = Array.isArray(settings.optimizationProposals)
+    ? settings.optimizationProposals as SeoOptimizationProposal[]
+    : [];
+
+  return {
+    events,
+    totalApplied: applied.length,
+    totalRolledBack: rolledBack.length,
+    byContentType,
+    byField,
+    byLifecycle,
+    bySource,
+    manualCount: applied.filter((event) => !event.autoApplied).length,
+    automaticCount: applied.filter((event) => event.autoApplied).length,
+    pendingProposalCount: proposals.filter((proposal) => proposal.status === 'pending').length,
   };
 }
 
@@ -1011,6 +1445,27 @@ export async function applyOptimizationProposal(proposalId: string): Promise<Seo
     : item);
   const history = [{ proposalId: id, status: 'applied', snapshotId, at, field: proposal.field }, ...(Array.isArray(settings.applyHistory) ? settings.applyHistory as SeoApplyHistoryItem[] : [])].slice(0, 20);
   await setDoc(settingsRef, { optimizationProposals: next, applyHistory: history, optimizationApply: false }, { merge: true });
+
+  // Phase 2 measurement hook — append the change event AFTER the public write
+  // and proposal bookkeeping. Never blocks the apply (best-effort).
+  for (const field of Object.keys(patch)) {
+    await tryRecordSeoChangeEvent(buildSeoChangeEvent({
+      kind: 'applied',
+      proposal,
+      collectionName,
+      contentId: proposal.contentId || '',
+      contentType: proposal.contentType || '',
+      pageUrl: proposal.url || '',
+      page,
+      field,
+      oldValue: oldValues[field] ?? null,
+      newValue: patch[field] ?? null,
+      snapshotId,
+      actor: 'admin-dashboard',
+      source: 'admin-dashboard',
+      at,
+    }), `apply:${field}`);
+  }
   return next;
 }
 
@@ -1037,6 +1492,49 @@ export async function rollbackOptimizationProposal(proposalId: string): Promise<
     : item);
   const history = [{ proposalId: id, status: 'rolled_back', snapshotId: proposal.snapshotId, at, field: proposal.field }, ...(Array.isArray(settings.applyHistory) ? settings.applyHistory as SeoApplyHistoryItem[] : [])].slice(0, 20);
   await setDoc(settingsRef, { optimizationProposals: next, applyHistory: history, optimizationApply: false }, { merge: true });
+
+  // Phase 2 measurement hook — a rollback is its OWN event; the original
+  // applied event is referenced and preserved (history never rewritten).
+  const snapshotNewValues = asRecord(snapshot.newValues);
+  for (const field of Object.keys(oldValues)) {
+    const originalKey = buildSeoIdempotencyKey({
+      kind: 'applied',
+      contentId: documentId,
+      field,
+      proposalId: id,
+      oldValue: oldValues[field] ?? null,
+      newValue: snapshotNewValues[field] ?? null,
+    });
+    let rolledBackFrom: { eventId?: string; idempotencyKey?: string } | null = null;
+    try {
+      const originalSnap = await getDoc(doc(db, SEO_CHANGE_EVENTS_COLLECTION, originalKey));
+      if (originalSnap.exists()) {
+        const originalEvent = asRecord(originalSnap.data());
+        rolledBackFrom = { eventId: String(originalEvent.eventId || originalKey), idempotencyKey: originalKey };
+      }
+    } catch {
+      rolledBackFrom = null;
+    }
+    await tryRecordSeoChangeEvent(buildSeoChangeEvent({
+      kind: 'rolled_back',
+      proposal,
+      collectionName,
+      contentId: documentId,
+      contentType: proposal.contentType || '',
+      pageUrl: proposal.url || '',
+      page: {},
+      field,
+      // For a rollback: oldValue = the applied value being undone,
+      // newValue = the restored (pre-apply) value.
+      oldValue: snapshotNewValues[field] ?? null,
+      newValue: oldValues[field] ?? null,
+      snapshotId: proposal.snapshotId || null,
+      actor: 'admin-dashboard',
+      source: 'admin-dashboard',
+      at,
+      rolledBackFrom,
+    }), `rollback:${field}`);
+  }
   return next;
 }
 

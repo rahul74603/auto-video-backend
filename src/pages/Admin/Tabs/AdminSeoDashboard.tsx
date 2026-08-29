@@ -9,6 +9,7 @@ import {
   fetchGscSearchAnalyticsOverview,
   fetchSeoApplySnapshot,
   fetchSeoDashboard,
+  fetchSeoChangeHistorySummary,
   getSeoIntelligenceWorkflowUrl,
   prepareSearchConsoleImport,
   fetchProposalArticleHtml,
@@ -17,6 +18,8 @@ import {
   setOptimizationProposalStatus,
   summarizeApplyPreview,
   type GscSearchAnalyticsOverview,
+  type SeoChangeEvent,
+  type SeoChangeHistorySummary,
   type SeoApplySnapshot,
   type SeoDashboard,
   type SeoOptimizationProposal,
@@ -26,6 +29,18 @@ import {
   type SeoProposalCheckSummary,
   type SeoRecommendation,
 } from '@/features/seo-intelligence/data/seoIntelligenceRepository';
+
+const eventValueLabel = (value: { kind: string; value?: unknown; length?: number; hash?: string } | undefined): string => {
+  if (!value) return '—';
+  if (value.kind === 'compact') return `[compact ${value.length} chars · ${(value.hash || '').slice(0, 8)}…]`;
+  const raw = value.value;
+  if (raw === null || raw === undefined || raw === '') return '(empty)';
+  const text = typeof raw === 'object' ? JSON.stringify(raw) : String(raw);
+  return text.length > 60 ? `${text.slice(0, 60)}…` : text;
+};
+
+const eventChangeLabel = (event: SeoChangeEvent): string =>
+  `${eventValueLabel(event.oldValue)} → ${eventValueLabel(event.newValue)}`;
 
 const healthClass = (label?: string) => {
   if (label === 'healthy') return 'bg-green-100 text-green-800';
@@ -223,6 +238,8 @@ const AdminSeoDashboard = () => {
   const [dashboard, setDashboard] = useState<SeoDashboard | null>(null);
   const [gscAnalytics, setGscAnalytics] = useState<GscSearchAnalyticsOverview | null>(null);
   const [gscAnalyticsLoaded, setGscAnalyticsLoaded] = useState(false);
+  const [changeHistory, setChangeHistory] = useState<SeoChangeHistorySummary | null>(null);
+  const [changeHistoryLoaded, setChangeHistoryLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [gscText, setGscText] = useState('');
   const [preparedGscJson, setPreparedGscJson] = useState('');
@@ -272,6 +289,26 @@ const AdminSeoDashboard = () => {
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Read-only SEO Change History (Phase 2 ledger) — separate fetch so a
+  // failure here never blocks the main dashboard.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchSeoChangeHistorySummary()
+      .then((summary) => {
+        if (cancelled) return;
+        setChangeHistory(summary);
+      })
+      .catch(() => {
+        if (!cancelled) setChangeHistory(null);
+      })
+      .finally(() => {
+        if (!cancelled) setChangeHistoryLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -1276,6 +1313,96 @@ const AdminSeoDashboard = () => {
             <p className="text-[11px] text-gray-400">
               Search Console data is not real-time — recent dates may legitimately show zero rows until Google finalizes them, and errors are recorded as errors.
               Raw rows (page / query / country / device) stay in Firestore exactly as collected; this section derives nothing beyond the sums and weighted averages shown.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white border rounded-[2rem] p-6">
+        <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">SEO Change History</h3>
+        <p className="text-xs text-gray-500 mb-4">
+          Append-only ledger of applied SEO changes and rollbacks (Phase 2 measurement foundation).
+          Counts below are recorded change history only — they are NOT Google ranking measurements and nothing here is "learning".
+        </p>
+        {!changeHistoryLoaded ? (
+          <p className="text-xs text-gray-400">Loading SEO change history…</p>
+        ) : !changeHistory ? (
+          <p className="text-xs text-gray-500">No SEO changes recorded yet.</p>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400">Applied changes</p>
+                <p className="font-bold mt-1">{changeHistory.totalApplied}</p>
+              </div>
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400">Rolled back</p>
+                <p className="font-bold mt-1">{changeHistory.totalRolledBack}</p>
+              </div>
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400">Manual vs automatic</p>
+                <p className="font-bold mt-1">{changeHistory.manualCount} manual · {changeHistory.automaticCount} automatic</p>
+              </div>
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400">Pending proposals (not changes)</p>
+                <p className="font-bold mt-1">{changeHistory.pendingProposalCount}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400 mb-2">By content type</p>
+                <p className="text-gray-600">{Object.entries(changeHistory.byContentType).map(([key, count]) => `${key}: ${count}`).join(' · ') || '—'}</p>
+              </div>
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400 mb-2">By lifecycle at change time</p>
+                <p className="text-gray-600">{Object.entries(changeHistory.byLifecycle).map(([key, count]) => `${key}: ${count}`).join(' · ') || '—'}</p>
+              </div>
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400 mb-2">By field</p>
+                <p className="text-gray-600">{Object.entries(changeHistory.byField).map(([key, count]) => `${key}: ${count}`).join(' · ') || '—'}</p>
+              </div>
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400 mb-2">By source</p>
+                <p className="text-gray-600">{Object.entries(changeHistory.bySource).map(([key, count]) => `${key}: ${count}`).join(' · ') || '—'}</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-widest text-gray-400">
+                    <th className="py-1 pr-4">Date</th>
+                    <th className="py-1 pr-4">Page</th>
+                    <th className="py-1 pr-4">Field</th>
+                    <th className="py-1 pr-4">Old → New</th>
+                    <th className="py-1 pr-4">Proposal</th>
+                    <th className="py-1 pr-4">Status</th>
+                    <th className="py-1 pr-4">Source</th>
+                    <th className="py-1 pr-4">Lifecycle</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {changeHistory.events.slice(0, 12).map((event: SeoChangeEvent) => (
+                    <tr key={`${event.eventId}-${event.at}`} className="border-t">
+                      <td className="py-1 pr-4 font-mono whitespace-nowrap">{event.at.slice(0, 16).replace('T', ' ')}</td>
+                      <td className="py-1 pr-4 max-w-[220px] truncate" title={event.gscJoinKey || event.pageUrl}>{event.pageUrl || event.contentId}</td>
+                      <td className="py-1 pr-4 whitespace-nowrap">{event.field}</td>
+                      <td className="py-1 pr-4 max-w-[260px] truncate" title={eventChangeLabel(event)}>
+                        {eventChangeLabel(event)}
+                      </td>
+                      <td className="py-1 pr-4 font-mono truncate max-w-[120px]" title={event.proposalId || ''}>{event.proposalId || '—'}</td>
+                      <td className="py-1 pr-4">
+                        <span className={event.status === 'applied' ? 'text-emerald-700' : 'text-amber-700'}>{event.status}</span>
+                      </td>
+                      <td className="py-1 pr-4 whitespace-nowrap">{event.autoApplied ? `auto (${event.source})` : event.source}</td>
+                      <td className="py-1 pr-4 whitespace-nowrap" title={event.lifecycle.reason || ''}>{event.lifecycle.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[11px] text-gray-400">
+              Large values (articleHtml etc.) are stored as compact hashes referencing their snapshot — full old/new values stay in the snapshot/rollback system.
+              Events join to GSC Search Analytics rows by normalized page URL (query strings kept distinct).
             </p>
           </div>
         )}

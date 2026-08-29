@@ -152,6 +152,7 @@ async function triggerOptimizerAfterPublish(db, FieldValue, doc, collectionName,
       maxPasses: constraints.maxPasses,
       useAi: options.useAi === true && constraints.useAi !== false,
       dryRun: options.dryRun === true,
+      eventSource: "publish-hook",
       catalog
     });
 

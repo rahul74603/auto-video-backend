@@ -50,6 +50,7 @@ const {
 } = require("./proposal_model");
 const { gateProposal } = require("./proposal_gate");
 const { buildSnapshot, persistSnapshot, loadSnapshot, markSnapshotRestored } = require("./snapshot_store");
+const { buildChangeEvent, tryRecordChangeEvent, buildIdempotencyKey, findAppliedEventByKey } = require("./change_events");
 const { runReaudit, compareAudits } = require("./reaudit");
 const { sanitizeProposalHtml, tryNormalizeWithCheerio } = require("./html_safety");
 const { buildBlogArticleProposal, buildJobArticleEnhancement, buildFastTrackHtml } = require("./blog_html");
@@ -330,6 +331,9 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
   const collectionName = options.collectionName || collectionForContentType(
     doc.contentType || (doc.collection === "blogs" ? "BLOG" : doc.collection === "fast_track" ? "FAST_TRACK" : doc.collection === "mock_tests" ? "MOCK_TEST" : "JOB")
   );
+  const pageContentType = String(doc.contentType || (
+    collectionName === "blogs" ? "BLOG" : collectionName === "fast_track" ? "FAST_TRACK" : collectionName === "mock_tests" ? "MOCK_TEST" : "JOB"
+  ));
 
   const passes = [];
   let currentDoc = deepClone(doc);
@@ -614,6 +618,45 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
     let snapshotIds = [];
     let applyError = null;
     const passStartDoc = deepClone(currentDoc);
+    const eventSource = options.eventSource || "auto-optimizer";
+    const appliedEventRefs = []; // { snapshot, proposal } — for rollback linkage
+
+    // Phase 2 measurement hook — a rollback is its own ledger event; the
+    // original applied event is referenced and preserved. Best-effort only.
+    const recordOptimizerRollbackEvent = async (snapshot, snapId) => {
+      try {
+        const ref = appliedEventRefs.find((item) => item.snapshot && item.snapshot.id === snapId) || null;
+        const proposalRef = ref ? ref.proposal : { id: snapshot.proposalId };
+        for (const field of Object.keys(snapshot.oldValues || {})) {
+          const idempotencyKey = buildIdempotencyKey({
+            kind: "applied",
+            contentId: snapshot.documentId || currentDoc.id,
+            field,
+            proposalId: proposalRef && proposalRef.id,
+            oldValue: snapshot.oldValues[field],
+            newValue: (snapshot.newValues || {})[field] == null ? null : (snapshot.newValues || {})[field]
+          });
+          const original = await findAppliedEventByKey(db, idempotencyKey);
+          await tryRecordChangeEvent(db, buildChangeEvent({
+            kind: "rolled_back",
+            proposal: proposalRef,
+            collectionName,
+            contentId: snapshot.documentId || currentDoc.id,
+            contentType: pageContentType,
+            pageUrl: doc.url || (proposalRef && proposalRef.url) || "",
+            page: doc,
+            field,
+            oldValue: (snapshot.newValues || {})[field] == null ? null : (snapshot.newValues || {})[field],
+            newValue: snapshot.oldValues[field] == null ? null : snapshot.oldValues[field],
+            snapshotId: snapshot.id || snapId,
+            actor,
+            source: eventSource,
+            at: now,
+            rolledBackFrom: original
+          }), `optimizePage-rollback:${field}`);
+        }
+      } catch { /* ledger is best-effort; rollback itself already succeeded */ }
+    };
 
     if (!dryRun && db) {
       for (const { proposal, patch } of validatedPatches) {
@@ -639,6 +682,28 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
             { merge: true }
           );
 
+          // Phase 2 measurement hook — one ledger event per applied field.
+          // Never blocks the optimizer (best-effort, logged on failure).
+          for (const field of fields) {
+            await tryRecordChangeEvent(db, buildChangeEvent({
+              kind: "applied",
+              proposal,
+              collectionName,
+              contentId: currentDoc.id,
+              contentType: pageContentType,
+              pageUrl: doc.url || proposal.url || "",
+              page: doc,
+              field,
+              oldValue: oldValues[field] == null ? null : oldValues[field],
+              newValue: patch[field] == null ? null : patch[field],
+              snapshotId: snapshot.id,
+              actor,
+              source: eventSource,
+              at: now
+            }), `optimizePage:${field}`);
+          }
+          appliedEventRefs.push({ snapshot, proposal });
+
           // Update in-memory doc for re-audit
           currentDoc = mergePatch(currentDoc, patch);
           totalApplied++;
@@ -658,6 +723,7 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
                   { merge: true }
                 );
                 await markSnapshotRestored(db, snapId, now);
+                await recordOptimizerRollbackEvent(snapshot, snapId);
                 totalRolledBack++;
                 netApplied = Math.max(0, netApplied - 1);
               }
@@ -715,6 +781,7 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
                 { merge: true }
               );
               await markSnapshotRestored(db, snapId, now);
+              await recordOptimizerRollbackEvent(snapshot, snapId);
               totalRolledBack++;
               netApplied = Math.max(0, netApplied - 1);
             }

@@ -24,6 +24,7 @@ const { sanitizeProposalHtml, tryNormalizeWithCheerio } = require("./html_safety
 const { buildSnapshot, persistSnapshot, loadSnapshot, markSnapshotRestored } = require("./snapshot_store");
 const { requestIndexingAfterApply } = require("./indexing_hooks");
 const { runReaudit } = require("./reaudit");
+const { buildChangeEvent, tryRecordChangeEvent, buildIdempotencyKey, findAppliedEventByKey } = require("./change_events");
 
 const SETTINGS = "system_settings";
 const SETTINGS_DOC = "seo_intelligence";
@@ -219,6 +220,28 @@ async function applyProposal(db, FieldValue, proposal, options = {}) {
     lastError: null
   });
 
+  // Phase 2 measurement hook — append the change event AFTER the public write
+  // and proposal bookkeeping. Never blocks or fails the apply.
+  for (const field of fields) {
+    const event = buildChangeEvent({
+      kind: "applied",
+      proposal: resolved,
+      collectionName,
+      contentId: proposal.contentId,
+      contentType: resolved.contentType,
+      pageUrl: resolved.url,
+      page,
+      field,
+      oldValue: oldValues[field] == null ? null : oldValues[field],
+      newValue: patch[field] == null ? null : patch[field],
+      snapshotId: snapshot.id,
+      actor,
+      source: options.eventSource || "apply-engine",
+      at: options.now || new Date(appliedAt)
+    });
+    await tryRecordChangeEvent(db, event, `apply:${field}`);
+  }
+
   const indexing = await requestIndexingAfterApply(proposal.url, {
     dryRun: false,
     skipNetwork: options.skipNetwork !== false,
@@ -281,6 +304,42 @@ async function rollbackProposal(db, FieldValue, proposal, options = {}) {
     actor,
     lastError: null
   });
+
+  // Phase 2 measurement hook — rollback is its OWN event; the original applied
+  // event is referenced and preserved (history is never rewritten). The exact
+  // original event key is reconstructible from the snapshot (oldValues +
+  // newValues are precisely what the applied event recorded).
+  for (const field of Object.keys(snapshot.oldValues || {})) {
+    const idempotencyKey = buildIdempotencyKey({
+      kind: "applied",
+      contentId: snapshot.documentId || proposal.contentId,
+      field,
+      proposalId: proposal.id,
+      oldValue: snapshot.oldValues[field],
+      newValue: (snapshot.newValues || {})[field] == null ? null : (snapshot.newValues || {})[field]
+    });
+    const original = await findAppliedEventByKey(db, idempotencyKey);
+    const event = buildChangeEvent({
+      kind: "rolled_back",
+      proposal,
+      collectionName,
+      contentId: snapshot.documentId || proposal.contentId,
+      contentType: proposal.contentType,
+      pageUrl: proposal.url,
+      page: null,
+      field,
+      // For a rollback: oldValue = the applied value being undone,
+      // newValue = the restored (pre-apply) value.
+      oldValue: (snapshot.newValues || {})[field] == null ? null : (snapshot.newValues || {})[field],
+      newValue: snapshot.oldValues[field] == null ? null : snapshot.oldValues[field],
+      snapshotId: proposal.snapshotId,
+      actor,
+      source: options.eventSource || "apply-engine",
+      at: options.now || new Date(nowIso(options.now)),
+      rolledBackFrom: original || null
+    });
+    await tryRecordChangeEvent(db, event, `rollback:${field}`);
+  }
   return {
     ok: true,
     dryRun: false,
