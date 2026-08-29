@@ -30,6 +30,7 @@ const admin = require("firebase-admin");
 const { runBackfill, getOptimizerStatus } = require("./agents/seo_intelligence/auto_optimizer");
 const { getBackfillProgress, countProcessedPages } = require("./agents/seo_intelligence/backfill_processor");
 const { redactSecrets } = require("./agents/seo_intelligence/intelligence");
+const { isAutomationEnabled } = require("./agents/automation_guard");
 
 const SETTINGS = "system_settings";
 const SETTINGS_DOC = "seo_intelligence";
@@ -193,6 +194,28 @@ async function runAutoOptimizerRunner({ db, FieldValue, args, deps = {} }) {
   const getStatus = deps.getOptimizerStatus || getOptimizerStatus;
   const getProgress = deps.getBackfillProgress || getBackfillProgress;
   const getCounts = deps.countProcessedPages || countProcessedPages;
+  const getGuard = deps.isAutomationEnabled || isAutomationEnabled;
+
+  // Automation kill-switch coverage (Phase 0 hygiene): the optimizer honors
+  // system_settings/automation → features.seo_optimizer exactly like the other
+  // scheduled automations (globalEnabled / emergencyPause also apply).
+  const guard = await getGuard(db, "seo_optimizer");
+  if (!guard.enabled) {
+    await persistOptimizerStatus(db, effectiveFieldValue, "skipped", {
+      dryRun: args.dryRun,
+      skipReason: guard.reason,
+      lastError: null
+    }, { dryRun: false, actor: args.actor, runId: args.runId, sha: args.sha });
+    console.log(`[auto-optimizer] ⏸️ Skipped: ${guard.reason}`);
+    return {
+      ok: true,
+      skipped: true,
+      reason: guard.reason,
+      runner: RUNNER_NAME,
+      durationMs: Date.now() - started,
+      dryRun: args.dryRun
+    };
+  }
 
   await persistOptimizerStatus(db, effectiveFieldValue, "running", {
     dryRun: args.dryRun,
@@ -295,7 +318,11 @@ async function main() {
   const args = parseArgs();
   const db = initializeFirebase();
 
-  console.log(`[auto-optimizer] Starting: dryRun=${args.dryRun}, batchSize=${args.batchSize}, maxBatches=${args.maxBatches}, useAi=${args.useAi}`);
+  console.log(
+    `[auto-optimizer] Starting: dryRun=${args.dryRun}` +
+    `${args.dryRun ? " (no writes to public content — scheduled runs always default to dry-run)" : " (LIVE — validated improvements are applied with snapshot + rollback)"}, ` +
+    `batchSize=${args.batchSize}, maxBatches=${args.maxBatches}, useAi=${args.useAi}`
+  );
 
   const summary = await runAutoOptimizerRunner({
     db, FieldValue: admin.firestore.FieldValue, args

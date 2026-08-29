@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "true = test run without Firestore writes; false = apply improvements"
+        description: "true = test run without Firestore writes; false = apply improvements. NOTE: scheduled (cron) runs ALWAYS use dry-run=true because github.event.inputs is empty on schedule — only a manual dispatch with false ever applies."
         required: false
         default: "true"
       batch_size:
@@ -21,6 +21,10 @@ on:
         default: "false"
   schedule:
     # Conservative: 3:15 AM IST daily. Processes oldest pending content.
+    # SAFETY DEFAULT: scheduled runs are ALWAYS DRY-RUN (github.event.inputs is
+    # empty on schedule → OPTIMIZER_DRY_RUN='true'). Live applies require a
+    # manual workflow_dispatch with dry_run=false. The runner itself also
+    # honors system_settings/automation → features.seo_optimizer (kill switch).
     - cron: "15 21 * * *"
 
 permissions:

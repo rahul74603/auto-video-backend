@@ -107,6 +107,27 @@ async function triggerOptimizerAfterPublish(db, FieldValue, doc, collectionName,
   const contentType = resolveContentType({ ...doc, collection: collectionName });
   const constraints = TYPE_CONSTRAINTS[contentType] || { maxPasses: 1, useAi: false };
 
+  // Automation kill-switch coverage (Phase 0 hygiene): honor
+  // system_settings/automation → features.seo_optimizer. The guard check is
+  // fail-open — a guard error can never block or fail the publish.
+  try {
+    const { isAutomationEnabled } = require("../automation_guard");
+    const guard = await isAutomationEnabled(db, "seo_optimizer");
+    if (!guard.enabled) {
+      console.log("[publish-hook] %s skipped: %s", doc.id, guard.reason);
+      return {
+        skipped: true,
+        reason: `automation-disabled: ${guard.reason}`,
+        contentId: doc.id
+      };
+    }
+  } catch (guardError) {
+    console.warn(
+      "[publish-hook] automation guard check failed (continuing):",
+      guardError && guardError.message
+    );
+  }
+
   try {
     // Quick score check — skip if already high quality
     const quickScore = scorePage(doc, { now: new Date() });

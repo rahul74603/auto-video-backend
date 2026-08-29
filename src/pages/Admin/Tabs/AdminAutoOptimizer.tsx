@@ -89,8 +89,9 @@ const AdminAutoOptimizer = () => {
               <Zap className="text-violet-600" size={22} /> Auto Content Optimizer
             </h2>
             <p className="text-sm text-gray-500 font-medium mt-1">
-              Self-improving SEO engine. Processes oldest content first. Applies safe improvements automatically.
-              Rolls back if quality degrades.
+              Automated SEO content optimizer — deterministic, fact-grounded rules (not learned policy).
+              Processes oldest content first, applies safe improvements automatically, and rolls back if
+              the internal quality rubric degrades.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -179,8 +180,11 @@ const AdminAutoOptimizer = () => {
               Batches: {report.batches ?? 0}
             </span>
             {runner?.avgScoreImprovement ? (
-              <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700">
-                Avg score improvement: +{runner.avgScoreImprovement}
+              <span
+                className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700"
+                title="Internal StudyGyaan quality-rubric delta — not a Google ranking or SEO-performance measurement."
+              >
+                Avg rubric score gain: +{runner.avgScoreImprovement}
               </span>
             ) : null}
             {runner?.actions
@@ -191,6 +195,10 @@ const AdminAutoOptimizer = () => {
               ))
               : null}
           </div>
+          <p className="mt-3 text-[11px] text-gray-400 font-medium">
+            Scores are StudyGyaan's internal diagnostic rubric (0–100), not Google ranking measurements.
+            This optimizer is not self-learning: every strategy is a fixed deterministic rule.
+          </p>
         </div>
       )}
 
@@ -255,6 +263,9 @@ const AdminAutoOptimizer = () => {
       {report?.results && report.results.length > 0 && (
         <div className="bg-white border rounded-[2rem] p-6">
           <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-4">Page Results</h3>
+          <p className="text-[11px] text-gray-400 font-medium mb-3">
+            Before / After / Delta are internal rubric scores, not Google ranking measurements.
+          </p>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>

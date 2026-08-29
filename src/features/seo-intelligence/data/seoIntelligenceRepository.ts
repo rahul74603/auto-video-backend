@@ -183,6 +183,69 @@ function timestampToIso(value: unknown): string | null {
   return null;
 }
 
+/** Epoch millis for a Firestore Timestamp / Date / ISO string / epoch-ms number. Null when unknowable. */
+function toEpochMillis(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'object') {
+    const maybe = value as { toDate?: () => Date; seconds?: number; _seconds?: number };
+    if (typeof maybe.toDate === 'function') {
+      try { return maybe.toDate().getTime(); } catch { return null; }
+    }
+    const secs = maybe.seconds ?? maybe._seconds;
+    if (typeof secs === 'number') return secs * 1000;
+  }
+  return null;
+}
+
+/**
+ * Latest genuine content-change marker on a page doc. Only fields that are
+ * bumped by real content edits / SEO applies are considered (views counters
+ * use field-level increment and never touch these). Missing values stay
+ * missing — they are never treated as 0.
+ */
+function lastContentChangeAtMs(page: Record<string, unknown>): number | null {
+  const stamps = [page.contentUpdatedAt, page.seoAppliedAt, page.updatedAt]
+    .map(toEpochMillis)
+    .filter((ms): ms is number => ms != null);
+  return stamps.length ? Math.max(...stamps) : null;
+}
+
+/**
+ * Staleness guard (Phase 0 hygiene): refuse to apply a proposal whose page was
+ * modified AFTER the proposal was generated — otherwise the apply would
+ * silently overwrite newer content with values derived from stale state.
+ * Legacy proposals without createdAt are allowed (snapshot + rollback still
+ * protect the page).
+ */
+export function isProposalStale(
+  proposal: SeoOptimizationProposal,
+  page: Record<string, unknown>,
+): boolean {
+  const createdAt = toEpochMillis(proposal.createdAt);
+  if (createdAt == null) return false;
+  const changedAt = lastContentChangeAtMs(page);
+  if (changedAt == null) return false;
+  return changedAt > createdAt;
+}
+
+function assertProposalFresh(proposal: SeoOptimizationProposal, page: Record<string, unknown>): void {
+  if (isProposalStale(proposal, page)) {
+    const createdAt = toEpochMillis(proposal.createdAt) as number;
+    const changedAt = lastContentChangeAtMs(page) as number;
+    throw new Error(
+      `Stale proposal: page was modified after this proposal was generated ` +
+      `(page updated ${new Date(changedAt).toISOString()} > proposal ${new Date(createdAt).toISOString()}). ` +
+      `Re-run the SEO scan and apply the fresh proposal.`,
+    );
+  }
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {};
 }
@@ -775,6 +838,7 @@ export async function applyOptimizationProposal(proposalId: string): Promise<Seo
   const pageRef = doc(db, collectionName, proposal.contentId);
   const pageSnap = await getDoc(pageRef);
   const page = pageSnap.exists() ? asRecord(pageSnap.data()) : {};
+  assertProposalFresh(proposal, page);
   const oldValues: Record<string, unknown> = {};
   for (const field of Object.keys(patch)) oldValues[field] = page[field] ?? null;
   const snapshotId = `snap-${id}`.slice(0, 120);
@@ -965,10 +1029,28 @@ export async function applyOptimizationProposals(proposalIds: string[]): Promise
         field: proposal.field,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // A stale proposal is deliberately not applied — report it as skipped,
+      // not failed, so the batch result distinguishes "blocked for safety"
+      // from "attempted and errored".
+      if (message.startsWith('Stale proposal:')) {
+        results.push({
+          id,
+          outcome: 'skipped',
+          reason: message,
+          field: proposal.field,
+        });
+        try {
+          await readLatest();
+        } catch {
+          // Keep last known list so later iterations can still attempt apply.
+        }
+        continue;
+      }
       results.push({
         id,
         outcome: 'failed',
-        reason: error instanceof Error ? error.message : String(error),
+        reason: message,
         field: proposal.field,
       });
       try {
