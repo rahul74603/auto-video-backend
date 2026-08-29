@@ -81,15 +81,42 @@ async function collectPlatformMetrics(db, platformPost, opts = {}) {
     normalized.collectedAt = Date.now();
     normalized.publishedAt = platformPost.publishedAt || null;
 
-    // ─── Phase 1: preserve generation attribution (verbatim or null) ───
+    // ─── Phase 1: preserve generation attribution ──────────────────────
+    // Audit fix (attribution-erasure defense): growth_learner_run.js
+    // refreshes metrics at 1h/24h/48h/7d WITHOUT passing attribution —
+    // previously that refresh nulled out the attribution stored at upload
+    // time (explicit null + set(merge:true) overwrites), which silently
+    // broke the closed loop. Priority per ATTRIBUTION_FIELDS field:
+    //   1. caller supplied the property (even explicitly as null) → the
+    //      caller's value, normalized exactly as before ('' / undefined /
+    //      NaN → null; real values including publishHour 0 kept as-is)
+    //   2. property ABSENT from the input + a real value already stored on
+    //      the document → preserve the stored value (refresh defense)
+    //   3. property ABSENT + nothing real stored → null (missing stays
+    //      visibly missing so the learner refuses to learn from it)
+    const docId = `${platform}_${videoId}`;
+    let existingDoc = null;
+    if (db) {
+        try {
+            const existingSnap = await db.collection('content_performance').doc(docId).get();
+            existingDoc = existingSnap && existingSnap.exists ? existingSnap.data() : null;
+        } catch {
+            existingDoc = null; // a read failure must never break collection
+        }
+    }
+    const isUnavailable = (value) => value === undefined || value === null || value === ''
+        || (typeof value === 'number' && !Number.isFinite(value));
     for (const field of ATTRIBUTION_FIELDS) {
-        const value = platformPost[field];
-        // '' / undefined / NaN are treated as "unavailable" → null.
-        // Real values (including 0 for publishHour) are preserved as-is.
-        if (value === undefined || value === null || value === '' || (typeof value === 'number' && !Number.isFinite(value))) {
-            normalized[field] = null;
+        if (Object.prototype.hasOwnProperty.call(platformPost, field)) {
+            const value = platformPost[field];
+            // Explicitly supplied: keep the exact caller semantics.
+            normalized[field] = isUnavailable(value) ? null : value;
         } else {
-            normalized[field] = value;
+            const existingValue = existingDoc ? existingDoc[field] : undefined;
+            // Absent from the input: metrics refresh — preserve what is
+            // actually stored; only fall back to null when the stored
+            // document has nothing real either.
+            normalized[field] = isUnavailable(existingValue) ? null : existingValue;
         }
     }
 
@@ -105,10 +132,12 @@ async function collectPlatformMetrics(db, platformPost, opts = {}) {
     // Store in Firestore
     if (db) {
         try {
-            const docId = `${platform}_${videoId}`;
-            // merge:true keeps any fields on existing historical documents —
-            // records collected BEFORE attribution existed are never
-            // rewritten or destroyed, they simply keep lacking attribution.
+            // merge:true keeps any fields on existing historical documents.
+            // Attribution safety no longer depends on merge alone: the
+            // refresh defense above explicitly carries preserved attribution
+            // values through, so an attribution-less metrics refresh can no
+            // longer erase them. Records collected BEFORE attribution existed
+            // still simply keep lacking attribution (stored null stays null).
             await db.collection('content_performance').doc(docId).set(normalized, { merge: true });
         } catch (err) {
             console.log(`⚠️ analytics store failed: ${err.message || err}`);
