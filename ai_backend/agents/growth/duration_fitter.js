@@ -147,6 +147,59 @@ function planRate(script, targetSeconds, opts = {}) {
     return { speakingRate: rate, estimatedSeconds: Math.round(words / (WORDS_PER_SECOND * rate)), wordCount: words };
 }
 
+/**
+ * Resolve the render plan for a video from its growth recommendation.
+ * This is the EXACT entry point autoVideo.js uses: it reads the
+ * recommendation's duration target (blended with the learned policy target
+ * when learning is active), fits the script to it (trim + speaking rate)
+ * and returns what the renderer must use.
+ *
+ * Returns { script, speakingRate, targetSeconds, estimatedSeconds,
+ *           trimmed, strategy, applied, learningNote }.
+ * `applied: false` when there is no usable target (unchanged default rate).
+ */
+function resolveRenderPlan(script, growthRec, opts = {}) {
+    const defaultRate = opts.defaultRate || DEFAULT_BASE_RATE;
+    const rec = growthRec && typeof growthRec === 'object' ? growthRec : null;
+
+    const target = rec && Number.isFinite(Number(rec.duration))
+        && Number(rec.duration) >= 10 && Number(rec.duration) <= 60
+        ? Math.round(Number(rec.duration))
+        : null;
+
+    if (!target) {
+        return {
+            script: String(script || ''),
+            speakingRate: defaultRate,
+            targetSeconds: null,
+            estimatedSeconds: Math.round(countWords(script) / (WORDS_PER_SECOND * defaultRate)),
+            trimmed: false,
+            strategy: 'none',
+            applied: false,
+            learningNote: ''
+        };
+    }
+
+    const fit = fitScriptToDuration(script, target);
+    const decision = rec.learning && rec.learning.decisions && rec.learning.decisions.duration
+        ? rec.learning.decisions.duration
+        : null;
+    const learningNote = decision
+        ? ` (mode=${decision.mode}${decision.changedSelection ? ', changed from default ' + decision.defaultWouldBe + 's' : ''})`
+        : '';
+
+    return {
+        script: fit.script,
+        speakingRate: fit.speakingRate,
+        targetSeconds: target,
+        estimatedSeconds: fit.estimatedSeconds,
+        trimmed: fit.trimmed,
+        strategy: fit.strategy,
+        applied: true,
+        learningNote
+    };
+}
+
 module.exports = {
     WORDS_PER_SECOND,
     MIN_RATE,
@@ -155,5 +208,6 @@ module.exports = {
     fitScriptToDuration,
     trimScriptToWords,
     planRate,
+    resolveRenderPlan,
     countWords
 };

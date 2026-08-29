@@ -296,6 +296,8 @@ function buildAttribution(growthRecommendation, learningMode) {
             .map(([dim]) => dim)
         : [];
 
+    // learningMeta is ALWAYS a complete object (used:false when the video
+    // was generated without learning) so analytics can query it uniformly.
     return {
         hookType: rec.hook && rec.hook.hookType ? rec.hook.hookType : null,
         presenter: rec.presenter || null,
@@ -306,12 +308,12 @@ function buildAttribution(growthRecommendation, learningMode) {
         music: rec.musicId || null,
         cta: enhancements.cta && enhancements.cta.closing && enhancements.cta.closing.key ? enhancements.cta.closing.key : null,
         publishHour: learningMode === 'mock' ? null : new Date().getHours(),
-        learningMeta: learning ? {
-            used: !!learning.used,
-            policyVersion: learning.policyVersion || null,
-            dimensionsApplied: learning.dimensionsApplied || [],
+        learningMeta: {
+            used: !!(learning && learning.used),
+            policyVersion: (learning && learning.policyVersion) || null,
+            dimensionsApplied: (learning && learning.dimensionsApplied) || [],
             exploredDimensions
-        } : null
+        }
     };
 }
 
@@ -697,6 +699,7 @@ module.exports = {
     resolveKinds,
     buildJobPayload,
     buildFastTrackPayload,
+    buildAttribution,
     scanCollection,
     main
 };

@@ -675,3 +675,163 @@ test('idempotency: same data → same learned winners across runs', () => {
     assert.equal(p2.platforms.youtube.dimensions.hook.sampleSize, p1.platforms.youtube.dimensions.hook.sampleSize);
     assert.notEqual(p1.version, p2.version, 'version changes (new generation) but content is stable');
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// PRODUCTION ENTRY-POINT TESTS — the exact functions autoVideo.js and
+// video_dispatcher.js run (not re-implementations).
+// ─────────────────────────────────────────────────────────────────────
+
+test('render plan (autoVideo entry point): resolveRenderPlan applies the recommendation duration to script + TTS rate', () => {
+    const script = 'यह पहला वाक्य हुक है और यह हमेशा रहेगा। ' +
+        Array(30).fill('यह बीच का लंबा वाक्य है जिसे ट्रिम किया जा सकता है।').join(' ') +
+        ' अंतिम वाक्य CTA है और यह बना रहेगा।';
+
+    const rec = {
+        duration: 28,
+        learning: {
+            used: true,
+            decisions: {
+                duration: { mode: 'exploit', changedSelection: true, defaultWouldBe: 45, targetSeconds: 22, value: 28 }
+            }
+        }
+    };
+    const plan = durationFitter.resolveRenderPlan(script, rec);
+    assert.equal(plan.applied, true);
+    assert.equal(plan.targetSeconds, 28);
+    assert.ok(durationFitter.countWords(plan.script) < durationFitter.countWords(script), 'long script must be trimmed');
+    assert.ok(plan.script.includes('यह पहला वाक्य'), 'hook survives');
+    assert.ok(plan.script.includes('अंतिम वाक्य'), 'CTA survives');
+    assert.match(plan.learningNote, /mode=exploit/);
+    assert.match(plan.learningNote, /changed from default 45s/);
+    assert.ok(plan.speakingRate >= durationFitter.MIN_RATE && plan.speakingRate <= durationFitter.MAX_RATE);
+});
+
+test('render plan: no recommendation, or out-of-range duration → default rate, nothing applied', () => {
+    const a = durationFitter.resolveRenderPlan('कुछ भी।', null);
+    assert.equal(a.applied, false);
+    assert.equal(a.speakingRate, durationFitter.DEFAULT_BASE_RATE);
+
+    const b = durationFitter.resolveRenderPlan('कुछ भी।', { duration: 5 });   // too short
+    assert.equal(b.applied, false);
+    const c = durationFitter.resolveRenderPlan('कुछ भी।', { duration: 90 });  // too long
+    assert.equal(c.applied, false);
+    const d = durationFitter.resolveRenderPlan('कुछ भी।', { duration: null }); // missing
+    assert.equal(d.applied, false);
+});
+
+test('dispatcher entry point: buildAttribution produces complete, null-safe attribution from a real recommendation', () => {
+    const dispatcher = require('../video_dispatcher');
+
+    const growthRecommendation = {
+        processed: true,
+        recommendation: {
+            hook: { hookType: 'deadline' },
+            presenter: 'female_anchor_4.mp4',
+            visualStyle: 'result',
+            duration: 28,
+            category: 'SSC',
+            musicId: 'odd_news',
+            learning: {
+                used: true,
+                policyVersion: 'policy-test-1',
+                dimensionsApplied: ['hook', 'duration'],
+                decisions: {
+                    hook: { mode: 'exploit' },
+                    duration: { mode: 'explore' },
+                    postTime: { mode: 'none' }
+                }
+            }
+        },
+        enhancements: {
+            contentAngle: { key: 'salary_focus' },
+            cta: { closing: { key: 'subscribe' } }
+        }
+    };
+
+    const attribution = dispatcher.buildAttribution(growthRecommendation, 'job');
+    assert.equal(attribution.hookType, 'deadline');
+    assert.equal(attribution.presenter, 'female_anchor_4.mp4');
+    assert.equal(attribution.visualStyle, 'result');
+    assert.equal(attribution.duration, 28);
+    assert.equal(attribution.category, 'SSC');
+    assert.equal(attribution.contentAngle, 'salary_focus');
+    assert.equal(attribution.music, 'odd_news');
+    assert.equal(attribution.cta, 'subscribe');
+    assert.equal(typeof attribution.publishHour, 'number');
+    assert.deepEqual(attribution.learningMeta, {
+        used: true,
+        policyVersion: 'policy-test-1',
+        dimensionsApplied: ['hook', 'duration'],
+        exploredDimensions: ['duration']
+    });
+
+    // Null-safety: a bare recommendation with gaps must yield nulls, not
+    // empty strings or zeros.
+    const sparse = dispatcher.buildAttribution({
+        recommendation: { hook: null, presenter: '', duration: null, category: undefined },
+        enhancements: {}
+    }, 'job');
+    assert.equal(sparse.hookType, null);
+    assert.equal(sparse.presenter, null);
+    assert.equal(sparse.duration, null);
+    assert.equal(sparse.category, null);
+    assert.equal(sparse.contentAngle, null);
+    assert.equal(sparse.music, null);
+    assert.equal(sparse.cta, null);
+    assert.deepEqual(sparse.learningMeta, { used: false, policyVersion: null, dimensionsApplied: [], exploredDimensions: [] });
+
+    // No recommendation at all → nothing to attribute
+    assert.equal(dispatcher.buildAttribution(null, 'job'), null);
+});
+
+test('dispatcher → collector round-trip: buildAttribution output persists into content_performance intact', async () => {
+    const dispatcher = require('../video_dispatcher');
+    const db = createMockDb();
+    const fetcher = async () => ({ views: 9000, likes: 400, comments: 90 });
+
+    const growthRecommendation = {
+        processed: true,
+        recommendation: {
+            hook: { hookType: 'question' },
+            presenter: 'male_anchor_3.mp4',
+            visualStyle: 'job-alert',
+            duration: 31,
+            category: 'Railway',
+            musicId: 'news_theme',
+            learning: {
+                used: true,
+                policyVersion: 'policy-rt-1',
+                dimensionsApplied: ['hook', 'presenter'],
+                decisions: { hook: { mode: 'exploit' }, presenter: { mode: 'exploit' } }
+            }
+        },
+        enhancements: {
+            contentAngle: { key: 'basic_alert' },
+            cta: { closing: { key: 'read_more' } }
+        }
+    };
+
+    // Exactly what processJobLike does after a successful upload:
+    await collector.collectPlatformMetrics(db, {
+        platform: 'youtube',
+        platformVideoId: 'vid-rt',
+        contentId: 'job-rt',
+        publishedAt: 12345,
+        ...dispatcher.buildAttribution(growthRecommendation, 'job')
+    }, { fetchers: { youtube: fetcher } });
+
+    const stored = db.__dump('content_performance')['youtube_vid-rt'];
+    assert.equal(stored.hookType, 'question');
+    assert.equal(stored.presenter, 'male_anchor_3.mp4');
+    assert.equal(stored.visualStyle, 'job-alert');
+    assert.equal(stored.duration, 31);
+    assert.equal(stored.category, 'Railway');
+    assert.equal(stored.contentAngle, 'basic_alert');
+    assert.equal(stored.music, 'news_theme');
+    assert.equal(stored.cta, 'read_more');
+    assert.equal(stored.platform, 'youtube');
+    assert.equal(stored.platformVideoId, 'vid-rt');
+    assert.equal(stored.contentId, 'job-rt');
+    assert.equal(stored.learningMeta.policyVersion, 'policy-rt-1');
+    assert.deepEqual(stored.learningMeta.dimensionsApplied, ['hook', 'presenter']);
+});

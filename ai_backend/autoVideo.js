@@ -904,21 +904,14 @@ async function runFFmpeg(ffmpegPath, args, mode = 'full') {
         // ever removed, never invented) and (2) adjusting the TTS speaking
         // rate within a natural band. The rendered video's length equals
         // the voice track, so this genuinely changes the output duration.
-        let speakingRate = 1.08;
-        const durationTarget = (growthEnabled
-            && Number.isFinite(Number(growthRec.duration))
-            && Number(growthRec.duration) >= 10
-            && Number(growthRec.duration) <= 60) ? Math.round(Number(growthRec.duration)) : null;
-        if (durationTarget) {
-            const durationFitter = require('./agents/growth/duration_fitter');
-            const fit = durationFitter.fitScriptToDuration(script, durationTarget);
-            if (fit.script && fit.script.trim()) script = fit.script;
-            speakingRate = fit.speakingRate;
-            const learningNote = growthRec.learning && growthRec.learning.decisions
-                && growthRec.learning.decisions.duration
-                ? ` (mode=${growthRec.learning.decisions.duration.mode}${growthRec.learning.decisions.duration.changedSelection ? ', changed from default ' + growthRec.learning.decisions.duration.defaultWouldBe + 's' : ''})`
-                : '';
-            console.log(`🎯 Duration target ${durationTarget}s${learningNote}: est ${fit.estimatedSeconds}s, rate ${speakingRate}, trimmed=${fit.trimmed} (${fit.strategy})`);
+        // resolveRenderPlan is the same module the closed-loop tests prove
+        // behaviorally.
+        const durationFitter = require('./agents/growth/duration_fitter');
+        const renderPlan = durationFitter.resolveRenderPlan(script, growthEnabled ? growthRec : null);
+        let speakingRate = renderPlan.speakingRate;
+        if (renderPlan.applied) {
+            if (renderPlan.script && renderPlan.script.trim()) script = renderPlan.script;
+            console.log(`🎯 Duration target ${renderPlan.targetSeconds}s${renderPlan.learningNote}: est ${renderPlan.estimatedSeconds}s, rate ${speakingRate}, trimmed=${renderPlan.trimmed} (${renderPlan.strategy})`);
         }
 
         await ttsEngine.synthesize(script, audioPath, {
