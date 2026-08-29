@@ -10,7 +10,12 @@ import {
   fetchSeoApplySnapshot,
   fetchSeoDashboard,
   fetchSeoChangeHistorySummary,
+  fetchSeoChangeOutcomesSummary,
+  formatOutcomeCtr,
+  formatOutcomePct,
+  formatOutcomePosition,
   getSeoIntelligenceWorkflowUrl,
+  outcomeEvidenceLabel,
   prepareSearchConsoleImport,
   fetchProposalArticleHtml,
   previewOptimizationProposal,
@@ -20,6 +25,8 @@ import {
   type GscSearchAnalyticsOverview,
   type SeoChangeEvent,
   type SeoChangeHistorySummary,
+  type SeoChangeOutcome,
+  type SeoChangeOutcomesSummary,
   type SeoApplySnapshot,
   type SeoDashboard,
   type SeoOptimizationProposal,
@@ -41,6 +48,16 @@ const eventValueLabel = (value: { kind: string; value?: unknown; length?: number
 
 const eventChangeLabel = (event: SeoChangeEvent): string =>
   `${eventValueLabel(event.oldValue)} → ${eventValueLabel(event.newValue)}`;
+
+const outcomeChangeLabel = (outcome: SeoChangeOutcome): string =>
+  `${eventValueLabel(outcome.oldValue || undefined)} → ${eventValueLabel(outcome.newValue || undefined)}`;
+
+const outcomeEvidenceClass = (state: string): string => {
+  if (state === 'measured') return 'text-emerald-700';
+  if (state === 'no_change_observed') return 'text-slate-600';
+  if (state === 'confounded') return 'text-amber-700';
+  return 'text-gray-500';
+};
 
 const healthClass = (label?: string) => {
   if (label === 'healthy') return 'bg-green-100 text-green-800';
@@ -240,6 +257,8 @@ const AdminSeoDashboard = () => {
   const [gscAnalyticsLoaded, setGscAnalyticsLoaded] = useState(false);
   const [changeHistory, setChangeHistory] = useState<SeoChangeHistorySummary | null>(null);
   const [changeHistoryLoaded, setChangeHistoryLoaded] = useState(false);
+  const [changeOutcomes, setChangeOutcomes] = useState<SeoChangeOutcomesSummary | null>(null);
+  const [changeOutcomesLoaded, setChangeOutcomesLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [gscText, setGscText] = useState('');
   const [preparedGscJson, setPreparedGscJson] = useState('');
@@ -309,6 +328,26 @@ const AdminSeoDashboard = () => {
       })
       .finally(() => {
         if (!cancelled) setChangeHistoryLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Read-only SEO Change Outcomes (Phase 3 measurement) — separate fetch so a
+  // failure here never blocks the main dashboard.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchSeoChangeOutcomesSummary()
+      .then((summary) => {
+        if (cancelled) return;
+        setChangeOutcomes(summary);
+      })
+      .catch(() => {
+        if (!cancelled) setChangeOutcomes(null);
+      })
+      .finally(() => {
+        if (!cancelled) setChangeOutcomesLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -1403,6 +1442,106 @@ const AdminSeoDashboard = () => {
             <p className="text-[11px] text-gray-400">
               Large values (articleHtml etc.) are stored as compact hashes referencing their snapshot — full old/new values stay in the snapshot/rollback system.
               Events join to GSC Search Analytics rows by normalized page URL (query strings kept distinct).
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white border rounded-[2rem] p-6">
+        <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">SEO Change Outcomes</h3>
+        <p className="text-xs text-gray-500 mb-4">
+          Measured before/after differences in Google Search Console observed metrics around each applied SEO change (Phase 3 — measurement only).
+          These numbers are <b>correlation, not causation</b> — they show what was observed, never that the change caused the movement.
+          Missing GSC days are coverage gaps, never zero performance.
+        </p>
+        {!changeOutcomesLoaded ? (
+          <p className="text-xs text-gray-400">Loading SEO change outcomes…</p>
+        ) : !changeOutcomes ? (
+          <p className="text-xs text-gray-500">
+            No outcome measurements yet. Outcomes appear after the daily outcome workflow runs with collected GSC days and recorded change events.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400">Measured</p>
+                <p className="font-bold mt-1">{changeOutcomes.measuredCount}</p>
+              </div>
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400">No change observed</p>
+                <p className="font-bold mt-1">{changeOutcomes.noChangeCount}</p>
+              </div>
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400">Confounded</p>
+                <p className="font-bold mt-1">{changeOutcomes.confoundedCount}</p>
+              </div>
+              <div className="border rounded-xl p-3">
+                <p className="font-black uppercase text-[10px] text-gray-400">Insufficient / incomplete data</p>
+                <p className="font-bold mt-1">{changeOutcomes.insufficientDataCount}</p>
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400">
+              Measurement runner:{' '}
+              {changeOutcomes.runnerLastStatus ? `${changeOutcomes.runnerLastStatus}${changeOutcomes.runnerLastRunAt ? ` · ${changeOutcomes.runnerLastRunAt.slice(0, 16).replace('T', ' ')}` : ''}` : 'not run yet'}
+              {' · '}Totals count the 100 most recent outcomes.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-widest text-gray-400">
+                    <th className="py-1 pr-4">Date</th>
+                    <th className="py-1 pr-4">Page</th>
+                    <th className="py-1 pr-4">Field</th>
+                    <th className="py-1 pr-4">Before → After</th>
+                    <th className="py-1 pr-4">Clicks</th>
+                    <th className="py-1 pr-4">Impressions</th>
+                    <th className="py-1 pr-4">CTR</th>
+                    <th className="py-1 pr-4">Position</th>
+                    <th className="py-1 pr-4">Queries</th>
+                    <th className="py-1 pr-4">Evidence</th>
+                    <th className="py-1 pr-4">Confounding</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {changeOutcomes.outcomes.slice(0, 12).map((outcome: SeoChangeOutcome) => (
+                    <tr key={outcome.outcomeId || `${outcome.eventId}-${outcome.measuredAt}`} className="border-t">
+                      <td className="py-1 pr-4 font-mono whitespace-nowrap">{outcome.changeDate || outcome.changeAt.slice(0, 10)}</td>
+                      <td className="py-1 pr-4 max-w-[200px] truncate" title={outcome.gscJoinKey || outcome.pageUrl}>{outcome.pageUrl || outcome.contentId}</td>
+                      <td className="py-1 pr-4 whitespace-nowrap" title={`group: ${outcome.fieldGroup}`}>{outcome.field || '—'}</td>
+                      <td className="py-1 pr-4 max-w-[220px] truncate" title={outcomeChangeLabel(outcome)}>{outcomeChangeLabel(outcome)}</td>
+                      <td className="py-1 pr-4 whitespace-nowrap">
+                        {outcome.preMetrics.clicks} → {outcome.postMetrics.clicks}
+                        {outcome.deltas.clicksPct != null ? ` (${formatOutcomePct(outcome.deltas.clicksPct)})` : ''}
+                      </td>
+                      <td className="py-1 pr-4 whitespace-nowrap">
+                        {outcome.preMetrics.impressions} → {outcome.postMetrics.impressions}
+                        {outcome.deltas.impressionsPct != null ? ` (${formatOutcomePct(outcome.deltas.impressionsPct)})` : ''}
+                      </td>
+                      <td className="py-1 pr-4 whitespace-nowrap">
+                        {formatOutcomeCtr(outcome.preMetrics.ctr)} → {formatOutcomeCtr(outcome.postMetrics.ctr)}
+                      </td>
+                      <td className="py-1 pr-4 whitespace-nowrap" title="Lower average position number generally = better (not a ranking claim)">
+                        {formatOutcomePosition(outcome.preMetrics.avgPosition)} → {formatOutcomePosition(outcome.postMetrics.avgPosition)}
+                        {outcome.deltas.avgPosition != null ? ` (${outcome.deltas.avgPosition > 0 ? '+' : ''}${outcome.deltas.avgPosition.toFixed(1)})` : ''}
+                      </td>
+                      <td className="py-1 pr-4 whitespace-nowrap" title={`${outcome.querySummary.sharedCount} shared · ${outcome.querySummary.appearedCount} appeared · ${outcome.querySummary.disappearedCount} disappeared (absence is not a win/loss)`}>
+                        {outcome.postMetrics.queryCount}
+                      </td>
+                      <td className={`py-1 pr-4 ${outcomeEvidenceClass(outcome.evidenceState)}`} title={outcome.evidenceStateReason}>
+                        {outcomeEvidenceLabel(outcome.evidenceState)}
+                      </td>
+                      <td className="py-1 pr-4 whitespace-nowrap" title={outcome.confounded ? `Overlapping events: ${outcome.overlappingEventIds.join(', ') || 'see outcome document'}` : 'No overlapping changes on this page'}>
+                        {outcome.confounded ? `${outcome.overlappingChangeCount} overlapping` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[11px] text-gray-400">
+              Google Search Console observed metrics — correlation not causation. Lower position number = generally better average position (explained, not a ranking claim).
+              Each row compares the 7 completed GSC days before the change with the 7 days after (change day excluded); days Google has not finalized yet are excluded and re-measured later.
+              Lifecycle carried from each change event is context only — outcomes never trigger optimization, learning, or new proposals.
             </p>
           </div>
         )}

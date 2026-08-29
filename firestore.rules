@@ -14,7 +14,10 @@ service cloud.firestore {
         collectionId == "seo_apply_snapshots" ||
         collectionId == "seo_apply_queue" ||
         collectionId == "seo_proposal_bodies" ||
-        collectionId == "seo_backfill_tracker";
+        collectionId == "seo_backfill_tracker" ||
+        collectionId == "seo_change_events" ||
+        collectionId == "seo_change_outcomes" ||
+        collectionId == "gsc_search_analytics_daily";
     }
 
     match /orders/{orderId} {

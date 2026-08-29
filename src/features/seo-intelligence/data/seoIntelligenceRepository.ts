@@ -17,6 +17,7 @@ const GSC_DOC = 'seo_search_console';
 const RECOMMENDATIONS_COLLECTION = 'seo_recommendations';
 const GSC_SEARCH_ANALYTICS_COLLECTION = 'gsc_search_analytics_daily';
 const SEO_CHANGE_EVENTS_COLLECTION = 'seo_change_events';
+const SEO_CHANGE_OUTCOMES_COLLECTION = 'seo_change_outcomes';
 
 export const SEO_INTELLIGENCE_WORKFLOW_URL =
   'https://github.com/rahul74603/auto-video-backend/actions/workflows/seo_intelligence.yml';
@@ -986,6 +987,308 @@ export async function fetchSeoChangeHistorySummary(): Promise<SeoChangeHistorySu
     manualCount: applied.filter((event) => !event.autoApplied).length,
     automaticCount: applied.filter((event) => event.autoApplied).length,
     pendingProposalCount: proposals.filter((proposal) => proposal.status === 'pending').length,
+  };
+}
+
+// ─── SEO Change Outcomes summary (Phase 3, read-only measurement) ────
+
+export type SeoOutcomeMetrics = {
+  clicks: number;
+  impressions: number;
+  /** totalClicks / totalImpressions — null when impressions = 0 (never a fake percentage). */
+  ctr: number | null;
+  /** Impression-weighted average position (Σ position·impressions / Σ impressions) — null when impressions = 0. */
+  avgPosition: number | null;
+  queryCount: number;
+  rowCount: number;
+};
+
+export type SeoOutcomeDeltas = {
+  clicks: number | null;
+  clicksPct: number | null;
+  impressions: number | null;
+  impressionsPct: number | null;
+  ctr: number | null;
+  ctrPct: number | null;
+  avgPosition: number | null;
+  queryCount: number | null;
+  note: string;
+};
+
+export type SeoOutcomeCoverage = {
+  preAvailableDays: number;
+  preExpectedDays: number;
+  preMissingDays: string[];
+  postAvailableDays: number;
+  postExpectedDays: number;
+  postMissingDays: string[];
+  postNotYetAvailableDays: string[];
+  availableThrough: string | null;
+  expectedThrough: string | null;
+  lastCompletedDate: string | null;
+};
+
+export type SeoChangeOutcome = {
+  schemaVersion: number;
+  outcomeId: string;
+  eventId: string;
+  eventKind: string;
+  changeAt: string;
+  changeDate: string;
+  contentId: string;
+  collection: string;
+  contentType: string;
+  pageUrl: string;
+  gscJoinKey: string;
+  field: string;
+  fieldGroup: string;
+  proposalId: string | null;
+  source: string;
+  /** Lifecycle carried from the change event as context (never a trigger). */
+  lifecycle: Record<string, unknown> | null;
+  /** Compact old/new field values from the change event (large values reference snapshots). */
+  oldValue: SeoEventValue | null;
+  newValue: SeoEventValue | null;
+  preWindow: { start: string; end: string; expectedDays: number };
+  postWindow: { start: string; end: string; expectedDays: number };
+  dataCoverage: SeoOutcomeCoverage;
+  preMetrics: SeoOutcomeMetrics;
+  postMetrics: SeoOutcomeMetrics;
+  deltas: SeoOutcomeDeltas;
+  querySummary: {
+    sharedCount: number;
+    appearedCount: number;
+    disappearedCount: number;
+    note: string;
+  };
+  overlappingChangeCount: number;
+  sameFieldOverlapCount: number;
+  overlappingEventIds: string[];
+  confounded: boolean;
+  evidenceState: string;
+  evidenceStateReason: string;
+  measuredAt: string;
+  firstMeasuredAt: string;
+  revisionCount: number;
+};
+
+export type SeoChangeOutcomesSummary = {
+  /** Newest-first outcome measurements (max 100). */
+  outcomes: Array<SeoChangeOutcome>;
+  byEvidenceState: Record<string, number>;
+  measuredCount: number;
+  noChangeCount: number;
+  confoundedCount: number;
+  insufficientDataCount: number;
+  /** Measurement runner status from system_settings/seo_intelligence (informational only). */
+  runnerLastStatus: string | null;
+  runnerLastRunAt: string | null;
+};
+
+const INSUFFICIENT_EVIDENCE_STATES = ['insufficient_data', 'incomplete_data', 'no_data'];
+
+function asOutcomeMetrics(raw: Record<string, unknown>): SeoOutcomeMetrics {
+  const numberOrNull = (value: unknown): number | null => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+  return {
+    clicks: Number(raw.clicks || 0),
+    impressions: Number(raw.impressions || 0),
+    ctr: raw.ctr == null ? null : numberOrNull(raw.ctr),
+    avgPosition: raw.avgPosition == null ? null : numberOrNull(raw.avgPosition),
+    queryCount: Number(raw.queryCount || 0),
+    rowCount: Number(raw.rowCount || 0),
+  };
+}
+
+function asOutcomeDeltas(raw: Record<string, unknown>): SeoOutcomeDeltas {
+  const deltaOrNull = (value: unknown): number | null => {
+    if (value == null) return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+  return {
+    clicks: deltaOrNull(raw.clicks),
+    clicksPct: deltaOrNull(raw.clicksPct),
+    impressions: deltaOrNull(raw.impressions),
+    impressionsPct: deltaOrNull(raw.impressionsPct),
+    ctr: deltaOrNull(raw.ctr),
+    ctrPct: deltaOrNull(raw.ctrPct),
+    avgPosition: deltaOrNull(raw.avgPosition),
+    queryCount: deltaOrNull(raw.queryCount),
+    note: String(raw.note || ''),
+  };
+}
+
+function asOutcomeCoverage(raw: Record<string, unknown>): SeoOutcomeCoverage {
+  const stringList = (value: unknown): string[] => (Array.isArray(value) ? value.map((item) => String(item)) : []);
+  const coverage = (side: 'pre' | 'post') => {
+    const inner = raw[side] && typeof raw[side] === 'object' ? raw[side] as Record<string, unknown> : {};
+    return {
+      available: Number(inner.availableCount || 0),
+      expected: Number(inner.expectedCount || 0),
+      missing: stringList(inner.missingDays),
+    };
+  };
+  const pre = coverage('pre');
+  const post = coverage('post');
+  return {
+    preAvailableDays: pre.available,
+    preExpectedDays: pre.expected,
+    preMissingDays: pre.missing,
+    postAvailableDays: post.available,
+    postExpectedDays: post.expected,
+    postMissingDays: post.missing,
+    postNotYetAvailableDays: stringList(
+      raw.post && typeof raw.post === 'object'
+        ? (raw.post as Record<string, unknown>).notYetAvailableDays
+        : []
+    ),
+    availableThrough: raw.availableThrough ? String(raw.availableThrough) : null,
+    expectedThrough: raw.expectedThrough ? String(raw.expectedThrough) : null,
+    lastCompletedDate: raw.lastCompletedDate ? String(raw.lastCompletedDate) : null,
+  };
+}
+
+function asSeoChangeOutcome(raw: Record<string, unknown>): SeoChangeOutcome {
+  const windowOf = (value: unknown, key: string): string => {
+    const inner = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+    return inner[key] ? String(inner[key]) : '';
+  };
+  const querySummaryRaw = raw.querySummary && typeof raw.querySummary === 'object'
+    ? raw.querySummary as Record<string, unknown>
+    : {};
+  return {
+    schemaVersion: Number(raw.schemaVersion || 1),
+    outcomeId: String(raw.outcomeId || ''),
+    eventId: String(raw.eventId || ''),
+    eventKind: String(raw.eventKind || raw.kind || 'applied'),
+    changeAt: String(raw.changeAt || raw.eventAt || ''),
+    changeDate: String(raw.changeDate || ''),
+    contentId: String(raw.contentId || ''),
+    collection: String(raw.collection || ''),
+    contentType: String(raw.contentType || ''),
+    pageUrl: String(raw.pageUrl || ''),
+    gscJoinKey: String(raw.gscJoinKey || ''),
+    field: String(raw.field || ''),
+    fieldGroup: String(raw.fieldGroup || 'other'),
+    proposalId: raw.proposalId ? String(raw.proposalId) : null,
+    source: String(raw.source || ''),
+    lifecycle: raw.lifecycle && typeof raw.lifecycle === 'object'
+      ? raw.lifecycle as Record<string, unknown>
+      : null,
+    oldValue: (raw.oldValue || null) as SeoEventValue | null,
+    newValue: (raw.newValue || null) as SeoEventValue | null,
+    preWindow: {
+      start: windowOf(raw.preWindow, 'start'),
+      end: windowOf(raw.preWindow, 'end'),
+      expectedDays: Number((raw.preWindow as Record<string, unknown> | undefined)?.expectedDays || 7),
+    },
+    postWindow: {
+      start: windowOf(raw.postWindow, 'start'),
+      end: windowOf(raw.postWindow, 'end'),
+      expectedDays: Number((raw.postWindow as Record<string, unknown> | undefined)?.expectedDays || 7),
+    },
+    dataCoverage: asOutcomeCoverage(raw.dataCoverage && typeof raw.dataCoverage === 'object'
+      ? raw.dataCoverage as Record<string, unknown>
+      : {}),
+    preMetrics: asOutcomeMetrics(raw.preMetrics && typeof raw.preMetrics === 'object' ? raw.preMetrics as Record<string, unknown> : {}),
+    postMetrics: asOutcomeMetrics(raw.postMetrics && typeof raw.postMetrics === 'object' ? raw.postMetrics as Record<string, unknown> : {}),
+    deltas: asOutcomeDeltas(raw.deltas && typeof raw.deltas === 'object' ? raw.deltas as Record<string, unknown> : {}),
+    querySummary: {
+      sharedCount: Number(querySummaryRaw.sharedCount || 0),
+      appearedCount: Number(querySummaryRaw.appearedCount || 0),
+      disappearedCount: Number(querySummaryRaw.disappearedCount || 0),
+      note: String(querySummaryRaw.note || ''),
+    },
+    overlappingChangeCount: Number(raw.overlappingChangeCount || 0),
+    sameFieldOverlapCount: Number(raw.sameFieldOverlapCount || 0),
+    overlappingEventIds: Array.isArray(raw.overlappingEventIds) ? raw.overlappingEventIds.map((item) => String(item)) : [],
+    confounded: Boolean(raw.confounded),
+    evidenceState: String(raw.evidenceState || ''),
+    evidenceStateReason: String(raw.evidenceStateReason || ''),
+    measuredAt: String(raw.measuredAt || ''),
+    firstMeasuredAt: String(raw.firstMeasuredAt || ''),
+    revisionCount: Number(raw.revisionCount || 0),
+  };
+}
+
+/** Human label for an evidence state — measurement language, never causal. */
+export function outcomeEvidenceLabel(state: string): string {
+  switch (state) {
+    case 'measured': return 'Measured (correlation, not causation)';
+    case 'no_change_observed': return 'No change observed';
+    case 'confounded': return 'Confounded (other changes nearby)';
+    case 'insufficient_data': return 'Insufficient data';
+    case 'incomplete_data': return 'Incomplete (awaiting final GSC data)';
+    case 'no_data': return 'No data';
+    default: return state || 'Unknown';
+  }
+}
+
+/** Lifecycle status carried from the change event (context only). */
+export function outcomeLifecycleStatus(outcome: SeoChangeOutcome): string {
+  if (!outcome.lifecycle) return 'NOT_APPLICABLE';
+  const raw = outcome.lifecycle as Record<string, unknown>;
+  const status = raw.status || raw.state;
+  return status ? String(status) : 'UNKNOWN';
+}
+
+/** "+12.5%" style percentage — "—" when the measurement was withheld/undefined. */
+export function formatOutcomePct(value: number | null): string {
+  if (value == null) return '—';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${value.toFixed(1)}%`;
+}
+
+/** CTR as a percentage with 2 decimals — "—" when impressions were 0. */
+export function formatOutcomeCtr(value: number | null): string {
+  if (value == null) return '—';
+  return `${(value * 100).toFixed(2)}%`;
+}
+
+/** Average position — "—" when impressions were 0. Lower number generally = better. */
+export function formatOutcomePosition(value: number | null): string {
+  if (value == null) return '—';
+  return value.toFixed(1);
+}
+
+/**
+ * READ-ONLY aggregate of the SEO Change Outcomes measurements (Phase 3).
+ * These are observed before/after differences in Google Search Console
+ * metrics — correlation, NEVER causation. Missing GSC days are coverage
+ * gaps, not zero performance. Returns null when no outcomes exist yet.
+ */
+export async function fetchSeoChangeOutcomesSummary(): Promise<SeoChangeOutcomesSummary | null> {
+  const [outcomesSnap, settingsSnap] = await Promise.all([
+    getDocs(query(collection(db, SEO_CHANGE_OUTCOMES_COLLECTION), orderBy('measuredAt', 'desc'), limit(100))),
+    getDoc(doc(db, SETTINGS_COLLECTION, SEO_SETTINGS_DOC)),
+  ]);
+
+  const outcomes = (outcomesSnap.docs || []).map((entry) => asSeoChangeOutcome(asRecord(entry.data())));
+  if (!outcomes.length) return null;
+
+  const byEvidenceState: Record<string, number> = {};
+  for (const outcome of outcomes) {
+    const key = outcome.evidenceState || 'unknown';
+    byEvidenceState[key] = (byEvidenceState[key] || 0) + 1;
+  }
+
+  const settings = settingsSnap.exists() ? asRecord(settingsSnap.data()) : {};
+  const runner = settings.outcomeRunner && typeof settings.outcomeRunner === 'object'
+    ? settings.outcomeRunner as Record<string, unknown>
+    : {};
+
+  return {
+    outcomes,
+    byEvidenceState,
+    measuredCount: byEvidenceState.measured || 0,
+    noChangeCount: byEvidenceState.no_change_observed || 0,
+    confoundedCount: byEvidenceState.confounded || 0,
+    insufficientDataCount: INSUFFICIENT_EVIDENCE_STATES.reduce((total, state) => total + (byEvidenceState[state] || 0), 0),
+    runnerLastStatus: runner.lastStatus ? String(runner.lastStatus) : null,
+    runnerLastRunAt: runner.lastRunAt ? String(runner.lastRunAt) : null,
   };
 }
 

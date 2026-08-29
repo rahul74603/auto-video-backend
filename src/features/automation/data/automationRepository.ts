@@ -48,6 +48,7 @@ export const DEFAULT_FEATURES: Record<string, { label: string; description: stri
   seo_intelligence: { label: 'SEO Intelligence (lifecycle, gaps, recs)', description: 'Job lifecycle, content gaps, CTR recs — never auto-publishes', icon: '🧠', category: 'seo' },
   seo_optimizer: { label: 'SEO Auto Optimizer + Publish Hook', description: 'Content quality optimizer — scheduled runs are dry-run; kill switch stops runner + post-publish hook', icon: '⚙️', category: 'seo' },
   gsc_ingest: { label: 'GSC Search Analytics Ingest (read-only)', description: 'Dated raw Google Search Console data collection — measurement only, never optimizes pages', icon: '📊', category: 'seo' },
+  seo_outcomes: { label: 'SEO Change Outcomes (measurement only)', description: 'Before/after GSC measurement of applied SEO changes — observed differences only, never optimizes or learns', icon: '📉', category: 'seo' },
 };
 
 export const getDefaultSettings = (): AutomationSettings => ({
