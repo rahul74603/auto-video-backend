@@ -118,6 +118,95 @@ test('attribution: backwards compatibility — existing documents keep their fie
     assert.equal(doc.hookType, null, 'refresh of a legacy doc stores null attribution, not fake values');
 });
 
+// ─── Attribution-erasure defense (audit regression tests) ─────────────
+// growth_learner_run.js refreshes metrics WITHOUT passing attribution.
+// Before the fix, that refresh nulled the stored attribution (explicit null
+// + set(merge:true) overwrite), which silently broke the closed loop.
+
+test('attribution refresh defense: metrics-only refresh preserves stored attribution', async () => {
+    const db = createMockDb();
+
+    // Upload-time collection — exactly what video_dispatcher.js does after a
+    // successful upload: full generation attribution + learningMeta.
+    await collector.collectPlatformMetrics(db, {
+        platform: 'youtube',
+        platformVideoId: 'vid-refresh',
+        contentId: 'c-refresh',
+        publishedAt: NOW,
+        hookType: 'question',
+        presenter: 'male_anchor_1',
+        visualStyle: 'result',
+        duration: 18,
+        category: 'SSC',
+        contentAngle: 'salary_focus',
+        music: 'odd_news',
+        cta: 'subscribe',
+        publishHour: 19,
+        learningMeta: { used: true, policyVersion: 'policy-keep', dimensionsApplied: ['hook'], exploredDimensions: [] }
+    }, { fetchers: { youtube: async () => ({ views: 100, likes: 10 }) } });
+
+    // Learner-style metrics refresh (collectNewMetrics): NO attribution and
+    // NO learningMeta passed — only metrics identity fields.
+    await collector.collectPlatformMetrics(db, {
+        platform: 'youtube',
+        platformVideoId: 'vid-refresh',
+        contentId: 'c-refresh',
+        publishedAt: NOW
+    }, { fetchers: { youtube: async () => ({ views: 500, likes: 50 }) } });
+
+    const doc = db.__dump('content_performance')['youtube_vid-refresh'];
+    // Metrics DID update:
+    assert.equal(doc.views, 500, 'refreshed metrics must update');
+    assert.equal(doc.likes, 50);
+    // ALL attribution preserved (previously erased to null — the audit bug):
+    assert.equal(doc.hookType, 'question');
+    assert.equal(doc.presenter, 'male_anchor_1');
+    assert.equal(doc.visualStyle, 'result');
+    assert.equal(doc.duration, 18);
+    assert.equal(doc.category, 'SSC');
+    assert.equal(doc.contentAngle, 'salary_focus');
+    assert.equal(doc.music, 'odd_news');
+    assert.equal(doc.cta, 'subscribe');
+    assert.equal(doc.publishHour, 19);
+    // learningMeta preserved (refresh never supplied it — unchanged behavior):
+    assert.equal(doc.learningMeta.policyVersion, 'policy-keep');
+    assert.equal(doc.learningMeta.used, true);
+});
+
+test('attribution refresh defense: EXPLICIT caller values still overwrite (caller semantics unchanged)', async () => {
+    const db = createMockDb();
+
+    // Doc already carries attribution.
+    await collector.collectPlatformMetrics(db, {
+        platform: 'youtube',
+        platformVideoId: 'vid-explicit',
+        contentId: 'c1',
+        publishedAt: NOW,
+        hookType: 'question',
+        presenter: 'male_anchor_1',
+        duration: 18,
+        publishHour: 19
+    }, { fetchers: { youtube: async () => ({ views: 10 }) } });
+
+    // A caller that EXPLICITLY supplies hookType: null (property present)
+    // still means "no attribution for this field" — overwrite, not preserve.
+    // Fields NOT supplied (duration, publishHour) must be preserved.
+    await collector.collectPlatformMetrics(db, {
+        platform: 'youtube',
+        platformVideoId: 'vid-explicit',
+        contentId: 'c1',
+        publishedAt: NOW,
+        hookType: null,
+        presenter: 'male_anchor_2'
+    }, { fetchers: { youtube: async () => ({ views: 20 }) } });
+
+    const doc = db.__dump('content_performance')['youtube_vid-explicit'];
+    assert.equal(doc.hookType, null, 'explicit null must still overwrite — unchanged caller semantics');
+    assert.equal(doc.presenter, 'male_anchor_2', 'explicit value must overwrite');
+    assert.equal(doc.duration, 18, 'ABSENT field (duration not supplied) must preserve the stored value');
+    assert.equal(doc.publishHour, 19, 'ABSENT field (publishHour not supplied) must preserve the stored value');
+});
+
 // ─────────────────────────────────────────────────────────────────────
 // PHASE 2 — Learning is attribution-gated
 // ─────────────────────────────────────────────────────────────────────
