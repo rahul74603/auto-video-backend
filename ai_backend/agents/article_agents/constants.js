@@ -92,6 +92,11 @@ function isBlockedDomain(url) {
   if (!url || typeof url !== "string") return false;
   const trimmed = url.trim();
   if (!trimmed || trimmed === "#") return false;
+  // Root-relative paths are same-origin internal links — never a blocked
+  // domain. (Previously these were treated as unparseable and got stripped
+  // from article HTML by dropBlockedLinks, silently removing every internal
+  // link anchor.) Protocol-relative URLs ("//host/...") stay blocked.
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return false;
   try {
     const hostname = new URL(trimmed).hostname.toLowerCase();
     return BLOCKED_DOMAINS.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));

@@ -412,6 +412,25 @@ ${enhancedIntent.prompt}
 
     console.log(`🎯 Manual Blog Saved to DB with ID: ${blogRef.id}`);
 
+    // ⭐ Auto-optimizer: fire-and-forget quality pass after publish.
+    // Optimizer failure NEVER blocks the publish.
+    try {
+        const { triggerOptimizerNonBlocking } = require("./agents/seo_intelligence/publish_hook");
+        triggerOptimizerNonBlocking(db, admin.firestore.FieldValue, {
+            id: blogRef.id,
+            title: finalData.title,
+            description: finalData.metaDescription || "",
+            content: finalData.content,
+            category: finalData.category || "General Info",
+            type: "blog",
+            status: "publish",
+            author: "Rahul Sir",
+            createdAt: new Date().toISOString()
+        }, "blogs");
+    } catch (optErr) {
+        console.warn("⚠️ Optimizer hook skipped (non-blocking):", optErr.message);
+    }
+
     // 🔔 IndexNow ping — Bing/Yandex/Seznam ko turant notify (Google bhi IndexNow pe crawl karta hai)
     fireAndForgetIndexNow([`https://studygyaan.in/blog/${encodeURIComponent(finalData.slug || blogRef.id)}`]);
 

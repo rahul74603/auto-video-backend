@@ -369,6 +369,19 @@ function auditContent(doc, pageType, contentKind, findings) {
         "B"
       ));
     }
+    // Thin job body: has SOME material but far below a structured page.
+    // This is the common weak-job case that must stay improvable deterministically.
+    if (html.trim() && words < 250 && (h2 === 0 || words < 120)) {
+      findings.push(finding(
+        "content:thin-job",
+        "content",
+        "medium",
+        "observed",
+        { words, h2, note: "Job body is too thin to guide an applicant; sections can be built from existing facts." },
+        "Restructure the thin job body into scannable sections (key facts table, how to apply, official source) using only existing record facts.",
+        "B"
+      ));
+    }
     if (html && h2 === 0 && words >= 250) {
       findings.push(finding(
         "content:job-missing-sections",

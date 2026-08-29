@@ -855,6 +855,26 @@ exports.onJobPublishedNotify = onDocumentCreated("jobs/{jobId}")(async (snap, co
     }
 
     // ─────────────────────────────────────
+    // STEP 1.5: Auto-Optimizer quality pass (fire-and-forget semantics).
+    // The job document is ALREADY published at this point, so an optimizer
+    // failure must never fail this trigger. Awaited with a hard timeout so
+    // the v1 background function instance is not frozen mid-write.
+    // ─────────────────────────────────────
+    try {
+        const { triggerOptimizerAfterPublish } = require('./agents/seo_intelligence/publish_hook');
+        const optimizeWithTimeout = Promise.race([
+            triggerOptimizerAfterPublish(db, admin.firestore.FieldValue,
+                { ...job, id: jobId, type: 'JOB' }, 'jobs'),
+            new Promise((resolve) => setTimeout(() => resolve(null), 90_000))
+        ]);
+        await optimizeWithTimeout.catch((optErr) =>
+            console.warn("⚠️ Auto-optimizer hook failed (non-blocking):", optErr.message)
+        );
+    } catch (optErr) {
+        console.warn("⚠️ Auto-optimizer hook skipped (non-blocking):", optErr.message);
+    }
+
+    // ─────────────────────────────────────
     // STEP 2: Search Engine Pings (Google Indexing API + IndexNow + Sitemap Ping)
     // ─────────────────────────────────────
     await notifyGoogle(jobUrl).catch(e =>

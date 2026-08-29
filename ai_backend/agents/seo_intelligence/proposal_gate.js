@@ -119,7 +119,15 @@ function gateProposal(proposal, page = {}, source = null) {
       return fail("APPLY_UNSAFE_HTML", issues.join("; "));
     }
     if (contentType === "BLOG" || contentType === "JOB" || contentType === "FAST_TRACK") {
-      const blob = sourceBlob(page) || textOfProposed(page.articleHtml || page.title || "");
+      // Grounding blob = the page's own record + (optionally) provided source
+      // material. The auto-optimizer passes the existing catalog page titles so
+      // internal-link anchors copied verbatim from already-published pages are
+      // not falsely flagged as invented numbers. Dates/money/vacancies/percent
+      // claims are still verified separately via claim validation.
+      const blob = [
+        sourceBlob(page),
+        source && source.text ? String(source.text) : ""
+      ].filter(Boolean).join("\n") || textOfProposed(page.articleHtml || page.title || "");
       const extras = inventedNumbers(html, blob);
       if (extras.length) {
         return fail("APPLY_UNGROUNDED", `Proposed articleHtml has facts not in the source: ${extras[0]}`);

@@ -368,6 +368,20 @@ async function createStoryFromOldest(collectionName, storyType) {
             isStoryCreated: true
         });
 
+        // ⭐ Auto-optimizer: fire-and-forget quality pass after publish.
+        // WEB_STORY is metadata-only by design; optimizer failure NEVER
+        // blocks the publish.
+        try {
+            const { triggerOptimizerNonBlocking } = require("./agents/seo_intelligence/publish_hook");
+            triggerOptimizerNonBlocking(db, admin.firestore.FieldValue, {
+                id: storySlug, slug: storySlug, title: finalTitle, type: "WEB_STORY",
+                description, category: data.category || "Education", author: data.author || "Rahul Sir",
+                createdAt: new Date().toISOString()
+            }, "web_stories");
+        } catch (optErr) {
+            console.warn("⚠️ Optimizer hook skipped (non-blocking):", optErr.message);
+        }
+
         console.log(`✅ Story created: ${storySlug} | Slides: ${slides.length}`);
 
         // ✅ Google Indexing

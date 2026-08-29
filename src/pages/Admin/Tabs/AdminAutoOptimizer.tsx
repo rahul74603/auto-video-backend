@@ -9,10 +9,18 @@ import {
 } from '@/features/seo-intelligence/data/seoIntelligenceRepository';
 
 const resultStatusColor = (status?: string) => {
-  if (status === 'optimized') return 'bg-emerald-100 text-emerald-800';
+  if (status === 'optimized' || status === 'would-improve') return 'bg-emerald-100 text-emerald-800';
   if (status === 'unchanged') return 'bg-slate-100 text-slate-600';
   if (status === 'rolled-back') return 'bg-amber-100 text-amber-800';
   if (status === 'failed') return 'bg-red-100 text-red-800';
+  return 'bg-gray-100 text-gray-600';
+};
+
+const actionColor = (action?: string) => {
+  if (action === 'IMPROVE') return 'bg-emerald-100 text-emerald-800';
+  if (action === 'SKIP') return 'bg-blue-100 text-blue-800';
+  if (action === 'REVIEW') return 'bg-amber-100 text-amber-800';
+  if (action === 'BLOCK') return 'bg-red-100 text-red-800';
   return 'bg-gray-100 text-gray-600';
 };
 
@@ -148,12 +156,13 @@ const AdminAutoOptimizer = () => {
       {report && (
         <div className="bg-white border rounded-[2rem] p-6">
           <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-4">Last Run Summary</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
             {[
               ['Total Processed', report.totalProcessed ?? 0, 'text-slate-800'],
               ['Improved', report.totalImproved ?? 0, 'text-emerald-700'],
-              ['Already Good', report.totalSkipped ?? 0, 'text-blue-700'],
-              ['Rolled Back', report.totalRolledBack ?? 0, 'text-amber-700'],
+              ['Already Good', report.results?.filter((r) => r.action === 'SKIP').length ?? report.totalSkipped ?? 0, 'text-blue-700'],
+              ['Needs Review', report.totalNeedsReview ?? report.results?.filter((r) => r.action === 'REVIEW').length ?? 0, 'text-amber-700'],
+              ['Rolled Back', report.totalRolledBack ?? 0, 'text-orange-700'],
               ['Failed', report.totalFailed ?? 0, 'text-red-700'],
             ].map(([label, value, color]) => (
               <div key={String(label)} className="border rounded-2xl p-4 bg-slate-50">
@@ -169,7 +178,55 @@ const AdminAutoOptimizer = () => {
             <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600">
               Batches: {report.batches ?? 0}
             </span>
+            {runner?.avgScoreImprovement ? (
+              <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700">
+                Avg score improvement: +{runner.avgScoreImprovement}
+              </span>
+            ) : null}
+            {runner?.actions
+              ? Object.entries(runner.actions).map(([action, count]) => (
+                <span key={action} className={`px-3 py-1 rounded-full ${actionColor(action)}`}>
+                  {action}: {count}
+                </span>
+              ))
+              : null}
           </div>
+        </div>
+      )}
+
+      {/* Backfill Coverage */}
+      {(runner?.postRun?.counts?.total != null || progress?.processedTotal != null) && (
+        <div className="bg-white border rounded-[2rem] p-6">
+          <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-4">Backfill Coverage (Oldest-First)</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              ['Eligible Catalog', runner?.postRun?.counts?.total ?? progress?.processedTotal != null ? runner?.postRun?.counts?.total ?? '—' : '—'],
+              ['Processed', runner?.postRun?.counts?.processed ?? progress?.processedTotal ?? '—'],
+              ['Remaining', runner?.postRun?.counts?.remaining ?? '—'],
+              ['Last Batch At', progress?.lastBatchAt ? formatDate(progress.lastBatchAt) : '—'],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="border rounded-2xl p-3 bg-slate-50">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</p>
+                <p className="text-xl font-black text-slate-800 mt-1">{String(value)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Pages requiring review */}
+      {runner?.needsReviewPages && runner.needsReviewPages.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-[2rem] p-6">
+          <h3 className="font-black text-sm uppercase tracking-widest text-amber-700 mb-3 flex items-center gap-2">
+            <AlertTriangle size={14} /> Pages Requiring Review ({runner.needsReviewPages.length})
+          </h3>
+          <ul className="space-y-1">
+            {runner.needsReviewPages.slice(0, 10).map((page) => (
+              <li key={page.page} className="text-xs font-semibold text-amber-900">
+                {page.page} — {page.action}: {page.skipReason || 'weak content, no safe automatic improvement found'}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -203,13 +260,15 @@ const AdminAutoOptimizer = () => {
               <thead>
                 <tr className="text-[10px] uppercase tracking-widest text-gray-400 border-b">
                   <th className="py-2 pr-3 font-black">Page</th>
+                  <th className="py-2 pr-3 font-black">Action</th>
                   <th className="py-2 pr-3 font-black">Status</th>
                   <th className="py-2 pr-3 font-black">Before</th>
                   <th className="py-2 pr-3 font-black">After</th>
                   <th className="py-2 pr-3 font-black">Delta</th>
                   <th className="py-2 pr-3 font-black">Passes</th>
                   <th className="py-2 pr-3 font-black">Applied</th>
-                  <th className="py-2 font-black">Rolled Back</th>
+                  <th className="py-2 pr-3 font-black">Rolled Back</th>
+                  <th className="py-2 font-black">Detail</th>
                 </tr>
               </thead>
               <tbody>
@@ -220,13 +279,27 @@ const AdminAutoOptimizer = () => {
                       <span className="text-[10px] text-gray-400">{result.collectionName || ''}</span>
                     </td>
                     <td className="py-3 pr-3">
+                      {result.action ? (
+                        <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase ${actionColor(result.action)}`}>
+                          {result.action}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="py-3 pr-3">
                       <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase ${resultStatusColor(result.status)}`}>
                         {result.status || 'unknown'}
                       </span>
                       {result.error && <p className="text-[10px] text-red-600 mt-1 max-w-[180px] truncate">{result.error}</p>}
                     </td>
                     <td className="py-3 pr-3 font-black">{result.originalScore ?? '—'}</td>
-                    <td className="py-3 pr-3 font-black">{result.finalScore ?? '—'}</td>
+                    <td className="py-3 pr-3 font-black">
+                      {result.detail?.projectedAfterScore ?? result.finalScore ?? '—'}
+                      {result.detail?.projectedAfterScore != null && (
+                        <span className="block text-[9px] font-bold text-gray-400">projected</span>
+                      )}
+                    </td>
                     <td className="py-3 pr-3">
                       <span className={`font-black ${(result.qualityDelta ?? 0) > 0 ? 'text-emerald-700' : (result.qualityDelta ?? 0) < 0 ? 'text-red-700' : 'text-gray-500'}`}>
                         {(result.qualityDelta ?? 0) > 0 ? '+' : ''}{result.qualityDelta ?? 0}
@@ -234,10 +307,29 @@ const AdminAutoOptimizer = () => {
                     </td>
                     <td className="py-3 pr-3">{result.totalPasses ?? result.passes?.length ?? 0}</td>
                     <td className="py-3 pr-3">
-                      <span className="text-emerald-700 font-black">{result.totalApplied ?? 0}</span>
+                      <span className="text-emerald-700 font-black">
+                        {result.totalApplied ?? 0}
+                        {result.dryRun && (result.wouldApply ?? 0) > 0 ? (
+                          <span className="block text-[9px] font-bold text-emerald-600">would apply {result.wouldApply}</span>
+                        ) : null}
+                      </span>
                     </td>
-                    <td className="py-3">
+                    <td className="py-3 pr-3">
                       <span className="text-amber-700 font-black">{result.totalRolledBack ?? 0}</span>
+                    </td>
+                    <td className="py-3 text-[10px] text-gray-500 max-w-[260px]">
+                      {result.skipReason && (
+                        <span className="block font-bold text-gray-600">↩ {result.skipReason}</span>
+                      )}
+                      {result.detail?.bodyContentChanged && (
+                        <span className="block text-emerald-700 font-bold">✓ body content improved</span>
+                      )}
+                      {result.detail?.weakDimensions?.length ? (
+                        <span className="block truncate">weak: {result.detail.weakDimensions.join(', ')}</span>
+                      ) : null}
+                      {result.detail?.fieldsChanged?.length ? (
+                        <span className="block truncate">fields: {result.detail.fieldsChanged.join(', ')}</span>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

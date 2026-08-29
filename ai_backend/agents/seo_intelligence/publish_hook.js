@@ -23,6 +23,28 @@ const { scorePage, needsImprovement, QUALITY_THRESHOLD } = require("./content_qu
 const { buildContentFingerprint, isAlreadyOptimized, loadTrackers } = require("./backfill_processor");
 
 const OPTIMIZER_ACTOR = "publish-hook";
+const CATALOG_LIMIT = 15;
+
+/**
+ * Load a small same-collection catalog so the optimizer can propose real
+ * internal links for newly published content. Best-effort: any failure
+ * yields an empty catalog and the optimizer simply skips link proposals.
+ */
+async function loadCatalogForOptimization(db, collectionName) {
+  if (!db || !collectionName) return [];
+  try {
+    const snap = await db.collection(collectionName)
+      .orderBy("createdAt", "desc")
+      .limit(CATALOG_LIMIT)
+      .get();
+    return (snap.docs || []).map((d) => {
+      const data = typeof d.data === "function" ? d.data() : {};
+      return { id: d.id, collection: collectionName, ...data };
+    });
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Content-type-specific optimizer constraints.
@@ -100,12 +122,16 @@ async function triggerOptimizerAfterPublish(db, FieldValue, doc, collectionName,
 
     console.log("[publish-hook] %s quality=%s, running optimizer (type=%s)", doc.id, quickScore.overall, contentType);
 
+    // Small same-collection catalog for internal-link proposals (best-effort)
+    const catalog = await loadCatalogForOptimization(db, collectionName).catch(() => []);
+
     const result = await processNewContent(db, FieldValue, doc, {
       actor: OPTIMIZER_ACTOR,
       collectionName,
       maxPasses: constraints.maxPasses,
       useAi: options.useAi === true && constraints.useAi !== false,
-      dryRun: options.dryRun === true
+      dryRun: options.dryRun === true,
+      catalog
     });
 
     // Record optimizer result on the document (non-blocking)
@@ -176,6 +202,7 @@ module.exports = {
   triggerOptimizerAfterPublish,
   triggerOptimizerNonBlocking,
   resolveContentType,
+  loadCatalogForOptimization,
   TYPE_CONSTRAINTS,
   OPTIMIZER_ACTOR
 };

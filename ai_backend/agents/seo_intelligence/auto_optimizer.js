@@ -18,8 +18,13 @@
  *
  * Safety:
  *   Level A: auto-apply safe deterministic changes
- *   Level B: attempt AI grounded optimization; only queue when validation
- *            cannot safely prove the generated change
+ *   Level B: deterministic improvements (structure/meta/links/FAQs built
+ *            from facts already on the record) are applied ONLY after the
+ *            full validation gauntlet: proposal gate → claim grounding →
+ *            duplicate safety → snapshot → apply → re-audit → compare →
+ *            keep/rollback. AI is an optional enhancement for Level B
+ *            articleHtml; when AI is unavailable/fails/invents facts the
+ *            deterministic proposal is used instead. AI never a hard dep.
  *   Level C: never auto-apply, never invent facts, queue/reject safely
  *
  * Fact protection: organization, vacancies, salary, qualification,
@@ -31,7 +36,8 @@
 const { scorePage, classifyQuality, needsImprovement, QUALITY_VERSION } = require("./content_quality_scorer");
 const {
   selectOldestEligible, loadTrackers, persistTracker, updateBackfillProgress,
-  buildContentFingerprint, buildTrackerRecord,
+  buildContentFingerprint, buildTrackerRecord, isAlreadyOptimized,
+  buildFailureTracker, countProcessedPages,
   TRACKER_COLLECTION, QUALITY_THRESHOLD
 } = require("./backfill_processor");
 const { generateProposals } = require("./optimizer");
@@ -57,10 +63,11 @@ const {
 
 const SETTINGS = "system_settings";
 const SETTINGS_DOC = "seo_intelligence";
-const AUTO_OPTIMIZER_VERSION = 2;
+const AUTO_OPTIMIZER_VERSION = 3;
 const MAX_PASSES = 3;
 const MIN_IMPROVEMENT = 2;
 const MAX_PAGES_PER_BATCH = 10;
+const WEAK_DIMENSION_THRESHOLD = 70;
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -78,15 +85,20 @@ function mergePatch(doc, patch) {
 }
 
 function pickOldValues(doc, fields) {
+  // Capture ONLY the pre-patch values for the fields this patch touches.
+  // (Unconditional inclusion of articleHtml/seoTitle/metaDescription in every
+  // snapshot previously caused later snapshot restores to clobber earlier
+  // ones with already-patched values during multi-patch rollback.)
   const out = {};
-  for (const f of fields) {
+  const wanted = new Set(fields);
+  if (wanted.has("articleHtml") || wanted.has("contentHtml")) {
+    if (doc && typeof doc.articleHtml === "string") wanted.add("articleHtml");
+    if (doc && typeof doc.contentHtml === "string") wanted.add("contentHtml");
+  }
+  for (const f of wanted) {
     if (doc && Object.prototype.hasOwnProperty.call(doc, f)) out[f] = doc[f];
     else out[f] = null;
   }
-  if (doc && typeof doc.articleHtml === "string") out.articleHtml = doc.articleHtml;
-  if (doc && typeof doc.contentHtml === "string") out.contentHtml = doc.contentHtml;
-  if (doc && doc.seoTitle != null) out.seoTitle = doc.seoTitle;
-  if (doc && doc.metaDescription != null) out.metaDescription = doc.metaDescription;
   return out;
 }
 
@@ -138,8 +150,13 @@ function validateDuplicateSafety(originalDoc, optimizedDoc, catalog) {
 
   for (const other of catalog) {
     if (!other || other.id === optimizedDoc.id) continue;
-    const otherTitle = String(other.seoTitle || other.title || other.h1 || "");
-    const otherHtml = String(other.articleHtml || other.contentHtml || "");
+    // A malformed catalog entry must never poison other pages' validation
+    let otherTitle = "";
+    let otherHtml = "";
+    try {
+      otherTitle = String(other.seoTitle || other.title || other.h1 || "");
+      otherHtml = String(other.articleHtml || other.contentHtml || "");
+    } catch { continue; }
 
     const sim = calculateSimilarity(
       { title: optimizedTitle, script: optimizedHtml },
@@ -158,9 +175,15 @@ function validateDuplicateSafety(originalDoc, optimizedDoc, catalog) {
   let originalMaxSim = 0;
   for (const other of catalog) {
     if (!other || other.id === originalDoc.id) continue;
+    let otherTitle = "";
+    let otherHtml = "";
+    try {
+      otherTitle = String(other.seoTitle || other.title || other.h1 || "");
+      otherHtml = String(other.articleHtml || other.contentHtml || "");
+    } catch { continue; }
     const sim = calculateSimilarity(
       { title: originalTitle, script: originalHtml },
-      { title: String(other.seoTitle || other.title || other.h1 || ""), script: String(other.articleHtml || other.contentHtml || "") }
+      { title: otherTitle, script: otherHtml }
     );
     if (sim.similarity > originalMaxSim) originalMaxSim = sim.similarity;
   }
@@ -251,9 +274,16 @@ function shouldKeepChange(beforeScore, afterScore, duplicateCheck) {
 
 // ─── Proposal Generation ─────────────────────────────────────────────
 
+/** True when a proposal came from (or requires) AI rather than deterministic rules. */
+function isAiProposal(proposal) {
+  return String(proposal && (proposal.htmlSource || proposal.source) || "") === "ai-proposal";
+}
+
 /**
- * Generate improvement proposals for a page, including AI-powered Level B.
- * Returns proposals grouped by level.
+ * Generate improvement proposals for a page.
+ * Deterministic proposals (Level A + B) are ALWAYS produced — they are built
+ * from facts already on the record. AI is an optional enhancement, marked
+ * with _tryAi, attempted only when options.useAi is true.
  */
 function generateImprovements(doc, audit, options = {}) {
   const now = options.now || new Date();
@@ -262,7 +292,7 @@ function generateImprovements(doc, audit, options = {}) {
   // Deterministic proposals from existing optimizer
   const proposals = generateProposals(audit, doc, { now, catalog });
 
-  // Enrich with AI for Level B blog/articleHtml proposals
+  // Mark BLOG articleHtml proposals for optional AI enhancement
   const enriched = [];
   for (const proposal of proposals) {
     if (proposal.field === "articleHtml" && proposal.contentType === "BLOG" && options.useAi) {
@@ -276,7 +306,9 @@ function generateImprovements(doc, audit, options = {}) {
     all: enriched,
     levelA: enriched.filter((p) => p.level === "A"),
     levelB: enriched.filter((p) => p.level === "B"),
-    levelC: enriched.filter((p) => p.level === "C")
+    levelC: enriched.filter((p) => p.level === "C"),
+    deterministicAvailable: enriched.some((p) => p.level !== "C" && !isAiProposal(p) && p.proposedValue != null),
+    aiRequired: enriched.some((p) => isAiProposal(p) || p._tryAi === true)
   };
 }
 
@@ -303,6 +335,29 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
   let currentDoc = deepClone(doc);
   let totalApplied = 0;
   let totalRolledBack = 0;
+  let netApplied = 0; // patches applied minus patches later rolled back
+  let wouldApply = 0; // dry-run: number of validated patches that WOULD be applied
+  let aiAttempted = false;
+  let aiUsed = false;
+  let safetyBlocked = false; // at least one proposal rejected by claim/duplicate/HTML safety
+  let lastSkipReason = "";
+  let bodyContentChanged = false;
+  const fieldsChanged = new Set();
+  const proposedImprovements = [];
+  let lastDuplicateCheck = null;
+  let lastClaimCheck = null;
+  const validationResults = [];
+
+  // Initial audit + score for reporting
+  const initialAudit = auditPage(doc, { now, catalog });
+  const initialScore = scorePage(doc, { now, catalog });
+  const weakDimensions = Object.entries(initialScore.dimensions || {})
+    .filter(([, score]) => score < WEAK_DIMENSION_THRESHOLD)
+    .map(([dim]) => dim);
+
+  let pageAction = "REVIEW"; // refined below; SKIP when already high quality
+  let alreadyHighQuality = false;
+  let deterministicAvailable = false;
 
   for (let pass = 0; pass < maxPasses; pass++) {
     // 1. AUDIT
@@ -313,6 +368,8 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
 
     // 3. Check if already high quality
     if (!needsImprovement(beforeScore, QUALITY_THRESHOLD)) {
+      alreadyHighQuality = true;
+      lastSkipReason = "already-high-quality";
       passes.push({
         pass: pass + 1,
         status: "already-high-quality",
@@ -320,15 +377,31 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
         afterScore: beforeScore.overall,
         qualityDelta: 0,
         changes: [],
-        skipped: true
+        skipped: true,
+        skipReason: "already-high-quality"
       });
       break;
     }
 
     // 4. FIND WEAKNESS + GENERATE IMPROVEMENT
-    const improvements = generateImprovements(currentDoc, audit, { now, catalog, useAi: options.useAi });
+    const improvements = generateImprovements(currentDoc, audit, {
+      now, catalog, useAi: options.useAi, generateJson: options.generateJson
+    });
+    deterministicAvailable = deterministicAvailable || Boolean(improvements.deterministicAvailable);
+
+    for (const proposal of improvements.all) {
+      if (proposedImprovements.length >= 10) break;
+      proposedImprovements.push({
+        field: proposal.field,
+        level: proposal.level,
+        source: proposal.htmlSource || proposal.source || "deterministic-optimizer",
+        reason: proposal.reason,
+        aiRequired: Boolean(proposal._tryAi) || isAiProposal(proposal)
+      });
+    }
 
     if (!improvements.all.length) {
+      lastSkipReason = "no-improvement-proposals";
       passes.push({
         pass: pass + 1,
         status: "no-improvement-proposals",
@@ -336,26 +409,79 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
         afterScore: beforeScore.overall,
         qualityDelta: 0,
         changes: [],
-        skipped: true
+        skipped: true,
+        skipReason: "no-improvement-proposals"
       });
       break;
     }
 
-    // 5. Select proposals to apply this pass
-    // Level A first, then Level B if AI is enabled
+    // 5. Select proposals to apply this pass.
+    //    Level A: always. Level B: deterministic improvements are applied
+    //    through the full validation gauntlet (gate → claims → duplicate →
+    //    snapshot → re-audit → keep/rollback). AI enhancement is attempted
+    //    only when useAi is true and falls back to the deterministic value.
     const candidates = [];
     for (const proposal of improvements.levelA) {
       candidates.push({ ...proposal, _autoLevel: "A" });
     }
-    if (options.useAi) {
-      for (const proposal of improvements.levelB) {
-        if (proposal.field !== "articleHtml" || proposal.contentType === "BLOG" || proposal.contentType === "JOB" || proposal.contentType === "FAST_TRACK") {
-          candidates.push({ ...proposal, _autoLevel: "B" });
+    for (const proposal of improvements.levelB) {
+      if (proposal.field === "articleHtml"
+        && !["BLOG", "JOB", "FAST_TRACK"].includes(proposal.contentType)) {
+        continue; // articleHtml applies only to body-capable types
+      }
+      let candidate = { ...proposal, _autoLevel: "B" };
+
+      // Optional AI enhancement (never a hard dependency)
+      if (proposal._tryAi && options.useAi) {
+        aiAttempted = true;
+        try {
+          const deterministic = {
+            articleHtml: extractArticleHtml(proposal.proposedValue),
+            contentPlan: proposal.proposedValue && proposal.proposedValue.contentPlan,
+            insufficientSource: Boolean(proposal.proposedValue && proposal.proposedValue.insufficientSource),
+            htmlSource: proposal.htmlSource,
+            preview: proposal.proposedValue && proposal.proposedValue.preview,
+            reason: proposal.reason
+          };
+          const enriched = await enrichBlogHtmlProposal(currentDoc, { id: "content:thin-blog", evidence: { words: 0 } }, deterministic, {
+            useAi: true,
+            generateJson: options.generateJson,
+            catalog
+          });
+          if (enriched && enriched.articleHtml) {
+            candidate = {
+              ...proposal,
+              proposedValue: {
+                articleHtml: enriched.articleHtml,
+                preview: enriched.preview || null,
+                contentPlan: enriched.contentPlan || deterministic.contentPlan,
+                insufficientSource: Boolean(enriched.insufficientSource),
+                htmlSource: enriched.htmlSource
+              },
+              reason: enriched.reason || proposal.reason,
+              source: enriched.htmlSource || proposal.source,
+              htmlSource: enriched.htmlSource,
+              _autoLevel: "B",
+              _aiEnhanced: enriched.htmlSource === "ai-proposal"
+            };
+            if (candidate._aiEnhanced) aiUsed = true;
+          }
+        } catch (aiError) {
+          // AI failure never blocks the pipeline — keep deterministic proposal
+          validationResults.push({
+            field: proposal.field,
+            stage: "ai-enrichment",
+            status: "fallback",
+            reason: `ai-failed:${String(aiError && aiError.message || aiError).slice(0, 120)}`
+          });
         }
       }
+
+      candidates.push(candidate);
     }
 
     if (!candidates.length) {
+      lastSkipReason = "no-auto-applicable-proposals";
       passes.push({
         pass: pass + 1,
         status: "no-auto-applicable-proposals",
@@ -365,7 +491,8 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
         changes: [],
         reviewProposals: improvements.levelB.map(compactProposal),
         blockedProposals: improvements.levelC.map(compactProposal),
-        skipped: true
+        skipped: true,
+        skipReason: "no-auto-applicable-proposals"
       });
       break;
     }
@@ -374,25 +501,57 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
     const validatedPatches = [];
     const passChanges = [];
 
+    // Grounding context for the gate: internal-link anchors may copy titles of
+    // already-published catalog pages verbatim — those numbers are grounded in
+    // the site's own content, not invented. The page's own record is included
+    // so date/vacancy claims from existing fields stay grounded. Dates/money/
+    // vacancy/percent claims are additionally validated via validateClaims.
+    const gateSource = {
+      text: [
+        sourceBlob(currentDoc),
+        (Array.isArray(catalog) ? catalog : [])
+          .map((c) => [c && c.title, c && c.seoTitle, c && c.h1]
+            .filter(Boolean).map(String).join(" "))
+          .filter(Boolean)
+          .join("\n")
+      ].filter(Boolean).join("\n"),
+      url: currentDoc.sourceUrl || currentDoc.sourceCitation && currentDoc.sourceCitation.url || null
+    };
+
     for (const proposal of candidates) {
       // Gate check
-      const gate = gateProposal(proposal, { ...currentDoc, contentType: proposal.contentType }, null);
-      if (!gate.ok) continue;
+      const gate = gateProposal(proposal, { ...currentDoc, contentType: proposal.contentType }, gateSource);
+      if (!gate.ok) {
+        safetyBlocked = safetyBlocked || /UNSAFE_HTML|UNGROUNDED|FACT_LOCK|LEVEL_C/.test(String(gate.code || ""));
+        validationResults.push({
+          field: proposal.field, stage: "gate", status: "rejected", reason: gate.code || gate.issues && gate.issues[0] || "gate-failed"
+        });
+        continue;
+      }
 
       // Build patch
       const patch = buildProposalPatch(proposal);
-      if (!patch) continue;
+      if (!patch) {
+        validationResults.push({ field: proposal.field, stage: "patch", status: "rejected", reason: "no-applyable-patch" });
+        continue;
+      }
 
-      // Claim validation for HTML content
+      // Claim validation for HTML content — never allow invented facts
       if (proposal.field === "articleHtml") {
         const html = extractArticleHtml(proposal.proposedValue);
         if (html) {
           const claimCheck = validateClaims(html, currentDoc);
+          lastClaimCheck = claimCheck;
           if (!claimCheck.ok) {
+            safetyBlocked = true;
             passChanges.push({
               field: proposal.field,
               level: proposal._autoLevel || proposal.level,
               status: "rejected",
+              reason: `ungrounded-claims:${claimCheck.ungrounded[0]?.kind || "unknown"}`
+            });
+            validationResults.push({
+              field: proposal.field, stage: "claims", status: "rejected",
               reason: `ungrounded-claims:${claimCheck.ungrounded[0]?.kind || "unknown"}`
             });
             continue;
@@ -403,12 +562,17 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
       // Duplicate validation
       const patchedDoc = mergePatch(currentDoc, patch);
       const dupCheck = validateDuplicateSafety(currentDoc, patchedDoc, catalog);
+      lastDuplicateCheck = dupCheck;
       if (!dupCheck.ok) {
+        safetyBlocked = true;
         passChanges.push({
           field: proposal.field,
           level: proposal._autoLevel || proposal.level,
           status: "rejected",
           reason: dupCheck.reason
+        });
+        validationResults.push({
+          field: proposal.field, stage: "duplicate-safety", status: "rejected", reason: dupCheck.reason
         });
         continue;
       }
@@ -419,12 +583,20 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
         level: proposal._autoLevel || proposal.level,
         status: "validated",
         reason: proposal.reason,
+        aiEnhanced: Boolean(proposal._aiEnhanced),
         oldValue: typeof proposal.oldValue === "string" ? proposal.oldValue.slice(0, 200) : proposal.oldValue,
-        newValue: typeof proposal.proposedValue === "string" ? proposal.proposedValue.slice(0, 200) : proposal.proposedValue
+        newValue: typeof proposal.proposedValue === "string" ? proposal.proposedValue.slice(0, 200) : (proposal.proposedValue && proposal.proposedValue.articleHtml ? "[articleHtml]" : proposal.proposedValue)
+      });
+      validationResults.push({
+        field: proposal.field, stage: "validate",
+        status: "validated",
+        reason: "gate+claims+duplicate passed",
+        aiEnhanced: Boolean(proposal._aiEnhanced)
       });
     }
 
     if (!validatedPatches.length) {
+      lastSkipReason = safetyBlocked ? "safety-blocked" : "no-valid-patches";
       passes.push({
         pass: pass + 1,
         status: "no-valid-patches",
@@ -432,7 +604,8 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
         afterScore: beforeScore.overall,
         qualityDelta: 0,
         changes: passChanges,
-        skipped: true
+        skipped: true,
+        skipReason: lastSkipReason
       });
       break;
     }
@@ -440,6 +613,7 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
     // 7. SNAPSHOT + APPLY
     let snapshotIds = [];
     let applyError = null;
+    const passStartDoc = deepClone(currentDoc);
 
     if (!dryRun && db) {
       for (const { proposal, patch } of validatedPatches) {
@@ -468,6 +642,9 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
           // Update in-memory doc for re-audit
           currentDoc = mergePatch(currentDoc, patch);
           totalApplied++;
+          netApplied++;
+          for (const field of Object.keys(patch)) fieldsChanged.add(field);
+          if (Object.keys(patch).some((f) => f === "articleHtml" || f === "contentHtml")) bodyContentChanged = true;
         } catch (error) {
           applyError = error.message;
           // Rollback all snapshots from this pass
@@ -482,6 +659,7 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
                 );
                 await markSnapshotRestored(db, snapId, now);
                 totalRolledBack++;
+                netApplied = Math.max(0, netApplied - 1);
               }
             } catch { /* best-effort rollback */ }
           }
@@ -489,13 +667,17 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
         }
       }
     } else if (dryRun) {
-      // In dry-run, simulate the merge
+      // In dry-run, simulate the merge (no writes anywhere)
       for (const { patch } of validatedPatches) {
         currentDoc = mergePatch(currentDoc, patch);
+        wouldApply += 1;
+        for (const field of Object.keys(patch)) fieldsChanged.add(field);
+        if (Object.keys(patch).some((f) => f === "articleHtml" || f === "contentHtml")) bodyContentChanged = true;
       }
     }
 
     if (applyError) {
+      lastSkipReason = `apply-failed:${applyError}`;
       passes.push({
         pass: pass + 1,
         status: "apply-failed",
@@ -516,28 +698,32 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
     // 9. COMPARE BEFORE/AFTER
     const comparison = compareQuality(beforeScore, afterScore);
     const dupCheckFinal = validateDuplicateSafety(doc, currentDoc, catalog);
+    lastDuplicateCheck = dupCheckFinal;
     const keepDecision = shouldKeepChange(beforeScore, afterScore, dupCheckFinal);
 
     // 10. KEEP or ROLLBACK
-    if (!keepDecision.keep && !dryRun && db && snapshotIds.length) {
-      // Rollback
-      for (const snapId of snapshotIds) {
-        try {
-          const snapshot = await loadSnapshot(db, snapId);
-          if (snapshot && snapshot.oldValues) {
-            const stamp = FieldValue && FieldValue.serverTimestamp ? FieldValue.serverTimestamp() : now.toISOString();
-            await db.collection(collectionName).doc(currentDoc.id).set(
-              { ...snapshot.oldValues, seoRolledBackAt: stamp, contentUpdatedAt: stamp },
-              { merge: true }
-            );
-            await markSnapshotRestored(db, snapId, now);
-            totalRolledBack++;
-          }
-        } catch { /* best-effort rollback */ }
+    if (!keepDecision.keep) {
+      if (!dryRun && db && snapshotIds.length) {
+        // Rollback: restore the pre-pass snapshot values
+        for (const snapId of snapshotIds) {
+          try {
+            const snapshot = await loadSnapshot(db, snapId);
+            if (snapshot && snapshot.oldValues) {
+              const stamp = FieldValue && FieldValue.serverTimestamp ? FieldValue.serverTimestamp() : now.toISOString();
+              await db.collection(collectionName).doc(currentDoc.id).set(
+                { ...snapshot.oldValues, seoRolledBackAt: stamp, contentUpdatedAt: stamp },
+                { merge: true }
+              );
+              await markSnapshotRestored(db, snapId, now);
+              totalRolledBack++;
+              netApplied = Math.max(0, netApplied - 1);
+            }
+          } catch { /* best-effort rollback */ }
+        }
       }
-      // Restore in-memory doc
-      currentDoc = deepClone(doc);
-
+      // Restore in-memory doc (both modes) so the final score is truthful
+      currentDoc = deepClone(passStartDoc);
+      lastSkipReason = `rolled-back:${keepDecision.reason}`;
       passes.push({
         pass: pass + 1,
         status: "rolled-back",
@@ -549,14 +735,16 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
         keepDecision,
         changes: passChanges,
         snapshotIds,
-        rolledBack: true
+        rolledBack: true,
+        skipReason: `rolled-back:${keepDecision.reason}`
       });
+      safetyBlocked = true;
       break;
     }
 
     passes.push({
       pass: pass + 1,
-      status: keepDecision.keep ? "improved" : "kept-dry-run",
+      status: "improved",
       beforeScore: beforeScore.overall,
       afterScore: afterScore.overall,
       qualityDelta: afterScore.overall - beforeScore.overall,
@@ -572,13 +760,42 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
     // If quality is now good enough, stop
     if (!needsImprovement(afterScore, QUALITY_THRESHOLD)) break;
 
-    // If no improvement this pass, stop
+    // If no improvement this pass, stop — do not endlessly rewrite
     if (afterScore.overall <= beforeScore.overall) break;
   }
 
   // Final score
   const finalScore = scorePage(currentDoc, { now, catalog });
   const originalScore = scorePage(doc, { now, catalog });
+  const finalAudit = auditPage(currentDoc, { now, catalog });
+
+  // Determine the page-level action:
+  //   IMPROVE — real (or dry-run simulated) validated improvement applied and kept
+  //   SKIP    — page already meets the quality threshold; nothing to do
+  //   REVIEW  — page is weak but no safe improvement could be generated
+  //   BLOCK   — safety systems (claims/duplicate/rollback) stopped the change
+  let status;
+  if (dryRun) {
+    status = wouldApply > 0 ? "would-improve" : "unchanged";
+  } else {
+    status = netApplied > 0 ? "optimized" : totalRolledBack > 0 ? "rolled-back" : "unchanged";
+  }
+
+  if (dryRun) {
+    pageAction = wouldApply > 0 ? "IMPROVE" : (alreadyHighQuality ? "SKIP" : (safetyBlocked ? "BLOCK" : "REVIEW"));
+  } else if (status === "optimized") {
+    pageAction = "IMPROVE";
+  } else if (status === "rolled-back") {
+    pageAction = "BLOCK";
+  } else {
+    pageAction = alreadyHighQuality ? "SKIP" : (safetyBlocked ? "BLOCK" : "REVIEW");
+  }
+
+  if (!lastSkipReason) {
+    lastSkipReason = alreadyHighQuality ? "already-high-quality"
+      : (status === "optimized" || status === "would-improve") ? ""
+        : "weak-but-no-safe-improvement";
+  }
 
   // Persist tracker
   if (!dryRun && db) {
@@ -591,7 +808,7 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
       allChanges,
       {
         safetyLevel: classifyQuality(finalScore.overall),
-        status: totalApplied > 0 ? "optimized" : "unchanged",
+        status: netApplied > 0 ? "optimized" : "unchanged",
         reason: passes.map((p) => p.status).join(" → ")
       }
     );
@@ -601,14 +818,17 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
     trackerRecord.totalRolledBack = totalRolledBack;
     trackerRecord.beforeFingerprint = buildContentFingerprint(doc).hash;
     trackerRecord.afterFingerprint = fp.hash;
+    trackerRecord.action = pageAction;
+    trackerRecord.skipReason = lastSkipReason;
     await persistTracker(db, FieldValue, doc.id, trackerRecord);
   }
 
-  return {
+  const result = {
     ok: true,
     dryRun,
     contentId: doc.id,
     collectionName,
+    contentType: initialScore.pageType,
     originalScore: originalScore.overall,
     finalScore: finalScore.overall,
     qualityDelta: finalScore.overall - originalScore.overall,
@@ -616,8 +836,39 @@ async function optimizePage(db, FieldValue, doc, options = {}) {
     totalPasses: passes.length,
     totalApplied,
     totalRolledBack,
-    status: totalApplied > 0 ? "optimized" : totalRolledBack > 0 ? "rolled-back" : "unchanged"
+    netApplied,
+    wouldApply,
+    status,
+    action: pageAction,
+    skipReason: status === "optimized" || status === "would-improve" ? "" : lastSkipReason,
+    // Page-level diagnostics (safe to surface in reports/dashboard)
+    detail: {
+      contentId: doc.id,
+      collectionName,
+      contentType: initialScore.pageType,
+      beforeScore: originalScore.overall,
+      beforeDimensions: initialScore.dimensions,
+      weakDimensions,
+      detectedWeaknesses: (initialAudit.findings || []).map((f) => f.id),
+      proposedImprovements,
+      fieldsChanged: [...fieldsChanged],
+      bodyContentChanged,
+      deterministicAvailable,
+      aiRequired: aiUsed,
+      aiAttempted,
+      projectedAfterScore: dryRun ? finalScore.overall : undefined,
+      validationResults,
+      duplicateSafety: lastDuplicateCheck
+        ? { ok: lastDuplicateCheck.ok, risk: lastDuplicateCheck.risk, maxSimilarity: lastDuplicateCheck.maxSimilarity }
+        : { ok: true, risk: "low", note: "not-evaluated" },
+      factualSafety: lastClaimCheck
+        ? { ok: lastClaimCheck.ok, totalClaims: lastClaimCheck.totalClaims, ungroundedCount: (lastClaimCheck.ungrounded || []).length }
+        : { ok: true, note: "no-html-claims-to-check" },
+      fixedWeaknesses: (initialAudit.findings || []).map((f) => f.id)
+        .filter((id) => !(finalAudit.findings || []).some((f) => f.id === id))
+    }
   };
+  return result;
 }
 
 // ─── Patch Builder ───────────────────────────────────────────────────
@@ -661,32 +912,59 @@ function buildProposalPatch(proposal) {
  * Run optimization on a batch of oldest-eligible pages.
  * Each page goes through the full optimize loop.
  * Failures don't stop the batch.
+ *
+ * options.excludeIds — Set/Array of contentIds already processed in this run
+ * (dry-run does not persist trackers, so in-run de-duplication is applied here).
  */
 async function runOptimizationBatch(db, FieldValue, options = {}) {
   const now = options.now || new Date();
   const batchSize = Math.min(MAX_PAGES_PER_BATCH, Number(options.batchSize) || MAX_PAGES_PER_BATCH);
   const dryRun = options.dryRun === true;
   const actor = options.actor || "auto-optimizer";
+  const excludeIds = new Set(
+    Array.isArray(options.excludeIds) ? options.excludeIds.map(String)
+      : (options.excludeIds instanceof Set ? [...options.excludeIds].map(String) : [])
+  );
 
-  // 1. Select oldest eligible pages
-  const pages = await selectOldestEligible(db, { batchSize, ...options });
+  // 1. Select oldest eligible candidate pages (fetch extra so tracker
+  //    filtering and in-run de-duplication cannot starve a batch).
+  const candidatePages = await selectOldestEligible(db, {
+    ...options,
+    excludeIds,
+    batchSize: Math.max(batchSize, Math.min(20, batchSize * 2))
+  });
 
-  if (!pages.length) {
+  if (!candidatePages.length) {
     return {
       ok: true, dryRun, processed: 0, improved: 0, skipped: 0,
-      rolledBack: 0, failed: 0, results: [],
+      needsReview: 0, blocked: 0, rolledBack: 0, failed: 0, results: [],
       message: "No eligible pages found."
     };
   }
 
-  // 2. Load trackers for idempotency
-  const contentIds = pages.map((p) => p.id);
+  // 2. Load trackers for idempotency and filter already-optimized pages
+  //    BEFORE processing them (so re-runs skip finished work).
+  const contentIds = candidatePages.map((p) => p.id);
   const trackers = await loadTrackers(db, contentIds);
+  const pages = candidatePages
+    .filter((p) => !excludeIds.has(String(p.id)))
+    .filter((p) => !isAlreadyOptimized(trackers[p.id], p))
+    .slice(0, batchSize);
 
-  // 3. Process each page
+  if (!pages.length) {
+    return {
+      ok: true, dryRun, processed: 0, improved: 0, skipped: 0,
+      needsReview: 0, blocked: 0, rolledBack: 0, failed: 0, results: [],
+      message: "No eligible pages found after idempotency filtering."
+    };
+  }
+
+  // 3. Process each page — one failure never stops the batch
   const results = [];
   let improved = 0;
   let skipped = 0;
+  let needsReview = 0;
+  let blocked = 0;
   let rolledBack = 0;
   let failed = 0;
 
@@ -694,13 +972,16 @@ async function runOptimizationBatch(db, FieldValue, options = {}) {
     try {
       const result = await optimizePage(db, FieldValue, page, {
         now, dryRun, actor, catalog: pages,
-        collectionName: page.collection
+        collectionName: page.collection,
+        useAi: options.useAi,
+        generateJson: options.generateJson
       });
 
-      if (result.status === "optimized") improved++;
-      else if (result.status === "rolled-back") rolledBack++;
-      else if (result.status === "unchanged") skipped++;
-      else skipped++;
+      if (result.status === "optimized" || result.status === "would-improve") improved++;
+      else if (result.status === "rolled-back") { rolledBack++; blocked++; }
+      else if (result.action === "SKIP") skipped++;
+      else if (result.action === "BLOCK") { blocked++; skipped++; }
+      else { needsReview++; skipped++; }
 
       results.push(result);
     } catch (error) {
@@ -708,32 +989,50 @@ async function runOptimizationBatch(db, FieldValue, options = {}) {
       results.push({
         ok: false,
         contentId: page.id,
+        collectionName: page.collection,
         status: "failed",
+        action: "REVIEW",
         error: error.message,
         originalScore: 0,
         finalScore: 0,
         qualityDelta: 0,
         passes: []
       });
+      // Persist a failure tracker (live mode) so a permanently broken page
+      // cannot starve the backfill, while single failures stay retryable.
+      if (!dryRun && db) {
+        try {
+          const prior = trackers[page.id] || {};
+          await persistTracker(db, FieldValue, page.id, buildFailureTracker(page, prior, error, { now }));
+        } catch { /* tracker write is best-effort */ }
+      }
     }
   }
 
   // 4. Update progress
   if (!dryRun && db) {
+    let processedCount = null;
+    try {
+      const counts = await countProcessedPages(db);
+      processedCount = counts.processed || 0;
+    } catch { /* best-effort */ }
     await updateBackfillProgress(db, FieldValue, {
       lastBatchSize: pages.length,
       lastBatchImproved: improved,
       lastBatchSkipped: skipped,
+      lastBatchNeedsReview: needsReview,
+      lastBatchBlocked: blocked,
       lastBatchRolledBack: rolledBack,
       lastBatchFailed: failed,
-      lastBatchAt: now.toISOString()
+      lastBatchAt: now.toISOString(),
+      ...(processedCount != null ? { processedTotal: processedCount } : {})
     });
   }
 
   return {
     ok: true, dryRun,
     processed: results.length,
-    improved, skipped, rolledBack, failed,
+    improved, skipped, needsReview, blocked, rolledBack, failed,
     results
   };
 }
@@ -755,6 +1054,8 @@ async function processNewContent(db, FieldValue, doc, options = {}) {
 
 /**
  * Run the full backfill pipeline across multiple batches.
+ * Oldest-first. In dry-run, pages already processed earlier in the same run
+ * are excluded so a run never double-counts or re-simulates the same page.
  */
 async function runBackfill(db, FieldValue, options = {}) {
   const maxBatches = Math.min(10, Number(options.maxBatches) || 3);
@@ -762,20 +1063,32 @@ async function runBackfill(db, FieldValue, options = {}) {
   const dryRun = options.dryRun === true;
 
   const allResults = [];
+  const processedIds = new Set();
   let totalImproved = 0;
   let totalSkipped = 0;
+  let totalNeedsReview = 0;
+  let totalBlocked = 0;
   let totalRolledBack = 0;
   let totalFailed = 0;
+  let batchesRun = 0;
 
   for (let i = 0; i < maxBatches; i++) {
     const batch = await runOptimizationBatch(db, FieldValue, {
       batchSize, dryRun, now: options.now,
-      collections: options.collections, useAi: options.useAi
+      collections: options.collections, useAi: options.useAi,
+      generateJson: options.generateJson,
+      excludeIds: processedIds
     });
 
+    batchesRun += 1;
+    for (const result of batch.results) {
+      if (result && result.contentId) processedIds.add(String(result.contentId));
+    }
     allResults.push(...batch.results);
     totalImproved += batch.improved;
     totalSkipped += batch.skipped;
+    totalNeedsReview += batch.needsReview || 0;
+    totalBlocked += batch.blocked || 0;
     totalRolledBack += batch.rolledBack;
     totalFailed += batch.failed;
 
@@ -784,9 +1097,10 @@ async function runBackfill(db, FieldValue, options = {}) {
 
   return {
     ok: true, dryRun,
-    batches: maxBatches,
+    batches: batchesRun,
     totalProcessed: allResults.length,
-    totalImproved, totalSkipped, totalRolledBack, totalFailed,
+    totalImproved, totalSkipped, totalNeedsReview, totalBlocked,
+    totalRolledBack, totalFailed,
     results: allResults
   };
 }
@@ -813,11 +1127,13 @@ module.exports = {
   AUTO_OPTIMIZER_VERSION,
   MAX_PASSES,
   MIN_IMPROVEMENT,
+  WEAK_DIMENSION_THRESHOLD,
   validateClaims,
   validateDuplicateSafety,
   compareQuality,
   shouldKeepChange,
   generateImprovements,
+  isAiProposal,
   buildProposalPatch,
   optimizePage,
   runOptimizationBatch,

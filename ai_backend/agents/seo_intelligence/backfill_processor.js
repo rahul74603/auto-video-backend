@@ -35,6 +35,9 @@ const DEFAULT_BATCH_SIZE = 10;
 const MAX_BATCH_SIZE = 20;
 const QUALITY_THRESHOLD = 75; // Below this = needs improvement
 const MIN_IMPROVEMENT = 3; // Minimum score improvement to apply
+const MAX_FAILURE_ATTEMPTS = 3; // After this a failing page stops being retried
+const CONTENT_COLLECTIONS = ["jobs", "blogs", "fast_track", "mock_tests"];
+const NON_PUBLISHED_STATUSES = ["draft", "pending", "rejected", "private", "archived", "deleted", "trash"];
 
 /**
  * Build a content fingerprint for idempotency tracking.
@@ -53,13 +56,43 @@ function buildContentFingerprint(doc) {
 
 /**
  * Check if a page has already been optimized with the current fingerprint.
+ * Failed pages stay retryable until MAX_FAILURE_ATTEMPTS is reached, so one
+ * broken page cannot starve the backfill but is not retried forever either.
  */
 function isAlreadyOptimized(tracker, doc) {
   if (!tracker) return false;
+  if (tracker.status === "failed") {
+    return Number(tracker.failureAttempts || 1) >= MAX_FAILURE_ATTEMPTS;
+  }
   const currentFp = buildContentFingerprint(doc);
   if (tracker.lastAppliedFingerprint === currentFp.hash) return true;
-  if (tracker.optimizationVersion >= QUALITY_VERSION && tracker.lastQualityScore >= QUALITY_THRESHOLD) return true;
+  // Trackers record the post-optimization score as newQualityScore
+  // (lastQualityScore kept for backwards compatibility).
+  const quality = Number(tracker.lastQualityScore ?? tracker.newQualityScore ?? 0);
+  if (tracker.optimizationVersion >= QUALITY_VERSION && quality >= QUALITY_THRESHOLD) return true;
   return false;
+}
+
+/**
+ * Build (or extend) a failure tracker record so a failing page is retried a
+ * bounded number of times instead of being re-selected by every batch.
+ */
+function buildFailureTracker(doc, priorTracker = {}, error = null, options = {}) {
+  const now = options.now || new Date();
+  const fp = buildContentFingerprint(doc);
+  const attempts = Number(priorTracker && priorTracker.failureAttempts || 0) + 1;
+  return {
+    contentId: doc.id || "",
+    pageType: doc.pageType || "",
+    contentFingerprint: fp.hash,
+    status: "failed",
+    failureAttempts: attempts,
+    lastError: String(error && error.message || error || "unknown").slice(0, 300),
+    lastFailedAt: now.toISOString(),
+    reason: "processing-error",
+    lastAuditedAt: now.toISOString(),
+    updatedAt: now.toISOString()
+  };
 }
 
 /**
@@ -93,12 +126,16 @@ function buildTrackerRecord(doc, beforeScore, afterScore, changes, options = {})
 /**
  * Select the oldest eligible pages from Firestore.
  * Orders by createdAt ascending (oldest first).
- * Filters: published, not noIndex, not already optimized.
+ * Filters: published, not noIndex, not already optimized, not excluded this run.
  */
 async function selectOldestEligible(db, options = {}) {
   const batchSize = Math.min(MAX_BATCH_SIZE, Number(options.batchSize) || DEFAULT_BATCH_SIZE);
-  const collections = options.collections || ["jobs", "blogs", "fast_track", "mock_tests"];
+  const collections = options.collections || CONTENT_COLLECTIONS;
   const trackers = options.trackers || {};
+  const excludeIds = new Set(
+    Array.isArray(options.excludeIds) ? options.excludeIds.map(String)
+      : (options.excludeIds instanceof Set ? [...options.excludeIds].map(String) : [])
+  );
 
   const eligible = [];
 
@@ -113,8 +150,9 @@ async function selectOldestEligible(db, options = {}) {
         if (eligible.length >= batchSize) break;
         const data = typeof doc.data === "function" ? doc.data() : doc;
         const status = String(data.status || "published").toLowerCase();
-        if (["draft", "pending", "rejected", "private", "archived", "deleted", "trash"].includes(status)) continue;
+        if (NON_PUBLISHED_STATUSES.includes(status)) continue;
         if (data.noIndex === true) continue;
+        if (excludeIds.has(String(doc.id))) continue;
 
         const tracker = trackers[doc.id];
         if (isAlreadyOptimized(tracker, { id: doc.id, ...data })) continue;
@@ -412,16 +450,66 @@ async function getBackfillProgress(db) {
 }
 
 /**
- * Count total tracker records to estimate backfill progress.
+ * Count tracker records (processed pages) and estimate the total eligible
+ * catalog so the dashboard can show remaining work.
+ *
+ * eligible ≈ Σ(total docs per collection − docs with a non-published status)
+ * Documents missing `status` are treated as published (matches selection).
+ */
+async function countEligiblePages(db, collections = CONTENT_COLLECTIONS) {
+  const totals = {};
+  let total = 0;
+  let nonPublished = 0;
+  for (const name of collections) {
+    try {
+      const all = await db.collection(name).count().get();
+      const count = Number(all && all.data && all.data().count) || 0;
+      let bad = 0;
+      try {
+        const filtered = await db.collection(name)
+          .where("status", "in", NON_PUBLISHED_STATUSES.slice(0, 10))
+          .count().get();
+        bad = Number(filtered && filtered.data && filtered.data().count) || 0;
+      } catch { bad = 0; }
+      totals[name] = { total: count, nonPublished: bad, eligible: Math.max(0, count - bad) };
+      total += count;
+      nonPublished += bad;
+    } catch {
+      totals[name] = { total: 0, nonPublished: 0, eligible: 0 };
+    }
+  }
+  return {
+    total,
+    nonPublished,
+    eligible: Math.max(0, total - nonPublished),
+    byCollection: totals,
+    note: "Estimated eligible catalog (status-based); noIndex docs may still be counted."
+  };
+}
+
+/**
+ * Count total tracker records (processed pages) plus estimated catalog size.
  */
 async function countProcessedPages(db) {
-  if (!db) return { total: 0, processed: 0 };
+  if (!db) return { total: 0, processed: 0, remaining: 0 };
+  let processed = 0;
+  let eligible = 0;
+  let total = 0;
   try {
     const snap = await db.collection(TRACKER_COLLECTION).count().get();
-    return { total: 0, processed: snap.data().count || 0 };
-  } catch {
-    return { total: 0, processed: 0 };
-  }
+    processed = Number(snap.data().count) || 0;
+  } catch { processed = 0; }
+  try {
+    const catalog = await countEligiblePages(db);
+    eligible = catalog.eligible || 0;
+    total = catalog.total || 0;
+  } catch { /* counts stay 0 */ }
+  return {
+    total: eligible,
+    catalogTotal: total,
+    processed,
+    remaining: Math.max(0, eligible - processed)
+  };
 }
 
 module.exports = {
@@ -430,8 +518,11 @@ module.exports = {
   MAX_BATCH_SIZE,
   QUALITY_THRESHOLD,
   MIN_IMPROVEMENT,
+  MAX_FAILURE_ATTEMPTS,
+  CONTENT_COLLECTIONS,
   buildContentFingerprint,
   isAlreadyOptimized,
+  buildFailureTracker,
   buildTrackerRecord,
   selectOldestEligible,
   loadTrackers,
@@ -440,5 +531,6 @@ module.exports = {
   processPage,
   runBackfillBatch,
   getBackfillProgress,
+  countEligiblePages,
   countProcessedPages
 };

@@ -1032,6 +1032,7 @@ export type AutoOptimizerPageResult = {
   dryRun?: boolean;
   contentId?: string;
   collectionName?: string;
+  contentType?: string;
   originalScore?: number;
   finalScore?: number;
   qualityDelta?: number;
@@ -1039,8 +1040,36 @@ export type AutoOptimizerPageResult = {
   totalPasses?: number;
   totalApplied?: number;
   totalRolledBack?: number;
+  netApplied?: number;
+  wouldApply?: number;
   status?: string;
+  action?: 'IMPROVE' | 'SKIP' | 'REVIEW' | 'BLOCK' | string;
+  skipReason?: string;
   error?: string;
+  detail?: {
+    contentType?: string;
+    beforeScore?: number;
+    beforeDimensions?: Record<string, number>;
+    weakDimensions?: string[];
+    detectedWeaknesses?: string[];
+    proposedImprovements?: Array<{
+      field?: string;
+      level?: string;
+      source?: string;
+      reason?: string;
+      aiRequired?: boolean;
+    }>;
+    fieldsChanged?: string[];
+    bodyContentChanged?: boolean;
+    deterministicAvailable?: boolean;
+    aiRequired?: boolean;
+    aiAttempted?: boolean;
+    projectedAfterScore?: number;
+    validationResults?: Array<{ field?: string; stage?: string; status?: string; reason?: string }>;
+    duplicateSafety?: { ok?: boolean; risk?: string; maxSimilarity?: number };
+    factualSafety?: { ok?: boolean; totalClaims?: number; ungroundedCount?: number };
+    fixedWeaknesses?: string[];
+  };
 };
 
 export type AutoOptimizerBatchReport = {
@@ -1062,6 +1091,8 @@ export type AutoOptimizerBackfillReport = {
   totalProcessed?: number;
   totalImproved?: number;
   totalSkipped?: number;
+  totalNeedsReview?: number;
+  totalBlocked?: number;
   totalRolledBack?: number;
   totalFailed?: number;
   results?: AutoOptimizerPageResult[];
@@ -1072,9 +1103,12 @@ export type AutoOptimizerStatus = {
     lastBatchSize?: number;
     lastBatchImproved?: number;
     lastBatchSkipped?: number;
+    lastBatchNeedsReview?: number;
+    lastBatchBlocked?: number;
     lastBatchRolledBack?: number;
     lastBatchFailed?: number;
     lastBatchAt?: string;
+    processedTotal?: number;
     updatedAt?: unknown;
   } | null;
   lastRun?: Record<string, unknown> | null;
@@ -1092,13 +1126,18 @@ export type AutoOptimizerStatus = {
     totalProcessed?: number;
     totalImproved?: number;
     totalSkipped?: number;
+    totalNeedsReview?: number;
+    totalBlocked?: number;
     totalRolledBack?: number;
     totalFailed?: number;
+    avgScoreImprovement?: number;
+    actions?: Record<string, number>;
+    needsReviewPages?: Array<{ page?: string; action?: string; skipReason?: string }>;
     lastReport?: AutoOptimizerBackfillReport;
     lastError?: { message?: string; name?: string; code?: string };
     github?: { actor?: string; runId?: string; sha?: string };
-    preRun?: { counts?: { total?: number; processed?: number } };
-    postRun?: { counts?: { total?: number; processed?: number } };
+    preRun?: { counts?: { total?: number; processed?: number; remaining?: number; catalogTotal?: number } };
+    postRun?: { counts?: { total?: number; processed?: number; remaining?: number; catalogTotal?: number } };
   };
 };
 

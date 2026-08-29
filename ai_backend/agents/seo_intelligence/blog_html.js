@@ -207,6 +207,70 @@ function buildBlogArticleProposal(page, finding = {}, options = {}) {
   };
 }
 
+/**
+ * Deterministic articleHtml proposal for THIN job pages (body too short for
+ * the standard sections/apply-help findings, or no structure at all).
+ *
+ * Builds a complete structured body from facts ALREADY on the record:
+ *   H1 → intro sentence built from title → existing body text →
+ *   key-facts table (org/dates/official link only) → आवेदन कैसे करें →
+ *   official source → related internal links.
+ * Never invents vacancies, salary, eligibility, fees, dates, or URLs.
+ */
+function buildJobArticleProposal(page, options = {}) {
+  const title = titleOf(page) || "Job";
+  const body = existingBody(page);
+  const href = officialHref(page);
+
+  if (!body && !href && !page.organization && !page.lastDate) {
+    return {
+      insufficientSource: true,
+      articleHtml: null,
+      htmlSource: "job-no-body",
+      reason: "Not enough on-record material to build job HTML without inventing facts."
+    };
+  }
+
+  const parts = [];
+  parts.push(`<h1>${escapeHtml(title)}</h1>`);
+
+  const intro = page.organization
+    ? `<p>${escapeHtml(page.organization)} recruitment details are listed on this page. Every value below is copied from the existing record — always confirm on the official notice linked here.</p>`
+    : `<p>Recruitment details are listed on this page. Every value below is copied from the existing record — always confirm on the official notice linked here.</p>`;
+  parts.push(intro);
+
+  if (body) parts.push(`<h2>What this page already says</h2>${wrapParagraphs(body)}`);
+  parts.push(factTableHtml(page));
+
+  if (href) {
+    parts.push(`<h2>आवेदन कैसे करें</h2><p>Use the official apply link already on this record: <a href="${escapeHtml(href)}">${escapeHtml(href)}</a>. Do not apply through third-party forms.</p>`);
+  }
+
+  parts.push(sourceHtml(page));
+
+  const links = relatedAnchors(page, options.catalog);
+  if (links.length) parts.push(relatedHtml(links));
+
+  const raw = parts.filter(Boolean).join("");
+  const safe = sanitizeProposalHtml(raw);
+  if (!safe.ok || !safe.html) {
+    return {
+      insufficientSource: true,
+      articleHtml: null,
+      htmlSource: "unsafe",
+      reason: "Generated job HTML failed safety checks."
+    };
+  }
+  return {
+    insufficientSource: false,
+    articleHtml: safe.html,
+    preview: previewFromHtml(safe.html),
+    reason: "Restructure the thin job body into sections/table/apply-help using existing record facts only. Fact fields stay locked.",
+    confidence: "heuristic",
+    htmlSource: "deterministic-html"
+  };
+}
+
 function buildJobArticleEnhancement(page, options = {}) {
   const current = existingHtml(page);
   if (!current || current.length < 40) {
@@ -264,6 +328,7 @@ function buildFastTrackHtml(page) {
 module.exports = {
   classifyShortBlog,
   buildBlogArticleProposal,
+  buildJobArticleProposal,
   buildJobArticleEnhancement,
   buildFastTrackHtml,
   previewFromHtml,

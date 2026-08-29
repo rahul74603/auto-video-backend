@@ -169,6 +169,22 @@ Generate exactly 25 high-quality, completely bilingual questions.
 
             console.log("✅ Mock Saved with Unique Slug:", slug);
 
+            // ⭐ Auto-optimizer: fire-and-forget quality pass after publish.
+            // MOCK_TEST is metadata-only by design; optimizer failure NEVER
+            // blocks the publish.
+            try {
+                const { triggerOptimizerNonBlocking } = require("./agents/seo_intelligence/publish_hook");
+                triggerOptimizerNonBlocking(db, admin.firestore.FieldValue, {
+                    id: slug, slug, title: finalTitle, type: "MOCK_TEST",
+                    metaDescription: json.metaDescription || "",
+                    questions: json.questions, totalQuestions: json.questions.length,
+                    internalLinks: relatedLinks,
+                    createdAt: new Date().toISOString()
+                }, "mock_tests");
+            } catch (optErr) {
+                console.warn("⚠️ Optimizer hook skipped (non-blocking):", optErr.message);
+            }
+
             // 🌐 Google Indexing
             await notifyGoogle(testUrl);
 

@@ -38,6 +38,7 @@ const {
 } = require("./proposal_model");
 const {
   buildBlogArticleProposal,
+  buildJobArticleProposal,
   buildJobArticleEnhancement,
   buildFastTrackHtml
 } = require("./blog_html");
@@ -322,6 +323,28 @@ function proposalFromFinding(finding, audit, page, options) {
       reason: finding.suggestedAction || "Add scannable headings using existing facts.",
       level: "B"
     });
+  }
+
+  if (finding.id === "content:thin-job") {
+    // Deterministic restructure of a thin job body from existing record facts.
+    const proposal = buildJobArticleProposal(page, options);
+    if (proposal && proposal.articleHtml) {
+      return buildProposal({
+        ...base,
+        field: "articleHtml",
+        oldValue: page.articleHtml || page.contentHtml || null,
+        proposedValue: {
+          articleHtml: proposal.articleHtml,
+          preview: proposal.preview || null,
+          htmlSource: proposal.htmlSource,
+          insufficientSource: false
+        },
+        reason: proposal.reason,
+        level: "B",
+        source: "deterministic-html"
+      });
+    }
+    return null;
   }
 
   if (finding.id === "content:job-missing-apply-help") {
