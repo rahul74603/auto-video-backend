@@ -118,16 +118,38 @@ function selectStyle(content, opportunity, opts = {}) {
     };
 
     let styleName = categoryToStyle[category] || 'news';
-    
+    let hardOverride = false; // hard safety rules are never bypassed by learning
+
     // Override for urgency
-    if (opportunity?.urgency === 'CRITICAL') styleName = 'breaking';
-    if (content.type === 'MOCK_TEST') styleName = 'mock-test';
+    if (opportunity?.urgency === 'CRITICAL') { styleName = 'breaking'; hardOverride = true; }
+    if (content.type === 'MOCK_TEST') { styleName = 'mock-test'; hardOverride = true; }
 
     const profile = STYLE_PROFILES[styleName] || STYLE_PROFILES.news;
 
-    // Historical performance override (if available)
+    // Historical performance override (legacy single-value path)
     if (opts.bestStyle) {
         return { ...profile, styleName: opts.bestStyle, overridden: true };
+    }
+
+    // 🧠 LEARNED POLICY: learned visual-style winner (Phase 8). Applied only
+    // when no hard safety override forced a style, and only when the winner
+    // is a real style profile. Insufficient data → safe category default.
+    const decision = opts.policyDecision;
+    if (decision && decision.mode && decision.mode !== 'none' && decision.value && !hardOverride) {
+        const learned = String(decision.value);
+        if (STYLE_PROFILES[learned]) {
+            return {
+                ...STYLE_PROFILES[learned],
+                styleName: learned,
+                overridden: true,
+                learningUsed: true,
+                learningMode: decision.mode,
+                exploration: decision.mode === 'explore',
+                reason: decision.mode === 'exploit'
+                    ? `learned best style (policy ${decision.policyVersion}, confidence ${decision.confidence}, n=${decision.sampleSize})`
+                    : `controlled exploration of style (policy ${decision.policyVersion})`
+            };
+        }
     }
 
     return { ...profile, styleName, overridden: false };

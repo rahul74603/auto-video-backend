@@ -742,6 +742,15 @@ async function generateAndUploadVideo(jobData, options = {}) {
         const growthEnabled = growthRec && growthRec.recommended;
         if (growthEnabled) {
             console.log(`🧠 Growth Engine: contentScore=${growthRec.contentScore}, hook=${growthRec.hook?.hookType || 'none'}, duration=${growthRec.duration}s`);
+            const learn = growthRec.learning;
+            if (learn) {
+                console.log(`🧠 Learning: used=${learn.used} policy=${learn.policyVersion || 'none'} dims=[${(learn.dimensionsApplied || []).join(',') || 'none'}] exploration=${!!learn.exploration}`);
+                for (const [dim, d] of Object.entries(learn.decisions || {})) {
+                    if (d && d.mode && d.mode !== 'none') {
+                        console.log(`   • ${dim}: ${d.mode} → ${String(d.value).slice(0, 40)} (winner=${d.winner}, conf=${d.confidence}, n=${d.sampleSize}${d.applied === false ? ', NOT APPLIED: ' + (d.appliedReason || 'unsupported') : ''})`);
+                    }
+                }
+            }
         }
 
         let bgMusicPath = '';
@@ -888,10 +897,34 @@ async function runFFmpeg(ffmpegPath, args, mode = 'full') {
             console.log(`🎙️ Script: ${script.substring(0, 80)}...`);
         }
 
+        // 🧠 LEARNED DURATION (Growth Self-Learning, Phase 5): the target
+        // duration from the recommendation (blended with the learned policy
+        // target when learning is active) is applied to the REAL render by
+        // (1) trimming the script to a safe word budget (content is only
+        // ever removed, never invented) and (2) adjusting the TTS speaking
+        // rate within a natural band. The rendered video's length equals
+        // the voice track, so this genuinely changes the output duration.
+        let speakingRate = 1.08;
+        const durationTarget = (growthEnabled
+            && Number.isFinite(Number(growthRec.duration))
+            && Number(growthRec.duration) >= 10
+            && Number(growthRec.duration) <= 60) ? Math.round(Number(growthRec.duration)) : null;
+        if (durationTarget) {
+            const durationFitter = require('./agents/growth/duration_fitter');
+            const fit = durationFitter.fitScriptToDuration(script, durationTarget);
+            if (fit.script && fit.script.trim()) script = fit.script;
+            speakingRate = fit.speakingRate;
+            const learningNote = growthRec.learning && growthRec.learning.decisions
+                && growthRec.learning.decisions.duration
+                ? ` (mode=${growthRec.learning.decisions.duration.mode}${growthRec.learning.decisions.duration.changedSelection ? ', changed from default ' + growthRec.learning.decisions.duration.defaultWouldBe + 's' : ''})`
+                : '';
+            console.log(`🎯 Duration target ${durationTarget}s${learningNote}: est ${fit.estimatedSeconds}s, rate ${speakingRate}, trimmed=${fit.trimmed} (${fit.strategy})`);
+        }
+
         await ttsEngine.synthesize(script, audioPath, {
             googleVoice:  selectedVoice,
             gender:       isFemale ? 'female' : (isMale ? 'male' : 'neutral'),
-            speakingRate: 1.08,
+            speakingRate: speakingRate,
             pitch:        1.0
         });
 

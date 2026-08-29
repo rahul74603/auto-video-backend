@@ -10,6 +10,8 @@
 const visualEngine = require('./visual_engine');
 const flags = require('./feature_flags');
 
+const APPROVED_ANCHORS = visualEngine.APPROVED_ANCHORS;
+
 const PRESENTERS = {
     'male_anchor_1.mp4': { id: 'male_1', gender: 'male', style: 'formal' },
     'male_anchor_3.mp4': { id: 'male_3', gender: 'male', style: 'energetic' },
@@ -43,6 +45,24 @@ function selectPresenter(content, opportunity, opts = {}) {
     if (opts.performanceData) {
         const best = findBestPresenter(opts.performanceData, category, style);
         if (best) return { anchor: best, reason: 'best performer from analytics' };
+    }
+
+    // 🧠 LEARNED POLICY: the persisted growth policy decided this presenter
+    // (exploit = learned winner, explore = deliberate alternative).
+    const decision = opts.policyDecision;
+    if (decision && decision.mode && decision.mode !== 'none' && decision.value) {
+        const anchor = String(decision.value);
+        if (PRESENTERS[anchor] || APPROVED_ANCHORS.includes(anchor)) {
+            return {
+                anchor,
+                reason: decision.mode === 'exploit'
+                    ? `learned best performer (policy ${decision.policyVersion}, confidence ${decision.confidence}, n=${decision.sampleSize})`
+                    : `controlled exploration of presenter (policy ${decision.policyVersion})`,
+                learningUsed: true,
+                learningMode: decision.mode,
+                exploration: decision.mode === 'explore'
+            };
+        }
     }
 
     // Style-guided selection with deterministic rotation

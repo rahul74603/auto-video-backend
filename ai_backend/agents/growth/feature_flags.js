@@ -26,6 +26,9 @@ const DEFAULTS = {
     CONTENT_MUTATION_ENABLED: false,
     REACH_PREDICTION_ENABLED: true,
     LEARNER_ENABLED: true,
+    // Growth Self-Learning: video generation consumes the persisted learned
+    // policy (growth_policies/latest) and applies it to real configuration.
+    APPLY_LEARNED_POLICY: true,
     RECOMMENDATION_ENGINE_ENABLED: true,
     DUPLICATE_DETECTION_ENABLED: true,
     CONTENT_CLUSTERING_ENABLED: true,

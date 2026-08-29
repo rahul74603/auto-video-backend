@@ -53,6 +53,14 @@ function estimateDuration(content, opportunity, opts = {}) {
         duration = Math.round(duration * 0.6 + opts.historicalDuration * 0.4);
     }
 
+    // Factor 4b — 🧠 LEARNED POLICY (Growth Self-Learning Phase 5): the
+    // learned DURATION winner's real average seconds. Learning-dominant
+    // blend (60% learned / 40% content-driven) so the persisted policy has
+    // measurable influence on the target duration that generation uses.
+    if (opts.learnedTargetSeconds && Number.isFinite(opts.learnedTargetSeconds) && opts.learnedTargetSeconds > 0) {
+        duration = Math.round(duration * 0.4 + opts.learnedTargetSeconds * 0.6);
+    }
+
     // Factor 5: Platform constraints
     duration = Math.min(duration, platformDefaults.maxDuration);
 

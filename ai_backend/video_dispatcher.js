@@ -277,6 +277,44 @@ function buildFastTrackPayload(id, data) {
 /* Processing                                                          */
 /* ------------------------------------------------------------------ */
 
+/**
+ * 🧠 Growth Self-Learning: build the generation-attribution payload that
+ * the analytics collector stores alongside performance metrics. Every
+ * value comes from the actual recommendation used to generate the video —
+ * missing values are passed as null (NEVER defaulted/bucketed) so the
+ * learner can refuse to learn from data it does not have.
+ */
+function buildAttribution(growthRecommendation, learningMode) {
+    const rec = growthRecommendation && growthRecommendation.recommendation ? growthRecommendation.recommendation : null;
+    const enhancements = growthRecommendation && growthRecommendation.enhancements ? growthRecommendation.enhancements : {};
+    if (!rec) return null;
+
+    const learning = rec.learning || null;
+    const exploredDimensions = learning && learning.decisions
+        ? Object.entries(learning.decisions)
+            .filter(([, d]) => d && d.mode === 'explore')
+            .map(([dim]) => dim)
+        : [];
+
+    return {
+        hookType: rec.hook && rec.hook.hookType ? rec.hook.hookType : null,
+        presenter: rec.presenter || null,
+        visualStyle: rec.visualStyle || null,
+        duration: typeof rec.duration === 'number' && Number.isFinite(rec.duration) ? rec.duration : null,
+        category: rec.category || null,
+        contentAngle: enhancements.contentAngle && enhancements.contentAngle.key ? enhancements.contentAngle.key : null,
+        music: rec.musicId || null,
+        cta: enhancements.cta && enhancements.cta.closing && enhancements.cta.closing.key ? enhancements.cta.closing.key : null,
+        publishHour: learningMode === 'mock' ? null : new Date().getHours(),
+        learningMeta: learning ? {
+            used: !!learning.used,
+            policyVersion: learning.policyVersion || null,
+            dimensionsApplied: learning.dimensionsApplied || [],
+            exploredDimensions
+        } : null
+    };
+}
+
 async function processJobLike(candidate, ctx) {
     const { kind, ref, id, data } = candidate;
     const payload = kind === KIND.JOB ? buildJobPayload(id, data) : buildFastTrackPayload(id, data);
@@ -310,7 +348,11 @@ async function processJobLike(candidate, ctx) {
                 runId: ctx.runId
             });
             if (growthRecommendation && growthRecommendation.processed) {
+                const learn = growthRecommendation.recommendation.learning;
                 console.log(`🧠 Growth: score=${growthRecommendation.recommendation.contentScore}, hook=${growthRecommendation.recommendation.hook?.hookType}, duration=${growthRecommendation.recommendation.duration}s, presenter=${growthRecommendation.recommendation.presenter}`);
+                if (learn) {
+                    console.log(`🧠 Learning: used=${learn.used} policy=${learn.policyVersion || 'none'} dims=[${(learn.dimensionsApplied || []).join(',') || 'none'}] exploration=${!!learn.exploration}`);
+                }
             }
         }
     } catch (err) {
@@ -341,7 +383,10 @@ async function processJobLike(candidate, ctx) {
     if (detail.success) {
         console.log(`✅ ${kind} ${id} → ${detail.videoUrl || 'video uploaded'}`);
 
-        // 🧠 GROWTH ENGINE: store post-upload analytics tracking info
+        // 🧠 GROWTH ENGINE: store post-upload analytics tracking info WITH
+        // full generation attribution (hook/presenter/style/duration/angle/
+        // music/cta/learningMeta) so the learner can attribute performance
+        // back to the exact configuration that generated this video.
         if (growthRecommendation?.processed && detail.videoId) {
             try {
                 const analyticsCollector = require('./agents/growth/analytics/collector');
@@ -351,11 +396,7 @@ async function processJobLike(candidate, ctx) {
                     platformVideoId: detail.videoId,
                     contentId: id,
                     publishedAt: Date.now(),
-                    hookType: growthRecommendation.recommendation?.hook?.hookType || '',
-                    presenter: growthRecommendation.recommendation?.presenter || '',
-                    visualStyle: growthRecommendation.recommendation?.visualStyle || '',
-                    duration: growthRecommendation.recommendation?.duration || 0,
-                    category: growthRecommendation.recommendation?.category || ''
+                    ...buildAttribution(growthRecommendation, 'job')
                 }).catch(() => {});
             } catch { /* ignore */ }
         }
@@ -397,7 +438,11 @@ ${'─'.repeat(60)}`);
                 contentId: id, db: ctx.db, runId: ctx.runId, platform: 'youtube'
             });
             if (growthRecommendation?.processed) {
+                const learn = growthRecommendation.recommendation.learning;
                 console.log(`🧠 Mock Growth: score=${growthRecommendation.recommendation.contentScore}, hook=${growthRecommendation.recommendation.hook?.hookType}`);
+                if (learn) {
+                    console.log(`🧠 Learning: used=${learn.used} policy=${learn.policyVersion || 'none'} dims=[${(learn.dimensionsApplied || []).join(',') || 'none'}] exploration=${!!learn.exploration}`);
+                }
             }
         }
     } catch (err) {
@@ -422,18 +467,14 @@ ${'─'.repeat(60)}`);
     const detail = typeof result === 'object' && result !== null ? result : { success: result === true };
     if (detail.success) {
         console.log(`✅ MOCK_TEST ${id} → ${detail.videoUrl || 'video uploaded'}`);
-        // Analytics tracking for mock test
+        // Analytics tracking for mock test — with generation attribution
         if (growthRecommendation?.processed && detail.videoId) {
             try {
                 const ac = require('./agents/growth/analytics/collector');
                 ac.collectPlatformMetrics(ctx.db, {
                     platform: 'youtube', platformVideoId: detail.videoId, contentId: id,
                     publishedAt: Date.now(),
-                    hookType: growthRecommendation.recommendation?.hook?.hookType || '',
-                    presenter: growthRecommendation.recommendation?.presenter || '',
-                    visualStyle: growthRecommendation.recommendation?.visualStyle || '',
-                    duration: growthRecommendation.recommendation?.duration || 0,
-                    category: 'MOCK_TEST'
+                    ...buildAttribution(growthRecommendation, 'mock')
                 }).catch(() => {});
             } catch { /* ignore */ }
         }

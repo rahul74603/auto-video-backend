@@ -320,7 +320,7 @@ function identifyAvailableAngles(jobData) {
 /**
  * Select best angle based on history and performance
  */
-function selectBestAngle(jobData, recentAngles = [], performanceData = null) {
+function selectBestAngle(jobData, recentAngles = [], performanceData = null, opts = {}) {
     const availableAngles = identifyAvailableAngles(jobData);
     
     if (availableAngles.length === 0) {
@@ -343,6 +343,39 @@ function selectBestAngle(jobData, recentAngles = [], performanceData = null) {
         };
     }
     
+    // 🧠 LEARNED POLICY: learned content-angle winner (Phase 11). The winner
+    // must be an angle this content actually supports; otherwise the policy
+    // is ignored and the safe freshness/priority logic runs.
+    const decision = opts.policyDecision;
+    if (decision && decision.mode && decision.mode !== 'none') {
+        const winner = decision.winner != null ? String(decision.winner) : null;
+        if (decision.mode === 'exploit' && winner) {
+            const learned = availableAngles.find(a => a.key === winner);
+            if (learned) {
+                return {
+                    ...learned,
+                    learningUsed: true,
+                    learningMode: 'exploit',
+                    exploration: false,
+                    learningReason: `learned best angle (policy ${decision.policyVersion}, confidence ${decision.confidence}, n=${decision.sampleSize})`
+                };
+            }
+        }
+        if (decision.mode === 'explore') {
+            const alternatives = availableAngles.filter(a => a.key !== winner);
+            if (alternatives.length > 0) {
+                const pick = alternatives[Math.floor(Math.random() * alternatives.length)];
+                return {
+                    ...pick,
+                    learningUsed: true,
+                    learningMode: 'explore',
+                    exploration: true,
+                    learningReason: `controlled exploration of angle (policy ${decision.policyVersion})`
+                };
+            }
+        }
+    }
+
     // Prevent fatigue: avoid recently used angles
     const recentKeys = recentAngles.slice(-10); // Last 10 angles
     const freshAngles = availableAngles.filter(a => !recentKeys.includes(a.key));

@@ -25,6 +25,7 @@ const { isBreaking, getDispatchPriority } = require('./breaking_mode');
 const { checkDuplicate, storeFingerprint } = require('./content_fingerprint');
 const { predictReach } = require('./reach_predictor');
 const { generateRecommendation, computeContentScore } = require('./recommendation_engine');
+const policyStore = require('./learning/policy_store');
 const { generateMutations } = require('./content_mutation');
 const { classifyComment, extractOpportunitiesFromComments } = require('./comment_intelligence');
 const { createRunLogger } = require('./logger');
@@ -56,6 +57,24 @@ async function processContent(content, opts = {}) {
     }
 
     try {
+        // 🧠 LEARNED POLICY: load the persisted policy once (the APPLY half
+        // of the closed loop). Best-effort — generation never depends on it.
+        const learnedPolicy = (db && flags.isEnabled('LEARNER_ENABLED') && flags.isEnabled('APPLY_LEARNED_POLICY'))
+            ? await policyStore.loadPolicy(db).catch(() => null)
+            : null;
+        const platform = opts.platform || 'youtube';
+        const policyOpts = {
+            policy: learnedPolicy,
+            platform,
+            rng: typeof opts.rng === 'function' ? opts.rng : Math.random,
+            now: opts.now || Date.now()
+        };
+        if (learnedPolicy) {
+            log.stage('learned_policy_loaded', {
+                version: learnedPolicy.version,
+                platforms: Object.keys(learnedPolicy.platforms || {})
+            });
+        }
         // NEW: Check content similarity to prevent duplicates
         if (flags.isEnabled('CONTENT_SIMILARITY_ENABLED') && db) {
             const recentContent = await getRecentContent(db, content.category, 10);
@@ -98,17 +117,30 @@ async function processContent(content, opts = {}) {
             }
         }
 
-        // NEW: Content angle selection
+        // NEW: Content angle selection — with learned policy (Phase 11)
         let contentAngle = null;
+        let angleDecision = null;
         if (flags.isEnabled('CONTENT_ANGLE_ENGINE_ENABLED')) {
+            // Recent angles prevent fatigue; fetched from the last stored
+            // opportunities so rotation works in production too.
+            let recentAngles = Array.isArray(opts.recentAngles) ? opts.recentAngles : null;
+            if (!recentAngles && db) {
+                recentAngles = await getRecentAngles(db, 10).catch(() => []);
+            }
+            const angleCandidates = contentAngleEngine
+                .identifyAvailableAngles(content)
+                .map((a) => a.key);
+            angleDecision = policyStore.decide('contentAngle', { ...policyOpts, candidates: angleCandidates });
             contentAngle = contentAngleEngine.selectBestAngle(
-                content, 
-                opts.recentAngles || [],
-                opts.performanceData || null
+                content,
+                recentAngles || [],
+                opts.performanceData || null,
+                { policyDecision: angleDecision }
             );
             log.stage('content_angle_selected', { 
                 angle: contentAngle.key,
-                name: contentAngle.name
+                name: contentAngle.name,
+                learningMode: angleDecision.mode
             });
         }
 
@@ -336,6 +368,9 @@ async function processContent(content, opts = {}) {
         const recommendation = await generateRecommendation(content, {
             ...opts,
             db,
+            learnedPolicy,
+            rng: policyOpts.rng,
+            now: policyOpts.now,
             contentId: opts.contentId,
             // Pass new data to recommendation engine
             deadlineInfo,
@@ -351,19 +386,65 @@ async function processContent(content, opts = {}) {
             return { processed: false, reason: recommendation.reason, recommendation };
         }
 
-        // NEW: Generate context-aware CTA
+        // NEW: Generate context-aware CTA — with learned policy (Phase 10)
         let cta = null;
+        let ctaDecision = null;
         if (flags.isEnabled('CTA_ENGINE_ENABLED')) {
+            ctaDecision = policyStore.decide('cta', policyOpts);
             cta = ctaEngine.generateVideoCTAs({
                 contentType: detectContentIntent(content),
                 contentAngle: contentAngle?.key || 'basic_alert',
                 urgencyLevel: deadlineInfo?.state === 'TODAY' || deadlineInfo?.state === 'TOMORROW' ? 'high' : 'medium',
-                jobData: content
+                jobData: content,
+                policyDecision: ctaDecision
             });
             log.stage('cta_generated', { 
                 opening: cta.opening,
-                closing: cta.closing?.key
+                closing: cta.closing?.key,
+                learningMode: cta?.closing?.learningUsed ? ctaDecision.mode : 'none'
             });
+        }
+
+        // 🧠 Merge the orchestrator-side decisions (cta, contentAngle) into
+        // the learning observability object built by the recommendation
+        // engine, then recompute the summary fields.
+        if (recommendation.learning) {
+            if (angleDecision) {
+                recommendation.learning.decisions.contentAngle = {
+                    ...angleDecision,
+                    value: contentAngle?.key || null,
+                    defaultWouldBe: null,
+                    changedSelection: !!contentAngle?.learningUsed
+                };
+            }
+            if (ctaDecision) {
+                recommendation.learning.decisions.cta = {
+                    ...ctaDecision,
+                    value: cta?.closing?.learningUsed ? cta.closing.key : null,
+                    defaultWouldBe: null,
+                    changedSelection: !!cta?.closing?.learningUsed
+                };
+            }
+            recommendation.learning.dimensionsApplied = Object.entries(recommendation.learning.decisions)
+                .filter(([dim, d]) => dim !== 'postTime' && d && d.mode && d.mode !== 'none' && d.applied !== false)
+                .map(([dim]) => dim);
+            recommendation.learning.used = recommendation.learning.dimensionsApplied.length > 0;
+            recommendation.learningUsed = recommendation.learning.used;
+            recommendation.learning.exploration = Object.values(recommendation.learning.decisions)
+                .some((d) => d && d.mode === 'explore');
+
+            log.stage('learning_applied', {
+                used: recommendation.learning.used,
+                policyVersion: recommendation.learning.policyVersion,
+                dimensionsApplied: recommendation.learning.dimensionsApplied,
+                exploration: recommendation.learning.exploration
+            });
+            console.log(
+                `🧠 Learning: used=${recommendation.learning.used}` +
+                ` version=${recommendation.learning.policyVersion || 'none'}` +
+                ` dims=[${recommendation.learning.dimensionsApplied.join(',') || 'none'}]` +
+                ` exploration=${recommendation.learning.exploration}`
+            );
         }
 
         // NEW: Mobile quality validation
@@ -407,10 +488,14 @@ async function processContent(content, opts = {}) {
             deadlineState: deadlineInfo?.state
         });
 
-        // Store opportunity with enhanced data
+        // Store opportunity with enhanced data. NOTE: `detected: true` is
+        // required by storeOpportunity — the recommendation object never
+        // carried it, so opportunities were silently NEVER stored before
+        // this fix (recent-angle/fatigue data was always empty).
         if (db) {
             await storeOpportunity(db, {
                 ...recommendation,
+                detected: true,
                 contentId: opts.contentId,
                 // NEW fields
                 contentAngle: contentAngle?.key,
@@ -467,6 +552,27 @@ async function processContent(content, opts = {}) {
 }
 
 /**
+ * Get the content angles used by recent opportunities (fatigue prevention
+ * + honest "what was tried before" data for the angle policy).
+ */
+async function getRecentAngles(db, limit = 10) {
+    if (!db) return [];
+    try {
+        const snapshot = await db.collection('content_opportunities')
+            .orderBy('createdAt', 'desc')
+            .limit(limit)
+            .get();
+        return (snapshot.docs || [])
+            .map((doc) => (typeof doc.data === 'function' ? doc.data() : doc))
+            .map((data) => data && data.contentAngle)
+            .filter((angle) => typeof angle === 'string' && angle.length > 0);
+    } catch (err) {
+        console.log(`⚠️ recent angles fetch failed: ${err.message || err}`);
+        return [];
+    }
+}
+
+/**
  * Get recent content for similarity checking
  */
 async function getRecentContent(db, category, limit = 10) {
@@ -516,6 +622,9 @@ module.exports = {
     flags: require('./feature_flags'),
     logger: require('./logger'),
     
+    // Learned policy (Growth Self-Learning)
+    policy: require('./learning/policy_store'),
+
     // Analytics
     analytics: {
         collector: require('./analytics/collector'),

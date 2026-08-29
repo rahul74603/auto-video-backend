@@ -15,6 +15,11 @@
 
 const flags = require('./feature_flags');
 const { detectContentIntent } = require('./content_intent');
+const { trimScriptToWords, countWords } = require('./duration_fitter');
+
+// Hindi speech pace (~3.5 words/sec at TTS rate 1.0) — matches
+// duration_fitter.WORDS_PER_SECOND.
+const WORDS_PER_SECOND = 3.5;
 
 const SCRIPT_STRUCTURES = {
     BREAKING_SHORT: {
@@ -69,16 +74,35 @@ function buildScript(opportunity, hook, content, opts = {}) {
     // 5. CTA
     sections.cta = buildCTA(facts, opportunity, opts);
     
-    const fullScript = Object.values(sections).filter(Boolean).join(' ');
+    let fullScript = Object.values(sections).filter(Boolean).join(' ');
+    let targetWords = structure.targetWords;
+    let trimmedToTarget = false;
+
+    // 🧠 LEARNED DURATION (Growth Self-Learning, Phase 5): when a target
+    // duration is provided (blended with the learned policy when learning is
+    // active) the script gets a matching word budget. Overlong scripts are
+    // trimmed sentence-aware (hook first sentence + closing CTA always
+    // survive; middle sentences go first). Content is only ever removed —
+    // nothing is invented. Short scripts are left alone; the TTS rate
+    // fine-tuning in autoVideo.js handles the rest.
+    if (Number.isFinite(opts.targetDurationSeconds) && opts.targetDurationSeconds > 0) {
+        targetWords = Math.max(15, Math.round(opts.targetDurationSeconds * WORDS_PER_SECOND));
+        if (countWords(fullScript) > Math.ceil(targetWords * 1.15)) {
+            fullScript = trimScriptToWords(fullScript, targetWords);
+            trimmedToTarget = true;
+        }
+    }
+
     const wordCount = fullScript.split(/\s+/).length;
     
     return {
         script: fullScript,
         sections,
         format,
-        targetWords: structure.targetWords,
+        targetWords,
         actualWords: wordCount,
-        estimatedDurationSec: Math.round(wordCount / 3.5), // ~3.5 words/sec for Hindi
+        trimmedToTarget,
+        estimatedDurationSec: Math.round(wordCount / WORDS_PER_SECOND), // ~3.5 words/sec for Hindi
         structure: structure.description
     };
 }

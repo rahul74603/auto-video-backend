@@ -51,15 +51,41 @@ function selectMusic(styleProfile, opts = {}) {
         }
     }
 
-    // Override from historical performance
+    // Override from historical performance (legacy single-value path)
     if (opts.bestMusic) {
         return { profile, musicFile: opts.bestMusic, selected: true, reason: 'best performer' };
+    }
+
+    // 🧠 LEARNED POLICY: learned music winner (Phase 9). The winner must be
+    // a real, on-disk music file — otherwise fall through to the safe
+    // profile-based selection.
+    const decision = opts.policyDecision;
+    if (decision && decision.mode && decision.mode !== 'none' && decision.value) {
+        const learnedId = String(decision.value);
+        const info = AVAILABLE_MUSIC[learnedId];
+        const fullPath = info ? path.join(basePath, info.file) : null;
+        if (info && fullPath && fs.existsSync(fullPath)) {
+            return {
+                profile,
+                profileName: info.profiles[0] || profileName,
+                musicFile: fullPath,
+                musicId: learnedId,
+                selected: true,
+                learningUsed: true,
+                learningMode: decision.mode,
+                exploration: decision.mode === 'explore',
+                reason: decision.mode === 'exploit'
+                    ? `learned best performer (policy ${decision.policyVersion}, confidence ${decision.confidence}, n=${decision.sampleSize})`
+                    : `controlled exploration of music (policy ${decision.policyVersion})`
+            };
+        }
     }
 
     return {
         profile,
         profileName,
         musicFile: selectedFile?.path || null,
+        musicId: selectedFile?.id || null,
         selected: !!selectedFile,
         reason: selectedFile ? `matched ${profileName} profile` : 'no music file available (video renders without music)'
     };

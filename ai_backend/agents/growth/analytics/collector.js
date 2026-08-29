@@ -19,6 +19,31 @@ const METRIC_FIELDS = [
     'followersGained'
 ];
 
+/**
+ * GENERATION ATTRIBUTION fields (Growth Self-Learning, Phase 1).
+ *
+ * video_dispatcher.js passes these right after upload so performance data
+ * can be attributed back to the exact generation configuration that
+ * produced the video. They are preserved verbatim when present and stored
+ * as explicit null when absent — NEVER defaulted, NEVER bucketed here.
+ * A missing attribution field must stay visibly missing (null) so the
+ * learner can refuse to "learn" from data it does not actually have.
+ */
+const ATTRIBUTION_FIELDS = [
+    'hookType',
+    'presenter',
+    'visualStyle',
+    'duration',       // seconds (number) — the duration the video was generated with
+    'category',
+    'contentAngle',
+    'music',
+    'cta',
+    'publishHour'
+];
+
+// Non-attribution metadata about how the video was generated (learning state).
+const LEARNING_META_KEYS = ['used', 'policyVersion', 'dimensionsApplied', 'exploredDimensions'];
+
 async function collectPlatformMetrics(db, platformPost, opts = {}) {
     if (!flags.isEnabled('ANALYTICS_ENABLED')) {
         return { collected: false, reason: 'analytics disabled' };
@@ -32,23 +57,14 @@ async function collectPlatformMetrics(db, platformPost, opts = {}) {
     const videoId = platformPost.platformVideoId;
     let metrics = {};
 
+    // Platform fetchers are resolved through an injectable registry so
+    // tests can supply realistic metrics without network credentials.
+    const fetcher = (opts.fetchers && typeof opts.fetchers[platform] === 'function')
+        ? opts.fetchers[platform]
+        : defaultFetcher(platform);
+
     try {
-        switch (platform) {
-            case 'youtube':
-                metrics = await collectYouTube(videoId, opts);
-                break;
-            case 'facebook':
-                metrics = await collectFacebook(videoId, opts);
-                break;
-            case 'instagram':
-                metrics = await collectInstagram(videoId, opts);
-                break;
-            case 'telegram':
-                metrics = await collectTelegram(videoId, opts);
-                break;
-            default:
-                return { collected: false, reason: `unknown platform ${platform}` };
-        }
+        metrics = await fetcher(videoId, opts);
     } catch (err) {
         console.log(`⚠️ analytics collection failed for ${platform}/${videoId}: ${err.message || err}`);
         return { collected: false, error: true, reason: err.message || 'collection failed' };
@@ -65,10 +81,34 @@ async function collectPlatformMetrics(db, platformPost, opts = {}) {
     normalized.collectedAt = Date.now();
     normalized.publishedAt = platformPost.publishedAt || null;
 
+    // ─── Phase 1: preserve generation attribution (verbatim or null) ───
+    for (const field of ATTRIBUTION_FIELDS) {
+        const value = platformPost[field];
+        // '' / undefined / NaN are treated as "unavailable" → null.
+        // Real values (including 0 for publishHour) are preserved as-is.
+        if (value === undefined || value === null || value === '' || (typeof value === 'number' && !Number.isFinite(value))) {
+            normalized[field] = null;
+        } else {
+            normalized[field] = value;
+        }
+    }
+
+    // Learning metadata (was the video generated using a learned policy?)
+    if (platformPost.learningMeta && typeof platformPost.learningMeta === 'object') {
+        const meta = {};
+        for (const key of LEARNING_META_KEYS) {
+            if (platformPost.learningMeta[key] !== undefined) meta[key] = platformPost.learningMeta[key];
+        }
+        normalized.learningMeta = meta;
+    }
+
     // Store in Firestore
     if (db) {
         try {
             const docId = `${platform}_${videoId}`;
+            // merge:true keeps any fields on existing historical documents —
+            // records collected BEFORE attribution existed are never
+            // rewritten or destroyed, they simply keep lacking attribution.
             await db.collection('content_performance').doc(docId).set(normalized, { merge: true });
         } catch (err) {
             console.log(`⚠️ analytics store failed: ${err.message || err}`);
@@ -76,6 +116,18 @@ async function collectPlatformMetrics(db, platformPost, opts = {}) {
     }
 
     return { collected: true, metrics: normalized };
+}
+
+function defaultFetcher(platform) {
+    switch (platform) {
+        case 'youtube': return collectYouTube;
+        case 'facebook': return collectFacebook;
+        case 'instagram': return collectInstagram;
+        case 'telegram': return collectTelegram;
+        default: return async () => {
+            throw new Error(`unknown platform ${platform}`);
+        };
+    }
 }
 
 async function collectYouTube(videoId, opts = {}) {
@@ -201,6 +253,7 @@ async function collectTelegram(videoId, opts = {}) {
 
 module.exports = {
     METRIC_FIELDS,
+    ATTRIBUTION_FIELDS,
     collectPlatformMetrics,
     collectYouTube,
     collectFacebook,

@@ -297,6 +297,44 @@ function selectCTA(options = {}) {
         };
     }
     
+    // 🧠 LEARNED POLICY: learned CTA winner (Phase 10). Only CTAs that are
+    // already valid candidates for this content can be selected — a learned
+    // winner that is unsafe/mismatched for this intent is ignored
+    // (never force a misleading CTA onto content).
+    const decision = options.policyDecision;
+    if (decision && decision.mode && decision.mode !== 'none') {
+        const winner = decision.winner != null ? String(decision.winner) : null;
+        const pool = candidates.map((c) => c.key);
+        if (decision.mode === 'exploit' && winner && pool.includes(winner)) {
+            const selected = candidates.find((c) => c.key === winner);
+            return {
+                key: selected.key,
+                ...selected,
+                template: getRandomTemplate(selected.templates),
+                learningUsed: true,
+                learningMode: 'exploit',
+                exploration: false,
+                learningReason: `learned best CTA (policy ${decision.policyVersion}, confidence ${decision.confidence}, n=${decision.sampleSize})`
+            };
+        }
+        if (decision.mode === 'explore') {
+            const alternatives = pool.filter((k) => k !== winner);
+            if (alternatives.length > 0) {
+                const key = alternatives[Math.floor(Math.random() * alternatives.length)];
+                const selected = candidates.find((c) => c.key === key);
+                return {
+                    key: selected.key,
+                    ...selected,
+                    template: getRandomTemplate(selected.templates),
+                    learningUsed: true,
+                    learningMode: 'explore',
+                    exploration: true,
+                    learningReason: `controlled exploration of CTA (policy ${decision.policyVersion})`
+                };
+            }
+        }
+    }
+
     const selectedIndex = Math.floor(Math.random() * topCandidates.length);
     const selectedCTA = topCandidates[selectedIndex];
     
@@ -395,6 +433,37 @@ function getPositionalCTA(position, options = {}) {
 function pickClosingCTA(options, intent, contentType) {
     if (forbidsApplyLanguage(intent)) {
         const keys = closingKeysForIntent(intent).filter((key) => CTA_TEMPLATES[key]);
+        // Learned policy still applies, but only within the intent-safe keys.
+        const decision = options.policyDecision;
+        if (decision && decision.mode && decision.mode !== 'none') {
+            const winner = decision.winner != null ? String(decision.winner) : null;
+            if (decision.mode === 'exploit' && winner && keys.includes(winner)) {
+                const info = CTA_TEMPLATES[winner];
+                return {
+                    key: winner,
+                    ...info,
+                    template: getRandomTemplate(info.templates),
+                    learningUsed: true,
+                    learningMode: 'exploit',
+                    exploration: false,
+                    learningReason: `learned best CTA (policy ${decision.policyVersion}, confidence ${decision.confidence}, n=${decision.sampleSize})`
+                };
+            }
+            const alternatives = keys.filter((k) => k !== winner);
+            if (decision.mode === 'explore' && alternatives.length > 0) {
+                const key = alternatives[Math.floor(Math.random() * alternatives.length)];
+                const info = CTA_TEMPLATES[key];
+                return {
+                    key,
+                    ...info,
+                    template: getRandomTemplate(info.templates),
+                    learningUsed: true,
+                    learningMode: 'explore',
+                    exploration: true,
+                    learningReason: `controlled exploration of CTA (policy ${decision.policyVersion})`
+                };
+            }
+        }
         const key = keys[Math.floor(Math.random() * keys.length)] || 'read_more';
         const info = CTA_TEMPLATES[key];
         return {
@@ -406,7 +475,8 @@ function pickClosingCTA(options, intent, contentType) {
     return selectCTA({
         contentType,
         contentAngle: options.contentAngle,
-        urgencyLevel: options.urgencyLevel
+        urgencyLevel: options.urgencyLevel,
+        policyDecision: options.policyDecision
     });
 }
 

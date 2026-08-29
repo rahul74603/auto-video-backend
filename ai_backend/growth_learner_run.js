@@ -29,6 +29,7 @@ const V = require('./video_state');
 const learner = require('./agents/growth/analytics/learner');
 const collector = require('./agents/growth/analytics/collector');
 const scorer = require('./agents/growth/analytics/scorer');
+const policyStore = require('./agents/growth/learning/policy_store');
 const { logStructured } = require('./agents/growth/logger');
 
 const DEFAULT_PROJECT_ID = 'studymaterial-406ad';
@@ -171,6 +172,35 @@ async function generateRecommendations(db) {
     return recs;
 }
 
+/**
+ * Step 5: Convert discovered patterns into the PERSISTED LEARNED POLICY
+ * (growth_policies/latest). This is the artifact video generation reads
+ * BEFORE creating the next video — the apply half of the closed loop.
+ */
+async function buildAndSavePolicy(db, learning) {
+    console.log('\n🎯 Step 5: Building learned policy...');
+
+    const patterns = (learning && learning.patterns) || [];
+    if (patterns.length === 0) {
+        console.log('  ℹ️ No patterns — keeping the existing policy (nothing to update with)');
+        return null;
+    }
+
+    const policy = policyStore.buildPolicy(patterns);
+    const savedVersion = await policyStore.savePolicy(db, policy);
+
+    const dimSummary = {};
+    for (const [platform, p] of Object.entries(policy.platforms || {})) {
+        dimSummary[platform] = Object.keys(p.dimensions || {});
+    }
+    console.log(`  ✅ Policy ${savedVersion} saved (growth_policies/latest + history)`);
+    for (const [platform, dims] of Object.entries(dimSummary)) {
+        console.log(`     ${platform}: ${dims.length} learned dimensions [${dims.join(', ')}]`);
+    }
+
+    return { version: savedVersion, policy };
+}
+
 async function main() {
     const runId = process.env.GITHUB_RUN_ID
         ? `learner-gh-${process.env.GITHUB_RUN_ID}`
@@ -188,6 +218,7 @@ async function main() {
         const scored = await scoreAllPerformance(db);
         const learning = await runLearning(db);
         const recs = await generateRecommendations(db);
+        const policyResult = await buildAndSavePolicy(db, learning);
 
         console.log(`\n${'='.repeat(60)}`);
         console.log('📊 LEARNING SUMMARY');
@@ -195,12 +226,14 @@ async function main() {
         console.log(`   Records scored: ${scored}`);
         console.log(`   Patterns found: ${(learning.patterns || []).length}`);
         console.log(`   Recommendations: ${recs.length}`);
+        console.log(`   Policy version: ${policyResult ? policyResult.version : 'unchanged'}`);
         console.log('='.repeat(60));
 
         logStructured('info', 'learner_run_complete', {
             runId, collected, scored,
             patterns: (learning.patterns || []).length,
-            recommendations: recs.length
+            recommendations: recs.length,
+            policyVersion: policyResult ? policyResult.version : null
         });
 
         return 0;
@@ -220,4 +253,11 @@ if (require.main === module) {
         });
 }
 
-module.exports = { main };
+module.exports = {
+    main,
+    collectNewMetrics,
+    scoreAllPerformance,
+    runLearning,
+    generateRecommendations,
+    buildAndSavePolicy
+};
