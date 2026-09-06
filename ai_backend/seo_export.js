@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 /**
  * Spark-safe Cloud Functions entrypoint - pure v1 HTTPS functions.
@@ -46,6 +46,7 @@ exports.generateSitemapCourses = proxy("generateSitemapCourses");
 exports.generateSitemapMaterials = proxy("generateSitemapMaterials");
 exports.generateSitemap = proxy("generateSitemap");
 exports.generateRss = proxy("generateRss");
+exports.validateSitemap = proxy("validateSitemap");
 
 exports.pingIndexNow = functions.https.onRequest(withCors(async (req, res) => {
   try {

@@ -8,6 +8,8 @@ const admin = require("firebase-admin");
 const FormData = require('form-data');
 const V = require('./video_state');
 const ttsEngine = require('./tts_engine');
+const flags = require('./agents/growth/feature_flags');
+const motionEngine = require('./agents/growth/motion_engine');
 require("dotenv").config();
 
 // ✅ Approved anchor files only — never pick up unrelated MP4s from the folder.
@@ -352,7 +354,7 @@ function generateViralTitle(jobData, jobCat) {
 // =========================================================
 // 🎨 4. POSTER DESIGNER
 // =========================================================
-async function createPoster(jobData, jobCat, posterPath) {
+async function createPoster(jobData, jobCat, posterPath, growthRec = null) {
     const { createCanvas } = require('canvas');
 
     const width  = 1080;
@@ -360,48 +362,86 @@ async function createPoster(jobData, jobCat, posterPath) {
     const canvas = createCanvas(width, height);
     const ctx    = canvas.getContext('2d');
 
+    // Clean, professional color themes
     const themes = {
         "Result": {
-            bg1: '#0f2027', bg2: '#203a43', bg3: '#2c5364',
-            accent: '#00FF00', badgeBg: '#28a745',
-            textBadge: '🏆 RESULT DECLARED 🏆', emoji: '🏆'
+            bg1: '#1a1a2e', bg2: '#16213e', bg3: '#0f3460',
+            accent: '#00d4ff', badgeBg: '#e94560',
+            textBadge: 'RESULT OUT', emoji: '🏆'
         },
         "Admit Card": {
-            bg1: '#4b134f', bg2: '#c94b4b', bg3: '#ff0844',
-            accent: '#FFD700', badgeBg: '#dc3545',
-            textBadge: '🎫 ADMIT CARD OUT 🎫', emoji: '🎫'
-        },
-        "Syllabus": {
-            bg1: '#141e30', bg2: '#243b55', bg3: '#2c3e50',
-            accent: '#00FFFF', badgeBg: '#17a2b8',
-            textBadge: '📚 NEW SYLLABUS 📚', emoji: '📚'
+            bg1: '#2d132c', bg2: '#3d1c4a', bg3: '#4a1f5c',
+            accent: '#ffd700', badgeBg: '#ff6b6b',
+            textBadge: 'ADMIT CARD OUT', emoji: '🎫'
         },
         "Answer Key": {
-            bg1: '#232526', bg2: '#414345', bg3: '#4b6cb7',
-            accent: '#FFA500', badgeBg: '#fd7e14',
-            textBadge: '🔑 ANSWER KEY 🔑', emoji: '🔑'
+            bg1: '#1e3c72', bg2: '#2a5298', bg3: '#1e3c72',
+            accent: '#ffa500', badgeBg: '#ff8c00',
+            textBadge: 'ANSWER KEY', emoji: '🔑'
+        },
+        "Syllabus": {
+            bg1: '#134e5e', bg2: '#2a6b7c', bg3: '#134e5e',
+            accent: '#00ff88', badgeBg: '#00cc6a',
+            textBadge: 'NEW SYLLABUS', emoji: ''
         },
         "Default": {
             bg1: '#0f0c29', bg2: '#302b63', bg3: '#24243e',
-            accent: '#00FFFF', badgeBg: '#d32f2f',
-            textBadge: '⚡ LATEST UPDATE ⚡', emoji: '⚡'
+            accent: '#00d4ff', badgeBg: '#ff006e',
+            textBadge: 'LATEST UPDATE', emoji: '⚡'
         }
     };
 
     const theme = themes[jobCat] || themes['Default'];
 
-    const grad = ctx.createLinearGradient(0, 0, 0, height);
-    grad.addColorStop(0, theme.bg1);
-    grad.addColorStop(0.5, theme.bg2);
-    grad.addColorStop(1, theme.bg3);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, width, height);
-
-    ctx.globalAlpha = 0.08;
-    ctx.fillStyle   = theme.accent;
-    ctx.beginPath(); ctx.arc(900, 200, 300, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(100, 1700, 250, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 1.0;
+    // ✅ 1. BACKGROUND — AI image if available, else gradient
+    if (growthRec?.enhancements?.aiVisual?.path) {
+        const aiPath = growthRec.enhancements.aiVisual.path;
+        console.log(`🔍 AI Visual check: path=${aiPath}, exists=${fs.existsSync(aiPath)}`);
+        if (fs.existsSync(aiPath)) {
+            try {
+                const { Image } = require('canvas');
+                const aiImg = new Image();
+                aiImg.src = fs.readFileSync(aiPath);
+                // Scale to fill 1080x1920 while maintaining aspect ratio
+                const scale = Math.max(width / aiImg.width, height / aiImg.height);
+                const drawW = aiImg.width * scale;
+                const drawH = aiImg.height * scale;
+                const drawX = (width - drawW) / 2;
+                const drawY = (height - drawH) / 2;
+                ctx.drawImage(aiImg, drawX, drawY, drawW, drawH);
+                // Add subtle dark overlay for text readability
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+                ctx.fillRect(0, 0, width, height);
+                console.log('🖼️ AI image used as poster background');
+            } catch (err) {
+                console.log(`⚠️ AI image load failed, using gradient: ${err.message || err}`);
+                // Fallback to gradient
+                const grad = ctx.createLinearGradient(0, 0, 0, height);
+                grad.addColorStop(0, theme.bg1);
+                grad.addColorStop(0.5, theme.bg2);
+                grad.addColorStop(1, theme.bg3);
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, width, height);
+            }
+        } else {
+            console.log(`⚠️ AI image file missing at: ${aiPath}`);
+            const grad = ctx.createLinearGradient(0, 0, 0, height);
+            grad.addColorStop(0, theme.bg1);
+            grad.addColorStop(0.5, theme.bg2);
+            grad.addColorStop(1, theme.bg3);
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, width, height);
+        }
+    } else {
+        console.log('🎨 No AI visual in growthRec, using gradient background');
+        // Fallback gradient
+        const grad = ctx.createLinearGradient(0, 0, 0, height);
+        grad.addColorStop(0, theme.bg1);
+        grad.addColorStop(0.5, theme.bg2);
+        grad.addColorStop(1, theme.bg3);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, width, height);
+    }
 
     function drawRoundedRect(x, y, w, h, r) {
         ctx.beginPath();
@@ -434,126 +474,167 @@ async function createPoster(jobData, jobCat, posterPath) {
         return y + lineHeight;
     }
 
-    // ✅ 1. TOP LOGO BAR
+    // ✅ 2. BRAND LOGO (TOP, LARGE, PROMINENT)
+    const brandY = 100;
     ctx.shadowColor  = theme.accent;
-    ctx.shadowBlur   = 30;
-    drawRoundedRect(80, 60, 920, 130, 65);
+    ctx.shadowBlur   = 40;
+    drawRoundedRect(100, brandY, 880, 160, 80);
     ctx.fillStyle    = theme.accent;
     ctx.fill();
     ctx.shadowBlur   = 0;
     ctx.fillStyle    = '#000000';
-    ctx.font         = 'bold 72px sans-serif';
+    ctx.font         = 'bold 90px "Noto Sans Devanagari", "Noto Sans", sans-serif';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('📚 STUDYGYAAN.IN 📚', width / 2, 125);
+    ctx.fillText('STUDYGYAAN.IN', width / 2, brandY + 80);
 
-    // ✅ 2. CATEGORY BADGE
+    // ✅ 3. CATEGORY BADGE (below brand, clean)
+    const badgeY = 300;
+    drawRoundedRect(200, badgeY, 680, 100, 50);
     ctx.fillStyle    = theme.badgeBg;
-    ctx.fillRect(0, 220, width, 110);
+    ctx.fill();
     ctx.fillStyle    = '#FFFFFF';
-    ctx.font         = 'bold 62px sans-serif';
+    ctx.font         = 'bold 70px "Noto Sans Devanagari", "Noto Sans", sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillText(theme.textBadge, width / 2, 275);
+    ctx.fillText(`${theme.emoji} ${theme.textBadge} ${theme.emoji}`, width / 2, badgeY + 50);
 
-    // ✅ 3. IMPORTANT TEXT
-    ctx.fillStyle = '#FFFF00';
-    ctx.font      = 'bold 78px sans-serif';
-    ctx.fillText('🔥 IMPORTANT UPDATE 🔥', width / 2, 390);
+    // ✅ 4. FIRST FRAME / IMPORTANT TEXT (clean, no overlap)
+    const firstFrameText = (jobData.firstFrameText || '').toUpperCase();
+    const importantTextY = 440;
+    
+    if (firstFrameText) {
+        drawRoundedRect(50, importantTextY, 980, 90, 45);
+        ctx.fillStyle = '#FF0000';
+        ctx.fill();
+        ctx.fillStyle    = '#FFFFFF';
+        ctx.font         = 'bold 60px "Noto Sans Devanagari", "Noto Sans", sans-serif';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(firstFrameText, width / 2, importantTextY + 45);
+    } else {
+        ctx.fillStyle = '#FFD700';
+        ctx.font      = 'bold 75px "Noto Sans Devanagari", "Noto Sans", sans-serif';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(' IMPORTANT UPDATE 🔥', width / 2, importantTextY + 45);
+    }
 
-    // ✅ 4. MAIN TITLE
+    // ✅ 5. MAIN TITLE (centered, large, clean)
     ctx.shadowColor  = theme.accent;
-    ctx.shadowBlur   = 20;
+    ctx.shadowBlur   = 30;
     ctx.fillStyle    = '#FFFFFF';
-    ctx.font         = '900 78px sans-serif';
-    ctx.textBaseline = 'alphabetic';
-    let titleEndY = wrapText(
-        (jobData.title || '').toUpperCase(),
-        width / 2, 510, 960, 95
+    ctx.font         = 'bold 85px "Noto Sans Devanagari", "Noto Sans", sans-serif';
+    ctx.textBaseline = 'top';
+    const titleY = 580;
+    const titleEndY = wrapText(
+        (jobData.title || 'Latest Update').toUpperCase(),
+        width / 2, titleY, 900, 110
     );
     ctx.shadowBlur = 0;
 
-    // ✅ 5. CTA BUTTON
-    let ctaY = titleEndY + 40;
-
-    const ctaTexts = {
-        'Result':     { text: '✅ CHECK RESULT NOW',  color: '#00FF00' },
-        'Admit Card': { text: '📥 DOWNLOAD NOW',      color: '#FFD700' },
-        'Answer Key': { text: '🔑 CHECK ANSWER KEY',  color: '#FFA500' },
-        'Syllabus':   { text: '📚 FREE PDF DOWNLOAD', color: '#00FFFF' },
-        'Default':    { text: '🚀 APPLY NOW',          color: '#FF4444' }
-    };
-    const cta = ctaTexts[jobCat] || ctaTexts['Default'];
-
-    drawRoundedRect(100, ctaY - 55, 880, 90, 45);
-    ctx.fillStyle   = cta.color;
-    ctx.globalAlpha = 0.2;
+    // ✅ 6. KEY INFO BOX (dates, vacancies - clean layout)
+    const infoBoxY = Math.max(titleEndY + 50, 750);
+    drawRoundedRect(80, infoBoxY, 920, 320, 60);
+    ctx.fillStyle   = 'rgba(0, 0, 0, 0.7)';
     ctx.fill();
-    ctx.globalAlpha = 1.0;
-    ctx.fillStyle    = cta.color;
-    ctx.font         = 'bold 68px sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(cta.text, width / 2, ctaY);
-
-    // ✅ 6. INFO BOX
-    let infoBoxY = ctaY + 80;
-    drawRoundedRect(50, infoBoxY, 980, 260, 40);
-    ctx.fillStyle   = 'rgba(0, 0, 0, 0.55)';
-    ctx.fill();
-    ctx.lineWidth   = 4;
+    ctx.lineWidth   = 5;
     ctx.strokeStyle = theme.accent;
     ctx.stroke();
 
-    ctx.font = 'bold 58px sans-serif';
-    const todayDate = new Date().toLocaleDateString('en-GB');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    let infoLineY = infoBoxY + 60;
 
     if (['Result', 'Answer Key', 'Admit Card'].includes(jobCat)) {
-        ctx.fillStyle    = '#00FFFF';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`${theme.emoji} Update: ${jobCat} Out!`, width / 2, infoBoxY + 80);
+        ctx.fillStyle    = '#00FF88';
+        ctx.font         = 'bold 65px "Noto Sans Devanagari", "Noto Sans", sans-serif';
+        ctx.fillText(`${theme.emoji} ${jobCat} DECLARED`, width / 2, infoLineY);
+        infoLineY += 90;
         ctx.fillStyle = '#FFFFFF';
+        ctx.font      = 'bold 60px "Noto Sans Devanagari", "Noto Sans", sans-serif';
         const showDate = (jobData.updateDate && jobData.updateDate !== 'undefined')
-            ? jobData.updateDate : todayDate;
-        ctx.fillText(`📅 Date: ${showDate}`, width / 2, infoBoxY + 180);
+            ? jobData.updateDate : new Date().toLocaleDateString('en-GB');
+        ctx.fillText(`${showDate}`, width / 2, infoLineY);
     } else {
-        ctx.fillStyle    = '#00FFFF';
-        ctx.textBaseline = 'middle';
+        // Show vacancies if available
+        if (jobData.vacancies) {
+            ctx.fillStyle    = '#00FF88';
+            ctx.font         = 'bold 65px "Noto Sans Devanagari", "Noto Sans", sans-serif';
+            ctx.fillText(`${jobData.vacancies} VACANCIES`, width / 2, infoLineY);
+            infoLineY += 90;
+        }
+        
+        // Apply date
+        ctx.fillStyle = '#00D4FF';
+        ctx.font      = 'bold 60px "Noto Sans Devanagari", "Noto Sans", sans-serif';
         const showStart = (jobData.startDate && jobData.startDate !== 'undefined')
             ? jobData.startDate : 'Apply Now';
-        ctx.fillText(`🚀 Apply: ${showStart}`, width / 2, infoBoxY + 80);
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font      = 'bold 65px sans-serif';
+        ctx.fillText(`Apply: ${showStart}`, width / 2, infoLineY);
+        infoLineY += 90;
+        
+        // Last date
+        ctx.fillStyle = '#FF4444';
+        ctx.font      = 'bold 65px "Noto Sans Devanagari", "Noto Sans", sans-serif';
         const showLast = (jobData.lastDate && jobData.lastDate !== 'undefined')
-            ? jobData.lastDate : 'जल्दी करें!';
-        ctx.fillText(`⏳ Last Date: ${showLast}`, width / 2, infoBoxY + 180);
+            ? jobData.lastDate : 'Apply Soon!';
+        ctx.fillText(`Last Date: ${showLast}`, width / 2, infoLineY);
     }
 
-    // ✅ 7. TELEGRAM BOX
-    let tgBoxY = infoBoxY + 280;
-    if (tgBoxY + 100 > 1740) {
-        tgBoxY = 1630;
+    // ✅ 7. DYNAMIC CTA BUTTON (from CTA engine or fallback)
+    const ctaY = infoBoxY + 380;
+    let ctaText = 'APPLY NOW';
+    let ctaColor = '#FF4444';
+    
+    if (growthRec?.enhancements?.cta?.closing?.template) {
+        // Use CTA from engine
+        const ctaTemplate = growthRec.enhancements.cta.closing.template;
+        ctaText = ctaTemplate.toUpperCase().replace(/[^A-Z0-9\s!]/g, '').substring(0, 25);
+        ctaColor = growthRec.enhancements.cta.closing.color || '#FF4444';
+    } else {
+        // Fallback to static CTAs
+        const ctaTexts = {
+            'Result':     { text: 'CHECK RESULT',  color: '#00FF88' },
+            'Admit Card': { text: 'DOWNLOAD NOW',  color: '#FFD700' },
+            'Answer Key': { text: 'VIEW KEY',      color: '#FFA500' },
+            'Syllabus':   { text: 'GET PDF',       color: '#00FF88' },
+            'Default':    { text: 'APPLY NOW',     color: '#FF4444' }
+        };
+        const cta = ctaTexts[jobCat] || ctaTexts['Default'];
+        ctaText = cta.text;
+        ctaColor = cta.color;
     }
 
-    drawRoundedRect(50, tgBoxY, 980, 100, 30);
+    drawRoundedRect(150, ctaY, 780, 110, 55);
+    ctx.fillStyle   = ctaColor;
+    ctx.globalAlpha = 0.3;
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle    = '#FFFFFF';
+    ctx.font         = 'bold 75px "Noto Sans Devanagari", "Noto Sans", sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ctaText, width / 2, ctaY + 55);
+
+    // ✅ 8. TELEGRAM (smaller, bottom)
+    const tgY = ctaY + 160;
+    drawRoundedRect(100, tgY, 880, 80, 40);
     ctx.fillStyle    = '#0088cc';
     ctx.fill();
     ctx.fillStyle    = '#FFFFFF';
-    ctx.font         = 'bold 48px sans-serif';
+    ctx.font         = 'bold 50px "Noto Sans Devanagari", "Noto Sans", sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillText('📲 JOIN TELEGRAM: @studygyaan_official', width / 2, tgBoxY + 50);
+    ctx.fillText('@studygyaan_official', width / 2, tgY + 40);
 
-    // ✅ 8. FOOTER
-    ctx.fillStyle    = '#FFCC00';
-    ctx.fillRect(0, 1750, width, 170);
+    // ✅ 9. FOOTER (clean, minimal)
+    ctx.fillStyle    = '#FFD700';
+    ctx.fillRect(0, 1780, width, 140);
     ctx.fillStyle    = '#000000';
-    ctx.font         = '900 52px sans-serif';
+    ctx.font         = 'bold 60px "Noto Sans Devanagari", "Noto Sans", sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillText('👇 DIRECT LINK - FIRST COMMENT में 👇', width / 2, 1835);
+    ctx.fillText('LINK IN FIRST COMMENT', width / 2, 1850);
 
     fs.writeFileSync(posterPath, canvas.toBuffer('image/png'));
-    console.log('✅ Poster बन गया!');
+    console.log(' Poster created (clean design)!');
 
-    const anchorY = tgBoxY + 120;
-    return Math.min(anchorY, 1200);
+    // Return anchor Y position (where video anchor should be placed)
+    return Math.min(tgY + 120, 1400);
 }
 
 // =========================================================
@@ -592,6 +673,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
     const posterPath = path.join(tempDir, `poster-${timestamp}.png`);
     const safeSlug   = (jobData.slug || 'govt-update').replace(/[^a-z0-9]/gi, '-').substring(0, 50);
     const videoPath  = path.join(tempDir, `${safeSlug}-${timestamp}.mp4`);
+    const subtitlePath = path.join(tempDir, `subs-${timestamp}.srt`); // always defined for cleanup
 
     let jobCat = jobData.category || 'Default';
 
@@ -614,8 +696,19 @@ async function generateAndUploadVideo(jobData, options = {}) {
 
         console.log(`📁 Target Dir: ${targetDir}`);
 
+        // 🧠 GROWTH ENGINE INTEGRATION — use recommendation if provided
+        const growthRec = options.growthRecommendation || null;
+        const growthEnabled = growthRec && growthRec.recommended;
+        if (growthEnabled) {
+            console.log(`🧠 Growth Engine: contentScore=${growthRec.contentScore}, hook=${growthRec.hook?.hookType || 'none'}, duration=${growthRec.duration}s`);
+        }
+
         let bgMusicPath = '';
-        if (fs.existsSync(bgMusicDir)) {
+        // Music selection: use growth recommendation if available, else random
+        if (growthEnabled && growthRec.music && fs.existsSync(growthRec.music)) {
+            bgMusicPath = growthRec.music;
+            console.log(`🎵 Music (growth): ${path.basename(bgMusicPath)}`);
+        } else if (fs.existsSync(bgMusicDir)) {
             const mp3Files = fs.readdirSync(bgMusicDir).filter(f => f.toLowerCase().endsWith('.mp3'));
             if (mp3Files.length > 0) {
                 bgMusicPath = path.join(bgMusicDir, mp3Files[Math.floor(Math.random() * mp3Files.length)]);
@@ -634,7 +727,14 @@ async function generateAndUploadVideo(jobData, options = {}) {
             );
         }
 
-        const selectedVideoFile = anchorFiles[Math.floor(Math.random() * anchorFiles.length)];
+        // Presenter selection: use growth recommendation if available, else random
+        let selectedVideoFile;
+        if (growthEnabled && growthRec.presenter && anchorFiles.includes(growthRec.presenter)) {
+            selectedVideoFile = growthRec.presenter;
+            console.log(`🎥 Anchor (growth): ${selectedVideoFile}`);
+        } else {
+            selectedVideoFile = anchorFiles[Math.floor(Math.random() * anchorFiles.length)];
+        }
         const isFemale          = selectedVideoFile.toLowerCase().includes('female');
         const isMale            = selectedVideoFile.toLowerCase().includes('male');
 
@@ -645,6 +745,48 @@ async function generateAndUploadVideo(jobData, options = {}) {
 
         const finalAnchorPath = path.join(targetDir, selectedVideoFile);
         console.log(`🎥 Anchor: ${selectedVideoFile} | Voice: ${selectedVoice}`);
+
+//  Reusable FFmpeg runner with bounded stderr capture.
+//    mode = 'full' | 'static-fallback' (for diagnostics only)
+async function runFFmpeg(ffmpegPath, args, mode = 'full') {
+    return new Promise((resolve, reject) => {
+        const ffmpeg = spawn(ffmpegPath, args);
+        const stderrChunks = [];
+        const MAX_STDERR_BYTES = 12000;
+        let totalStderrBytes = 0;
+
+        ffmpeg.stderr.on('data', (data) => {
+            const out = data.toString();
+            if (out.includes('frame=')) {
+                process.stdout.write(`\r[${mode}] ${out.split('\n')[0]}`);
+            }
+            if (totalStderrBytes < MAX_STDERR_BYTES) {
+                const budget = MAX_STDERR_BYTES - totalStderrBytes;
+                stderrChunks.push(Buffer.from(data).slice(0, budget));
+                totalStderrBytes += Math.min(data.length, budget);
+            }
+        });
+        ffmpeg.on('error', (spawnErr) => reject(new Error(`FFmpeg spawn failed: ${spawnErr.message}`)));
+        ffmpeg.on('close', (code, signal) => {
+            if (code === 0) {
+                console.log(`\n[${mode}] Rendering पूरी!`);
+                resolve();
+            } else {
+                const stderrTail = Buffer.concat(stderrChunks).toString('utf8');
+                const diagnostic = stderrTail.length > 4000
+                    ? '...[truncated]...' + stderrTail.slice(-4000)
+                    : stderrTail;
+                const cmdSummary = `${path.basename(ffmpegPath)} ... [${args.length} args]`;
+                reject(new Error(
+                    `FFmpeg failed (${mode}): exitCode=${code}` +
+                    (signal ? ` signal=${signal}` : '') +
+                    `\nCommand: ${cmdSummary}` +
+                    `\nSTDERR:\n${diagnostic}`
+                ));
+            }
+        });
+    });
+}
 
         // TTS credentials are optional now: tts_engine falls back to the free
         // Edge voices when Google TTS is unavailable (e.g. billing disabled).
@@ -695,8 +837,15 @@ async function generateAndUploadVideo(jobData, options = {}) {
             scriptArray = fastTrackScripts[jobCat] || fastTrackScripts['Default'];
         }
 
-        const script = scriptArray[Math.floor(Math.random() * scriptArray.length)];
-        console.log(`🎙️ Script: ${script.substring(0, 80)}...`);
+        // 🧠 GROWTH ENGINE: use generated script if available and high-quality
+        let script;
+        if (growthEnabled && growthRec.script && growthRec.script.script && growthRec.contentScore >= 40) {
+            script = growthRec.script.script;
+            console.log(`🎙️ Script (growth): ${script.substring(0, 80)}...`);
+        } else {
+            script = scriptArray[Math.floor(Math.random() * scriptArray.length)];
+            console.log(`🎙️ Script: ${script.substring(0, 80)}...`);
+        }
 
         await ttsEngine.synthesize(script, audioPath, {
             googleVoice:  selectedVoice,
@@ -705,7 +854,46 @@ async function generateAndUploadVideo(jobData, options = {}) {
             pitch:        1.0
         });
 
-        const safeAnchorY = await createPoster(jobData, jobCat, posterPath);
+        // 🧠 GROWTH ENGINE: Generate subtitles for the video
+        let hasSubtitles = false;
+        try {
+            const flags = require('./agents/growth/feature_flags');
+const motionEngine = require('./agents/growth/motion_engine');
+            if (flags.isEnabled('SUBTITLE_ENGINE_ENABLED')) {
+                const subtitleEngine = require('./agents/growth/subtitle_engine');
+                // Build minimal script structure for subtitle generation
+                const scriptForSubs = {
+                    script: script,
+                    sections: growthRec?.script?.sections || { hook: script }
+                };
+                // Use growth keywords for highlighting if available
+                const keywords = growthRec?.script?.sections?.hook
+                    ? growthRec.script.sections.hook.split(/\s+/).filter(w => /\d/.test(w) || /PASS|POST|DATE|RESULT/i.test(w))
+                    : [];
+                const subResult = subtitleEngine.generateSubtitles(scriptForSubs, { keywords });
+                if (subResult.subtitles && subResult.subtitles.length > 0) {
+                    const srtContent = subResult.toSRT();
+                    fs.writeFileSync(subtitlePath, srtContent, 'utf8');
+                    hasSubtitles = fs.existsSync(subtitlePath) && fs.statSync(subtitlePath).size > 0;
+                    if (hasSubtitles) {
+                        console.log(`📝 Subtitles generated: ${subResult.subtitles.length} segments`);
+                    }
+                }
+            }
+        } catch (subErr) {
+            console.log(`⚠️ Subtitle generation failed (${V.shortError(subErr, 80)}) — continuing without subtitles`);
+            hasSubtitles = false;
+        }
+
+        // 🧠 GROWTH ENGINE: Generate first-frame overlay text
+        const firstFrameText = growthRec?.firstFrame?.text || '';
+        if (firstFrameText) {
+            console.log(`️ First frame: "${firstFrameText}"`);
+            // Pass to poster generator
+            jobData.firstFrameText = firstFrameText;
+        }
+
+        const safeAnchorY = await createPoster(jobData, jobCat, posterPath, growthRec);
         console.log(`📍 Anchor Y position: ${safeAnchorY}`);
 
         console.log('🎬 FFmpeg Rendering शुरू...');
@@ -723,13 +911,38 @@ async function generateAndUploadVideo(jobData, options = {}) {
         console.log(`   Audio  : ${fs.existsSync(finalAudio)}`);
         console.log(`   Music  : ${hasMusic}`);
 
+        // outLabel: which video output label to map (with or without subtitles)
+        const burnEnabled = flags.isEnabled('SUBTITLE_BURN_ENABLED');
+        const outLabel = (hasSubtitles && burnEnabled) ? '[outvs]' : '[outv]';
+
         let filter, args;
 
         if (hasMusic) {
+            // Subtitle overlay filter (only if subtitles were generated)
+            // 🔥 SUBTITLE BURN: only when flag ON + SRT exists.
+            // Default OFF — GitHub Actions runner has no Devanagari font,
+            // burning produces □□□ tofu boxes. SRT still generated for
+            // YouTube CC upload; burn when font is installed.
+            const burnEnabled = flags.isEnabled('SUBTITLE_BURN_ENABLED');
+            let subFilter = '';
+            if (hasSubtitles && burnEnabled) {
+                subFilter = `;[outv]subtitles='${subtitlePath}':force_style='FontName=Noto Sans Devanagari,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=180,Alignment=2'[outvs]`;
+            }
+            // 🧠 MOTION ENGINE: Apply controlled motion to poster
+            let motionFilter = '';
+            if (growthEnabled && growthRec?.enhancements?.motionProfile?.profile?.ffmpegFilter) {
+                motionFilter = growthRec.enhancements.motionProfile.profile.ffmpegFilter;
+                console.log(` Motion: ${growthRec.enhancements.motionProfile.profile.name}`);
+            } else {
+                // Default subtle zoom
+                motionFilter = "zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30";
+            }
+            
             filter =
-                `[0:v]zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30[bg];` +
+                `[0:v]${motionFilter}[bg];` +
                 `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=680:-1[anchor];` +
-                `[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv];` +
+                `[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv]` +
+                subFilter + `;` +
                 `[2:a]volume=1.5[voice];[3:a]volume=0.08[bgm];[voice][bgm]amix=inputs=2:duration=first[a]`;
 
             args = [
@@ -739,7 +952,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
                 '-i', finalAudio,
                 '-stream_loop', '-1', '-i', finalMusic,
                 '-filter_complex', filter,
-                '-map', '[outv]', '-map', '[a]',
+                '-map', outLabel, '-map', '[a]',
                 '-c:v', 'libx264', '-preset', 'superfast', '-crf', '26',
                 '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2',
                 '-shortest', '-pix_fmt', 'yuv420p',
@@ -747,10 +960,30 @@ async function generateAndUploadVideo(jobData, options = {}) {
             ];
         } else {
             console.log('⚠️ BG Music नहीं मिला, बिना म्यूजिक के render...');
+            // 🔥 SUBTITLE BURN: only when flag ON + SRT exists.
+            // Default OFF — GitHub Actions runner has no Devanagari font,
+            // burning produces □□□ tofu boxes. SRT still generated for
+            // YouTube CC upload; burn when font is installed.
+            const burnEnabled = flags.isEnabled('SUBTITLE_BURN_ENABLED');
+            let subFilter = '';
+            if (hasSubtitles && burnEnabled) {
+                subFilter = `;[outv]subtitles='${subtitlePath}':force_style='FontName=Noto Sans Devanagari,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=1,MarginV=180,Alignment=2'[outvs]`;
+            }
+            // 🧠 MOTION ENGINE: Apply controlled motion to poster
+            let motionFilter = '';
+            if (growthEnabled && growthRec?.enhancements?.motionProfile?.profile?.ffmpegFilter) {
+                motionFilter = growthRec.enhancements.motionProfile.profile.ffmpegFilter;
+                console.log(`🎬 Motion: ${growthRec.enhancements.motionProfile.profile.name}`);
+            } else {
+                // Default subtle zoom
+                motionFilter = "zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30";
+            }
+            
             filter =
-                `[0:v]zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30[bg];` +
+                `[0:v]${motionFilter}[bg];` +
                 `[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=680:-1[anchor];` +
-                `[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv];` +
+                `[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv]` +
+                subFilter + `;` +
                 `[2:a]volume=1.5[a]`;
 
             args = [
@@ -759,7 +992,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
                 '-stream_loop', '-1', '-an', '-i', finalAnchor,
                 '-i', finalAudio,
                 '-filter_complex', filter,
-                '-map', '[outv]', '-map', '[a]',
+                '-map', outLabel, '-map', '[a]',
                 '-c:v', 'libx264', '-preset', 'superfast', '-crf', '26',
                 '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2',
                 '-shortest', '-pix_fmt', 'yuv420p',
@@ -767,30 +1000,59 @@ async function generateAndUploadVideo(jobData, options = {}) {
             ];
         }
 
-        await new Promise((resolve, reject) => {
-            const ffmpeg = spawn(ffmpegPath, args);
-            ffmpeg.stderr.on('data', (data) => {
-                const out = data.toString();
-                if (out.includes('frame=')) {
-                    process.stdout.write(`\r${out.split('\n')[0]}`);
-                }
-            });
-            ffmpeg.on('error', (spawnErr) => reject(new Error(`FFmpeg spawn failed: ${spawnErr.message}`)));
-            ffmpeg.on('close', (code) => {
-                if (code === 0) {
-                    console.log('\n✅ Rendering पूरी!');
-                    resolve();
-                } else {
-                    reject(new Error(`FFmpeg failed: code ${code}`));
-                }
-            });
-        });
+        //  FFmpeg rendering with motion-fallback:
+        //   1. Try full filter (poster + motion + anchor overlay)
+        //   2. On failure, retry with static poster (no motion)
+        //   3. On second failure, give up — let caller mark as failed
+        const STATIC_MOTION = "zoompan=z='min(zoom+0.0005,1.1)':d=1:s=1080x1920:fps=30";
+        let ffmpegSucceeded = false;
+
+        for (const attempt of [filter, null]) {   // null = static fallback
+            const effectiveFilter = attempt || (hasMusic
+                ? `${STATIC_MOTION}[bg];[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=680:-1[anchor];[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv]${subFilter};[2:a]volume=1.5[voice];[3:a]volume=0.08[bgm];[voice][bgm]amix=inputs=2:duration=first[a]`
+                : `${STATIC_MOTION}[bg];[1:v]format=yuv420p,crop=iw:ih-80:0:0,colorkey=0x00FF00:0.3:0.1,scale=680:-1[anchor];[bg][anchor]overlay=(main_w-overlay_w)/2:${safeAnchorY}[outv]${subFilter};[2:a]volume=1.5[a]`
+            );
+
+            const ffmpegArgs = hasMusic
+                ? ['-y', '-loop', '1', '-i', finalPoster, '-stream_loop', '-1', '-an', '-i', finalAnchor, '-i', finalAudio, '-stream_loop', '-1', '-i', finalMusic, '-filter_complex', effectiveFilter, '-map', outLabel, '-map', '[a]', '-c:v', 'libx264', '-preset', 'superfast', '-crf', '26', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2', '-shortest', '-pix_fmt', 'yuv420p', finalVideoOut]
+                : ['-y', '-loop', '1', '-i', finalPoster, '-stream_loop', '-1', '-an', '-i', finalAnchor, '-i', finalAudio, '-filter_complex', effectiveFilter, '-map', outLabel, '-map', '[a]', '-c:v', 'libx264', '-preset', 'superfast', '-crf', '26', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2', '-shortest', '-pix_fmt', 'yuv420p', finalVideoOut];
+
+            try {
+                await runFFmpeg(ffmpegPath, ffmpegArgs, effectiveFilter === filter ? 'full' : 'static-fallback');
+                ffmpegSucceeded = true;
+                break;
+            } catch (err) {
+                const isFallback = attempt === null;
+                if (isFallback) throw err;   // last attempt — propagate
+                console.log(`⚠️ FFmpeg full-motion render failed — retrying with static poster: ${V.shortError(err, 120)}`);
+            }
+        }
+
+        if (ffmpegSucceeded) console.log('✅ Rendering पूरी!');
+        else throw new Error('FFmpeg failed after all fallback attempts');
 
         renderCompleted = true;
 
         // ✅ SEO Data Generate - BOTH TYPES के लिए full data
-        const seoData    = generateSEO(jobData, jobCat);
-        const finalTitle = generateViralTitle(jobData, jobCat);
+        // 🧠 GROWTH ENGINE: use platform-specific packaging if available
+        let seoData, finalTitle;
+        if (growthEnabled && growthRec.platformPackage && growthRec.platformPackage.youtube) {
+            const ytPkg = growthRec.platformPackage.youtube;
+            finalTitle = ytPkg.title || generateViralTitle(jobData, jobCat);
+            seoData = {
+                tags: ytPkg.tags || [],
+                description: ytPkg.description || '',
+                postLink: `https://studygyaan.in/${jobData.type === 'JOB' ? 'job' : 'update'}/${jobData.slug || jobData.id}`,
+                telegramLink: process.env.TELEGRAM_CHANNEL_LINK || "https://t.me/studygyaan_official",
+                hashtags: (ytPkg.hashtags || []).map(h => '#' + h).join(' '),
+                typeIntro: '',
+                ctaLine: ytPkg.cta || ''
+            };
+            console.log(`🧠 SEO (growth): title="${finalTitle}", tags=${seoData.tags.length}`);
+        } else {
+            seoData    = generateSEO(jobData, jobCat);
+            finalTitle = generateViralTitle(jobData, jobCat);
+        }
 
         console.log(`\n📊 SEO REPORT:`);
         console.log(`   📌 Title       : ${finalTitle}`);
@@ -915,11 +1177,23 @@ async function generateAndUploadVideo(jobData, options = {}) {
             console.log('⚠️ Playlist error:', plErr.message);
         }
 
+        // Independent platform statuses — one failure must not mark the whole
+        // video as failed. Each platform is tracked separately in Firestore.
+        const platformStatuses = { youtube: 'completed' };
+
         // ✅ Facebook Upload (public runs only)
         if (isTestUpload) {
             console.log('⏭️ Facebook skip — test upload.');
+            platformStatuses.facebook = 'skipped';
         } else {
-            await uploadToFacebook(videoPath, seoData.description);
+            try {
+                await uploadToFacebook(videoPath, seoData.description);
+                platformStatuses.facebook = 'completed';
+            } catch (fbErr) {
+                console.log('⚠️ Facebook upload failed:', fbErr.message);
+                platformStatuses.facebook = 'failed';
+                platformStatuses.facebookError = V.shortError(fbErr, 200);
+            }
         }
 
         // ✅ Telegram Notification
@@ -962,11 +1236,15 @@ async function generateAndUploadVideo(jobData, options = {}) {
                     }
                 );
                 console.log('✅ Telegram notification sent!');
+                platformStatuses.telegram = 'completed';
             } catch (tgErr) {
                 console.log('⚠️ Telegram error:', tgErr.message);
+                platformStatuses.telegram = 'failed';
+                platformStatuses.telegramError = V.shortError(tgErr, 200);
             }
         } else {
-            console.log('⚠️ Telegram credentials missing, skipping...');
+            console.log('️ Telegram credentials missing, skipping...');
+            platformStatuses.telegram = 'skipped';
         }
 
         // ✅ Auto First Comment (public runs only)
@@ -1040,7 +1318,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
         console.log(`🔖 Tags Count: ${seoData.tags.length}`);
         console.log(`${'='.repeat(50)}\n`);
 
-        return { success: true, videoId, videoUrl };
+        return { success: true, videoId, videoUrl, platformStatuses };
 
     } catch (err) {
         // Render succeeded but something after it (YouTube upload) blew up →
@@ -1060,7 +1338,7 @@ async function generateAndUploadVideo(jobData, options = {}) {
 
         return { success: false, error: V.shortError(err), uploadFailed };
     } finally {
-        [audioPath, posterPath, videoPath].forEach(f => {
+        [audioPath, posterPath, videoPath, subtitlePath].forEach(f => {
             try {
                 if (fs.existsSync(f)) fs.unlinkSync(f);
             } catch (e) {

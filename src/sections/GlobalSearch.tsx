@@ -171,7 +171,7 @@ const GlobalSearch = () => {
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto relative z-[60] mb-8" ref={searchRef} role="search">
+    <div className="w-full relative" ref={searchRef} role="search">
       <div className="relative flex items-center">
         <label htmlFor="global-search-input" className="sr-only">Search courses, jobs, and materials</label>
         

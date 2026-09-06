@@ -317,13 +317,38 @@ function generateMockTestSEO(subject, title, totalQuestions) {
     return finalTags;
 }
 
-function generateMockTitle(subject, totalQuestions) {
+function generateMockTitle(subject, totalQuestions, topicTitle = '') {
     const now = new Date();
     const year = now.getFullYear();
+    // 🗓️ Har video ka title alag dikhe — date bhi jodo
+    const dateTag = now.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' });
 
     const subjectClean = subject.replace(/[^\x20-\x7E]/g, '').trim() || subject;
     const subjectUpper = subjectClean.toUpperCase();
 
+    // ⭐ TOPIC-BASED TITLE (admin rule: same-jaisa naam nahi, topic ke hisaab se)
+    // Test ka asli title use karo — "Railway RRB Special Set" etc.
+    const topicClean = String(topicTitle || '')
+        .replace(/[^\x20-\x7E\u0900-\u097F]/g, ' ')  // weird symbols hatao (Hindi allowed)
+        .replace(/\s+/g, ' ')
+        .replace(/mock\s*test/gi, '')
+        .replace(/quiz/gi, '')
+        .trim();
+
+    if (topicClean.length >= 8) {
+        const topicHooks = [
+            `${topicClean} Mock Test: ${totalQuestions} Q&A`,
+            `${topicClean} — Top ${totalQuestions} Questions`,
+            `${topicClean} Practice Set (${totalQuestions} MCQ)`,
+        ];
+        const hook = topicHooks[Math.floor(Math.random() * topicHooks.length)];
+        let t = `${hook} | ${dateTag} | StudyGyaan`;
+        if (t.length > 100) t = `${hook} | StudyGyaan`;
+        if (t.length > 100) t = t.substring(0, 97) + '...';
+        return t;
+    }
+
+    // Fallback (topic nahi mila): purane hooks + date for uniqueness
     const safeHooks = [
         `Top ${totalQuestions} ${subjectUpper} Questions`,
         `${subjectUpper} Mock Test ${totalQuestions} QandA`,
@@ -333,10 +358,9 @@ function generateMockTitle(subject, totalQuestions) {
     ];
 
     const suffixes = [
-        `With Timer and Answers StudyGyaan`,
-        `Bilingual Hindi English StudyGyaan`,
-        `Free Mock Test ${year} StudyGyaan`,
-        `With Explanation StudyGyaan.in`
+        `${dateTag} StudyGyaan`,
+        `With Answers ${dateTag} StudyGyaan`,
+        `Free Mock Test ${dateTag} StudyGyaan`,
     ];
 
     const hook = safeHooks[Math.floor(Math.random() * safeHooks.length)];
@@ -1066,7 +1090,7 @@ async function generateMockTestVideo(options = {}) {
         renderCompleted = true;
 
         const seoTags = generateMockTestSEO(subject, title, totalQuestions);
-        const ytTitle = generateMockTitle(subject, totalQuestions);
+        const ytTitle = generateMockTitle(subject, totalQuestions, title);
         const seoDescription = generateMockDescription(subject, totalQuestions, ytTitle, seoTags);
 
         console.log(`📢 Title: ${ytTitle}`);

@@ -2,29 +2,24 @@ import SEO from '../components/SEO';
 import { useEffect, useState } from 'react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { auth } from '../firebase/config';
+import { Link } from 'react-router-dom';
+import { ROUTES } from '@/config/routes';
 
 import { onAuthStateChanged } from 'firebase/auth';
 import { courseRepository } from '@/features/courses/data/courseRepository';
 import { userRepository } from '@/features/users/data/userRepository';
 import { useNavigate } from 'react-router-dom';
 import {
-  BookOpen, ArrowRight, Loader2, ShoppingBag, Sparkles,
-  Flame, ShoppingCart, Zap, CheckCircle2, GraduationCap
+  BookOpen, ArrowRight, Loader2, ShoppingBag, Flame, ShoppingCart, Zap, CheckCircle2, GraduationCap
 } from 'lucide-react';
 type MyCourseView = {
   id: string;
   title?: string;
 };
 
-type MyCourseLink = {
-  title?: string;
-  url?: string;
-};
-
 type MyCoursesSettings = {
   mrpPrice?: string | number;
   discountPercent?: string | number;
-  relatedBlogs?: MyCourseLink[];
 };
 
 const MyCourses = () => {
@@ -82,12 +77,6 @@ const MyCourses = () => {
     loadDashboardData();
   }, [navigate]);
 
-  const loopColors = [
-    "from-indigo-400 to-blue-600 shadow-blue-500/20",
-    "from-rose-400 to-pink-600 shadow-rose-500/20",
-    "from-emerald-400 to-teal-600 shadow-emerald-500/20",
-    "from-amber-400 to-orange-600 shadow-orange-500/20"
-  ];
 
   const sellingPrice = Math.round(
     Number(globalSettings?.mrpPrice || 499) * (1 - Number(globalSettings?.discountPercent || 85) / 100)
@@ -115,10 +104,10 @@ const MyCourses = () => {
         
         {/* Header Section */}
         <div className="mb-8 md:mb-12">
-          <h2 className="text-2xl md:text-5xl font-black text-slate-900 flex items-center gap-3">
+          <h1 className="text-2xl md:text-5xl font-black text-slate-900 flex items-center gap-3">
             <GraduationCap className="text-blue-600 w-8 h-8 md:w-14 md:h-14" /> 
             मेरे <span className="text-blue-600">नोट्स और कोर्स</span>
-          </h2>
+          </h1>
           <div className="h-1.5 w-20 bg-blue-600 mt-3 rounded-full"></div>
         </div>
 
@@ -172,24 +161,6 @@ const MyCourses = () => {
 
           <aside className="w-[40%] md:w-[32%] space-y-4 md:space-y-8 sticky top-12 md:top-16">
             
-            {globalSettings?.relatedBlogs && (
-              <div className="bg-white p-3 md:p-6 rounded-2xl md:rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-blue-50 rounded-bl-full opacity-40"></div>
-                  <h3 className="text-[10px] md:text-base font-black text-slate-900 mb-4 border-b border-slate-50 pb-2 flex items-center gap-2 relative z-10">
-                    <Sparkles size={16} className="text-blue-600 animate-pulse" /> नए अपडेट्स 🔥
-                  </h3>
-                  <ul className="space-y-3 md:space-y-4 relative z-10 font-black">
-                      {globalSettings.relatedBlogs.map((b, i: number) => (
-                          <li key={i} onClick={() => { if (b.url) window.open(b.url, '_blank'); }} className={`bg-gradient-to-r ${loopColors[i % loopColors.length]} p-[0.8px] rounded-lg cursor-pointer active:scale-95 shadow-sm`}>
-                              <div className="bg-white p-2 md:p-3 rounded-[7px] text-[9px] md:text-[11.5px] text-slate-800 line-clamp-2 leading-tight">
-                                  {b.title}
-                              </div>
-                          </li>
-                      ))}
-                  </ul>
-              </div>
-            )}
-
             <div className="p-4 md:p-8 bg-gradient-to-br from-slate-900 to-blue-900 rounded-2xl md:rounded-[3rem] text-white shadow-2xl relative overflow-hidden group">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/20 rounded-full blur-3xl group-hover:scale-150 transition-all duration-1000"></div>
                 <Zap size={24} className="text-yellow-400 mb-3 animate-pulse" />
@@ -217,10 +188,10 @@ const MyCourses = () => {
             <BookOpen size={20} className="text-blue-600" aria-hidden="true" /> Explore More on StudyGyaan
           </h2>
           <div className="flex flex-wrap gap-3">
-            <a href="/govt-jobs" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Latest Govt Jobs</a>
-            <a href="/free-study-material" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Study Material</a>
-            <a href="/test" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Mock Tests</a>
-            <a href="/blog" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Sarkari Yojana & Blogs</a>
+            <Link to={ROUTES.govtJobs} className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Latest Govt Jobs</Link>
+            <Link to={ROUTES.studyMaterial} className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Study Material</Link>
+            <Link to={ROUTES.mockTests} className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Mock Tests</Link>
+            <Link to={ROUTES.blog} className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Sarkari Yojana & Blogs</Link>
           </div>
         </div>
       </div>

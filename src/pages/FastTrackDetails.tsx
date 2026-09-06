@@ -13,6 +13,7 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import RelatedContent from '../components/RelatedContent';
 import ExamHubNavigation from '../components/ExamHubNavigation';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
+import { ROUTES } from '@/config/routes';
 
 // =========================================================
 // 🛠️ HELPERS
@@ -92,24 +93,24 @@ const ListCard = ({ item, currentId }: { item: FastTrackItem; currentId?: string
 
     return (
         <Link
-            to={`/update/${item.slug || item.id}`}
+            to={ROUTES.update(item.slug || item.id)}
             className={`block p-3 rounded-2xl border transition-all ${isActive
                 ? `${colors.card} shadow-md ring-2 ring-opacity-40`
                 : 'bg-white border-slate-100 hover:shadow-md hover:border-slate-200'
-            }`}
+            )}
         >
             <div className="flex justify-between items-center gap-2">
                 <div className="flex-1 min-w-0">
                     <span className="text-[9px] font-bold text-slate-400 mb-1 block">
                         {item.updateDate || item.category}
                     </span>
-                    <p className={`font-bold text-sm leading-tight line-clamp-2 ${isActive ? colors.text : 'text-slate-700'}`}>
+                    <p className={`font-bold text-sm leading-tight line-clamp-2 ${isActive ? colors.text : 'text-slate-700')}>
                         {item.title}
                     </p>
                 </div>
                 <ChevronRight
                     size={15}
-                    className={`shrink-0 ${isActive ? colors.text : 'text-slate-300'}`}
+                    className={`shrink-0 ${isActive ? colors.text : 'text-slate-300')}
                     aria-hidden="true"
                 />
             </div>
@@ -255,7 +256,7 @@ const FastTrackDetails = () => {
                         यह update expire हो गया है या link गलत है।
                     </p>
                     <a
-                        href="/govt-jobs"
+                        href={ROUTES.govtJobs}
                         className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-sm hover:bg-blue-700 transition-all"
                     >
                         सभी Updates देखें →
@@ -408,7 +409,7 @@ const FastTrackDetails = () => {
                                         }
                                         target="_blank"
                                         rel="nofollow noopener noreferrer"
-                                        className={`flex items-center justify-center w-full py-3.5 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.98] ${colors.bg}`}
+                                        className={`flex items-center justify-center w-full py-3.5 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.98] ${colors.bg)}
                                     >
                                         <Download className="mr-2" size={16} aria-hidden="true" />
                                         Official {data.category} Link
@@ -442,7 +443,7 @@ const FastTrackDetails = () => {
                         title="Aur Fresh Updates"
                         items={inlineFresh}
                         currentId={docId || id}
-                        moreLink="/fasttrack"
+                        moreLink={ROUTES.fastTrack}
                     />
 
                     <article itemScope itemType="https://schema.org/NewsArticle">
@@ -466,7 +467,7 @@ const FastTrackDetails = () => {
                                 title="Isi Category Ke Aur Updates"
                                 items={inlineSameCat}
                                 currentId={docId || id}
-                                moreLink="/fasttrack"
+                                moreLink={ROUTES.fastTrack}
                             />
                         )}
 
@@ -560,7 +561,7 @@ const FastTrackDetails = () => {
                             />
                             {/* Sab kuch ek jagah */}
                             <Link
-                                to="/fasttrack"
+                                to={ROUTES.fastTrack}
                                 className="block text-center bg-slate-800 hover:bg-black text-white font-black text-xs uppercase tracking-widest py-3.5 rounded-2xl shadow-lg transition-all active:scale-95"
                             >
                                 👉 Sabhi Updates Ek Saath — Click for More

@@ -1,6 +1,8 @@
-﻿const functions = require("firebase-functions");
-// onDocumentCreated (Blaze/v2 only) replaced with noop for Spark
-const onDocumentCreated = () => () => {};
+const functions = require("firebase-functions");
+// v1 Firestore triggers work on Spark plan (125K reads / 50K writes per month free).
+// Replaced the v2 noop with a real v1 trigger so JOB publish instantly
+// dispatches to GitHub Actions without requiring Blaze billing.
+const onDocumentCreated = (documentPath) => functions.firestore.document(documentPath).onCreate;
 const admin = require("firebase-admin");
 const axios = require("axios");
 const { google } = require("googleapis");
@@ -281,9 +283,93 @@ Return ONLY this JSON (no markdown):
 }
 
 // =========================================================
-// 🌐 WEB SCRAPER
+// ✍️ FULL ARTICLE GENERATOR (scraper ke saath hi — alag step nahi)
+// Draft me hi poora SEO article (articleHtml) bhar deta hai taaki admin
+// ko Review Draft me sab READYMADE mile — bas check karke publish.
+// =========================================================
+async function generateFullJobArticle(jobData, scrapedContent) {
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+    const facts = JSON.stringify({
+        title: jobData.title, organization: jobData.organization, advtNo: jobData.advtNo,
+        startDate: jobData.startDate, lastDate: jobData.lastDate, vacancies: jobData.vacancies,
+        salary: jobData.salary, qualification: jobData.qualification, minAge: jobData.minAge,
+        ageLimit: jobData.ageLimit, location: jobData.location,
+        selectionProcess: jobData.selectionProcess, eligibility: jobData.eligibility,
+        feeGen: jobData.feeGen, feeOBC: jobData.feeOBC, feeSCST: jobData.feeSCST,
+        feeFemale: jobData.feeFemale, applicationFee: jobData.applicationFee,
+        applyLink: jobData.applyLink, notificationLink: jobData.notificationLink,
+        officialSiteLink: jobData.officialSiteLink
+    });
+
+    const prompt = `Act as StudyGyaan's senior editorial writer for Indian government-job aspirants.
+Write a COMPLETE, ORIGINAL, source-grounded job article in easy Hinglish (Hindi-English mix, Devanagari for Hindi words).
+
+=== VERIFIED FACTS (in JSON — inhi facts ko use karo) ===
+${facts}
+
+=== OFFICIAL SOURCE TEXT (ground truth) ===
+${String(scrapedContent).slice(0, 15000)}
+
+=== STRICT RULES ===
+1. Facts (dates/fees/vacancies/qualification/links) SIRF upar se lo. Koi fact INVENT mat karo.
+2. Agar koi fact missing hai to us section me likho: "अधिक जानकारी के लिए आधिकारिक नोटिफिकेशन देखें।" — guess kabhi nahi.
+3. Source ke sentences WORD-BY-WORD copy MAT karo — apni original editorial wording likho (facts same rahenge).
+4. Koi keyword stuffing nahi, koi filler repetition nahi, koi generic AI padding nahi. Har paragraph useful ho.
+5. Sirf OFFICIAL links use karo (jo facts me diye hain). Koi third-party job portal nahi.
+
+=== OUTPUT FORMAT ===
+- Return ONLY clean HTML (no markdown, no \`\`\`, no <html>/<head>/<body> tags).
+- NO <h1> (page title already H1 hai). Structure:
+  1. 2-3 intro <p> (kya bharti hai, kaun apply kar sakta hai, deadline)
+  2. <h2>संक्षिप्त जानकारी (Overview)</h2> + <table> (Organization | Post | Advt No | Vacancies | Mode | Last Date | Official Website)
+  3. <h2>महत्वपूर्ण तिथियाँ (Important Dates)</h2> + <table> (sirf available dates)
+  4. <h2>पद एवं रिक्तियों का विवरण (Vacancy Details)</h2>
+  5. <h2>शैक्षणिक योग्यता (Educational Qualification)</h2>
+  6. <h2>आयु सीमा (Age Limit)</h2>
+  7. <h2>वेतन (Salary / Pay Scale)</h2>
+  8. <h2>आवेदन शुल्क (Application Fee)</h2> + <table> (sirf available categories)
+  9. <h2>चयन प्रक्रिया (Selection Process)</h2>
+  10. <h2>आवेदन कैसे करें (How to Apply)</h2> + <ol> numbered steps
+  11. <h2>महत्वपूर्ण निर्देश (Important Instructions)</h2> + <ul>
+  12. <h2>महत्वपूर्ण लिंक (Important Links)</h2> + <table> (Apply Online / Notification PDF / Official Website — sirf diye hue official links, <a href> ke saath)
+  13. <h2>अक्सर पूछे जाने वाले प्रश्न (FAQs)</h2> + 5-7 <h3>Question</h3><p>Answer</p> pairs (source-grounded answers)
+  14. Chhota useful conclusion <p> (official notification check karke deadline se pehle apply karne ki salah)
+- Target: 1500-2200 meaningful words. Agar source me kam jankari hai to chhota likho — filler add MAT karo.`;
+
+    const result = await model.generateContent(prompt);
+    let html = result.response.text()
+        .replace(/```html/gi, '')
+        .replace(/```/g, '')
+        .trim();
+    // Safety: h1 aa gaya ho to h2 bana do (page pe single H1 rahe)
+    html = html.replace(/<h1(\s[^>]*)?>/gi, '<h2>').replace(/<\/h1>/gi, '</h2>');
+    return html;
+}
+
+// =========================================================
+// 🌐 WEB SCRAPER (429 rate-limit pe smart retry + polite delay)
 // =========================================================
 async function scrapeJobPage(url) {
+    const RETRY_WAITS = [15000, 35000, 60000]; // 429/5xx pe: 15s → 35s → 60s
+    let lastErr;
+    for (let attempt = 0; attempt <= RETRY_WAITS.length; attempt++) {
+        try {
+            return await scrapeJobPageOnce(url);
+        } catch (err) {
+            lastErr = err;
+            const status = err.response && err.response.status;
+            const retryable = status === 429 || status === 503 || status === 502;
+            if (!retryable || attempt === RETRY_WAITS.length) throw err;
+            console.log(`   ⏳ HTTP ${status} — ${RETRY_WAITS[attempt] / 1000}s ruk ke retry (${attempt + 1}/${RETRY_WAITS.length})...`);
+            await sleep(RETRY_WAITS[attempt]);
+        }
+    }
+    throw lastErr;
+}
+
+async function scrapeJobPageOnce(url) {
     const { data: html } = await axios.get(url, {
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -321,12 +407,98 @@ async function scrapeJobPage(url) {
 // =========================================================
 // 🔥 CORE SCRAPING LOGIC
 // =========================================================
-async function scrapeGovtJobsLogic(maxJobs = 5) {
-    console.log("🚀 Govt Jobs Scraper Started...");
+// =========================================================
+// 🌐 MULTI-SOURCE JOB FEEDS (ek site down/429 ho to baaki chalte rahen)
+// Round-robin merge — koi ek site dominate nahi karti.
+// =========================================================
+const JOB_SOURCES = [
+    // ✅ Sab feeds LIVE-VERIFIED hain (23 Aug 2026)
+    { name: 'IndGovtJobs',    url: 'https://www.indgovtjobs.in/feeds/posts/default?alt=rss' },
+    { name: 'FreeJobAlert',   url: 'https://www.freejobalert.com/feed/' },
+    { name: 'SarkariExam',    url: 'https://www.sarkariexam.com/feed' },
+    { name: 'SarkariJobFind', url: 'https://sarkarijobfind.com/feed/' },
+    { name: 'RojgarResult',   url: 'https://rojgarresult.com/feed/' },
+    { name: 'GovtJobsBlog',   url: 'https://www.govtjobsblog.in/feed/' },
+    { name: 'SarkariNaukriD', url: 'https://www.sarkarinaukridaily.in/feed/' },
+];
 
-    const rssUrl = 'https://www.indgovtjobs.in/feeds/posts/default?alt=rss';
-    const feed   = await parser.parseURL(rssUrl);
-    const items  = feed.items.slice(0, 50);
+async function fetchAllJobItems(perSource = 12, limitTotal = 60) {
+    const buckets = [];
+    for (const src of JOB_SOURCES) {
+        try {
+            const feed = await parser.parseURL(src.url);
+            const items = (feed.items || []).slice(0, perSource).map((it) => ({
+                title:  (it.title || '').trim(),
+                link:   (it.link || it.guid || '').trim(),
+                source: src.name
+            })).filter((it) => it.title && it.link && !it.link.includes('127.0.0.1'));
+            buckets.push(items);
+            console.log(`📰 ${src.name}: ${items.length} items`);
+        } catch (e) {
+            console.warn(`⚠️ ${src.name} feed fail (skip): ${e.message.slice(0, 80)}`);
+        }
+        await sleep(1500);
+    }
+    // Round-robin merge: har site se baari-baari 1 item
+    const merged = [];
+    let added = true;
+    for (let i = 0; added && merged.length < limitTotal; i++) {
+        added = false;
+        for (const bucket of buckets) {
+            if (i < bucket.length && merged.length < limitTotal) {
+                merged.push(bucket[i]);
+                added = true;
+            }
+        }
+    }
+    console.log(`📊 Total candidates (all sources): ${merged.length}`);
+    return merged;
+}
+
+// =========================================================
+// ⭐ JOB QUALITY SCORE — best quality jobs hi save honge
+// Facts completeness + article length (max ~14 points)
+// =========================================================
+function jobQualityScore(jobData, articleHtml) {
+    let score = 0;
+    if (jobData.lastDate)      score += 2;
+    if (jobData.vacancies)     score += 2;
+    if (jobData.qualification) score += 2;
+    if (jobData.salary)        score += 1;
+    if (jobData.startDate)     score += 1;
+    if (jobData.organization)  score += 1;
+    if (jobData.feeGen || jobData.applicationFee) score += 1;
+    if (jobData.notificationLink || jobData.applyLink) score += 1;
+    const words = String(articleHtml || '').replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
+    if (words >= 1500)      score += 3;
+    else if (words >= 1000) score += 2;
+    else if (words >= 600)  score += 1;
+    return { score, words };
+}
+
+const QUALITY_GOOD  = 9; // isse upar = turant save
+const QUALITY_FLOOR = 6; // 6-8 = backup pool (min-2 guarantee ke liye)
+const MIN_JOBS_PER_RUN = 2;
+const MAX_EVALUATIONS  = 12; // AI-quota/time budget per run
+
+async function scrapeGovtJobsLogic(maxJobs = 5) {
+    console.log("🚀 Govt Jobs Scraper Started (multi-source)...");
+
+    const items = await fetchAllJobItems();
+
+    // 🛡️ Cross-site duplicate protection: recent titles (published + drafts)
+    const { overlapsAny } = require('./agents/article_agents/title_utils');
+    const recentTitles = [];
+    try {
+        const [jobsSnap, draftsSnap] = await Promise.all([
+            db.collection("jobs").orderBy("createdAt", "desc").limit(60).get(),
+            db.collection("job_drafts").orderBy("createdAt", "desc").limit(60).get()
+        ]);
+        jobsSnap.forEach((d) => { const t = d.data().title; if (t) recentTitles.push(String(t)); });
+        draftsSnap.forEach((d) => { const t = d.data().title; if (t) recentTitles.push(String(t)); });
+    } catch (e) {
+        console.warn("Recent titles fetch failed:", e.message);
+    }
 
     const now = new Date();
     const dateSuffix = now.toLocaleString('en-IN', {
@@ -352,14 +524,27 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
     }
 
     let savedCount = 0;
+    let evaluated = 0;
+    const backupPool = []; // score 6-8 wale — min-2 guarantee ke liye
 
     for (const item of items) {
         if (savedCount >= maxJobs) break;
+        if (evaluated >= MAX_EVALUATIONS) {
+            console.log(`⏸️ Evaluation budget khatam (${MAX_EVALUATIONS}) — is run me itna hi`);
+            break;
+        }
 
         const titleText = (item.title || '').trim();
 
         if (shouldSkipTitle(titleText)) {
             console.log(`⏭️ Skipped: ${titleText}`);
+            continue;
+        }
+
+        // 🛡️ Same job doosri site se? Title-overlap check
+        const dup = overlapsAny(titleText, recentTitles);
+        if (dup.dup) {
+            console.log(`⏭️ Duplicate (cross-site): "${titleText}" ≈ "${dup.with}"`);
             continue;
         }
 
@@ -380,7 +565,9 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
         }
 
         try {
-            console.log(`📡 Scraping: ${jobLink}`);
+            evaluated++;
+            console.log(`📡 [${evaluated}/${MAX_EVALUATIONS}] Scraping (${item.source || 'RSS'}): ${jobLink}`);
+            await sleep(8000); // 🕊️ polite delay — source site 429 na de
             const scrapedContent = await scrapeJobPage(jobLink);
 
             console.log(`🤖 AI Processing: ${titleText}`);
@@ -429,6 +616,16 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
 
             console.log(`🔗 applyLink: ${cleanApplyLink}`);
 
+            // ✍️ FULL ARTICLE — scraper ke saath hi ready (admin ko bas review karna hai)
+            let articleHtml = '';
+            try {
+                articleHtml = await generateFullJobArticle(jobData, scrapedContent);
+                const words = articleHtml.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
+                console.log(`📝 Full article generated: ${words} words`);
+            } catch (artErr) {
+                console.warn(`⚠️ Full article generation fail (draft phir bhi banega): ${artErr.message}`);
+            }
+
             const draftPayload = {
                 title:            finalTitle,
                 slug:             finalSlug,
@@ -436,6 +633,7 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 status:           "pending",
                 metaDescription:  jobData.metaDescription  || '',
                 description:      jobData.description      || '',
+                articleHtml:      articleHtml              || '',
                 category:         jobData.category         || 'other',
                 organization:     jobData.organization     || '',
                 advtNo:           jobData.advtNo           || '',
@@ -467,20 +665,45 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 Object.entries(draftPayload).filter(([, v]) => v !== undefined)
             );
 
-            await db.collection("job_drafts").doc(finalSlug).set(cleanPayload);
+            // ⭐ QUALITY GATE — sirf ache article wale jobs save honge
+            const { score, words } = jobQualityScore(jobData, articleHtml);
+            console.log(`⭐ Quality: ${score}/14 (${words} words) — ${finalTitle.slice(0, 50)}`);
+
+            // Processed mark turant (dobara AI-quota waste na ho)
             await db.collection("processed_links").doc(docId).set({
-                link:        jobLink,
-                slug:        finalSlug,
-                title:       finalTitle,
-                processedAt: admin.firestore.FieldValue.serverTimestamp()
+                link:         jobLink,
+                slug:         finalSlug,
+                title:        finalTitle,
+                qualityScore: score,
+                processedAt:  admin.firestore.FieldValue.serverTimestamp()
             });
 
-            savedCount++;
-            console.log(`✅ Saved (${savedCount}/${maxJobs}): ${finalTitle}`);
+            if (score >= QUALITY_GOOD) {
+                await db.collection("job_drafts").doc(finalSlug).set(cleanPayload);
+                savedCount++;
+                recentTitles.push(finalTitle);
+                console.log(`✅ Saved (${savedCount}/${maxJobs}) [score ${score}]: ${finalTitle}`);
+            } else if (score >= QUALITY_FLOOR) {
+                backupPool.push({ finalSlug, cleanPayload, finalTitle, score });
+                console.log(`🗂️ Backup pool [score ${score}]: ${finalTitle}`);
+            } else {
+                console.log(`🗑️ Low quality [score ${score}] — skip: ${finalTitle}`);
+            }
             await sleep(2000);
 
         } catch (err) {
             console.error(`❌ Failed: ${jobLink} | ${err.message}`);
+        }
+    }
+
+    // 📉 MIN GUARANTEE: 2 se kam save hue to backup pool ke BEST wale le lo
+    if (savedCount < MIN_JOBS_PER_RUN && backupPool.length) {
+        backupPool.sort((a, b) => b.score - a.score);
+        for (const b of backupPool) {
+            if (savedCount >= MIN_JOBS_PER_RUN) break;
+            await db.collection("job_drafts").doc(b.finalSlug).set(b.cleanPayload);
+            savedCount++;
+            console.log(`✅ Saved from backup (${savedCount}) [score ${b.score}]: ${b.finalTitle}`);
         }
     }
 
@@ -557,38 +780,26 @@ exports.fetchLatestGovtJobs = functions.https.onRequest(async (req, res) => {
 // =========================================================
 // 2️⃣ FIRESTORE TRIGGER - Job Publish होने पर
 // =========================================================
-exports.onJobPublishedNotify = onDocumentCreated({
-    document:       "jobs/{jobId}",
-    timeoutSeconds: 120,
-    memory:         "512MB",
-    secrets: [
-        "TELEGRAM_BOT_TOKEN",
-        "TELEGRAM_CHAT_ID",
-        "GH_TOKEN",
-        "GITHUB_OWNER",
-        "GITHUB_REPO",
-        "SERVICE_ACCOUNT_JSON"
-    ]
-}, async (event) => {
+// =========================================================
+// 2) FIRESTORE TRIGGER - Job publish hone par (v1 - Spark compatible)
+// =========================================================
+exports.onJobPublishedNotify = onDocumentCreated("jobs/{jobId}")(async (snap, context) => {
 
-    const snap = event.data;
     if (!snap) return null;
 
     const job   = snap.data();
-    const jobId = event.params.jobId;
+    const jobId = context.params.jobId;
 
     if (job.type && job.type !== 'JOB') {
-        console.log(`⏭️ Skipping non-JOB type: ${job.type}`);
+        console.log("Skipping non-JOB type:", job.type);
         return null;
     }
 
     const jobUrl = `https://studygyaan.in/job/${job.slug || jobId}`;
-    console.log(`\n${'='.repeat(50)}`);
-    console.log(`🚀 New Job: ${job.title}`);
-    console.log(`🔗 URL: ${jobUrl}`);
-    console.log(`${'='.repeat(50)}\n`);
-
-    // ─────────────────────────────────────
+    console.log("\n" + "=".repeat(50));
+    console.log("New Job:", job.title);
+    console.log("URL:", jobUrl);
+    console.log("=".repeat(50) + "\n");
     // STEP 1: Schema Save
     // ─────────────────────────────────────
     try {
@@ -612,7 +823,10 @@ exports.onJobPublishedNotify = onDocumentCreated({
                 "@type": "Place",
                 "address": {
                     "@type":          "PostalAddress",
-                    "addressRegion":  job.location || "India",
+                    "streetAddress":  job.officeAddress || job.location || "India",
+                    "addressLocality": (job.location || "India").split(',')[0].trim(),
+                    "addressRegion":  (job.location || "India").split(',')[1]?.trim() || (job.location || "India").split(',')[0].trim(),
+                    "postalCode":     job.postalCode || "110001",
                     "addressCountry": "IN"
                 }
             },
@@ -624,12 +838,20 @@ exports.onJobPublishedNotify = onDocumentCreated({
             }
         };
 
+        // 💰 Enhanced baseSalary with proper structure
         if (job.salary && job.salary.length > 2) {
+            const salaryNumbers = String(job.salary).match(/\d+/g);
+            const salaryMin = salaryNumbers ? parseInt(salaryNumbers[0]) : undefined;
+            const salaryMax = salaryNumbers && salaryNumbers.length > 1 ? parseInt(salaryNumbers[1]) : salaryMin;
+            
             jobSchema.baseSalary = {
                 "@type":    "MonetaryAmount",
                 "currency": "INR",
                 "value": {
                     "@type":       "QuantitativeValue",
+                    ...(salaryMin ? { minValue: salaryMin } : {}),
+                    ...(salaryMax ? { maxValue: salaryMax } : {}),
+                    "unitText":    "MONTH",
                     "description": job.salary
                 }
             };

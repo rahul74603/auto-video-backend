@@ -37,7 +37,7 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
-const bucket = admin.storage().bucket("studymaterial-406ad.firebasestorage.app");
+// bucket hata diya — Firebase Storage Spark pe band, ab cpanel_storage.js use hota hai
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // =========================================================
@@ -361,28 +361,11 @@ async function generateAndUploadWebPImage(imagePrompt, blogId, retryCount = 0) {
 
         console.log(`📦 Image converted: ${Math.round(originalBuffer.length / 1024)}KB → ${Math.round(webpBuffer.length / 1024)}KB WebP`);
 
-        // Upload WebP to Firebase Storage
+        // Upload WebP to cPanel (FREE — Firebase Storage Spark plan pe band ho gaya)
         const timestamp = Date.now();
-        const fileName = `blog_images/${blogId}_${timestamp}_${randomSeed}.webp`;
-        const file = bucket.file(fileName);
-
-        await file.save(webpBuffer, {
-            metadata: {
-                contentType: 'image/webp',
-                cacheControl: 'public, max-age=31536000',
-                metadata: {
-                    firebaseStorageDownloadTokens: crypto.randomUUID(),
-                    originalPrompt: imagePrompt.substring(0, 200),
-                    generatedFor: blogId,
-                    format: 'webp',
-                    quality: '85'
-                }
-            },
-            public: true
-        });
-
-        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
-        console.log("✅ WebP Image uploaded:", publicUrl);
+        const fileName = `uploads/blog_images/${blogId}_${timestamp}_${randomSeed}.webp`;
+        const publicUrl = await require("./cpanel_storage").uploadBuffer(webpBuffer, fileName);
+        console.log("✅ WebP Image uploaded (cPanel):", publicUrl);
         return publicUrl;
 
     } catch (imgError) {

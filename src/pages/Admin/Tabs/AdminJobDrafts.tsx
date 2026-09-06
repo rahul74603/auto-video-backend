@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import jobDraftRepository, { type JobDraftRecord } from '@/features/job-drafts/data/jobDraftRepository';
-import { AI_ARTICLE_PREFILL_EVENT } from './AdminAIArticleStudio';
 import { asText, toDateSafe, type TimestampLike } from '@/types/firestore';
 import { Trash2, Edit3, Sparkles, Clock, RotateCw, Wand2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+// GitHub Actions — job fetcher workflow (purani Cloud Run API delete ho chuki hai)
+const FETCH_WORKFLOW_URL = 'https://github.com/rahul74603/auto-video-backend/actions/workflows/govt_jobs_scraper.yml';
+
 const AdminJobDrafts = () => {
   const [drafts, setDrafts] = useState<JobDraftRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const navigate = useNavigate();
 
   // 1. AI Drafts को Firestore से लोड करना
@@ -37,31 +38,17 @@ const AdminJobDrafts = () => {
     return () => { cancelled = true; };
   }, []);
 
-  // 🚀 बैकएंड इंजन (Cloud Function) को ट्रिगर करना
+  // 🚀 Job fetcher ab GitHub Actions pe chalta hai (roz 9:30 AM auto + manual Run)
   const handleRefreshJobs = async () => {
-    setIsRefreshing(true);
-    const toastId = toast.loading("AI इंटरनेट पर नई जॉब्स ढूँढ रहा है...");
-
-    try {
-      const response = await fetch('https://fetchlatestgovtjobs-hf6vlh5cpq-uc.a.run.app?key=StudyGyaan_786_Secure');
-      const result: { success?: boolean; message?: string } = await response.json();
-
-      if (result.success) {
-        toast.success(result.message || "नई जॉब्स मिल गई हैं!", { id: toastId });
-        fetchDrafts();
-      } else {
-        toast.error("कोई नई जॉब नहीं मिली", { id: toastId });
-      }
-    } catch (error) {
-      console.error("Refresh Error:", error);
-      toast.error("बैकएंड इंजन कनेक्ट नहीं हो पाया", { id: toastId });
-    } finally {
-      setIsRefreshing(false);
-    }
+    window.open(FETCH_WORKFLOW_URL, '_blank');
+    toast.success(
+      'GitHub Actions khula — "Run workflow" dabao. 2-3 min me naye job drafts yahan aa jayenge (roz 9:30 AM waise bhi auto chalta hai)',
+      { duration: 8000 }
+    );
   };
 
-// APPLY/LOGIN form portals (Digialm EForms wagera) — inhe source URL ki tarah
-// prefill mat karo, backend bhi inhe reject karta hai (article inse nahi ban sakta).
+// APPLY/LOGIN form portals (Digialm EForms wagera) — AI inhe source URL ki
+// tarah use nahi kar sakta (article inse nahi ban sakta), warning ke liye.
 const FORM_PORTAL_HINTS = [
   /cdn\.digialm\.com\/EForms/i,
   /\/EForms\//i,
@@ -72,24 +59,26 @@ const FORM_PORTAL_HINTS = [
 
 const isFormPortalUrl = (url: string) => FORM_PORTAL_HINTS.some((re) => re.test(url));
 
-// 1.5 ✨ इस fetched job draft से AI Article बनाना (ऊपर studio में prefill)
-const handleGenerateArticle = (job: JobDraftRecord) => {
-  // Pehle non-form candidates try karo; sab form portals hon to pehla wala (backend guide karega).
+// 1.5 ✨ Is job draft ko AI Article queue me daalo — agli AI Drafts run
+// (GitHub Actions) isse PRIORITY pe full article bana degi → Review AI Drafts me aayega
+const handleGenerateArticle = async (job: JobDraftRecord) => {
   const candidates = [asText(job.sourceUrl), asText(job.officialLink), asText(job.notificationLink), asText(job.applyLink), asText(job.link)].filter(Boolean);
   const sourceUrl = candidates.find((u) => !isFormPortalUrl(u)) || candidates[0] || '';
-  if (sourceUrl !== candidates[0] && candidates.length) {
-    toast.success('Apply-form wala link chhoda — notification/official wala link liya 👍', { duration: 4000 });
+  try {
+    await jobDraftRepository.updateDraft(job.id, {
+      aiDraftRequested: true,
+      aiDrafted: false,
+      aiDraftTries: 0,
+      aiDraftLastTryAt: '2000-01-01T00:00:00.000Z',
+      ...(sourceUrl && sourceUrl !== asText(job.sourceUrl) ? { sourceUrl } : {}),
+    });
+    toast.success(
+      `🤖 "${asText(job.title).slice(0, 40)}" AI queue me! Agli AI Drafts run me full article ban ke "Review AI Drafts" me aayega`,
+      { duration: 7000 }
+    );
+  } catch {
+    toast.error('Queue nahi ho paya');
   }
-  window.dispatchEvent(new CustomEvent(AI_ARTICLE_PREFILL_EVENT, {
-    detail: {
-      sourceUrl,
-      title: asText(job.title),
-      organization: asText(job.organization),
-      category: asText(job.category),
-      // ⭐ publish hone par ye JOBS AI draft row bhi auto-delete hogi (duplicate nahi rahega)
-      originRef: job.id ? { collection: 'job_drafts', id: job.id } : undefined,
-    }
-  }));
   };
 
   // 2. किसी ड्राफ्ट को डिलीट करना
@@ -127,13 +116,10 @@ const handleGenerateArticle = (job: JobDraftRecord) => {
 
             <button
                 onClick={handleRefreshJobs}
-                disabled={isRefreshing}
-                className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95 ${
-                    isRefreshing ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200'
-                }`}
+                className="flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95 bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200"
             >
-                {isRefreshing ? <RotateCw size={16} className="animate-spin" /> : <RotateCw size={16} />}
-                {isRefreshing ? 'Discovering...' : 'Refresh Latest Jobs'}
+                <RotateCw size={16} />
+                Fetch New Jobs (GitHub)
             </button>
         </div>
 

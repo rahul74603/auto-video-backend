@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
-import { Mail, Phone, MapPin, Facebook, Twitter, Instagram, Linkedin, Sparkles, Zap, Flame } from 'lucide-react';
+import { Mail, Phone, MapPin, Facebook, Sparkles, Zap, Flame, MessageCircle, Send, Youtube } from 'lucide-react';
+import { ROUTES } from '@/config/routes';
 
 const Footer = () => {
   return (
@@ -22,18 +23,20 @@ const Footer = () => {
             </p>
             <div className="flex gap-3">
               {[
-                { Icon: Facebook, label: "Follow us on Facebook" },
-                { Icon: Twitter, label: "Follow us on Twitter" },
-                { Icon: Instagram, label: "Follow us on Instagram" },
-                { Icon: Linkedin, label: "Follow us on Linkedin" }
+                { Icon: Facebook, label: "Facebook", href: "https://www.facebook.com/StudyGyaan.in/", hover: "hover:bg-blue-600" },
+                { Icon: MessageCircle, label: "WhatsApp Channel", href: "https://whatsapp.com/channel/0029VbC4vo12ZjCuRpjPrt3b", hover: "hover:bg-green-600" },
+                { Icon: Send, label: "Telegram", href: "https://t.me/studygyaan_official", hover: "hover:bg-sky-500" },
+                { Icon: Youtube, label: "YouTube", href: "https://youtube.com/@studygyaan_official", hover: "hover:bg-red-600" }
               ].map((social, i) => (
                 <a 
                   key={i} 
-                  href="#" 
+                  href={social.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   aria-label={social.label}
-                  className="bg-slate-800/50 p-2 rounded-lg hover:bg-blue-600 hover:text-white transition-all transform hover:-translate-y-1"
+                  className={`bg-slate-800/50 p-2.5 rounded-lg ${social.hover} hover:text-white transition-all transform hover:-translate-y-1`}
                 >
-                  <social.Icon className="w-4 h-4" aria-hidden="true" />
+                  <social.Icon className="w-4 h-4 md:w-5 md:h-5" aria-hidden="true" />
                 </a>
               ))}
             </div>
@@ -45,12 +48,17 @@ const Footer = () => {
               Explore <Sparkles size={12} className="text-blue-400" aria-hidden="true" />
             </h3>
             <ul className="space-y-2 md:space-y-4 text-[11px] md:text-sm font-bold">
-              <li><Link to="/" className="hover:text-white transition-colors">Home</Link></li>
-              <li><Link to="/mock-tests" className="hover:text-white transition-colors">Mock Test</Link></li>
-              <li><Link to="/free-study-material" className="hover:text-white transition-colors">Free Study Material</Link></li>
-              <li><Link to="/blog" className="text-gray-400 hover:text-white transition-colors font-bold">Blog</Link></li>
-              <li><Link to="/govt-jobs" className="hover:text-white transition-colors">Govt Jobs</Link></li>
-              <li><Link to="/premium-notes" className="text-gray-400 hover:text-white transition-colors font-bold">Premium Notes</Link></li>
+              <li><Link to={ROUTES.home} className="hover:text-white transition-colors">Home</Link></li>
+              <li><a href={ROUTES.tools} className="hover:text-white transition-colors">🛠️ Sarkari Tools</a></li>
+              <li><Link to={ROUTES.mockTests} className="hover:text-white transition-colors">Mock Test</Link></li>
+              <li><Link to={ROUTES.studyMaterial} className="hover:text-white transition-colors">Free Study Material</Link></li>
+              <li><Link to={ROUTES.blog} className="text-gray-400 hover:text-white transition-colors font-bold">Blog</Link></li>
+              <li><Link to={ROUTES.govtJobs} className="hover:text-white transition-colors">Govt Jobs</Link></li>
+              <li><Link to={ROUTES.examCalendar} className="hover:text-white transition-colors">📅 Exam Calendar</Link></li>
+              <li><Link to="/jobs/10th-pass" className="hover:text-white transition-colors">10th Pass Jobs</Link></li>
+              <li><Link to="/jobs/12th-pass" className="hover:text-white transition-colors">12th Pass Jobs</Link></li>
+              <li><Link to="/jobs/railway" className="hover:text-white transition-colors">Railway Jobs</Link></li>
+              <li><Link to={ROUTES.premiumNotes} className="text-gray-400 hover:text-white transition-colors font-bold">Premium Notes</Link></li>
             </ul>
           </nav>
 
@@ -58,13 +66,13 @@ const Footer = () => {
           <nav className="col-span-1" aria-label="Legal Information">
             <h3 className="text-white font-black mb-4 md:mb-6 uppercase tracking-widest text-[10px] md:text-sm">Legal Info</h3>
             <ul className="space-y-2 md:space-y-3 text-[10px] md:text-sm font-medium opacity-80">
-              <li><Link to="/about-us" className="hover:text-blue-400 transition-colors">About Us</Link></li>
-              <li><Link to="/privacy-policy" className="hover:text-blue-400 transition-colors">Privacy Policy</Link></li>
-              <li><Link to="/terms-conditions" className="hover:text-blue-400 transition-colors">Terms & Cond.</Link></li>
-              <li><Link to="/refund-cancellation-policy" className="hover:text-blue-400 transition-colors">Refund & Cancellation</Link></li>
-              <li><Link to="/shipping-policy" className="hover:text-blue-400 transition-colors">Shipping Policy</Link></li>
-              <li><Link to="/disclaimer" className="hover:text-blue-400 transition-colors">Disclaimer</Link></li>
-              <li><Link to="/contact-us" className="hover:text-blue-400 transition-colors">Contact Us</Link></li>
+              <li><Link to={ROUTES.aboutUs} className="hover:text-blue-400 transition-colors">About Us</Link></li>
+              <li><Link to={ROUTES.privacyPolicy} className="hover:text-blue-400 transition-colors">Privacy Policy</Link></li>
+              <li><Link to={ROUTES.termsConditions} className="hover:text-blue-400 transition-colors">Terms & Cond.</Link></li>
+              <li><Link to={ROUTES.refundCancellation} className="hover:text-blue-400 transition-colors">Refund & Cancellation</Link></li>
+              <li><Link to={ROUTES.shippingPolicy} className="hover:text-blue-400 transition-colors">Shipping Policy</Link></li>
+              <li><Link to={ROUTES.disclaimer} className="hover:text-blue-400 transition-colors">Disclaimer</Link></li>
+              <li><Link to={ROUTES.contactUs} className="hover:text-blue-400 transition-colors">Contact Us</Link></li>
             </ul>
           </nav>
 

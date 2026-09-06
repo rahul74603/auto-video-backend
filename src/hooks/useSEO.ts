@@ -24,6 +24,8 @@ interface JobData {
   salary: string; 
   postedDate: string; 
   lastDate: string;
+  officeAddress?: string;
+  postalCode?: string;
 }
 
 interface ProductData {
@@ -148,32 +150,60 @@ export const generateSchemas = {
   }),
   
   // जॉब पोस्टिंग स्कीमा
-  jobPosting: (job: JobData) => ({
-    '@context': 'https://schema.org',
-    '@type': 'JobPosting',
-    title: job.title,
-    description: job.description,
-    identifier: {
-      '@type': 'PropertyValue',
-      name: job.organization,
-      value: job.id,
-    },
-    hiringOrganization: {
-      '@type': 'Organization',
-      name: job.organization,
-    },
-    jobLocation: {
-      '@type': 'Place',
-      address: {
-        '@type': 'PostalAddress',
-        addressCountry: 'IN',
-        addressRegion: job.location,
+  jobPosting: (job: JobData) => {
+    // Auto-populate address fields from location
+    const locationParts = (job.location || 'India').split(',').map(s => s.trim());
+    const addressLocality = locationParts[0] || 'India';
+    const addressRegion = locationParts[1] || locationParts[0] || 'India';
+    
+    // Auto-populate salary if available
+    const salaryText = String(job.salary || '');
+    const salaryNumbers = salaryText.match(/\d+/g);
+    const salaryMin = salaryNumbers ? parseInt(salaryNumbers[0]) : undefined;
+    const salaryMax = salaryNumbers && salaryNumbers.length > 1 ? parseInt(salaryNumbers[1]) : salaryMin;
+    
+    return {
+      '@context': 'https://schema.org',
+      '@type': 'JobPosting',
+      title: job.title,
+      description: job.description,
+      identifier: {
+        '@type': 'PropertyValue',
+        name: job.organization,
+        value: job.id,
       },
-    },
-    datePosted: job.postedDate,
-    validThrough: job.lastDate,
-    employmentType: 'FULL_TIME',
-  }),
+      hiringOrganization: {
+        '@type': 'Organization',
+        name: job.organization,
+      },
+      jobLocation: {
+        '@type': 'Place',
+        address: {
+          '@type': 'PostalAddress',
+          streetAddress: job.officeAddress || addressLocality,
+          addressLocality: addressLocality,
+          addressRegion: addressRegion,
+          postalCode: job.postalCode || '110001',
+          addressCountry: 'IN',
+        },
+      },
+      ...(salaryMin ? {
+        baseSalary: {
+          '@type': 'MonetaryAmount',
+          currency: 'INR',
+          value: {
+            '@type': 'QuantitativeValue',
+            minValue: salaryMin,
+            maxValue: salaryMax || salaryMin,
+            unitText: 'MONTH',
+          },
+        },
+      } : {}),
+      datePosted: job.postedDate,
+      validThrough: job.lastDate,
+      employmentType: 'FULL_TIME',
+    };
+  },
   
   // ई-बुक या प्रोडक्ट स्कीमा
   product: (product: ProductData) => ({
