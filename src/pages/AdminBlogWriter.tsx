@@ -3,7 +3,6 @@ import { auth, storage } from '../firebase/config';
 import { onAuthStateChanged, type User } from 'firebase/auth'; 
 import { serverTimestamp } from 'firebase/firestore';
 import { blogRepository } from '@/features/blogs/data/blogRepository';
-import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; 
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css'; 
@@ -18,11 +17,6 @@ type BlogRow = {
   seoDesc?: string;
   seoKeywords?: string;
   status?: string;
-};
-
-type SidebarBlogLink = {
-  title?: string;
-  url?: string;
 };
 
 type AIGeneratedBlog = {
@@ -258,48 +252,14 @@ if (data.success && data.data) {
 
       if (editingId) {
         await blogRepository.update(editingId, payload);
-        
-        // Update Sidebar if Title changed
-        try {
-            const settings = await siteSettingsRepository.getGlobal();
-            if(settings && action === 'publish') {
-                const currentData = settings;
-                const currentRelated = (currentData.relatedBlogs ?? []) as SidebarBlogLink[];
-                const updatedRelated = currentRelated.map((item) =>
-                    item.url === `/blog/${editingId}` ? { ...item, title: title } : item
-                );
-                await siteSettingsRepository.updateGlobal({ relatedBlogs: updatedRelated });
-            }
-        } catch (sidebarErr) {
-            console.log("Sidebar update skipped:", sidebarErr);
-        }
 
         alert(action === 'draft' ? '✅ ड्राफ्ट सेव हो गया!' : '✅ कमाल है! आपका ब्लॉग सफलतापूर्वक अपडेट हो गया है!');
       } else {
-        const newBlogId = await blogRepository.create({
+        await blogRepository.create({
           ...payload,
           date: serverTimestamp(),
         });
-        
-        if (action === 'publish') {
-          try {
-            const settings = await siteSettingsRepository.getGlobal();
-            
-            if(settings) {
-               const currentData = settings;
-               const currentRelated = (currentData.relatedBlogs ?? []) as SidebarBlogLink[];
 
-               const newSidebarLink = { title: title, url: `/blog/${newBlogId}` };
-               const updatedRelated = [newSidebarLink, ...currentRelated].slice(0, 5);
-               
-               await siteSettingsRepository.updateGlobal({ relatedBlogs: updatedRelated });
-            }
-          } catch (sidebarErr) {
-            console.log("Sidebar auto-update skipped:", sidebarErr);
-          }
-
-        
-        }
 
         alert(action === 'draft' ? '📝 नया ब्लॉग ड्राफ्ट में सेव हो गया!' : '🎉 बधाई हो! आपका नया ब्लॉग वेबसाइट और Telegram पर लाइव हो गया!');
       }
@@ -346,21 +306,7 @@ if (data.success && data.data) {
       // 1. Delete from Main Blogs Collection
       await blogRepository.remove(id);
 
-      // 2. Delete strictly from Sidebar (Trending Articles)
-      try {
-          const settings = await siteSettingsRepository.getGlobal();
-          if (settings) {
-              const currentData = settings;
-              const currentRelated = (currentData.relatedBlogs ?? []) as SidebarBlogLink[];
-              // Filter out the deleted blog by matching the URL
-              const updatedRelated = currentRelated.filter((item) => item.url !== `/blog/${id}`);
-              await siteSettingsRepository.updateGlobal({ relatedBlogs: updatedRelated });
-          }
-      } catch (sidebarErr) {
-          console.log("Error removing from sidebar:", sidebarErr);
-      }
-
-      alert("🗑️ ब्लॉग हमेशा के लिए डिलीट हो गया (साइडबार से भी)!");
+      alert("🗑️ ब्लॉग हमेशा के लिए डिलीट हो गया!");
       fetchBlogs(); 
       if (editingId === id) cancelEdit(); 
     } catch (error) {

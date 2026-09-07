@@ -120,7 +120,8 @@ async function pickAutoDraftCandidates(db, options) {
                 title,
                 organization: String(data.organization || ""),
                 category: String(data.category || ""),
-                sourceUrl: pickJobDraftUrl(data)
+                sourceUrl: pickJobDraftUrl(data),
+                requested: data.aiDraftRequested === true
             });
         }
     } catch (error) {
@@ -147,6 +148,7 @@ async function pickAutoDraftCandidates(db, options) {
                 title,
                 organization: String(data.org || data.organization || ""),
                 category: String(data.category || ""),
+                requested: data.aiDraftRequested === true,
                 sourceUrl: /^https:\/\//i.test(String(data.directLink || "")) ? String(data.directLink) : ""
             });
         }
@@ -154,6 +156,8 @@ async function pickAutoDraftCandidates(db, options) {
         report.errors.push(`fast_track-scan: ${error.message}`);
     }
 
+    // ⭐ Admin-requested (panel se Wand button) candidates SABSE PEHLE
+    report.candidates.sort((a, b) => (b.requested ? 1 : 0) - (a.requested ? 1 : 0));
     report.candidates = report.candidates.slice(0, maxItems);
     return report;
 }

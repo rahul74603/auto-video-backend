@@ -75,7 +75,7 @@ const ContactUs = () => {
                    <div className="bg-blue-50 p-4 rounded-2xl text-blue-600 shrink-0"><Mail size={32} /></div>
                    <div className="min-w-0">
                       <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Official Email Support</p>
-                      <h4 className="text-lg md:text-2xl font-black text-slate-800 break-all">studygyaan.help@gmail.com</h4>
+                      <h4 className="text-lg md:text-2xl font-black text-slate-800 break-all">contact@studygyaan.in</h4>
                    </div>
                 </div>
 

@@ -91,7 +91,7 @@ const RefundPolicy = () => {
               <History size={28} className="text-indigo-600" /> 5. रिफंड प्रक्रिया और समयसीमा (Timeline)
             </h2>
             <div className="space-y-4 text-lg">
-              <p>रिफंड अनुरोध जमा करने के लिए, आपको **studygyaan.help@gmail.com** पर अपने पेमेंट स्क्रीनशॉट और ट्रांजेक्शन आईडी के साथ ईमेल करना होगा।</p>
+              <p>रिफंड अनुरोध जमा करने के लिए, आपको **contact@studygyaan.in** पर अपने पेमेंट स्क्रीनशॉट और ट्रांजेक्शन आईडी के साथ ईमेल करना होगा।</p>
               <div className="flex flex-col md:flex-row gap-4 py-4">
                 <div className="flex-1 bg-indigo-50 p-6 rounded-2xl text-center border border-indigo-100">
                    <p className="text-2xl font-black text-indigo-700">3-5 Days</p>
@@ -116,7 +116,7 @@ const RefundPolicy = () => {
             <div className="flex flex-col md:flex-row justify-center gap-4 pt-4">
                <div className="bg-white/10 px-8 py-4 rounded-2xl border border-white/20">
                   <p className="text-[10px] uppercase font-black opacity-60">Official Email</p>
-                  <p className="text-sm md:text-lg font-black">studygyaan.help@gmail.com</p>
+                  <p className="text-sm md:text-lg font-black">contact@studygyaan.in</p>
                </div>
                <div className="bg-white/10 px-8 py-4 rounded-2xl border border-white/20">
                   <p className="text-[10px] uppercase font-black opacity-60">WhatsApp Support</p>

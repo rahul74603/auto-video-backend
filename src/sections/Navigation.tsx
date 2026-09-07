@@ -9,6 +9,7 @@ import {
     GoogleAuthProvider, signInWithPopup,
     signOut, onAuthStateChanged
 } from 'firebase/auth';
+import { ROUTES } from '@/config/routes';
 
 // Cached/auth user ka minimal shape
 interface NavUser {
@@ -19,12 +20,12 @@ interface NavUser {
 }
 
 const navLinks = [
-    { name: 'Home', path: '/' },
-    { name: 'Mock Test', path: '/mock-tests' },
-    { name: 'Govt Jobs', path: '/govt-jobs' },
-    { name: 'E-Books', path: '/e-books' },
-    { name: 'Free Study Material', path: '/free-study-material' },
-    { name: 'Blog', path: '/blog' }
+    { name: 'Home', path: ROUTES.home },
+    { name: 'Mock Test', path: ROUTES.mockTests },
+    { name: 'Govt Jobs', path: ROUTES.govtJobs },
+    { name: 'E-Books', path: ROUTES.ebooks },
+    { name: 'Free Study Material', path: ROUTES.studyMaterial },
+    { name: 'Blog', path: ROUTES.blog }
 ];
 
 const Navigation = () => {
@@ -127,7 +128,7 @@ const Navigation = () => {
         localStorage.removeItem('sg_user');
         setUser(null);
         setIsOpen(false);
-        navigate('/');
+        navigate(ROUTES.home);
     };
 
     const isActive = (path: string) => location.pathname === path;
@@ -187,7 +188,7 @@ const Navigation = () => {
                             ))}
                             <li>
                                 <Link
-                                    to="/premium-notes"
+                                    to={ROUTES.premiumNotes}
                                     className="px-4 py-2 text-slate-700 hover:text-blue-600 font-black text-sm uppercase tracking-tight inline-block"
                                 >
                                     Premium Notes
@@ -203,7 +204,7 @@ const Navigation = () => {
                             {user ? (
                                 <div className="flex items-center gap-3">
                                     <Link
-                                        to="/my-courses"
+                                        to={ROUTES.myCourses}
                                         className="flex items-center gap-1.5 bg-blue-600 text-white px-4 py-2 rounded-full text-xs font-black shadow-md hover:bg-slate-900 transition-all"
                                     >
                                         <BookCheck size={14} aria-hidden="true" />
@@ -260,11 +261,11 @@ const Navigation = () => {
                 style={{ height: '44px', alignItems: 'center' }}
             >
                 <Link
-                    to="/"
+                    to={ROUTES.home}
                     role="tab"
-                    aria-selected={isActive('/')}
+                    aria-selected={isActive(ROUTES.home)}
                     className={`whitespace-nowrap px-4 py-1.5 rounded-full text-[11px] font-bold border flex items-center gap-1 transition-all shrink-0 ${
-                        isActive('/')
+                        isActive(ROUTES.home)
                             ? 'bg-blue-600 text-white border-blue-600'
                             : 'bg-white text-slate-600'
                     }`}
@@ -273,11 +274,11 @@ const Navigation = () => {
                 </Link>
 
                 <Link
-                    to="/mock-tests"
+                    to={ROUTES.mockTests}
                     role="tab"
-                    aria-selected={isActive('/mock-tests')}
+                    aria-selected={isActive(ROUTES.mockTests)}
                     className={`whitespace-nowrap px-4 py-1.5 rounded-full text-[11px] font-black border flex items-center gap-1 transition-all shrink-0 ${
-                        isActive('/mock-tests')
+                        isActive(ROUTES.mockTests)
                             ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-100'
                             : 'bg-blue-50 text-blue-700 border-blue-100'
                     }`}
@@ -286,18 +287,18 @@ const Navigation = () => {
                 </Link>
 
                 <Link
-                    to="/blog"
+                    to={ROUTES.blog}
                     className="whitespace-nowrap bg-gradient-to-r from-orange-500 to-red-500 text-white px-4 py-1.5 rounded-full text-[11px] font-black shadow-md flex items-center gap-1 shrink-0"
                 >
                     <Sparkles size={12} aria-hidden="true" /> Blog
                 </Link>
 
                 <Link
-                    to="/e-books"
+                    to={ROUTES.ebooks}
                     role="tab"
-                    aria-selected={isActive('/e-books')}
+                    aria-selected={isActive(ROUTES.ebooks)}
                     className={`whitespace-nowrap px-4 py-1.5 rounded-full text-[11px] font-bold border shrink-0 ${
-                        isActive('/e-books')
+                        isActive(ROUTES.ebooks)
                             ? 'bg-blue-600 text-white border-blue-600'
                             : 'bg-white text-slate-600'
                     }`}
@@ -306,11 +307,11 @@ const Navigation = () => {
                 </Link>
 
                 <Link
-                    to="/govt-jobs"
+                    to={ROUTES.govtJobs}
                     role="tab"
-                    aria-selected={isActive('/govt-jobs')}
+                    aria-selected={isActive(ROUTES.govtJobs)}
                     className={`whitespace-nowrap px-4 py-1.5 rounded-full text-[11px] font-bold border shrink-0 ${
-                        isActive('/govt-jobs')
+                        isActive(ROUTES.govtJobs)
                             ? 'bg-blue-600 text-white border-blue-600'
                             : 'bg-white text-slate-600'
                     }`}
@@ -319,11 +320,11 @@ const Navigation = () => {
                 </Link>
 
                 <Link
-                    to="/free-study-material"
+                    to={ROUTES.studyMaterial}
                     role="tab"
-                    aria-selected={isActive('/free-study-material')}
+                    aria-selected={isActive(ROUTES.studyMaterial)}
                     className={`whitespace-nowrap px-4 py-1.5 rounded-full text-[11px] font-bold border shrink-0 ${
-                        isActive('/free-study-material')
+                        isActive(ROUTES.studyMaterial)
                             ? 'bg-blue-600 text-white border-blue-600'
                             : 'bg-white text-slate-600'
                     }`}
@@ -332,14 +333,14 @@ const Navigation = () => {
                 </Link>
 
                 <Link
-                    to="/premium-notes"
+                    to={ROUTES.premiumNotes}
                     className="whitespace-nowrap bg-yellow-400 text-blue-900 px-4 py-1.5 rounded-full text-[11px] font-black shadow-md border border-yellow-500 shrink-0"
                 >
                     Premium Notes
                 </Link>
 
                 <Link
-                    to="/handwritten-premium"
+                    to={ROUTES.premiumNotes}
                     className="flex items-center gap-1 text-amber-500 font-black text-[11px] shrink-0 whitespace-nowrap px-2"
                 >
                     Handwritten Premium{' '}
@@ -355,10 +356,10 @@ const Navigation = () => {
                     <ul className="px-4 pt-4 pb-8 space-y-2">
                         <li>
                             <Link
-                                to="/"
+                                to={ROUTES.home}
                                 onClick={() => setIsOpen(false)}
                                 className={`flex items-center gap-3 py-3 px-4 rounded-xl text-sm font-black border-b border-slate-50 ${
-                                    isActive('/')
+                                    isActive(ROUTES.home)
                                         ? 'bg-blue-50 text-blue-600'
                                         : 'text-slate-700 hover:bg-slate-50'
                                 }`}
@@ -368,10 +369,10 @@ const Navigation = () => {
                         </li>
                         <li>
                             <Link
-                                to="/mock-tests"
+                                to={ROUTES.mockTests}
                                 onClick={() => setIsOpen(false)}
                                 className={`flex items-center gap-3 py-3 px-4 rounded-xl text-sm font-black border-b border-slate-50 ${
-                                    isActive('/mock-tests')
+                                    isActive(ROUTES.mockTests)
                                         ? 'bg-blue-50 text-blue-600'
                                         : 'text-slate-700 hover:bg-slate-50'
                                 }`}
@@ -381,7 +382,7 @@ const Navigation = () => {
                         </li>
                         <li>
                             <Link
-                                to="/govt-jobs"
+                                to={ROUTES.govtJobs}
                                 onClick={() => setIsOpen(false)}
                                 className="block py-3 px-4 rounded-xl text-sm font-black text-slate-700 hover:bg-slate-50 border-b border-slate-50"
                             >
@@ -390,7 +391,7 @@ const Navigation = () => {
                         </li>
                         <li>
                             <Link
-                                to="/e-books"
+                                to={ROUTES.ebooks}
                                 onClick={() => setIsOpen(false)}
                                 className="block py-3 px-4 rounded-xl text-sm font-black text-slate-700 hover:bg-slate-50 border-b border-slate-50"
                             >
@@ -399,7 +400,7 @@ const Navigation = () => {
                         </li>
                         <li>
                             <Link
-                                to="/free-study-material"
+                                to={ROUTES.studyMaterial}
                                 onClick={() => setIsOpen(false)}
                                 className="block py-3 px-4 rounded-xl text-sm font-black text-slate-700 hover:bg-slate-50 border-b border-slate-50"
                             >
@@ -407,19 +408,28 @@ const Navigation = () => {
                             </Link>
                         </li>
                         <li>
-                            <Link
-                                to="/tools"
+                            <a
+                                href={ROUTES.tools}
                                 onClick={() => setIsOpen(false)}
                                 className="flex items-center gap-3 py-3 px-4 rounded-xl text-sm font-black text-slate-700 hover:bg-slate-50 border-b border-slate-50"
                             >
                                 <Wrench size={16} aria-hidden="true" /> Sarkari Tools
+                            </a>
+                        </li>
+                        <li>
+                            <Link
+                                to={ROUTES.examCalendar}
+                                onClick={() => setIsOpen(false)}
+                                className="flex items-center gap-3 py-3 px-4 rounded-xl text-sm font-black text-slate-700 hover:bg-slate-50 border-b border-slate-50"
+                            >
+                                <Target size={16} aria-hidden="true" /> Exam Calendar
                             </Link>
                         </li>
 
                         {user ? (
                             <div className="pt-4 mt-2">
                                 <Link
-                                    to="/my-courses"
+                                    to={ROUTES.myCourses}
                                     onClick={() => setIsOpen(false)}
                                     className="flex items-center justify-center gap-2 w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-blue-100 mb-4"
                                 >

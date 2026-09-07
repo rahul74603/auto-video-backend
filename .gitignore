@@ -105,3 +105,7 @@ firebase-debug.log
 # Galti se bana nested clone (kabhi commit nahi karna)
 /auto-video-backend/
 /auto-video-backend-new/
+
+# Generated SEO files (GitHub Actions banata hai)
+seo_out/
+seo_static/node_modules/

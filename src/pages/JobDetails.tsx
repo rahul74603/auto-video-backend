@@ -5,6 +5,8 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useJob } from '@/features/jobs/hooks/useJob';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
+import { checkIsExpired } from '@/utils/jobExpiry';
+import DynamicSidebar from '../components/DynamicSidebar';
 import type { JobPost, SiteContentDoc, TimestampLike } from '@/types/firestore';
 import {
     Briefcase, Calendar, MapPin, Banknote, Clock,
@@ -19,6 +21,7 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import RelatedContent from '../components/RelatedContent';
 import ExamHubNavigation from '../components/ExamHubNavigation';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
+import { ROUTES } from '@/config/routes';
 
 // =========================================================
 // 🛠️ HELPERS
@@ -37,7 +40,6 @@ function formatDate(d: TimestampLike): string {
 
 interface GlobalSettings {
     jobUpdates: SiteContentDoc[];
-    relatedBlogs: SiteContentDoc[];
     premiumBoxTitle: string;
     premiumBoxDesc: string;
     bottomBarText: string;
@@ -104,7 +106,6 @@ const FileSearch = ({ className, size = 24 }: { className?: string; size?: numbe
 function getDefaultSettings(): GlobalSettings {
     return {
         jobUpdates: [],
-        relatedBlogs: [],
         premiumBoxTitle: "Premium Study Notes",
         premiumBoxDesc: "100% सफलता के लिए Expert Notes।",
         bottomBarText: "📢 Premium Notes: पिछले 10 साल के रिपीटेड सवाल",
@@ -119,7 +120,6 @@ function normalizeSettings(data: Record<string, unknown> | undefined): GlobalSet
     if (!data) return defaults;
     return {
         jobUpdates: Array.isArray(data.jobUpdates) ? (data.jobUpdates as SiteContentDoc[]) : [],
-        relatedBlogs: Array.isArray(data.relatedBlogs) ? (data.relatedBlogs as SiteContentDoc[]) : [],
         premiumBoxTitle: typeof data.premiumBoxTitle === 'string' ? data.premiumBoxTitle : defaults.premiumBoxTitle,
         premiumBoxDesc: typeof data.premiumBoxDesc === 'string' ? data.premiumBoxDesc : defaults.premiumBoxDesc,
         bottomBarText: typeof data.bottomBarText === 'string' ? data.bottomBarText : defaults.bottomBarText,
@@ -203,10 +203,6 @@ const JobDetails = () => {
         (1 - Number(globalSettings?.discountPercent || 85) / 100)
     );
 
-    const trendingLinks = globalSettings?.jobUpdates
-        || globalSettings?.relatedBlogs
-        || [];
-
     // =========================================================
     // 🔄 LOADING
     // =========================================================
@@ -238,7 +234,7 @@ const JobDetails = () => {
                         यह vacancy expire हो गई है या link गलत है।
                     </p>
                     <a
-                        href="/govt-jobs"
+                        href={ROUTES.govtJobs}
                         className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-sm hover:bg-blue-700 transition-all"
                     >
                         सभी Jobs देखें →
@@ -278,6 +274,20 @@ const JobDetails = () => {
     ].filter(Boolean).join(', ');
 
     const parsedLastDate = job.lastDate ? new Date(job.lastDate) : null;
+    // 🗓️ Expired? (lastDate nikal chuki) — banner + JobPosting schema skip
+    const jobExpired = job.isExpired === true || checkIsExpired(String(job.lastDate || ''));
+    
+    //  Auto-populate address fields from job.location
+    const locationParts = (job.location || 'India').split(',').map(s => s.trim());
+    const addressLocality = locationParts[0] || 'India';
+    const addressRegion = locationParts[1] || locationParts[0] || 'India';
+    
+    // 💰 Auto-populate salary from job.salary
+    const salaryText = String(job.salary || '');
+    const salaryNumbers = salaryText.match(/\d+/g);
+    const salaryMin = salaryNumbers ? parseInt(salaryNumbers[0]) : undefined;
+    const salaryMax = salaryNumbers && salaryNumbers.length > 1 ? parseInt(salaryNumbers[1]) : salaryMin;
+    
     const jobPostingSchema = {
         "@context": "https://schema.org",
         "@type": "JobPosting",
@@ -296,13 +306,25 @@ const JobDetails = () => {
             "@type": "Place",
             address: {
                 "@type": "PostalAddress",
-                streetAddress: (job.location || "India").slice(0, 200),
-                addressLocality: (job.location || "India").split(',')[0].trim().slice(0, 100) || "India",
-                addressRegion: (job.location || "India").split(',')[0].trim().slice(0, 100) || "India",
-                postalCode: (job as any).postalCode || "110001",
+                streetAddress: job.officeAddress || addressLocality || "India",
+                addressLocality: addressLocality || "India",
+                addressRegion: addressRegion || "India",
+                postalCode: job.postalCode || "110001",
                 addressCountry: "IN"
             }
         },
+        ...(salaryMin ? {
+            baseSalary: {
+                "@type": "MonetaryAmount",
+                currency: "INR",
+                value: {
+                    "@type": "QuantitativeValue",
+                    minValue: salaryMin,
+                    maxValue: salaryMax || salaryMin,
+                    unitText: "MONTH"
+                }
+            }
+        } : {}),
         ...(job.vacancies ? { totalJobOpenings: String(job.vacancies) } : {}),
         url: canonicalUrl,
         directApply: false
@@ -327,10 +349,13 @@ const JobDetails = () => {
                 author={job.authorName || job.author || "StudyGyaan Editorial Team"}
                 category={job.category || "Govt Jobs"}
             />
-            <script
-                type="application/ld+json"
-                dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPostingSchema) }}
-            />
+            {/* JobPosting schema — expired bharti pe NAHI (Google guideline) */}
+            {!jobExpired && (
+                <script
+                    type="application/ld+json"
+                    dangerouslySetInnerHTML={{ __html: JSON.stringify(jobPostingSchema) }}
+                />
+            )}
             {/* FAQ schema — only when AI-reviewed article FAQs exist (all answers source-verified) */}
             {Array.isArray(job.faqs) && job.faqs.length > 0 && (
                 <script
@@ -398,6 +423,20 @@ const JobDetails = () => {
                             itemScope
                             itemType="https://schema.org/JobPosting"
                         >
+                            {/* ⚠️ EXPIRED BANNER — bharti band ho chuki hai */}
+                            {jobExpired && (
+                                <div className="bg-red-50 border-b-2 border-red-200 px-4 md:px-8 py-3 md:py-4">
+                                    <p className="text-red-700 font-black text-sm md:text-base flex items-center gap-2">
+                                        ⚠️ यह भर्ती बंद हो चुकी है (Last Date: {job.lastDate || 'N/A'})
+                                    </p>
+                                    <p className="text-red-500 text-xs md:text-sm font-bold mt-1">
+                                        Niche di gayi jankari sirf reference ke liye hai.{' '}
+                                        <a href={ROUTES.govtJobs} className="underline text-blue-700 hover:text-blue-900">
+                                            👉 Aaj ki ACTIVE bhartiyan yahan dekhein
+                                        </a>
+                                    </p>
+                                </div>
+                            )}
                             {/* Header */}
                             <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-900 p-4 md:p-8 text-white relative">
                                 <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
@@ -674,7 +713,7 @@ const JobDetails = () => {
                                         </p>
                                     </div>
                                     <a
-                                        href="/tools"
+                                        href="https://studygyaan.in/tools/"
                                         className="shrink-0 bg-white text-red-600 hover:bg-yellow-400 hover:text-red-900 h-14 px-8 rounded-2xl flex items-center gap-2 font-black text-sm transition-all shadow-xl z-10"
                                     >
                                         Free Toolkit खोलें 🚀
@@ -765,7 +804,7 @@ const JobDetails = () => {
                                                 📌 Isi Jaisi Aur Bhartiyan
                                             </h2>
                                             <a
-                                                href="/govt-jobs"
+                                                href={ROUTES.govtJobs}
                                                 className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-[9px] md:text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full shadow transition-all active:scale-95"
                                             >
                                                 Click for More →
@@ -775,7 +814,7 @@ const JobDetails = () => {
                                             {relatedJobs.map(related => (
                                                 <a
                                                     key={related.id}
-                                                    href={`/job/${related.slug || related.id}`}
+                                                    href={ROUTES.job(related.slug || related.id)}
                                                     className="group block bg-slate-50 hover:bg-blue-50 border border-slate-100 hover:border-blue-200 rounded-xl p-3.5 transition-all"
                                                 >
                                                     <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">
@@ -817,23 +856,23 @@ const JobDetails = () => {
                                         <Search size={20} className="text-blue-600" aria-hidden="true" />
                                         Explore More on StudyGyaan
                                     </h2>
-                                    <div className="flex flex-wrap gap-3">
-                                        {[
-                                            { href: "/govt-jobs", label: "Latest Govt Jobs" },
-                                            { href: "/free-study-material", label: "Free Study Material" },
-                                            { href: "/test", label: "Free Mock Tests" }, // ✅ Fixed
-                                            { href: "/blog", label: "Blogs & Updates" },
-                                            { href: "/web-stories", label: "Web Stories" }
-                                        ].map(link => (
-                                            <a
-                                                key={link.href}
-                                                href={link.href}
-                                                className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm"
-                                            >
-                                                {link.label}
-                                            </a>
-                                        ))}
-                                    </div>
+                                <div className="flex flex-wrap gap-3">
+                                    {[
+                                        { href: ROUTES.govtJobs, label: "Latest Govt Jobs" },
+                                        { href: ROUTES.studyMaterial, label: "Free Study Material" },
+                                        { href: ROUTES.mockTests, label: "Free Mock Tests" }, // ✅ Fixed
+                                        { href: ROUTES.blog, label: "Blogs & Updates" },
+                                        { href: ROUTES.webStories, label: "Web Stories" }
+                                    ].map(link => (
+                                        <a
+                                            key={link.href}
+                                            href={link.href}
+                                            className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm"
+                                        >
+                                            {link.label}
+                                        </a>
+                                    ))}
+                                </div>
                                 </div>
 
                             </div>
@@ -852,7 +891,7 @@ const JobDetails = () => {
                                 Resize Photo, Signature & Make Resume FREE
                             </p>
                             <a
-                                href="/tools"
+                                href="https://studygyaan.in/tools/"
                                 className="bg-white text-blue-700 hover:bg-yellow-400 hover:text-blue-900 font-black px-4 py-3 rounded-xl text-xs w-full flex justify-center items-center gap-2 transition-all shadow-md"
                             >
                                 Open Tools <ArrowRight size={16} aria-hidden="true" />
@@ -860,35 +899,9 @@ const JobDetails = () => {
                         </div>
 
                         {/* Trending */}
-                        {trendingLinks.length > 0 && (
-                            <div className="bg-white p-5 md:p-8 rounded-3xl shadow-sm border border-slate-100">
-                                <h2 className="text-xs md:text-base font-black text-slate-900 mb-6 flex items-center gap-2 border-b pb-3 uppercase">
-                                    <Sparkles size={18} className="text-blue-600" aria-hidden="true" />
-                                    Latest Updates 🔥
-                                </h2>
-                                <ul className="space-y-4" role="list">
-                                    {trendingLinks.slice(0, 5).map((item, i) => (
-                                        <li key={i}>
-                                            <a
-                                                href={item.url?.startsWith('http')
-                                                    ? safeRedirect(item.url)
-                                                    : item.url || '/govt-jobs'
-                                                }
-                                                target={item.url?.startsWith('http') ? '_blank' : '_self'}
-                                                rel={item.url?.startsWith('http') ? 'nofollow noopener noreferrer' : undefined}
-                                                className="group block"
-                                            >
-                                                <p className="text-[12px] md:text-[14px] font-black text-slate-700 group-hover:text-blue-600 line-clamp-2 leading-tight transition-colors">
-                                                    {item.title}
-                                                </p>
-                                                <div className="h-[2px] w-0 group-hover:w-full bg-blue-100 transition-all mt-2" />
-                                            </a>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
+                        <DynamicSidebar />
 
+                        {/* 🔕 Manual sidebar OFF — upar DynamicSidebar hai */}
                         {/* Premium */}
                         <div className="bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-950 p-6 md:p-10 rounded-[3rem] text-white shadow-2xl border-b-8 border-blue-500">
                             <div className="text-center">
@@ -910,7 +923,7 @@ const JobDetails = () => {
                                     </span>
                                 </div>
                                 <a
-                                    href="/premium-notes"
+                                    href={ROUTES.premiumNotes}
                                     className="block w-full bg-yellow-400 text-blue-900 hover:bg-white font-black h-14 rounded-2xl text-xs uppercase transition-all shadow-xl flex items-center justify-center"
                                 >
                                     Get Access Now →
@@ -955,10 +968,10 @@ const JobDetails = () => {
                         </span>
                     </div>
                     <a
-                        href="/premium-notes"
+                        href={ROUTES.premiumNotes}
                         className="bg-blue-700 text-white font-black py-2 px-6 rounded-xl hover:bg-blue-800 transition-all shadow-lg active:scale-95 flex items-center gap-1.5 text-[12px] md:text-sm"
                     >
-                        <span className="hidden md:inline">₹{sellingPrice} में अनलॉक करें</span>
+                        <span className="hidden md:inline">{sellingPrice} में अनलॉक करें</span>
                         <span className="md:hidden">अनलॉक करें</span>
                         <ArrowRight className="w-4 h-4" aria-hidden="true" />
                     </a>

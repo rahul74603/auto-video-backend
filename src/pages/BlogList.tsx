@@ -3,21 +3,15 @@ import SEO from '../components/SEO';
 import { useEffect, useState } from 'react';
 import { useBlogs } from '@/features/blogs/hooks/useBlogs';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, Sparkles, Clock, Flame, Tag, ExternalLink, ShoppingCart } from 'lucide-react';
+import { ArrowRight, Clock, Flame, ShoppingCart } from 'lucide-react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+import DynamicSidebar from '../components/DynamicSidebar';
 import { asText, toDateSafe, type TimestampLike } from '@/types/firestore';
-
-type BlogListLink = {
-  title?: string;
-  name?: string;
-  url?: string;
-};
+import { ROUTES } from '@/config/routes';
 
 type BlogListSettings = {
   mrpPrice?: string | number;
   discountPercent?: string | number;
-  relatedBlogs?: BlogListLink[];
-  sidebarLinks?: BlogListLink[];
 };
 
 const BlogList = () => {
@@ -48,16 +42,7 @@ const BlogList = () => {
   );
 
   // ✅ Colorful Boxes Configuration
-  const loopColors = [
-    { bg: "bg-rose-50", border: "border-rose-200 hover:border-rose-400", text: "text-rose-900", iconText: "text-rose-600" },
-    { bg: "bg-blue-50", border: "border-blue-200 hover:border-blue-400", text: "text-blue-900", iconText: "text-blue-600" },
-    { bg: "bg-emerald-50", border: "border-emerald-200 hover:border-emerald-400", text: "text-emerald-900", iconText: "text-emerald-600" },
-    { bg: "bg-amber-50", border: "border-amber-200 hover:border-amber-400", text: "text-amber-900", iconText: "text-amber-600" },
-    { bg: "bg-purple-50", border: "border-purple-200 hover:border-purple-400", text: "text-purple-900", iconText: "text-purple-600" }
-  ];
 
-  const trendingUpdates = (globalSettings?.relatedBlogs || []).slice(0, 5); 
-  const pageQuickLinks = globalSettings?.sidebarLinks || [];
 
   if (isLoading || !globalSettings) {
     return (
@@ -95,7 +80,7 @@ const BlogList = () => {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-5">
                 {blogs.map((blog) => (
-                  <Link to={`/blog/${blog.id}`} key={blog.id} className="group">
+                  <Link to={ROUTES.blogPost(blog.id)} key={blog.id} className="group">
                     <div className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl transition-all flex flex-col h-full">
                       <div className="h-32 md:h-44 overflow-hidden relative">
                         <img src={asText(blog.imageUrl) || 'https://via.placeholder.com/400x300'} alt={asText(blog.title) || "StudyGyaan Blog"} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -120,78 +105,8 @@ const BlogList = () => {
           {/* ✅ दायीं तरफ: साइडबार (Fixed Height, Big Font, Colorful Boxes) */}
           <aside className="w-full md:w-[35%] space-y-4 md:space-y-6 sticky top-12">
             
-            {/* Trending Links Section */}
-            {trendingUpdates.length > 0 && (
-              <div className="bg-white/80 backdrop-blur-xl p-4 md:p-6 rounded-2xl md:rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 relative overflow-hidden">
-                  <div className="absolute -top-10 -right-10 w-32 h-32 bg-purple-100 rounded-full blur-3xl opacity-60 pointer-events-none"></div>
-                  <h3 className="text-sm md:text-lg font-black text-slate-900 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2 relative z-10">
-                    <Sparkles size={18} className="text-purple-600 animate-pulse" /> 
-                    <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-700 to-pink-600">ट्रेंडिंग आर्टिकल्स 🔥</span>
-                  </h3>
-                  
-                  <ul className="space-y-3 relative z-10">
-                      {trendingUpdates.map((item, index: number) => {
-                          const style = loopColors[index % loopColors.length];
-                          return (
-                            <li 
-                              key={index} 
-                              onClick={() => item.url && window.open(item.url, '_blank')} 
-                              className={`group cursor-pointer border-2 ${style.border} ${style.bg} p-3 md:p-4 rounded-xl md:rounded-2xl transition-all hover:-translate-y-1 shadow-sm hover:shadow-md flex items-center justify-between`}
-                            >
-                                <div className="flex-1 pr-3">
-                                    <span className={`block text-[13px] md:text-[16px] font-black ${style.text} line-clamp-2 min-h-[2.8em] leading-snug`}>
-                                        {item.title || item.name}
-                                    </span>
-                                </div>
-                                <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center bg-white shadow-sm shrink-0 group-hover:scale-110 transition-transform ${style.iconText}`}>
-                                    <ArrowRight className="w-4 h-4 md:w-5 md:h-5" />
-                                </div>
-                            </li>
-                          );
-                      })}
-                  </ul>
-              </div>
-            )}
-
             {/* 🎯 COLORFUL QUICK LINKS */}
-            {pageQuickLinks.length > 0 && (
-              <div className="bg-white/80 backdrop-blur-xl p-4 md:p-6 rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-blue-100 rounded-bl-full opacity-60 pointer-events-none"></div>
-                  <h3 className="text-sm md:text-lg font-black text-slate-900 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2 relative z-10">
-                     <Tag size={18} className="text-blue-600 animate-bounce" /> महत्वपूर्ण लिंक्स 🔗
-                  </h3>
-                  <ul className="space-y-3 relative z-10">
-                      {pageQuickLinks.map((item, index: number) => {
-                          const linkGradients = [
-                            "bg-gradient-to-r from-blue-600 to-cyan-500 shadow-blue-500/30",
-                            "bg-gradient-to-r from-purple-600 to-fuchsia-500 shadow-purple-500/30",
-                            "bg-gradient-to-r from-orange-500 to-red-500 shadow-orange-500/30",
-                            "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-emerald-500/30",
-                            "bg-gradient-to-r from-rose-500 to-pink-500 shadow-rose-500/30"
-                          ];
-                          const bgClass = linkGradients[index % linkGradients.length];
-
-                          return (
-                             <li 
-                               key={index} 
-                               onClick={() => item.url && item.url !== "#" && window.open(item.url, '_blank')} 
-                               className={`group flex items-center justify-between p-3 md:p-4 rounded-xl md:rounded-2xl transition-all duration-300 cursor-pointer shadow-md hover:shadow-xl hover:-translate-y-1 ${bgClass} text-white`}
-                             >
-                                <div className="flex items-start gap-2.5 w-full">
-                                   <div className="bg-white/20 p-1.5 rounded-lg shrink-0 mt-0.5 group-hover:scale-110 transition-transform">
-                                      <ExternalLink size={14} className="text-white md:w-4 md:h-4" />
-                                   </div>
-                                   <span className="font-black text-[12px] md:text-[15px] leading-snug tracking-wide pr-2">
-                                       {item.title || item.name}
-                                   </span>
-                                </div>
-                                <ArrowRight size={16} className="text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0 ml-1 self-center" />
-                             </li>
-                          )
-                      })}
-                  </ul>
-              </div>
-            )}
+            <DynamicSidebar />
 
             {/* Premium Notes Box */}
             <div className="p-4 md:p-6 bg-gradient-to-br from-blue-700 via-indigo-800 to-slate-900 rounded-2xl md:rounded-[2rem] text-white shadow-2xl relative overflow-hidden border-b-4 border-black/20">
@@ -203,7 +118,7 @@ const BlogList = () => {
                     <span className="line-through text-white/50 text-[10px] md:text-[12px] font-bold">₹{globalSettings?.mrpPrice || 499}</span>
                     <div className="text-[14px] md:text-xl font-black text-yellow-400 ml-auto font-mono">₹{sellingPrice}</div>
                 </div>
-                <button onClick={() => navigate('/premium-notes')} className="w-full relative z-10 bg-yellow-400 text-blue-900 font-black py-2.5 md:py-3.5 rounded-xl md:rounded-2xl text-[12px] md:text-sm hover:bg-yellow-300 active:scale-95 shadow-xl transition-transform"> अभी खरीदें </button>
+                <button onClick={() => navigate(ROUTES.premiumNotes)} className="w-full relative z-10 bg-yellow-400 text-blue-900 font-black py-2.5 md:py-3.5 rounded-xl md:rounded-2xl text-[12px] md:text-sm hover:bg-yellow-300 active:scale-95 shadow-xl transition-transform"> अभी खरीदें </button>
             </div>
 
           </aside>

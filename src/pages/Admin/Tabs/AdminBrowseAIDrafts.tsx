@@ -1,26 +1,30 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search, Edit3, Send, Trash2, Clock, ShieldCheck, ShieldAlert,
   CheckCircle2, XCircle, Briefcase, Zap, Eye, RefreshCcw, FileText,
-  Wrench, Bot, Loader2
+  Wrench, Bot
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useAIArticleDrafts from '@/features/ai-articles/hooks/useAIArticleDrafts';
-import { canPublishDraft, callArticleApi } from '@/features/ai-articles/data/aiArticleRepository';
+import { canPublishDraft, publishDraftClientSide } from '@/features/ai-articles/data/aiArticleRepository';
 import type { AIArticleDraftRecord } from '@/features/ai-articles/data/aiArticleRepository';
 import aiArticleRepository from '@/features/ai-articles/data/aiArticleRepository';
+import AdminDraftEditor from './AdminDraftEditor';
 
 /**
- * 📋 Browse AI Drafts — FIXED VERSION
- * 
- * ✅ Telegram ab SIRF Ready-to-Publish pe jayega — failed pe bilkul nahi
- * ✅ Failed drafts auto-retry: backend har ~10 min me khud try karta hai (REPAIR loop)
- * ✅ Frontend pe bhi "🔁 Auto Fix Until Ready" — tab tak regenerate hota rahe jab tak pass na ho
- * ✅ No spam messages — only useful telegram when ready
+ * 📋 Browse AI Drafts — REVIEW DRAFT workflow (primary admin experience)
+ *
+ * ✅ Publish ab CLIENT-SIDE hai (purani Cloud Run API delete ho chuki — ₹0 setup)
+ * ✅ Edit ab full REVIEW DRAFT editor me hota hai (Studio ki zaroorat nahi)
+ * ✅ Failed drafts: GitHub Actions wali AI run khud repair karti hai —
+ *    🔧 button dabao to agli run me PRIORITY repair queue me chala jata hai
+ * ✅ Edited drafts: "Admin Verified" publish — tum khud hi final reviewer ho
  */
 type FilterStatus = 'all' | 'passed' | 'failed' | 'published';
+
+const REPAIR_QUEUE_RESET = '2000-01-01T00:00:00.000Z';
 
 const AdminBrowseAIDrafts = () => {
   const { drafts, loading, refresh } = useAIArticleDrafts();
@@ -28,12 +32,20 @@ const AdminBrowseAIDrafts = () => {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [filterType, setFilterType] = useState<'all' | 'job' | 'fast-track'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [, setSearchParams] = useSearchParams();
+  const [editingDraft, setEditingDraft] = useState<AIArticleDraftRecord | null>(null);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // 🔁 Auto-fix states
-  const [autoFixingIds, setAutoFixingIds] = useState<Set<string>>(new Set());
-  const [fixAttempts, setFixAttempts] = useState<Record<string, number>>({});
-  const [autoFixingAll, setAutoFixingAll] = useState(false);
+  // 🔗 Telegram EDIT deep-link: ?editDraft=<id> → editor khol do (render-time sync)
+  const editDraftParam = searchParams.get('editDraft');
+  const [handledEditParam, setHandledEditParam] = useState<string | null>(null);
+  if (editDraftParam && editDraftParam !== handledEditParam && drafts.length) {
+    const target = drafts.find((d) => d.id === editDraftParam);
+    setHandledEditParam(editDraftParam);
+    if (target) {
+      setEditingDraft(target);
+    }
+  }
 
   const filtered = useMemo(() => {
     let result = drafts;
@@ -67,11 +79,18 @@ const AdminBrowseAIDrafts = () => {
     setIsRefreshing(false);
   };
 
-  /** Telegram EDIT button flow: load this draft into Studio editor. */
+  /** ✏️ REVIEW DRAFT editor kholo (Studio replace ho gaya) */
   const handleEditDraft = (draft: AIArticleDraftRecord) => {
-    setSearchParams({ editDraft: draft.id, tab: 'JOBS AI' }, { replace: true });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    toast.success(`✏️ "${(draft.title || '').slice(0, 40)}" Studio me load hoga`, { duration: 3000 });
+    setEditingDraft(draft);
+  };
+
+  const closeEditor = () => {
+    setEditingDraft(null);
+    if (searchParams.get('editDraft')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('editDraft');
+      setSearchParams(next, { replace: true });
+    }
   };
 
   const handleDelete = async (draft: AIArticleDraftRecord) => {
@@ -85,162 +104,76 @@ const AdminBrowseAIDrafts = () => {
     }
   };
 
+  /** 🚀 Publish — client-side (API deleted). Review-passed = normal publish;
+   *  edited/re-review-pending = "Admin Verified" override (tum final reviewer ho). */
   const handlePublish = async (draft: AIArticleDraftRecord) => {
-    // Firestore se latest state verify karke publish hamesha backend gate se.
-    // Browser-side fallback stale/forged review ko live nahi kar sakta.
+    if (publishingId) return;
     const latest = await aiArticleRepository.getDraft(draft.id).catch(() => null);
     const current = latest || draft;
-    const gate = canPublishDraft(current);
-    if (!gate.ok) {
-      toast.error(`Publish blocked: ${gate.reason}`, { duration: 6000 });
+    if (current.status === 'published') {
+      toast.error('Ye draft pehle se published hai');
+      await refresh();
       return;
     }
-    if (!window.confirm(`"${current.title}" publish karein?`)) return;
+    const gate = canPublishDraft(current);
+    let adminOverride = false;
+
+    if (!gate.ok) {
+      const hasEssentials = current.title && current.slug && current.articleHtml;
+      const isFatal = current.reviewReport?.issues?.some((iss: string) => /duplicate/i.test(iss));
+      if (!hasEssentials || isFatal) {
+        toast.error(`Publish blocked: ${gate.reason}`, { duration: 6000 });
+        return;
+      }
+      // Edited / review-pending → Admin khud verify karke publish kar sakta hai
+      if (!window.confirm(
+        `⚠️ AI review gate: ${gate.reason}\n\n` +
+        `Kya tumne content khud check kar liya hai?\n` +
+        `"ADMIN VERIFIED" publish karein?`
+      )) return;
+      adminOverride = true;
+    } else {
+      if (!window.confirm(`"${current.title}" publish karein?`)) return;
+    }
+
+    setPublishingId(current.id);
     try {
-      const result = await callArticleApi<{ collection?: string; docId?: string }>(
-        '/articles/publish',
-        { draftId: current.id }
-      );
-      toast.success(`Published → ${result.collection}/${result.docId}`);
+      const result = await publishDraftClientSide(current, { adminOverride });
+      toast.success(`✅ Published → ${result.collection}/${result.docId}${result.originDeleted ? ' (origin row cleaned)' : ''}`, { duration: 6000 });
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Publish fail');
       await refresh().catch(() => {});
-    }
-  };
-
-  // 🔁 BOUNDED AUTO FIX — backend ka har call khud adaptive grounded strategies
-  // chalata hai; browser se 15 baar spam karna quota/timeout dono bigaadta tha.
-  const handleAutoFixUntilReady = async (draft: AIArticleDraftRecord) => {
-    if (autoFixingIds.has(draft.id)) return;
-    
-    setAutoFixingIds(prev => {
-      const ns = new Set(prev);
-      ns.add(draft.id);
-      return ns;
-    });
-    setFixAttempts(prev => ({ ...prev, [draft.id]: 0 }));
-
-    const maxAttempts = 2; // each call already runs up to 3 bounded strategies
-    let attempts = 0;
-    let completed = false;
-    const toastId = toast.loading(`🤖 Adaptive auto-fix: "${draft.title?.slice(0, 35)}" — max ${maxAttempts} safe cycles...`, { duration: Infinity });
-
-    try {
-      while (attempts < maxAttempts) {
-        attempts++;
-        setFixAttempts(prev => ({ ...prev, [draft.id]: attempts }));
-        toast.loading(`🔁 Attempt ${attempts}/${maxAttempts}: "${(draft.title || '').slice(0, 30)}"... ${attempts > 1 ? 'pichli bar fail tha, phir try kar raha hoon' : ''}`, { id: toastId });
-
-        try {
-          // Regenerate API — feedback loop ke saath pichli issues writer ko bhejta hai backend
-          const result = await callArticleApi<{
-            review?: { verdict?: 'pass' | 'fail' };
-            draft?: { reviewStatus?: 'passed' | 'failed' };
-          }>('/articles/regenerate', {
-            draftId: draft.id,
-            instructions: '', // backend will use stored + previous issues
-          });
-
-          // Refresh local list
-          await refresh();
-          const fresh = await aiArticleRepository.getDraft(draft.id);
-
-          if (fresh) {
-            const isReady = fresh.reviewStatus === 'passed' && !fresh.reviewStale;
-            if (isReady) {
-              completed = true;
-              toast.success(`✅ Fixed in ${attempts} attempts! "${(fresh.title || '').slice(0, 40)}" ab READY hai — Telegram ab jayega publish ke liye!`, { id: toastId, duration: 8000 });
-              break;
-            } else {
-              // Still blocked — check if fatal (duplicate/expired)
-              const issues = fresh.reviewReport?.issues || [];
-              const fatal = issues.some((iss: string) => /duplicate|expired|speculative|not.*article.*worthy/i.test(iss));
-              if (fatal) {
-                completed = true;
-                toast.error(`❌ Fatal issue (duplicate/expired) — auto-fix se thik nahi hoga: ${issues[0]?.slice(0, 80)}`, { id: toastId, duration: 8000 });
-                break;
-              }
-              if (attempts < maxAttempts) {
-                toast.loading(`⏳ Attempt ${attempts} fail — review score ${fresh.reviewReport?.score ?? 'N/A'} — 6s baad phir try... Issues: ${(fresh.reviewReport?.issues?.[0] || '').slice(0, 60)}`, { id: toastId });
-                await new Promise(r => setTimeout(r, 6000));
-                continue;
-              }
-            }
-          } else {
-            // Fresh not found — maybe got published/deleted
-            completed = true;
-            toast.error('Draft ka data nahi mila (shayad already handled)', { id: toastId });
-            break;
-          }
-
-          // If result directly says pass
-          if (result?.review?.verdict === 'pass' || result?.draft?.reviewStatus === 'passed') {
-            completed = true;
-            toast.success(`✅ Review PASS on attempt ${attempts}! Ready to publish`, { id: toastId });
-            await refresh();
-            break;
-          }
-
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Unknown error';
-          // 503 rate limit etc — wait longer
-          const wait = /rate|busy|503/i.test(msg) ? 15000 : 6000;
-          if (attempts < maxAttempts) {
-            toast.loading(`⚠️ Attempt ${attempts} error: ${msg.slice(0, 80)} — ${wait/1000}s baad retry...`, { id: toastId });
-            await new Promise(r => setTimeout(r, wait));
-          } else {
-            completed = true;
-            toast.error(`❌ Auto-fix ${maxAttempts} attempts ke baad bhi fail: ${msg}`, { id: toastId, duration: 8000 });
-          }
-        }
-      }
-
-      if (!completed && attempts >= maxAttempts) {
-        toast.error(`⏸️ ${maxAttempts} bounded cycles ke baad pause kiya — backend auto-retry machine har ~10 min me khud try karti rahegi, ready hote hi Telegram aayega`, { id: toastId, duration: 10000 });
-      }
-
     } finally {
-      setAutoFixingIds(prev => {
-        const ns = new Set(prev);
-        ns.delete(draft.id);
-        return ns;
-      });
-      // Don't immediately clear attempts — show last count for a while
-      setTimeout(() => {
-        setFixAttempts(prev => {
-          const copy = { ...prev };
-          delete copy[draft.id];
-          return copy;
-        });
-      }, 10000);
+      setPublishingId(null);
     }
   };
 
-  const handleFixAllBlocked = async () => {
-    const failed = drafts.filter(d => (d.reviewStatus === 'failed' || d.reviewStale) && d.status !== 'published' && !d.reviewReport?.issues?.some(iss => /duplicate|expired/i.test(iss)));
-    if (failed.length === 0) {
-      toast.error('Koi fixable blocked draft nahi hai (fatal duplicate/expired wale skip honge)');
+  /** 🔧 Failed draft ko agli AI run (GitHub Actions) ki PRIORITY repair queue me daalo */
+  const handleQueueRepair = async (draft: AIArticleDraftRecord) => {
+    try {
+      await aiArticleRepository.updateDraft(draft.id, { aiDraftLastTryAt: REPAIR_QUEUE_RESET });
+      toast.success(`🔁 "${(draft.title || '').slice(0, 35)}" repair queue me — agli AI run me apne aap fix hoga (GitHub Actions)`, { duration: 6000 });
+    } catch {
+      toast.error('Queue nahi ho paya');
+    }
+  };
+
+  const handleQueueAllBlocked = async () => {
+    const failed = drafts.filter((d) => (d.reviewStatus === 'failed' || d.reviewStale) && d.status !== 'published' && !d.reviewReport?.issues?.some((iss) => /duplicate|expired/i.test(iss)));
+    if (!failed.length) {
+      toast.error('Koi fixable blocked draft nahi (duplicate/expired wale skip)');
       return;
     }
-    if (!window.confirm(`${failed.length} blocked drafts ko ek-ek karke adaptive auto-fix karna hai?\n\nHar draft par max 2 browser cycles chalenge; har backend call khud bounded grounded strategies use karta hai.\nBackend bhi har 10 min me retry karta hai — Telegram sirf ready hone par aayega.\n\nContinue?`)) return;
-
-    setAutoFixingAll(true);
-    const toastId = toast.loading(`🔧 Fix All: ${failed.length} drafts — started...`, { duration: Infinity });
-
-    for (let i = 0; i < failed.length; i++) {
-      const d = failed[i];
-      toast.loading(`🔧 Fix All: ${i + 1}/${failed.length} — "${(d.title || '').slice(0, 35)}"...`, { id: toastId });
-      await handleAutoFixUntilReady(d);
-      // Small gap between drafts
-      if (i < failed.length - 1) {
-        await new Promise(r => setTimeout(r, 3000));
-      }
+    if (!window.confirm(`${failed.length} blocked drafts ko repair queue me daalein?\nAgli AI Drafts run (GitHub Actions) inhe ek-ek karke fix karegi.`)) return;
+    let ok = 0;
+    for (const d of failed) {
+      try {
+        await aiArticleRepository.updateDraft(d.id, { aiDraftLastTryAt: REPAIR_QUEUE_RESET });
+        ok++;
+      } catch { /* skip */ }
     }
-
-    setAutoFixingAll(false);
-    toast.success(`✅ All ${failed.length} drafts ka auto-fix cycle complete! Jo ready hue unka Telegram aa gaya hoga`, { id: toastId, duration: 8000 });
-    await refresh();
+    toast.success(`🔁 ${ok}/${failed.length} drafts repair queue me!`);
   };
 
   const statusCounts = useMemo(() => ({
@@ -268,32 +201,39 @@ const AdminBrowseAIDrafts = () => {
 
   return (
     <div className="bg-white rounded-[2rem] shadow-xl border border-slate-100 overflow-hidden">
+      {editingDraft && (
+        <AdminDraftEditor
+          draft={editingDraft}
+          onClose={closeEditor}
+          onSaved={() => { refresh().catch(() => {}); }}
+        />
+      )}
+
       {/* Header */}
       <div className="p-5 md:p-6 border-b border-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
         <div>
           <h3 className="font-black text-slate-800 uppercase text-sm tracking-widest flex items-center gap-2">
-            <FileText size={16} className="text-blue-600" /> Browse AI Drafts
-            <span className="ml-2 text-[9px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100 normal-case tracking-normal">FIXED — No spam Telegram</span>
+            <FileText size={16} className="text-blue-600" /> Review AI Drafts
+            <span className="ml-2 text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-100 normal-case tracking-normal">100% Free — GitHub Actions powered</span>
           </h3>
           <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">
             {filtered.length} of {drafts.length} drafts
             {statusCounts.passed > 0 && (
-              <span className="text-emerald-500 ml-1">· {statusCounts.passed} ready to publish (Telegram only for these)</span>
+              <span className="text-emerald-500 ml-1">· {statusCounts.passed} ready to publish</span>
             )}
             {statusCounts.failed > 0 && (
-              <span className="text-amber-600 ml-2">· {statusCounts.failed} auto-retry queue me (backend har 10 min try)</span>
+              <span className="text-amber-600 ml-2">· {statusCounts.failed} repair queue me (agli AI run fix karegi)</span>
             )}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {statusCounts.failed > 0 && (
             <button
-              onClick={handleFixAllBlocked}
-              disabled={autoFixingAll || autoFixingIds.size > 0}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 ${autoFixingAll ? 'bg-amber-100 text-amber-600 cursor-not-allowed' : 'bg-amber-500 text-white hover:bg-amber-600 shadow-lg shadow-amber-100'}`}
+              onClick={handleQueueAllBlocked}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 bg-amber-500 text-white hover:bg-amber-600 shadow-lg shadow-amber-100"
             >
-              {autoFixingAll ? <Loader2 size={13} className="animate-spin" /> : <Bot size={13} />}
-              {autoFixingAll ? 'Fixing All...' : `Fix ${statusCounts.failed} Blocked`}
+              <Bot size={13} />
+              Queue {statusCounts.failed} Blocked
             </button>
           )}
           <button
@@ -307,25 +247,24 @@ const AdminBrowseAIDrafts = () => {
         </div>
       </div>
 
-      {/* Info banner — new logic explained */}
+      {/* Info banner */}
       <div className="mx-4 mt-4 bg-gradient-to-r from-blue-50 to-emerald-50 border border-blue-100 rounded-2xl p-3 flex items-start gap-2.5">
         <div className="p-1.5 bg-white rounded-lg border border-blue-100 shrink-0">
           <Bot size={14} className="text-blue-600" />
         </div>
         <div className="text-[11px] leading-relaxed">
-          <p className="font-black text-slate-700 uppercase tracking-wider text-[10px]">🔔 Telegram Fixed + 🔁 Auto-Retry Machine</p>
+          <p className="font-black text-slate-700 uppercase tracking-wider text-[10px]">🤖 Ek hi workflow: Fetch → AI Article → Review → Publish</p>
           <ul className="mt-1 space-y-0.5 font-bold text-slate-600">
-            <li>✅ <span className="text-emerald-600">Telegram ab SIRF Ready-to-Publish (Review Passed) pe ayega</span> — failed/blocked pe bilkul nahi.</li>
-            <li>🔁 Failed drafts: backend <span className="text-blue-600">har ~10 min me khud regenerate karta hai (20 attempts tak)</span> — jab tak ready na ho — aur ready hote hi Telegram bhejega.</li>
-            <li>🛠️ Frontend: har blocked row pe <span className="text-amber-600">🔧 Auto Fix</span> dabao → tab tak try karega jab tak fix na ho jaye (max 15 attempts per click). Fatal duplicate/expired wale skip honge.</li>
-            <li>💡 Faltu messages band — sirf kaam ka notification.</li>
+            <li>📥 Naye jobs/updates fetch hote hi <span className="text-blue-600">GitHub Actions AI run full article draft</span> (1600+ words, tables, FAQs) bana deti hai.</li>
+            <li>✏️ <span className="text-blue-600">Edit</span> dabao → Review Draft editor me sab kuch dikh jayega — facts, dates, fees, links, FULL description, SEO, FAQs.</li>
+            <li>🚀 <span className="text-emerald-600">Publish yahi se hota hai</span> (review-passed = direct; edited = "Admin Verified" confirm ke saath).</li>
+            <li>🔧 Blocked drafts: <span className="text-amber-600">Queue Repair</span> dabao → agli AI run me priority pe apne aap fix.</li>
           </ul>
         </div>
       </div>
 
       {/* Filters */}
       <div className="p-4 border-b border-slate-50 flex flex-col md:flex-row gap-3">
-        {/* Search */}
         <div className="relative flex-1">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -336,7 +275,6 @@ const AdminBrowseAIDrafts = () => {
             className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 ring-blue-500 transition-all"
           />
         </div>
-        {/* Type filter */}
         <div className="flex gap-1.5">
           {(['all', 'job', 'fast-track'] as const).map((t) => (
             <button
@@ -349,7 +287,6 @@ const AdminBrowseAIDrafts = () => {
             </button>
           ))}
         </div>
-        {/* Status filter */}
         <div className="flex gap-1.5">
           {([
             { id: 'all', label: 'All', icon: null },
@@ -375,50 +312,48 @@ const AdminBrowseAIDrafts = () => {
             <Search className="text-slate-200 mx-auto mb-4" size={32} />
             <h4 className="font-black text-slate-700 uppercase text-xs tracking-widest">Koi draft nahi mili</h4>
             <p className="text-slate-400 text-[11px] mt-2 font-bold">
-              {searchQuery ? 'Search query change karke dekho' : 'Studio se naya article generate karo'}
+              {searchQuery ? 'Search query change karke dekho' : 'AI Drafts workflow (GitHub Actions) chalne par yahan naye drafts aayenge'}
             </p>
           </div>
         ) : (
           filtered.map((draft) => {
             const gate = canPublishDraft(draft);
             const isPublished = draft.status === 'published';
-            const isAutoFixing = autoFixingIds.has(draft.id);
-            const attempts = fixAttempts[draft.id] || 0;
             const isFailed = draft.reviewStatus === 'failed' || draft.reviewStale;
             const isFatal = draft.reviewReport?.issues?.some(iss => /duplicate|expired/i.test(iss));
+            const isPublishing = publishingId === draft.id;
+            const canOverride = !isPublished && !!draft.title && !!draft.slug && !!draft.articleHtml && !isFatal;
 
             return (
               <div
                 key={draft.id}
-                className={`p-4 md:p-5 hover:bg-blue-50/30 transition-all group ${isPublished ? 'opacity-60' : ''} ${isAutoFixing ? 'bg-amber-50/50 border-l-4 border-amber-400' : ''}`}
+                className={`p-4 md:p-5 hover:bg-blue-50/30 transition-all group ${isPublished ? 'opacity-60' : ''}`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  {/* Left: Title + metadata */}
+                  {/* Left */}
                   <div className="flex-1 min-w-0">
                     <p className={`font-black text-slate-800 text-sm leading-tight line-clamp-1 ${isPublished ? 'text-slate-500' : 'group-hover:text-blue-600 transition-colors'}`}>
                       {draft.title || 'Untitled'}
-                      {isAutoFixing && <span className="ml-2 text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded-full animate-pulse">🔁 Fixing... {attempts}/15</span>}
                     </p>
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       <span className={`text-[8px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider border ${draft.type === 'JOB' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
                         {draft.type === 'JOB' ? '⚡ Job' : '🏛️ Fast Track'}
                       </span>
-                      {/* Review badge */}
                       {isPublished ? (
                         <span className="bg-purple-50 text-purple-600 border border-purple-100 text-[8px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider inline-flex items-center gap-1">
                           <CheckCircle2 size={9} /> Published
                         </span>
                       ) : draft.reviewStale ? (
                         <span className="bg-amber-50 text-amber-600 border border-amber-100 text-[8px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider inline-flex items-center gap-1">
-                          <ShieldAlert size={9} /> Re-review pending
+                          <ShieldAlert size={9} /> Edited — Admin Verified publish allowed
                         </span>
                       ) : draft.reviewStatus === 'passed' ? (
                         <span className="bg-emerald-50 text-emerald-600 border border-emerald-100 text-[8px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider inline-flex items-center gap-1">
-                          <ShieldCheck size={9} /> Ready — Telegram sent
+                          <ShieldCheck size={9} /> Ready to Publish
                         </span>
                       ) : (
                         <span className={`text-[8px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider inline-flex items-center gap-1 border ${isFatal ? 'bg-gray-100 text-gray-500 border-gray-200' : 'bg-red-50 text-red-600 border-red-100'}`}>
-                          <XCircle size={9} /> {isFatal ? 'Fatal — Skip' : 'Blocked — Auto-retry queue'}
+                          <XCircle size={9} /> {isFatal ? 'Fatal — Skip/Delete' : 'Blocked — repair queue'}
                         </span>
                       )}
                       {draft.wordCount ? (
@@ -440,18 +375,11 @@ const AdminBrowseAIDrafts = () => {
                       )}
                       <span className="text-slate-300">ID: {draft.id.slice(0, 12)}…</span>
                     </div>
-                    {/* Review issues preview (if failed) */}
                     {draft.reviewStatus === 'failed' && draft.reviewReport?.issues?.length ? (
                       <p className="text-[9px] font-bold text-red-400 mt-1 line-clamp-1">
                         ❌ {draft.reviewReport.issues.slice(0, 2).join(' · ')}
-                        {!isFatal && <span className="ml-2 text-blue-500">· auto-fix se thik ho sakta hai</span>}
                       </p>
                     ) : null}
-                    {isFailed && !isFatal && (
-                      <p className="text-[9px] font-bold text-amber-600 mt-1">
-                        🔁 Auto-retry: Backend har 10 min me try karta hai, Telegram sirf ready pe · Ya abhi 🔧 Auto Fix dabao
-                      </p>
-                    )}
                   </div>
 
                   {/* Right: Actions */}
@@ -461,36 +389,34 @@ const AdminBrowseAIDrafts = () => {
                         <button
                           onClick={() => handleEditDraft(draft)}
                           className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all active:scale-90"
-                          title="Edit in Studio"
+                          title="Review & Edit draft"
                         >
                           <Edit3 size={14} />
                         </button>
 
-                        {/* 🔁 Auto Fix — only for failed */}
                         {isFailed && !isFatal && (
                           <button
-                            onClick={() => handleAutoFixUntilReady(draft)}
-                            disabled={isAutoFixing}
-                            className={`p-2.5 rounded-xl transition-all active:scale-90 ${isAutoFixing ? 'bg-amber-100 text-amber-600 cursor-not-allowed' : 'bg-amber-500 text-white hover:bg-amber-600 shadow-md'}`}
-                            title="Tab tak regenerate jab tak ready na ho"
+                            onClick={() => handleQueueRepair(draft)}
+                            className="p-2.5 rounded-xl transition-all active:scale-90 bg-amber-500 text-white hover:bg-amber-600 shadow-md"
+                            title="Agli AI run me priority repair"
                           >
-                            {isAutoFixing ? <Loader2 size={14} className="animate-spin" /> : <Wrench size={14} />}
+                            <Wrench size={14} />
                           </button>
                         )}
 
                         <button
                           onClick={() => handlePublish(draft)}
-                          disabled={!gate.ok || isAutoFixing}
-                          className={`p-2.5 rounded-xl transition-all active:scale-90 ${gate.ok && !isAutoFixing ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-slate-50 text-slate-300 cursor-not-allowed'}`}
-                          title={gate.ok ? 'Publish now' : `Blocked: ${gate.reason}`}
+                          disabled={isPublishing || (!gate.ok && !canOverride)}
+                          className={`p-2.5 rounded-xl transition-all active:scale-90 ${(gate.ok || canOverride) && !isPublishing ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-slate-50 text-slate-300 cursor-not-allowed'}`}
+                          title={gate.ok ? 'Publish now' : canOverride ? `Admin Verified publish (${gate.reason})` : `Blocked: ${gate.reason}`}
                         >
-                          <Send size={14} />
+                          <Send size={14} className={isPublishing ? 'animate-pulse' : ''} />
                         </button>
                       </>
                     )}
                     {isPublished && (
                       <button
-                        onClick={() => window.open(draft.type === 'JOB' ? `/job/${draft.slug}` : `/fasttrack/${draft.id}`, '_blank')}
+                        onClick={() => window.open(draft.type === 'JOB' ? `/job/${draft.slug}` : `/update/${draft.slug || draft.id}`, '_blank')}
                         className="p-2.5 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-all active:scale-90"
                         title="View live page"
                       >
@@ -499,7 +425,6 @@ const AdminBrowseAIDrafts = () => {
                     )}
                     <button
                       onClick={() => handleDelete(draft)}
-                      disabled={isAutoFixing}
                       className="p-2.5 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-all active:scale-90 disabled:opacity-30"
                       title="Delete draft"
                     >

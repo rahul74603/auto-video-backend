@@ -1,4 +1,4 @@
-﻿const functions = require("firebase-functions");
+const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
 if (!admin.apps.length) {
@@ -57,6 +57,15 @@ function isIndexableDocument(data = {}) {
 
 function hasUsefulTitle(data = {}) {
     return String(data.title || data.post_name || "").trim().length >= 5;
+}
+
+// ✅ NEW: Stricter validation for sitemap inclusion
+function hasValidSitemapData(data = {}) {
+    if (!isIndexableDocument(data)) return false;
+    if (!hasUsefulTitle(data)) return false;
+    // Must have slug or id for URL generation
+    if (!data.slug && !data.id) return false;
+    return true;
 }
 
 // =========================================================
@@ -143,7 +152,7 @@ exports.generateSitemapBlogs = functions.https.onRequest(async (req, res) => {
 
         snap.forEach(doc => {
             const data = doc.data();
-            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+            if (!hasValidSitemapData(data)) return;
             const slugOrId = data.slug || doc.id;
             const safeSlug = safeXml(slugOrId);
             const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
@@ -243,7 +252,7 @@ exports.generateSitemapTests = functions.https.onRequest(async (req, res) => {
 
         snap.forEach(doc => {
             const data = doc.data();
-            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+            if (!hasValidSitemapData(data)) return;
             const slugOrId = data.slug || doc.id;
             const safeSlug = safeXml(slugOrId);
             const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
@@ -285,7 +294,7 @@ exports.generateSitemapStories = functions.https.onRequest(async (req, res) => {
 
         snap.forEach(doc => {
             const data = doc.data();
-            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+            if (!hasValidSitemapData(data)) return;
             const slug = data.slug || doc.id;
             const safeSlug = safeXml(slug);
             const updateTime = getIsoDate(data.createdAt, now);
@@ -333,7 +342,7 @@ exports.generateSitemapUpdates = functions.https.onRequest(async (_req, res) => 
 
         snap.forEach(doc => {
             const data = doc.data();
-            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+            if (!hasValidSitemapData(data)) return;
             const slug = safeXml(data.slug || doc.id);
             const updateTime = getIsoDate(data.updatedAt || data.publishedAt || data.createdAt, now);
             xml += `  <url>\n`;
@@ -370,7 +379,7 @@ exports.generateSitemapCourses = functions.https.onRequest(async (req, res) => {
 
         snap.forEach(doc => {
             const data = doc.data();
-            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+            if (!hasValidSitemapData(data)) return;
             const slug = safeXml(data.slug || doc.id);
             const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
             xml += `  <url>\n`;
@@ -407,7 +416,7 @@ exports.generateSitemapMaterials = functions.https.onRequest(async (req, res) =>
 
         snap.forEach(doc => {
             const data = doc.data();
-            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+            if (!hasValidSitemapData(data)) return;
             const slug = safeXml(data.slug || doc.id);
             const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
             xml += `  <url>\n`;
@@ -426,7 +435,7 @@ exports.generateSitemapMaterials = functions.https.onRequest(async (req, res) =>
                 .get();
             snap2.forEach(doc => {
                 const data = doc.data();
-                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+                if (!hasValidSitemapData(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
                 xml += `  <url>\n`;
@@ -627,7 +636,7 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
             
             blogsSnap.forEach(doc => {
                 const data = doc.data();
-                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+                if (!hasValidSitemapData(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
                 const imageUrl = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
@@ -688,7 +697,7 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
             
             testsSnap.forEach(doc => {
                 const data = doc.data();
-                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+                if (!hasValidSitemapData(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
 
@@ -712,7 +721,7 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
             
             storiesSnap.forEach(doc => {
                 const data = doc.data();
-                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+                if (!hasValidSitemapData(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.createdAt, now);
                 const coverImage = safeXml(data.coverImage || `${WEBSITE_URL}/og-image.jpg`);
@@ -742,7 +751,7 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
             
             fastSnap.forEach(doc => {
                 const data = doc.data();
-                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+                if (!hasValidSitemapData(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
 
@@ -766,7 +775,7 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
 
             coursesSnap.forEach(doc => {
                 const data = doc.data();
-                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+                if (!hasValidSitemapData(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
 
@@ -790,7 +799,7 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
 
             matsSnap.forEach(doc => {
                 const data = doc.data();
-                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+                if (!hasValidSitemapData(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
 
@@ -808,7 +817,7 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
         xml += `</urlset>`;
 
         res.set('Cache-Control', 'public, max-age=3600, s-maxage=7200');
-        res.set('Content-Type', 'application/xml; charset=utf-8');
+        res.set('Content-Type', 'text/xml; charset=utf-8');
         res.status(200).send(xml);
 
     } catch (error) {
@@ -817,3 +826,94 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
     }
 });
 
+
+// =========================================================
+// 10. SITEMAP VALIDATION ENDPOINT
+// =========================================================
+exports.validateSitemap = functions.https.onRequest(async (req, res) => {
+    try {
+        const validationResults = {
+            timestamp: new Date().toISOString(),
+            collections: {},
+            issues: [],
+            totalUrls: 0
+        };
+
+        const collections = [
+            { name: 'blogs', route: '/blog/', limit: 5000 },
+            { name: 'jobs', route: '/job/', limit: 5000 },
+            { name: 'mock_tests', route: '/test/', limit: 2000 },
+            { name: 'web_stories', route: '/web-stories/', limit: 2000 },
+            { name: 'fast_track', route: '/update/', limit: 5000 },
+            { name: 'courses', route: '/course/', limit: 5000 },
+            { name: 'study_materials', route: '/material/', limit: 5000 }
+        ];
+
+        for (const coll of collections) {
+            try {
+                const snap = await db.collection(coll.name)
+                    .orderBy('createdAt', 'desc')
+                    .limit(coll.limit)
+                    .get();
+
+                let valid = 0;
+                let invalid = 0;
+                const issues = [];
+
+                snap.forEach(doc => {
+                    const data = doc.data();
+                    if (hasValidSitemapData(data)) {
+                        valid++;
+                    } else {
+                        invalid++;
+                        if (invalid <= 5) { // Only log first 5 issues per collection
+                            issues.push({
+                                id: doc.id,
+                                reason: !isIndexableDocument(data) ? 'not_indexable' : 'missing_title_or_slug'
+                            });
+                        }
+                    }
+                });
+
+                validationResults.collections[coll.name] = {
+                    total: snap.size,
+                    valid,
+                    invalid,
+                    route: coll.route
+                };
+
+                validationResults.totalUrls += valid;
+
+                if (invalid > 0) {
+                    validationResults.issues.push({
+                        collection: coll.name,
+                        invalidCount: invalid,
+                        sampleIssues: issues
+                    });
+                }
+            } catch (e) {
+                validationResults.collections[coll.name] = {
+                    error: e.message
+                };
+                validationResults.issues.push({
+                    collection: coll.name,
+                    error: e.message
+                });
+            }
+        }
+
+        // Add static pages count
+        validationResults.collections.static_pages = {
+            count: STATIC_PAGES.length,
+            routes: STATIC_PAGES.map(p => p.path)
+        };
+        validationResults.totalUrls += STATIC_PAGES.length;
+
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=120');
+        res.set('Content-Type', 'application/json; charset=utf-8');
+        res.status(200).json(validationResults);
+    } catch (error) {
+        console.error('❌ Sitemap Validation Error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});

@@ -11,6 +11,18 @@
     <link rel="canonical" href="https://studygyaan.in" />
 
     <!-- =====================================================
+         ✅ PWA - Progressive Web App
+         App install support, offline mode, push notifications
+    ====================================================== -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="description" content="Free Study Material, Latest Govt Jobs, Mock Tests & Exam Preparation" />
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="StudyGyaan" />
+
+    <!-- =====================================================
          ✅ PRECONNECT — Sirf jo zaruri hai (max 4)
          Unused preconnects hata diye:
          www.gstatic.com, www.google.com, news.google.com
@@ -88,21 +100,10 @@
         position: relative;
       }
 
-      /* Nav placeholder — font load par shift nahi hogi */
-      nav:first-of-type {
-        height: 56px;
-        background: rgba(255,255,255,0.8);
-        position: sticky;
-        top: 0;
-        z-index: 100;
-        border-bottom: 1px solid #f1f5f9;
-      }
-
-      @media (min-width: 768px) {
-        nav:first-of-type {
-          height: 64px;
-        }
-      }
+      /* ❌ Nav placeholder rule DELETED —
+         `nav:first-of-type` galti se HAR pehle <nav> pe lag raha tha:
+         Hero ke 4 cards ke peeche white band + Footer Explore pe grey box.
+         Real navbar apni Tailwind classes khud rakhta hai — ye rule bekar tha. */
     </style>
 
   </head>
@@ -163,40 +164,82 @@
     </script>
 
     <!-- =====================================================
-         ✅ SUBSCRIBE WITH GOOGLE (SWG) — Idle pe load
-         Pehle: async tha par <head> mein tha — 79KB block
-         Ab: requestIdleCallback se — jab browser free ho tab
+         ❌ SUBSCRIBE WITH GOOGLE (SWG) — REMOVED
+         Ye Google script page me apna khud ka light-theme UI
+         inject karti thi (grey/white box) + 79KB bekar load.
+         openaccess mode me iska koi fayda bhi nahi tha.
+    ====================================================== -->
+
+    <!-- =====================================================
+         ✅ PWA - Service Worker Registration
+         Offline support, caching, push notifications
     ====================================================== -->
     <script>
-      (function () {
-        function loadSWG() {
-          var script = document.createElement('script');
-          script.src = 'https://news.google.com/swg/js/v1/swg-basic.js';
-          script.async = true;
-          script.onload = function () {
-            (self.SWG_BASIC = self.SWG_BASIC || []).push(function (basicSubscriptions) {
-              basicSubscriptions.init({
-                type: 'NewsArticle',
-                isPartOfType: ['Product'],
-                isPartOfProductId: 'CAownfa2DA:openaccess',
-                clientOptions: {
-                  theme: 'light',
-                  lang: 'en-GB'
-                }
+      // Service Worker registration
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js')
+            .then(function(registration) {
+              console.log('[PWA] Service Worker registered successfully:', registration.scope);
+              
+              // Check for updates
+              registration.addEventListener('updatefound', function() {
+                const newWorker = registration.installing;
+                newWorker.addEventListener('statechange', function() {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    // New content available, show update notification
+                    if (confirm('New version available! Reload to update?')) {
+                      window.location.reload();
+                    }
+                  }
+                });
               });
+            })
+            .catch(function(error) {
+              console.log('[PWA] Service Worker registration failed:', error);
             });
-          };
-          document.head.appendChild(script);
-        }
+        });
+      }
 
-        /* Browser free ho tab load karo */
-        if ('requestIdleCallback' in window) {
-          requestIdleCallback(loadSWG, { timeout: 5000 });
-        } else {
-          /* Fallback — 5 seconds baad */
-          setTimeout(loadSWG, 5000);
+      // PWA Install Prompt
+      let deferredPrompt;
+      const installButton = document.createElement('button');
+      installButton.id = 'pwa-install-btn';
+      installButton.innerHTML = '📱 Install App';
+      installButton.style.cssText = 'position:fixed;bottom:80px;right:20px;background:#2563eb;color:white;border:none;padding:12px 20px;border-radius:25px;font-weight:bold;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.2);z-index:1000;display:none;';
+
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        installButton.style.display = 'block';
+        
+        installButton.addEventListener('click', async () => {
+          if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log(`[PWA] User ${outcome} the install prompt`);
+            deferredPrompt = null;
+            installButton.style.display = 'none';
+          }
+        });
+      });
+
+      document.addEventListener('DOMContentLoaded', () => {
+        document.body.appendChild(installButton);
+      });
+
+      // Track app install
+      window.addEventListener('appinstalled', (event) => {
+        console.log('[PWA] App installed successfully');
+        installButton.style.display = 'none';
+        // You can send analytics event here
+        if (typeof gtag !== 'undefined') {
+          gtag('event', 'pwa_installed', {
+            event_category: 'engagement',
+            event_label: 'PWA Install'
+          });
         }
-      })();
+      });
     </script>
 
   </body>

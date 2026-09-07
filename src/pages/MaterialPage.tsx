@@ -3,12 +3,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { materialRepository } from '@/features/materials/data/materialRepository';
 import { categoryRepository } from '@/features/categories/data/categoryRepository';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Folder, FileText, Download, ArrowLeft, ChevronRight, Home, Search, Loader2, Sparkles, Tag, ExternalLink, ShoppingCart, ArrowRight } from 'lucide-react';
+import { Folder, FileText, Download, ArrowLeft, ChevronRight, Home, Search, Loader2, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ShareButtons from '../components/ShareButtons';
 import { useNavigate } from 'react-router-dom';
 import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
+import DynamicSidebar from '../components/DynamicSidebar';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository'; 
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
@@ -26,9 +27,7 @@ type MaterialPageLink = {
 type MaterialPageSettings = {
   mrpPrice?: string | number;
   discountPercent?: string | number;
-  relatedBlogs?: MaterialPageLink[];
   pdfUpdates?: MaterialPageLink[];
-  sidebarLinks?: MaterialPageLink[];
 };
 
 const StudyMaterials: React.FC = () => {
@@ -123,16 +122,7 @@ const StudyMaterials: React.FC = () => {
 
   const sellingPrice = Math.round(Number(globalSettings?.mrpPrice || 499) * (1 - Number(globalSettings?.discountPercent || 85) / 100));
 
-  const loopColors = [
-    { bg: "bg-rose-50", border: "border-rose-200 hover:border-rose-400", text: "text-rose-900", iconText: "text-rose-600" },
-    { bg: "bg-blue-50", border: "border-blue-200 hover:border-blue-400", text: "text-blue-900", iconText: "text-blue-600" },
-    { bg: "bg-emerald-50", border: "border-emerald-200 hover:border-emerald-400", text: "text-emerald-900", iconText: "text-emerald-600" },
-    { bg: "bg-amber-50", border: "border-amber-200 hover:border-amber-400", text: "text-amber-900", iconText: "text-amber-600" },
-    { bg: "bg-purple-50", border: "border-purple-200 hover:border-purple-400", text: "text-purple-900", iconText: "text-purple-600" }
-  ];
 
-  const trendingBlogs = (globalSettings?.relatedBlogs || []).slice(0, 5);
-  const pageQuickLinks = ((globalSettings?.pdfUpdates?.length ?? 0) > 0 ? globalSettings?.pdfUpdates : globalSettings?.sidebarLinks) || [];
 
   // 🔥 1. BREADCRUMB SCHEMA
   const breadcrumbSchema = {
@@ -266,70 +256,7 @@ const StudyMaterials: React.FC = () => {
 
           <aside className="w-full md:w-[35%] space-y-4 md:space-y-6 sticky top-14 md:top-24 min-h-[300px]">
               
-              {trendingBlogs.length > 0 && (
-                <section className="bg-white/80 backdrop-blur-xl p-4 md:p-6 rounded-2xl md:rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 relative overflow-hidden">
-                    <div className="absolute -top-10 -right-10 w-32 h-32 bg-purple-100 rounded-full blur-3xl opacity-60 pointer-events-none"></div>
-                    <h2 className="text-sm md:text-lg font-black text-slate-900 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2 relative z-10">
-                      <Sparkles size={18} className="text-purple-600 animate-pulse" aria-hidden="true" /> 
-                      <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-700 to-pink-600">ट्रेंडिंग ब्लॉग्स 🔥</span>
-                    </h2>
-                    
-                    <ul className="space-y-3 relative z-10">
-                        {trendingBlogs.map((item, index: number) => {
-                            const style = loopColors[index % loopColors.length];
-                            return (
-                              <li key={index} onClick={() => item.url && window.open(item.url, '_blank')} className={`group cursor-pointer border-2 ${style.border} ${style.bg} p-3 md:p-4 rounded-xl md:rounded-2xl transition-all hover:-translate-y-1 shadow-sm hover:shadow-md flex items-center justify-between`}>
-                                  <div className="flex-1 pr-3">
-                                      <span className={`block text-[13px] md:text-[16px] font-black ${style.text} line-clamp-2 min-h-[2.8em] leading-snug`}>{item.title}</span>
-                                  </div>
-                                  <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center bg-white shadow-sm shrink-0 group-hover:scale-110 transition-transform ${style.iconText}`}>
-                                      <ArrowRight className="w-4 h-4 md:w-5 md:h-5" aria-hidden="true" />
-                                  </div>
-                              </li>
-                            );
-                        })}
-                    </ul>
-                </section>
-              )}
-
-              {pageQuickLinks.length > 0 && (
-                <section className="bg-white/80 backdrop-blur-xl p-4 md:p-6 rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden relative">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-blue-100 rounded-bl-full opacity-60 pointer-events-none"></div>
-                    <h2 className="text-sm md:text-lg font-black text-slate-900 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2 relative z-10">
-                        <Tag size={18} className="text-blue-600 animate-bounce" aria-hidden="true" /> महत्वपूर्ण लिंक्स 🔗
-                    </h2>
-                    <ul className="space-y-3 relative z-10">
-                        {pageQuickLinks.map((item, index: number) => {
-                            const linkGradients = [
-                              "bg-gradient-to-r from-blue-600 to-cyan-500",
-                              "bg-gradient-to-r from-purple-600 to-fuchsia-500",
-                              "bg-gradient-to-r from-orange-500 to-red-500",
-                              "bg-gradient-to-r from-emerald-500 to-teal-400",
-                              "bg-gradient-to-r from-rose-500 to-pink-500"
-                            ];
-                            const bgClass = linkGradients[index % linkGradients.length];
-
-                            return (
-                               <li 
-                                 key={index} 
-                                 onClick={() => item.url && item.url !== "#" && window.open(item.url, '_blank')} 
-                                 className={`group flex items-center justify-between p-3 md:p-4 rounded-xl md:rounded-2xl transition-all duration-300 cursor-pointer shadow-md hover:shadow-xl hover:-translate-y-1 ${bgClass} text-white`}
-                               >
-                                  <div className="flex items-start gap-2.5 w-full">
-                                     <div className="bg-white/20 p-1.5 rounded-lg shrink-0 mt-0.5 group-hover:scale-110 transition-transform">
-                                        <ExternalLink size={14} className="text-white md:w-4 md:h-4" aria-hidden="true" />
-                                     </div>
-                                     <span className="font-black text-[12px] md:text-[15px] font-hindi leading-snug tracking-wide pr-2">
-                                         {item.title || item.name}
-                                     </span>
-                                  </div>
-                                  <ArrowRight size={16} className="text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0 ml-1 self-center" aria-hidden="true" />
-                               </li>
-                            )
-                        })}
-                    </ul>
-                </section>
-              )}
+              <DynamicSidebar />
 
               <section className="p-4 md:p-6 bg-gradient-to-br from-blue-700 via-indigo-800 to-slate-900 rounded-2xl md:rounded-[2rem] text-white shadow-2xl relative overflow-hidden border-b-4 border-black/20">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-3xl group-hover:scale-150 transition-all duration-700 pointer-events-none"></div>

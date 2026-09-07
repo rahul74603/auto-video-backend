@@ -37,12 +37,12 @@ const Success = () => {
             {loading ? (
                 <>
                     <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-                    <h2 className="text-xl font-black">पेमेंट कन्फर्म हो रही है...</h2>
+                    <h1 className="text-xl font-black">पेमेंट कन्फर्म हो रही है...</h1>
                 </>
             ) : (
                 <>
                     <CheckCircle className="w-20 h-20 text-emerald-500 mb-4 animate-bounce" />
-                    <h2 className="text-2xl font-black text-slate-900">बधाई हो! कोर्स अनलॉक हो गया 🔥</h2>
+                    <h1 className="text-2xl font-black text-slate-900">बधाई हो! कोर्स अनलॉक हो गया 🔥</h1>
                     <p className="text-slate-500">अब आप पढ़ाई शुरू कर सकते हैं।</p>
                 </>
             )}

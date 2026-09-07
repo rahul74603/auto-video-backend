@@ -70,7 +70,16 @@ function parseArgs(argv) {
         scanLimit: Number(process.env.VIDEO_SCAN_LIMIT || 150),
         dryRun: false,
         doc: '',
-        maxAgeDays: envMaxAgeDays()
+        maxAgeDays: envMaxAgeDays(),
+        // 🗓️ Shorts cutoff: is date se pehle publish hue job/fast_track pe
+        // shorts kabhi nahi (admin rule 23 Aug 2026). Env se override/disable:
+        // VIDEO_SHORTS_CUTOFF=0 → disabled
+        shortsCutoffMs: (() => {
+            const raw = process.env.VIDEO_SHORTS_CUTOFF;
+            if (raw === '0') return 0;
+            const parsed = Date.parse(raw || '2026-08-23T00:00:00+05:30');
+            return Number.isFinite(parsed) ? parsed : 0;
+        })()
     };
     for (const raw of argv) {
         const [key, value] = raw.replace(/^--/, '').split('=');
@@ -186,14 +195,37 @@ async function scanCollection(db, kind, opts) {
         }
     });
 
-    // Retry-first ordering: previously failed (but not permanently) docs first,
-    // then newest content. Keeps the queue moving without starving retries.
-    candidates.sort((a, b) => {
-        const aRetry = a.data.videoStatus === STATUS.FAILED || a.data.videoStatus === STATUS.UPLOAD_FAILED ? 1 : 0;
-        const bRetry = b.data.videoStatus === STATUS.FAILED || b.data.videoStatus === STATUS.UPLOAD_FAILED ? 1 : 0;
-        if (aRetry !== bRetry) return bRetry - aRetry;
-        return V.publishedAtMs(b.data) - V.publishedAtMs(a.data);
-    });
+    // 🧠 GROWTH ENGINE: priority ordering using breaking mode + opportunity
+    // Falls back to retry-first + newest-first when growth engine is disabled.
+    try {
+        const flags = require('./agents/growth/feature_flags');
+        if (flags.isEnabled('GROWTH_ENGINE_ENABLED')) {
+            const breaking = require('./agents/growth/breaking_mode');
+            candidates.sort((a, b) => {
+                const aPri = breaking.getDispatchPriority(a).priority;
+                const bPri = breaking.getDispatchPriority(b).priority;
+                if (aPri !== bPri) return bPri - aPri;
+                return V.publishedAtMs(b.data) - V.publishedAtMs(a.data);
+            });
+        } else {
+            // Retry-first ordering: previously failed (but not permanently) docs first,
+            // then newest content. Keeps the queue moving without starving retries.
+            candidates.sort((a, b) => {
+                const aRetry = a.data.videoStatus === STATUS.FAILED || a.data.videoStatus === STATUS.UPLOAD_FAILED ? 1 : 0;
+                const bRetry = b.data.videoStatus === STATUS.FAILED || b.data.videoStatus === STATUS.UPLOAD_FAILED ? 1 : 0;
+                if (aRetry !== bRetry) return bRetry - aRetry;
+                return V.publishedAtMs(b.data) - V.publishedAtMs(a.data);
+            });
+        }
+    } catch {
+        // Fallback: retry-first ordering
+        candidates.sort((a, b) => {
+            const aRetry = a.data.videoStatus === STATUS.FAILED || a.data.videoStatus === STATUS.UPLOAD_FAILED ? 1 : 0;
+            const bRetry = b.data.videoStatus === STATUS.FAILED || b.data.videoStatus === STATUS.UPLOAD_FAILED ? 1 : 0;
+            if (aRetry !== bRetry) return bRetry - aRetry;
+            return V.publishedAtMs(b.data) - V.publishedAtMs(a.data);
+        });
+    }
 
     console.log(`🔎 [${kind}] scanned ${snapshot.size} docs (${orderedRead ? 'ordered' : 'unordered'}) → ${candidates.length} pending`);
     if (candidates.length === 0 && skipped.length > 0) {
@@ -256,6 +288,37 @@ async function processJobLike(candidate, ctx) {
     console.log(`   category: ${payload.category}`);
     console.log(`${'─'.repeat(60)}`);
 
+    // 🧠 GROWTH ENGINE: generate recommendation before rendering
+    let growthRecommendation = null;
+    try {
+        const flags = require('./agents/growth/feature_flags');
+        if (flags.isEnabled('GROWTH_ENGINE_ENABLED')) {
+            const orchestrator = require('./agents/growth/orchestrator');
+            const contentForGrowth = {
+                ...data,
+                title: payload.title,
+                organization: payload.organization || data.organization || '',
+                vacancies: payload.vacancies || data.vacancies || '',
+                lastDate: payload.lastDate || data.lastDate || '',
+                category: payload.category || data.category || '',
+                type: kind === KIND.JOB ? 'JOB' : 'FAST_TRACK',
+                createdAt: data.createdAt || Date.now()
+            };
+            growthRecommendation = await orchestrator.processContent(contentForGrowth, {
+                contentId: id,
+                db: ctx.db,
+                runId: ctx.runId
+            });
+            if (growthRecommendation && growthRecommendation.processed) {
+                console.log(`🧠 Growth: score=${growthRecommendation.recommendation.contentScore}, hook=${growthRecommendation.recommendation.hook?.hookType}, duration=${growthRecommendation.recommendation.duration}s, presenter=${growthRecommendation.recommendation.presenter}`);
+            }
+        }
+    } catch (err) {
+        // Growth engine failure must NEVER break the production pipeline
+        console.log(`⚠️ Growth engine skipped (${V.shortError(err, 100)}) — continuing with defaults`);
+        growthRecommendation = null;
+    }
+
     // autoVideo.js is required lazily so a missing media dependency cannot break
     // the dispatcher's reporting for the other pipelines.
     const { generateAndUploadVideo } = require('./autoVideo');
@@ -266,13 +329,37 @@ async function processJobLike(candidate, ctx) {
         docRef: ref,
         collection: candidate.collection,
         managedState: true,
-        privacyStatus: ctx.privacyStatus
+        privacyStatus: ctx.privacyStatus,
+        growthRecommendation: growthRecommendation?.processed ? {
+            ...growthRecommendation.recommendation,
+            enhancements: growthRecommendation.enhancements   // CRITICAL: aiVisual, cta, deadline, motion are here
+        } : null
     });
 
     // generateAndUploadVideo returns true (legacy) or a detail object.
     const detail = typeof result === 'object' && result !== null ? result : { success: result === true };
     if (detail.success) {
         console.log(`✅ ${kind} ${id} → ${detail.videoUrl || 'video uploaded'}`);
+
+        // 🧠 GROWTH ENGINE: store post-upload analytics tracking info
+        if (growthRecommendation?.processed && detail.videoId) {
+            try {
+                const analyticsCollector = require('./agents/growth/analytics/collector');
+                // Fire-and-forget: never block the pipeline on analytics storage
+                analyticsCollector.collectPlatformMetrics(ctx.db, {
+                    platform: 'youtube',
+                    platformVideoId: detail.videoId,
+                    contentId: id,
+                    publishedAt: Date.now(),
+                    hookType: growthRecommendation.recommendation?.hook?.hookType || '',
+                    presenter: growthRecommendation.recommendation?.presenter || '',
+                    visualStyle: growthRecommendation.recommendation?.visualStyle || '',
+                    duration: growthRecommendation.recommendation?.duration || 0,
+                    category: growthRecommendation.recommendation?.category || ''
+                }).catch(() => {});
+            } catch { /* ignore */ }
+        }
+
         return { ok: true, videoId: detail.videoId, videoUrl: detail.videoUrl };
     }
 
@@ -283,11 +370,40 @@ async function processJobLike(candidate, ctx) {
 
 async function processMockTest(candidate, ctx) {
     const { ref, id, data } = candidate;
-    console.log(`\n${'─'.repeat(60)}`);
+    console.log(`
+${'─'.repeat(60)}`);
     console.log(`🎬 MOCK_TEST | doc=${id}`);
     console.log(`   title    : ${data.title || data.subject || '(untitled)'}`);
     console.log(`   questions: ${Array.isArray(data.questions) ? data.questions.length : 0}`);
     console.log(`${'─'.repeat(60)}`);
+
+    // 🧠 GROWTH ENGINE: generate mock-test-specific recommendation
+    let growthRecommendation = null;
+    try {
+        const flags = require('./agents/growth/feature_flags');
+        if (flags.isEnabled('GROWTH_ENGINE_ENABLED')) {
+            const orchestrator = require('./agents/growth/orchestrator');
+            const mockContent = {
+                title: data.title || data.subject || 'Mock Test',
+                subject: data.subject || '',
+                totalQuestions: Array.isArray(data.questions) ? data.questions.length : 0,
+                category: data.category || 'MOCK_TEST',
+                type: 'MOCK_TEST',
+                createdAt: data.createdAt || Date.now(),
+                topic: data.title || data.subject || '',
+                organization: data.subject || ''
+            };
+            growthRecommendation = await orchestrator.processContent(mockContent, {
+                contentId: id, db: ctx.db, runId: ctx.runId, platform: 'youtube'
+            });
+            if (growthRecommendation?.processed) {
+                console.log(`🧠 Mock Growth: score=${growthRecommendation.recommendation.contentScore}, hook=${growthRecommendation.recommendation.hook?.hookType}`);
+            }
+        }
+    } catch (err) {
+        console.log(`⚠️ Mock growth engine skipped (${V.shortError(err, 100)}) — continuing with defaults`);
+        growthRecommendation = null;
+    }
 
     const { generateMockTestVideo } = require('./mock_test_video');
 
@@ -296,12 +412,31 @@ async function processMockTest(candidate, ctx) {
         docRef: ref,
         docData: data,
         managedState: true,
-        privacyStatus: ctx.privacyStatus
+        privacyStatus: ctx.privacyStatus,
+        growthRecommendation: growthRecommendation?.processed ? {
+            ...growthRecommendation.recommendation,
+            enhancements: growthRecommendation.enhancements   // CRITICAL: aiVisual, cta, deadline, motion
+        } : null
     });
 
     const detail = typeof result === 'object' && result !== null ? result : { success: result === true };
     if (detail.success) {
         console.log(`✅ MOCK_TEST ${id} → ${detail.videoUrl || 'video uploaded'}`);
+        // Analytics tracking for mock test
+        if (growthRecommendation?.processed && detail.videoId) {
+            try {
+                const ac = require('./agents/growth/analytics/collector');
+                ac.collectPlatformMetrics(ctx.db, {
+                    platform: 'youtube', platformVideoId: detail.videoId, contentId: id,
+                    publishedAt: Date.now(),
+                    hookType: growthRecommendation.recommendation?.hook?.hookType || '',
+                    presenter: growthRecommendation.recommendation?.presenter || '',
+                    visualStyle: growthRecommendation.recommendation?.visualStyle || '',
+                    duration: growthRecommendation.recommendation?.duration || 0,
+                    category: 'MOCK_TEST'
+                }).catch(() => {});
+            } catch { /* ignore */ }
+        }
         return { ok: true, videoId: detail.videoId, videoUrl: detail.videoUrl };
     }
 
@@ -316,7 +451,9 @@ async function processCandidate(candidate, ctx) {
     const claimResult = await V.claim(ctx.db, admin, kind, ref, {
         runId: ctx.runId,
         worker: 'github-dispatcher',
-        maxAgeDays: ctx.maxAgeDays
+        maxAgeDays: ctx.maxAgeDays,
+        shortsCutoffMs: ctx.shortsCutoffMs,
+        freshOnly: ctx.maxAgeDays > 0   // legacy content hard guard
     });
 
     if (!claimResult.claimed) {
@@ -335,6 +472,7 @@ async function processCandidate(candidate, ctx) {
             await V.markCompleted(ctx.db, admin, collection, ref, {
                 videoId: outcome.videoId,
                 videoUrl: outcome.videoUrl,
+                platformStatuses: outcome.platformStatuses || undefined,
                 extra: kind === KIND.MOCK_TEST ? { mockVideoMade: true } : {}
             });
             return { status: 'completed', kind, id, videoUrl: outcome.videoUrl };
@@ -396,6 +534,7 @@ async function main() {
         db,
         runId,
         maxAgeDays: args.maxAgeDays,
+        shortsCutoffMs: args.shortsCutoffMs,
         privacyStatus: process.env.VIDEO_PRIVACY_STATUS || ''
     };
     if (ctx.privacyStatus) console.log(`ℹ️ YouTube privacy override: ${ctx.privacyStatus}`);
@@ -448,7 +587,9 @@ async function main() {
             } else {
                 candidates = await scanCollection(db, kind, {
                     scanLimit: args.scanLimit,
-                    maxAgeDays: args.maxAgeDays
+                    maxAgeDays: args.maxAgeDays,
+                    shortsCutoffMs: args.shortsCutoffMs,
+                    freshOnly: args.maxAgeDays > 0   // legacy content guard ON when freshness window active
                 });
             }
         } catch (err) {

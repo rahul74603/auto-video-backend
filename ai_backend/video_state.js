@@ -66,7 +66,7 @@ const DEFAULT_LEGACY_GRACE_MS = 30 * 60 * 1000; // 30 minutes
 // Older content — including legacy backlog and stale queued/failed docs — is
 // never auto-rendered. Publishing fresh content is what triggers a video.
 // Force a specific old doc manually with --doc=<id> --max-age-days=0.
-const DEFAULT_MAX_AGE_DAYS = 1;
+const DEFAULT_MAX_AGE_DAYS = 0.5;   // STRICT: only last 12 hours of fresh publishes
 
 const JOB_BLOCKED_STATUSES = ['draft', 'pending', 'archived', 'rejected', 'unpublished', 'deleted', 'expired'];
 const NON_JOB_TYPES = ['MATERIAL', 'AFFILIATE', 'FAST_TRACK', 'BLOG', 'NOTE', 'PDF', 'STORY'];
@@ -172,11 +172,32 @@ function publishedAtMs(data) {
         || 0;
 }
 
+/**
+ * Hard guard: legacy/pre-video content must never be auto-processed.
+ * If content has NO videoTriggeredAt ever AND was published more than
+ * maxAgeDays ago, it's permanently ineligible. This prevents old jobs
+ * from suddenly triggering videos when the dispatcher runs.
+ * 
+ * Only fresh publishes (within maxAgeDays window) are eligible.
+ * User must explicitly use --max-age-days=0 to override.
+ */
+function isLegacyBacklog(data, maxAgeDays) {
+    if (!data) return false;
+    // If videoTriggeredAt already exists, this content was seen by the system
+    // before — apply normal retry/stale logic, not legacy skip.
+    if (data.videoTriggeredAt) return false;
+    // No videoTriggeredAt AND published outside freshness window = legacy
+    const created = publishedAtMs(data);
+    if (!created) return true;   // no timestamp = assume old
+    return (Date.now() - created) > maxAgeDays * 24 * 60 * 60 * 1000;
+}
+
 function baseEligibility(data, opts = {}) {
     const maxAttempts = opts.maxAttempts || DEFAULT_MAX_ATTEMPTS;
     const staleLockMs = opts.staleLockMs || DEFAULT_STALE_LOCK_MS;
     const legacyGraceMs = opts.legacyGraceMs === undefined ? DEFAULT_LEGACY_GRACE_MS : opts.legacyGraceMs;
     const maxAgeDays = opts.maxAgeDays === undefined ? DEFAULT_MAX_AGE_DAYS : opts.maxAgeDays;
+    const freshOnly = opts.freshOnly !== false;   // default ON
 
     if (!data) return { eligible: false, reason: 'no data' };
     if (isExcluded(data)) return { eligible: false, reason: 'excluded by admin flag' };
@@ -197,10 +218,28 @@ function baseEligibility(data, opts = {}) {
             return { eligible: false, reason: `unknown publish age (no parseable timestamp) — force with --max-age-days=0` };
         }
         if ((Date.now() - created) > maxAgeDays * 24 * 60 * 60 * 1000) {
-            return { eligible: false, reason: `older than ${maxAgeDays}d backlog window` };
+            return { eligible: false, reason: `older than ${maxAgeDays}d freshness window` };
         }
     }
+    // NEW: Hard skip for legacy content that was NEVER touched by video system
+    // AND falls outside the freshness window.
+    if (freshOnly && maxAgeDays > 0 && isLegacyBacklog(data, maxAgeDays)) {
+        return { eligible: false, reason: `legacy content — videoTriggeredAt missing + older than ${maxAgeDays}d freshness window` };
+    }
     return { eligible: true, reason: 'pending' };
+}
+
+// 🗓️ SHORTS CUTOFF — is date se PEHLE publish hue jobs/fast_track pe shorts
+// kabhi nahi banenge (admin rule: "aaj se pehle wala sab bhool jao").
+// OPT-IN: dispatcher opts.shortsCutoffMs pass karta hai (env VIDEO_SHORTS_CUTOFF).
+// Forced/manual runs (maxAgeDays: 0) cutoff bhi bypass karte hain.
+function beforeShortsCutoff(data, opts = {}) {
+    if (opts.maxAgeDays === 0) return false;           // forced/manual run
+    const cutoff = Number(opts.shortsCutoffMs) || 0;   // opt-in only
+    if (!cutoff) return false;
+    const published = publishedAtMs(data);
+    if (!published) return false; // baseEligibility ka 'unknown publish age' message aayega
+    return published < cutoff;
 }
 
 function evaluateJob(data, opts = {}) {
@@ -218,14 +257,24 @@ function evaluateJob(data, opts = {}) {
         return { eligible: false, reason: 'looks like an uploaded study material, not a job post' };
     }
 
-    return baseEligibility(data, opts);
+    const base = baseEligibility(data, opts);
+    if (!base.eligible) return base;
+    if (beforeShortsCutoff(data, opts)) {
+        return { eligible: false, reason: 'shorts cutoff se pehle publish hua — sirf naye publish pe short banti hai' };
+    }
+    return base;
 }
 
 function evaluateFastTrack(data, opts = {}) {
     const status = lower(data && data.status);
     if (status !== 'published') return { eligible: false, reason: `status=${status || 'missing'} (needs published)` };
     if (!str(data && data.title)) return { eligible: false, reason: 'missing title' };
-    return baseEligibility(data, opts);
+    const base = baseEligibility(data, opts);
+    if (!base.eligible) return base;
+    if (beforeShortsCutoff(data, opts)) {
+        return { eligible: false, reason: 'shorts cutoff se pehle publish hua — sirf naye publish pe short banti hai' };
+    }
+    return base;
 }
 
 function evaluateMockTest(data, opts = {}) {
@@ -339,9 +388,28 @@ async function markCompleted(db, admin, collection, ref, payload = {}) {
         update.youtubeVideoUrl = payload.videoUrl;        // legacy field kept
         update.videoCreatedAt = serverTimestamp(admin);   // legacy field kept
     }
+    // Independent platform statuses — each upload is tracked separately.
+    // A failure on one platform does not mark the whole video as failed.
+    if (payload.platformStatuses) {
+        update.platformStatuses = payload.platformStatuses;
+    }
     Object.assign(update, payload.extra || {});
     await docRef.update(update);
     return update;
+}
+
+/**
+ * Reset a failed/queued document so the dispatcher can retry it.
+ * Clears the stale lock and error, preserves historical attempt count
+ * so max-retry protection still applies.
+ */
+async function retryEligible(db, admin, collection, ref) {
+    const docRef = typeof ref === 'string' ? db.collection(collection).doc(ref) : ref;
+    await docRef.update({
+        videoStatus: STATUS.QUEUED,
+        videoError: admin.firestore.FieldValue.delete(),
+        videoLockId: admin.firestore.FieldValue.delete()
+    });
 }
 
 async function markFailed(db, admin, collection, ref, error, options = {}) {
@@ -414,7 +482,8 @@ module.exports = {
     markCompleted,
     markFailed,
     releaseClaim,
-    safeUpdate
+    safeUpdate,
+    retryEligible
 };
 
 /* ------------------------------------------------------------------ */
@@ -434,7 +503,7 @@ module.exports = {
  * The counter lives in Firestore so it is shared across runs.
  */
 const QUOTA_DOC = 'system_settings/video_quota';
-const DEFAULT_DAILY_VIDEO_LIMIT = 5;
+const DEFAULT_DAILY_VIDEO_LIMIT = 999; // effectively unlimited - user controls via VIDEO_DAILY_LIMIT env
 
 function todayKey(now = new Date()) {
     // Bucket by IST day so the reset lines up with the site's audience.

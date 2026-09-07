@@ -15,6 +15,7 @@ import SEO from './components/SEO';
 // 🚀 CRITICAL PATH - Direct Imports
 // =========================================================
 import Navigation from '@/sections/Navigation';
+import MobileBottomNav from '@/components/MobileBottomNav';
 import { SiteSettingsProvider, PromoBanner } from './sections/Ads';
 
 // =========================================================
@@ -28,6 +29,8 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 // Jobs
 const GovtJobs = lazy(() => import('@/sections/GovtJobs'));
 const JobDetails = lazy(() => import('./pages/JobDetails'));
+const JobHub = lazy(() => import('./pages/JobHub'));
+const ExamCalendar = lazy(() => import('./pages/ExamCalendar'));
 const CategoryPage = lazy(() => import('./pages/CategoryPage'));
 
 // Blog
@@ -72,14 +75,12 @@ const ShippingPolicy = lazy(() => import('./pages/ShippingPolicy'));
 // Admin (NO GUARD - Direct access)
 const AdminPanel = lazy(() => import('./pages/AdminPage'));
 const AdminBlogWriter = lazy(() => import('./pages/AdminBlogWriter'));
-const AdminSidebarControl = lazy(() => import('./pages/Admin/AdminSidebarControl'));
 const AdminJobDrafts = lazy(() => import('./pages/Admin/Tabs/AdminJobDrafts'));
 const AdminWebStories = lazy(() => import('./pages/Admin/Tabs/AdminWebStories'));
 const AdminBrowseTab = lazy(() => import('./pages/Admin/Tabs/AdminBrowseTab'));
 
 // Layout (Lazy)
 const Footer = lazy(() => import('@/sections/Footer'));
-const FloatingSocials = lazy(() => import('./components/FloatingSocials'));
 const HeaderAd = lazy(() =>
     import('@/sections/Ads').then(m => ({ default: m.HeaderAd }))
 );
@@ -192,8 +193,11 @@ function App() {
                                 <Navigation />
                             </div>
 
+                            {/* 📱 App-style bottom nav (mobile only) */}
+                            <MobileBottomNav />
+
                             {/* ✅ Main Content - Min height (CLS Fix) */}
-                            <main style={{ minHeight: '70vh' }}>
+                            <main style={{ minHeight: '70vh' }} className="pb-16 md:pb-0">
                                 <Suspense fallback={<PageLoader />}>
                                     <Routes>
 
@@ -218,6 +222,25 @@ function App() {
                                             element={
                                                 <PageWrapper>
                                                     <JobDetails />
+                                                </PageWrapper>
+                                            }
+                                        />
+                                        {/* 📅 EXAM CALENDAR */}
+                                        <Route
+                                            path="/exam-calendar"
+                                            element={
+                                                <PageWrapper>
+                                                    <ExamCalendar />
+                                                </PageWrapper>
+                                            }
+                                        />
+                                        {/* 🎯 SEO HUB PAGES — /jobs/10th-pass, /jobs/mp, /jobs/railway ... */}
+                                        <Route path="/jobs" element={<Navigate to="/govt-jobs" replace />} />
+                                        <Route
+                                            path="/jobs/:hubSlug"
+                                            element={
+                                                <PageWrapper>
+                                                    <JobHub />
                                                 </PageWrapper>
                                             }
                                         />
@@ -413,7 +436,6 @@ function App() {
                                         {/* 🔓 ADMIN ROUTES (Direct Access) */}
                                         <Route path="/secret-admin" element={<AdminPanel />} />
                                         <Route path="/write-blog-secret" element={<AdminBlogWriter />} />
-                                        <Route path="/admin/sidebar" element={<AdminSidebarControl />} />
                                         <Route path="/admin/job-drafts" element={<AdminJobDrafts />} />
                                         <Route path="/admin-stories-secret" element={<AdminWebStories />} />
                                         <Route path="/admin/browse" element={<AdminBrowseTab />} />
@@ -428,7 +450,6 @@ function App() {
                             {/* ✅ Footer Layout - Min height (CLS Fix) */}
                             <div style={{ minHeight: '200px' }}>
                                 <Suspense fallback={<SilentLoader />}>
-                                    <FloatingSocials />
                                     <Footer />
                                     <PopupAd />
                                 </Suspense>

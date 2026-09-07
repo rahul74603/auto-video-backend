@@ -217,13 +217,19 @@ function buildSchema(meta, data, type) {
       }
     }
     if (data.salary) {
+      const salaryNumbers = String(data.salary).match(/\d+/g);
+      const salaryMin = salaryNumbers ? parseInt(salaryNumbers[0]) : undefined;
+      const salaryMax = salaryNumbers && salaryNumbers.length > 1 ? parseInt(salaryNumbers[1]) : salaryMin;
+      
       schema.baseSalary = {
         "@type": "MonetaryAmount",
         currency: "INR",
         value: {
           "@type": "QuantitativeValue",
-          value: String(data.salary).replace(/[^\d,-]/g, '').slice(0, 50) || undefined,
-          unitText: "MONTH"
+          ...(salaryMin ? { minValue: salaryMin } : {}),
+          ...(salaryMax ? { maxValue: salaryMax } : {}),
+          unitText: "MONTH",
+          description: String(data.salary).slice(0, 100)
         }
       };
     }

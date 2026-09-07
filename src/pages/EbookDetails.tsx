@@ -3,14 +3,16 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+import DynamicSidebar from '../components/DynamicSidebar';
 import { 
   BookOpen, Download, ShoppingCart, ArrowLeft, FileText, 
-  Sparkles, Tag, ExternalLink, Flame, ArrowRight, Star, ShieldCheck, Zap, CheckCircle
+  Flame, ArrowRight, Star, ShieldCheck, Zap, CheckCircle
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
-import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
+import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
+import { ROUTES } from '@/config/routes'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 
 type EbookView = {
   title?: string;
@@ -20,17 +22,9 @@ type EbookView = {
   applyLink?: string;
 };
 
-type EbookLink = {
-  title?: string;
-  name?: string;
-  url?: string;
-};
-
 type EbookSettings = {
   mrpPrice?: string | number;
   discountPercent?: string | number;
-  relatedBlogs?: EbookLink[];
-  sidebarLinks?: EbookLink[];
 };
 
 const EbookDetails = () => {
@@ -59,8 +53,6 @@ const EbookDetails = () => {
           setGlobalSettings(settingsSnap as EbookSettings);
         } else {
           setGlobalSettings({
-            relatedBlogs: [],
-            sidebarLinks: [],
             mrpPrice: "499",
             discountPercent: "85"
           });
@@ -79,21 +71,14 @@ const EbookDetails = () => {
     Number(globalSettings?.mrpPrice || 499) * (1 - Number(globalSettings?.discountPercent || 85) / 100)
   );
 
-  const loopColors = [
-    "from-indigo-400 to-blue-600 shadow-blue-500/20",
-    "from-rose-400 to-pink-600 shadow-rose-500/20",
-    "from-emerald-400 to-teal-600 shadow-emerald-500/20",
-    "from-amber-400 to-orange-600 shadow-orange-500/20"
-  ];
 
-  const pageQuickLinks = globalSettings?.sidebarLinks || [];
 
   if (loading) return <div className="min-h-screen flex justify-center items-center bg-white"><div className="animate-spin h-10 w-10 border-4 border-blue-600 rounded-full border-t-transparent shadow-lg"></div></div>;
 
   if (!ebook) return (
     <div className="pt-24 md:pt-40 text-center px-4 font-hindi">
       <p className="text-gray-400 text-sm md:text-xl font-black mb-6">E-Book की जानकारी नहीं मिल पाई! 🥲</p>
-      <Button onClick={() => navigate('/')} className="bg-blue-600 text-white font-black px-10 py-4 rounded-xl shadow-lg h-auto">वापस होम पर जाएं</Button>
+      <Button onClick={() => navigate(ROUTES.home)} className="bg-blue-600 text-white font-black px-10 py-4 rounded-xl shadow-lg h-auto">वापस होम पर जाएं</Button>
     </div>
   );
 
@@ -206,62 +191,7 @@ const EbookDetails = () => {
 
           <aside className="w-[40%] md:w-[32%] space-y-4 md:space-y-8 sticky top-12 md:top-16">
             
-            {globalSettings?.relatedBlogs && (
-              <div className="bg-white p-2 md:p-6 rounded-xl md:rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-blue-50 rounded-bl-full opacity-40"></div>
-                  <h3 className="text-[10px] md:text-base font-black text-slate-900 mb-4 border-b border-slate-50 pb-2 flex items-center gap-1.5 relative z-10">
-                    <Sparkles size={16} className="text-purple-600 animate-pulse" /> TRENDING 🔥
-                  </h3>
-                  <ul className="space-y-2 md:space-y-4 relative z-10 font-black">
-                      {globalSettings.relatedBlogs.map((b, i: number) => (
-                          <li key={i} onClick={() => { if (b.url) window.open(b.url, '_blank'); }} className={`bg-gradient-to-r ${loopColors[i % loopColors.length]} p-[0.8px] rounded-lg cursor-pointer active:scale-95 shadow-sm`}>
-                              <div className="bg-white p-1.5 md:p-4 rounded-[7px] text-[8.5px] md:text-[11.5px] text-slate-800 line-clamp-2 leading-snug">
-                                  {b.title}
-                              </div>
-                          </li>
-                      ))}
-                  </ul>
-              </div>
-            )}
-
-            {pageQuickLinks.length > 0 && (
-              <div className="bg-white/80 backdrop-blur-xl p-4 md:p-6 rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-blue-100 rounded-bl-full opacity-60 pointer-events-none"></div>
-                  <h3 className="text-sm md:text-lg font-black text-slate-900 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2 relative z-10">
-                     <Tag size={18} className="text-blue-600 animate-bounce" /> महत्वपूर्ण लिंक्स 🔗
-                  </h3>
-                  <ul className="space-y-3 relative z-10">
-                      {pageQuickLinks.map((item, index: number) => {
-                          const linkGradients = [
-                            "bg-gradient-to-r from-blue-600 to-cyan-500 shadow-blue-500/30",
-                            "bg-gradient-to-r from-purple-600 to-fuchsia-500 shadow-purple-500/30",
-                            "bg-gradient-to-r from-orange-500 to-red-500 shadow-orange-500/30",
-                            "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-emerald-500/30",
-                            "bg-gradient-to-r from-rose-500 to-pink-500 shadow-rose-500/30"
-                          ];
-                          const bgClass = linkGradients[index % linkGradients.length];
-
-                          return (
-                             <li 
-                               key={index} 
-                               onClick={() => item.url && item.url !== "#" && window.open(item.url, '_blank')} 
-                               className={`group flex items-center justify-between p-3 md:p-4 rounded-xl md:rounded-2xl transition-all duration-300 cursor-pointer shadow-md hover:shadow-xl hover:-translate-y-1 ${bgClass} text-white`}
-                             >
-                                <div className="flex items-start gap-2.5 w-full">
-                                   <div className="bg-white/20 p-1.5 rounded-lg shrink-0 mt-0.5 group-hover:scale-110 transition-transform">
-                                      <ExternalLink size={14} className="text-white md:w-4 md:h-4" />
-                                   </div>
-                                   <span className="font-black text-[12px] md:text-[15px] leading-snug tracking-wide pr-2">
-                                       {item.title || item.name}
-                                   </span>
-                                </div>
-                                <ArrowRight size={16} className="text-white/70 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0 ml-1 self-center" />
-                             </li>
-                          )
-                      })}
-                  </ul>
-              </div>
-            )}
+            <DynamicSidebar />
 
             <div className="p-4 md:p-8 bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-950 rounded-2xl md:rounded-[3rem] text-white shadow-2xl relative overflow-hidden group">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/20 rounded-full blur-3xl group-hover:scale-150 transition-all duration-1000"></div>
@@ -274,7 +204,7 @@ const EbookDetails = () => {
                        <span className="line-through text-white/30 text-[8px] md:text-sm font-bold italic">₹{globalSettings?.mrpPrice || '499'}</span>
                        <div className="text-[14px] md:text-3xl font-black text-yellow-400 ml-auto font-mono">₹{sellingPrice}</div>
                    </div>
-                   <button onClick={() => navigate('/premium-notes')} className="w-full bg-yellow-400 text-blue-900 font-black py-3 md:py-5 rounded-2xl text-[10px] md:text-base hover:bg-white hover:text-blue-900 transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2">
+                   <button onClick={() => navigate(ROUTES.premiumNotes)} className="w-full bg-yellow-400 text-blue-900 font-black py-3 md:py-5 rounded-2xl text-[10px] md:text-base hover:bg-white hover:text-blue-900 transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2">
                      अभी अनलॉक करें <ArrowRight size={18} />
                    </button>
                 </div>

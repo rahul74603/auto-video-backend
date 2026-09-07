@@ -19,7 +19,7 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
-const bucket = admin.storage().bucket("studymaterial-406ad.firebasestorage.app");
+// bucket hata diya — Firebase Storage Spark pe band, ab cpanel_storage.js use hota hai
 
 // ==========================================
 // 🛠️ HELPERS
@@ -122,19 +122,11 @@ async function generateVerticalStoryImage(title, category) {
 
             console.log(`✅ WebP: ${(webpBuffer.length / 1024).toFixed(1)} KB`);
 
-            // Firebase Storage upload
-            const fileName = `web_stories_images/story_${Date.now()}.webp`;
-            const file = bucket.file(fileName);
-            await file.save(webpBuffer, {
-                metadata: {
-                    contentType: 'image/webp',
-                    cacheControl: 'public, max-age=31536000'
-                },
-                public: true
-            });
+            // cPanel upload (FREE — Firebase Storage Spark pe band ho gaya)
+            const fileName = `uploads/web_stories_images/story_${Date.now()}.webp`;
+            const webpUrl = await require("./cpanel_storage").uploadBuffer(webpBuffer, fileName);
 
-            const webpUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
-            console.log("✅ Image Uploaded:", webpUrl);
+            console.log("✅ Image Uploaded (cPanel):", webpUrl);
             return { url: webpUrl, width: 1080, height: 1920, type: 'image/webp' };
 
         } catch (imgError) {

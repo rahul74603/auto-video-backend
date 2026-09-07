@@ -13,14 +13,12 @@ import Hero from '@/sections/Hero';
 // 🛑 LAZY IMPORTS - Below the fold
 // =========================================================
 const FastTrackGrid = lazy(() => import('@/pages/FastTrackGrid'));
-const HomeWebStories = lazy(() => import('@/components/HomeWebStories'));
 const GovtJobs = lazy(() => import('@/sections/GovtJobs'));
 const Shop = lazy(() => import('@/sections/Shop'));
 const MaterialPage = lazy(() => import('./MaterialPage'));
 const MockTestHomeSection = lazy(() => import('@/components/MockTestHomeSection'));
 const EBooks = lazy(() => import('@/sections/Notes'));
 const BlogHomeSection = lazy(() => import('@/components/BlogHomeSection'));
-const Anthem = lazy(() => import('@/sections/Anthem'));
 
 // =========================================================
 // ⏳ LOADING FALLBACKS
@@ -168,17 +166,7 @@ const Home = () => {
                 <FastTrackGrid />
             </LazySection>
 
-            {/* =========================================================
-                📱 3. WEB STORIES - Lazy
-            ========================================================= */}
-            <LazySection
-                id="web-stories-section"
-                fallback={<SectionSkeleton height="h-40" />}
-                minHeight="150px"
-                className="py-2"
-            >
-                <HomeWebStories />
-            </LazySection>
+            
 
             {/* =========================================================
                 💼 4. GOVT JOBS - Lazy (Heavy component)
@@ -201,7 +189,7 @@ const Home = () => {
                 minHeight="300px"
                 className="py-2"
             >
-                <Shop />
+                <MockTestHomeSection />
             </LazySection>
 
             {/* =========================================================
@@ -213,7 +201,7 @@ const Home = () => {
                 minHeight="300px"
                 className="py-2"
             >
-                <MaterialPage />
+                <Shop />
             </LazySection>
 
             {/* =========================================================
@@ -225,7 +213,7 @@ const Home = () => {
                 minHeight="250px"
                 className="py-2"
             >
-                <MockTestHomeSection />
+                <BlogHomeSection />
             </LazySection>
 
             {/* =========================================================
@@ -237,7 +225,7 @@ const Home = () => {
                 minHeight="250px"
                 className="py-2"
             >
-                <EBooks />
+                <MaterialPage />
             </LazySection>
 
             {/* =========================================================
@@ -249,20 +237,10 @@ const Home = () => {
                 minHeight="300px"
                 className="py-2"
             >
-                <BlogHomeSection />
+                <EBooks />
             </LazySection>
 
-            {/* =========================================================
-                🎵 10. ANTHEM - Lazy (Least important)
-            ========================================================= */}
-            <LazySection
-                id="anthem-section"
-                fallback={<SectionSkeleton height="h-32" />}
-                minHeight="100px"
-                className="py-4"
-            >
-                <Anthem />
-            </LazySection>
+            
 
         </main>
     );

@@ -28,14 +28,13 @@ jobs:
         working-directory: ai_backend
         run: npm ci --legacy-peer-deps
 
+      - name: Patch firebase-functions (remove extensions key for v12 CLI)
+        run: node scripts/patch-firebase-functions.cjs
+
       - name: Package app shell for social-bot SEO
         run: cp dist/index.html ai_backend/index.html
 
-<<<<<<< HEAD
       - name: Clean firebase.json (functions-only for Spark)
-=======
-      - name: Clean firebase.json (functions-only, no extensions/hosting)
->>>>>>> 39a874bb93b92fa8175beb9ba6ce76862f711803
         run: node scripts/clean-firebase-json.cjs
 
       - name: Install Firebase CLI v12.9.1
@@ -44,14 +43,9 @@ jobs:
       - name: Show versions
         run: |
           echo "firebase-tools: $(firebase --version)"
-<<<<<<< HEAD
+          echo "node: $(node --version)"
 
       - name: Deploy Firebase Functions (v1 — Spark plan free)
-=======
-          echo "firebase-functions: $(node -p "require('./ai_backend/node_modules/firebase-functions/package.json').version")"
-
-      - name: Deploy Firebase Functions (v1 GCF — Spark plan free)
->>>>>>> 39a874bb93b92fa8175beb9ba6ce76862f711803
         run: firebase deploy --only functions:serverSideMetaTags,functions:rssFeed,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemapCourses,functions:generateSitemapMaterials,functions:generateSitemap,functions:generateRss,functions:pingIndexNow,functions:bulkIndexNow,functions:recentUrls,functions:recentUrlsTxt --project studymaterial-406ad --non-interactive --force
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

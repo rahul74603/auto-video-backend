@@ -1,0 +1,50 @@
+name: Daily SEO - Sitemaps + IndexNow (FREE)
+
+on:
+  schedule:
+    - cron: "30 0 * * *"   # roz subah 6:00 AM IST
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "daily = naye URLs only | bulk = SAARE URLs IndexNow pe (pehli baar ye chalao)"
+        required: false
+        default: "daily"
+
+jobs:
+  seo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps (sirf firebase-admin)
+        working-directory: seo_static
+        run: npm install --no-audit --no-fund
+
+      - name: Generate sitemaps + RSS + recent-urls
+        working-directory: seo_static
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node generate.cjs --out ../seo_out
+
+      - name: Upload to cPanel via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: seo_out/
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          exclude: |
+            _urls.json
+
+      - name: Submit URLs to IndexNow (Bing/Yandex/Seznam)
+        working-directory: seo_static
+        run: node indexnow.cjs ${{ github.event.inputs.mode || 'daily' }}

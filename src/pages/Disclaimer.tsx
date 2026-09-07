@@ -101,7 +101,7 @@ const Disclaimer = () => {
                   <Mail className="text-blue-400" size={32} />
                   <div>
                     <p className="text-[10px] uppercase font-black opacity-50">Legal Queries Email</p>
-                    <p className="text-lg font-black">studygyaan.help@gmail.com</p>
+                    <p className="text-lg font-black">contact@studygyaan.in</p>
                   </div>
                </div>
                <div className="flex items-center gap-4 bg-white/5 p-6 rounded-2xl border border-white/10 hover:bg-white/10 transition-all">

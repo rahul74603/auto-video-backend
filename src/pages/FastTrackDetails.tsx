@@ -13,6 +13,7 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import RelatedContent from '../components/RelatedContent';
 import ExamHubNavigation from '../components/ExamHubNavigation';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
+import { ROUTES } from '@/config/routes';
 
 // =========================================================
 // 🛠️ HELPERS
@@ -92,12 +93,11 @@ const ListCard = ({ item, currentId }: { item: FastTrackItem; currentId?: string
 
     return (
         <Link
-            to={`/update/${item.slug || item.id}`}
+            to={ROUTES.update(item.slug || item.id)}
             className={`block p-3 rounded-2xl border transition-all ${isActive
                 ? `${colors.card} shadow-md ring-2 ring-opacity-40`
                 : 'bg-white border-slate-100 hover:shadow-md hover:border-slate-200'
-            }`}
-        >
+            }`}>
             <div className="flex justify-between items-center gap-2">
                 <div className="flex-1 min-w-0">
                     <span className="text-[9px] font-bold text-slate-400 mb-1 block">
@@ -255,7 +255,7 @@ const FastTrackDetails = () => {
                         यह update expire हो गया है या link गलत है।
                     </p>
                     <a
-                        href="/govt-jobs"
+                        href={ROUTES.govtJobs}
                         className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-sm hover:bg-blue-700 transition-all"
                     >
                         सभी Updates देखें →
@@ -442,7 +442,7 @@ const FastTrackDetails = () => {
                         title="Aur Fresh Updates"
                         items={inlineFresh}
                         currentId={docId || id}
-                        moreLink="/fasttrack"
+                        moreLink={ROUTES.fastTrack}
                     />
 
                     <article itemScope itemType="https://schema.org/NewsArticle">
@@ -466,7 +466,7 @@ const FastTrackDetails = () => {
                                 title="Isi Category Ke Aur Updates"
                                 items={inlineSameCat}
                                 currentId={docId || id}
-                                moreLink="/fasttrack"
+                                moreLink={ROUTES.fastTrack}
                             />
                         )}
 
@@ -560,7 +560,7 @@ const FastTrackDetails = () => {
                             />
                             {/* Sab kuch ek jagah */}
                             <Link
-                                to="/fasttrack"
+                                to={ROUTES.fastTrack}
                                 className="block text-center bg-slate-800 hover:bg-black text-white font-black text-xs uppercase tracking-widest py-3.5 rounded-2xl shadow-lg transition-all active:scale-95"
                             >
                                 👉 Sabhi Updates Ek Saath — Click for More

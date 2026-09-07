@@ -16,7 +16,6 @@ import {
     AlertTriangle, Eye, Wand2, Link2, Zap, Layers, Home
 } from 'lucide-react';
 import type { FastTrackItem } from '@/types/firestore';
-import { AI_ARTICLE_PREFILL_STORAGE_KEY } from './AdminAIArticleStudio';
 
 // =========================================================
 // 🛠️ HELPERS
@@ -350,19 +349,18 @@ const FastTrackManager = () => {
         }, 4000);
     }, []);
 
-    // ✨ AI Article: update की details studio में prefill करके JOBS AI tab पर ले जाओ.
-    // Link न हो तब भी ठीक — studio खुद internet से notification ढूंढ लेगा.
-    const handleSendToAI = useCallback((item: FastTrackItem) => {
-        sessionStorage.setItem(AI_ARTICLE_PREFILL_STORAGE_KEY, JSON.stringify({
-            type: 'fast-track',
-            sourceUrl: item.directLink || undefined,
-            title: item.title || '',
-            organization: item.org || item.organization || '',
-            category: item.category || '',
-            // ⭐ publish hone par ye raw Fast Track item bhi auto-delete hoga —
-            // AI wali full article hi uski jagah fast_track me rahegi (duplicate nahi)
-            originRef: item.id ? { collection: 'fast_track', id: item.id } : undefined,
-        }));
+    // ✨ AI Article: is update ko AI queue me daalo — agli AI Drafts run (GitHub
+    // Actions) full article bana ke "Review AI Drafts" (JOBS AI tab) me de degi.
+    const handleSendToAI = useCallback(async (item: FastTrackItem) => {
+        if (!item.id) return;
+        try {
+            await updateDoc(doc(db, 'fast_track', item.id), {
+                aiDraftRequested: true,
+                aiDrafted: false,
+                aiDraftTries: 0,
+                aiDraftLastTryAt: '2000-01-01T00:00:00.000Z',
+            });
+        } catch { /* queue fail — phir bhi tab pe le jao */ }
         navigate('/secret-admin', { state: { activeTab: 'JOBS AI' } });
     }, [navigate]);
 

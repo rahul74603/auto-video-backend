@@ -253,10 +253,20 @@ function buildJobStructuredData({ facts, faqs, article, publishedIso }) {
   if (facts.lastDate) jobPosting.validThrough = facts.lastDate;
   if (facts.vacancies) jobPosting.totalJobOpenings = Number.parseInt(String(facts.vacancies).replace(/[^\d]/g, ""), 10) || undefined;
   if (facts.salary) {
+    const salaryNumbers = String(facts.salary).match(/\d+/g);
+    const salaryMin = salaryNumbers ? parseInt(salaryNumbers[0]) : undefined;
+    const salaryMax = salaryNumbers && salaryNumbers.length > 1 ? parseInt(salaryNumbers[1]) : salaryMin;
+    
     jobPosting.baseSalary = {
       "@type": "MonetaryAmount",
       currency: "INR",
-      value: { "@type": "QuantitativeValue", description: facts.salary }
+      value: {
+        "@type": "QuantitativeValue",
+        ...(salaryMin ? { minValue: salaryMin } : {}),
+        ...(salaryMax ? { maxValue: salaryMax } : {}),
+        unitText: "MONTH",
+        description: String(facts.salary).slice(0, 100)
+      }
     };
   }
   if (facts.qualification) jobPosting.qualifications = facts.qualification;
