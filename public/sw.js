@@ -1,9 +1,9 @@
 // StudyGyaan Service Worker
-// Version: 1.0.0
+// Version: 2.0.0 - Cache bust update
 // Features: Offline support, caching, push notifications
 
-const CACHE_NAME = 'studygyaan-v1';
-const RUNTIME_CACHE = 'studygyaan-runtime-v1';
+const CACHE_NAME = 'studygyaan-v2';
+const RUNTIME_CACHE = 'studygyaan-runtime-v2';
 
 // Assets to cache on install
 const PRECACHE_ASSETS = [
