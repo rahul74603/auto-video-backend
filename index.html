@@ -242,5 +242,51 @@
       });
     </script>
 
+    <!-- =====================================================
+         ✅ ONESIGNAL - Push Notifications
+         Job alerts, exam updates, breaking news
+         App ID: Replace YOUR_ONESIGNAL_APP_ID with actual ID
+    ====================================================== -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.js" async></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(function(OneSignal) {
+        OneSignal.init({
+          appId: "YOUR_ONESIGNAL_APP_ID",
+          notifyButton: {
+            enable: true,
+            position: 'bottom-left',
+            size: 'medium',
+            showCredit: false,
+            prenotify: true,
+            theme: 'default',
+            offset: {
+              bottom: '20px',
+              left: '20px'
+            }
+          },
+          promptOptions: {
+            slidedown: {
+              enabled: true,
+              autoPrompt: true,
+              timeDelay: 10,
+              pageViews: 2,
+              categories: {
+                tags: [
+                  { tag: 'job_alerts', label: 'Job Alerts' },
+                  { tag: 'exam_updates', label: 'Exam Updates' },
+                  { tag: 'breaking_news', label: 'Breaking News' }
+                ]
+              }
+            }
+          }
+        }).then(function() {
+          console.log('[OneSignal] Push notifications initialized');
+        }).catch(function(error) {
+          console.log('[OneSignal] Error:', error);
+        });
+      });
+    </script>
+
   </body>
 </html>
