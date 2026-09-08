@@ -1,0 +1,17 @@
+{
+  "name": "studygyaan-static-seo",
+  "private": true,
+  "description": "100% FREE SEO system - GitHub Actions se sitemaps/RSS generate karke cPanel pe upload + IndexNow ping. Firebase billing ki zaroorat NAHI.",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.7.0"
+  },
+  "scripts": {
+    "generate": "node generate.cjs --out ../seo_out",
+    "mock": "node generate.cjs --mock --out ../seo_out",
+    "indexnow:daily": "node indexnow.cjs daily",
+    "indexnow:bulk": "node indexnow.cjs bulk"
+  }
+}
