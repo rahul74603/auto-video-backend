@@ -58,7 +58,13 @@ function isIndexableDocument(data = {}) {
 function hasUsefulTitle(data = {}) {
     return String(data.title || data.post_name || "").trim().length >= 5;
 }
-
+// NEW: Stricter validation for sitemap
+function hasValidSitemapData(data = {}) {
+    if (!isIndexableDocument(data)) return false;
+    if (!hasUsefulTitle(data)) return false;
+    if (!data.slug && !data.id) return false;
+    return true;
+}
 function sitemapPriorityXml(data, fallback) {
     const value = Number(data && data.sitemapPriority);
     if (Number.isFinite(value) && value >= 0.1 && value <= 1) return value.toFixed(1);
@@ -149,7 +155,7 @@ exports.generateSitemapBlogs = functions.https.onRequest(async (req, res) => {
 
         snap.forEach(doc => {
             const data = doc.data();
-            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+            if (!hasValidSitemapData(data)) return;
             const slugOrId = data.slug || doc.id;
             const safeSlug = safeXml(slugOrId);
             const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
@@ -249,7 +255,7 @@ exports.generateSitemapTests = functions.https.onRequest(async (req, res) => {
 
         snap.forEach(doc => {
             const data = doc.data();
-            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+            if (!hasValidSitemapData(data)) return;
             const slugOrId = data.slug || doc.id;
             const safeSlug = safeXml(slugOrId);
             const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
@@ -291,7 +297,7 @@ exports.generateSitemapStories = functions.https.onRequest(async (req, res) => {
 
         snap.forEach(doc => {
             const data = doc.data();
-            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+            if (!hasValidSitemapData(data)) return;
             const slug = data.slug || doc.id;
             const safeSlug = safeXml(slug);
             const updateTime = getIsoDate(data.createdAt, now);
@@ -339,7 +345,7 @@ exports.generateSitemapUpdates = functions.https.onRequest(async (_req, res) => 
 
         snap.forEach(doc => {
             const data = doc.data();
-            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+            if (!hasValidSitemapData(data)) return;
             const slug = safeXml(data.slug || doc.id);
             const updateTime = getIsoDate(data.updatedAt || data.publishedAt || data.createdAt, now);
             xml += `  <url>\n`;
@@ -376,7 +382,7 @@ exports.generateSitemapCourses = functions.https.onRequest(async (req, res) => {
 
         snap.forEach(doc => {
             const data = doc.data();
-            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+            if (!hasValidSitemapData(data)) return;
             const slug = safeXml(data.slug || doc.id);
             const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
             xml += `  <url>\n`;
@@ -413,7 +419,7 @@ exports.generateSitemapMaterials = functions.https.onRequest(async (req, res) =>
 
         snap.forEach(doc => {
             const data = doc.data();
-            if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+            if (!hasValidSitemapData(data)) return;
             const slug = safeXml(data.slug || doc.id);
             const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
             xml += `  <url>\n`;
@@ -432,7 +438,7 @@ exports.generateSitemapMaterials = functions.https.onRequest(async (req, res) =>
                 .get();
             snap2.forEach(doc => {
                 const data = doc.data();
-                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+                if (!hasValidSitemapData(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
                 xml += `  <url>\n`;
@@ -633,7 +639,7 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
             
             blogsSnap.forEach(doc => {
                 const data = doc.data();
-                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+                if (!hasValidSitemapData(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
                 const imageUrl = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
@@ -694,7 +700,7 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
             
             testsSnap.forEach(doc => {
                 const data = doc.data();
-                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+                if (!hasValidSitemapData(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
 
@@ -718,7 +724,7 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
             
             storiesSnap.forEach(doc => {
                 const data = doc.data();
-                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+                if (!hasValidSitemapData(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.createdAt, now);
                 const coverImage = safeXml(data.coverImage || `${WEBSITE_URL}/og-image.jpg`);
@@ -748,7 +754,7 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
             
             fastSnap.forEach(doc => {
                 const data = doc.data();
-                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+                if (!hasValidSitemapData(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
 
@@ -772,7 +778,7 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
 
             coursesSnap.forEach(doc => {
                 const data = doc.data();
-                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+                if (!hasValidSitemapData(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
 
@@ -796,7 +802,7 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
 
             matsSnap.forEach(doc => {
                 const data = doc.data();
-                if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+                if (!hasValidSitemapData(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
 

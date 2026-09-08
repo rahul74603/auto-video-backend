@@ -158,5 +158,15 @@
          openaccess mode me iska koi fayda bhi nahi tha.
     ====================================================== -->
 
-  </body>
+      <!-- OneSignal Push Notifications -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.js" async></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(function(OneSignal) {
+        OneSignal.init({
+          appId: "931266b5-659b-43bd-9e54-e2e7faa188e8",
+        });
+      });
+    </script>
+    </body>
 </html>
