@@ -115,10 +115,10 @@ const MyCourses = () => {
         
         {/* Header Section */}
         <div className="mb-8 md:mb-12">
-          <h2 className="text-2xl md:text-5xl font-black text-slate-900 flex items-center gap-3">
+          <h1 className="text-2xl md:text-5xl font-black text-slate-900 flex items-center gap-3">
             <GraduationCap className="text-blue-600 w-8 h-8 md:w-14 md:h-14" /> 
             मेरे <span className="text-blue-600">नोट्स और कोर्स</span>
-          </h2>
+          </h1>
           <div className="h-1.5 w-20 bg-blue-600 mt-3 rounded-full"></div>
         </div>
 
@@ -215,7 +215,7 @@ const MyCourses = () => {
         <div className="bg-blue-50/50 p-6 md:p-8 rounded-[2rem] border border-blue-100 shadow-sm mt-8">
           <h2 className="text-sm md:text-xl font-black text-slate-800 mb-5 uppercase tracking-tight flex items-center gap-2">
             <BookOpen size={20} className="text-blue-600" aria-hidden="true" /> Explore More on StudyGyaan
-          </h2>
+          </h1>
           <div className="flex flex-wrap gap-3">
             <a href="/govt-jobs" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Latest Govt Jobs</a>
             <a href="/free-study-material" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Study Material</a>
