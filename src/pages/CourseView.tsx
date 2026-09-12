@@ -26,7 +26,6 @@ import {
 } from 'lucide-react';
 import SEO from '../components/SEO';
 import RelatedContent from '../components/RelatedContent';
-import ExamHubNavigation from '../components/ExamHubNavigation';
 
 interface CourseContent { id: string; title: string; seoTitle?: string; link?: string; type: 'PDF' | 'VIDEO' | 'FOLDER'; parentId?: string | null; }
 

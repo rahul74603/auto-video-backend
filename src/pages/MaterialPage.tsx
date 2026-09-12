@@ -14,7 +14,6 @@ import { siteSettingsRepository } from '@/features/site-settings/data/siteSettin
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { toDateSafe, type TimestampLike } from '@/types/firestore';
 import RelatedContent from '../components/RelatedContent';
-import ExamHubNavigation from '../components/ExamHubNavigation';
 
 type Category = { id: string; name: string; parentId: string | null };
 type Material = { id: string; title: string; applyLink: string; category: string; fileSize?: string; updatedAt?: TimestampLike };

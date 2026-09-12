@@ -12,7 +12,6 @@ import {
   Flame, ShoppingCart, Zap, CheckCircle2, GraduationCap
 } from 'lucide-react';
 import RelatedContent from '../components/RelatedContent';
-import ExamHubNavigation from '../components/ExamHubNavigation';
 type MyCourseView = {
   id: string;
   title?: string;

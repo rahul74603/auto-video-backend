@@ -12,7 +12,6 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
 import { asText } from '@/types/firestore';
 import RelatedContent from '../components/RelatedContent';
-import ExamHubNavigation from '../components/ExamHubNavigation';
 
 // =========================================================
 // 🧾 SIDEBAR LINK TYPE

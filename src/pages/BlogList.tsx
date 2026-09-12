@@ -7,7 +7,6 @@ import { ArrowRight, Sparkles, Clock, Flame, Tag, ExternalLink, ShoppingCart } f
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { asText, toDateSafe, type TimestampLike } from '@/types/firestore';
 import RelatedContent from '../components/RelatedContent';
-import ExamHubNavigation from '../components/ExamHubNavigation';
 
 type BlogListLink = {
   title?: string;
