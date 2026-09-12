@@ -7,6 +7,7 @@ import { ArrowRight, Clock, Flame, ShoppingCart } from 'lucide-react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import DynamicSidebar from '../components/DynamicSidebar';
 import SmartImage from '../components/SmartImage';
+import RelatedContent from '../components/RelatedContent';
 import { asText, toDateSafe, type TimestampLike } from '@/types/firestore';
 
 type BlogListSettings = {
@@ -128,6 +129,18 @@ const BlogList = () => {
             </div>
 
           </aside>
+        </div>
+
+        {/* Internal Linking — orphan pages fix (bots/users ko crawl-path) */}
+        <div className="max-w-7xl mx-auto px-2 md:px-4 mt-6">
+          <RelatedContent
+            currentId=""
+            exam="GENERAL"
+            category="JOB"
+            title=""
+            limit={8}
+            className="mb-6"
+          />
         </div>
       </main>
     </div>

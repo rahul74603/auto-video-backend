@@ -7,6 +7,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { courseRepository } from '@/features/courses/data/courseRepository';
 import { userRepository } from '@/features/users/data/userRepository';
 import { useNavigate } from 'react-router-dom';
+import RelatedContent from '../components/RelatedContent';
 import {
   BookOpen, ArrowRight, Loader2, ShoppingBag, Flame, ShoppingCart, Zap, CheckCircle2, GraduationCap
 } from 'lucide-react';
@@ -191,6 +192,18 @@ const MyCourses = () => {
             <a href="/test" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Mock Tests</a>
             <a href="/blog" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Sarkari Yojana & Blogs</a>
           </div>
+        </div>
+
+        {/* Internal Linking — dynamic related content (orphan pages fix) */}
+        <div className="max-w-5xl mx-auto px-2 md:px-4 mt-6">
+          <RelatedContent
+            currentId=""
+            exam="GENERAL"
+            category="COURSE"
+            title=""
+            limit={8}
+            className="mb-6"
+          />
         </div>
       </div>
     </div>

@@ -10,6 +10,7 @@ import {
 import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
+import RelatedContent from '../components/RelatedContent';
 import { asText } from '@/types/firestore';
 
 // =========================================================
@@ -222,6 +223,18 @@ const MockTestLibrary = () => {
                             </section>
                         )}
                     </aside>
+                </div>
+
+                {/* Internal Linking — orphan pages fix */}
+                <div className="max-w-7xl mx-auto px-2 md:px-4 mt-6">
+                    <RelatedContent
+                        currentId=""
+                        exam="GENERAL"
+                        category="MOCK_TEST"
+                        title=""
+                        limit={8}
+                        className="mb-6"
+                    />
                 </div>
             </div>
         </div>

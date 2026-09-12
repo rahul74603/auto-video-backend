@@ -201,6 +201,16 @@ function dedupeUrlset(xml) {
   });
 }
 
+// ✅ URL normalization — canonical format match (no trailing slash, no www, https)
+// (sitemap URL ≠ page canonical URL ho to "non-canonical in sitemap" warning aati hai)
+function normalizeSitemapUrl(url) {
+  if (!url) return url;
+  url = String(url).replace(/\/+$/, "");        // trailing slash(es)
+  url = url.replace("://www.", "://");          // www → apex
+  url = url.replace("http://", "https://");     // https force
+  return url;
+}
+
 function sitemapIndex() {
   const sitemaps = [
     `${WEBSITE_URL}/sitemap-main.xml`,
@@ -211,7 +221,9 @@ function sitemapIndex() {
     `${WEBSITE_URL}/sitemap-updates.xml`,
     `${WEBSITE_URL}/sitemap-courses.xml`,
     `${WEBSITE_URL}/sitemap-materials.xml`,
-    `${WEBSITE_URL}/sitemap-news.xml`,
+    // NOTE: sitemap-news.xml index me NAHI — news URLs pehle se hi content
+    // sitemaps me hain ("multiple sitemaps" overlap warning se bachne ke liye).
+    // File abhi bhi banti hai — Google News ke liye manually submit kar sakte ho.
   ];
   let xml = XML_HEAD + `<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
   const lastmod = new Date().toISOString();
@@ -235,7 +247,7 @@ function sitemapMain() {
 }
 
 function urlEntry({ loc, lastmod, freq, priority, image, imageTitle, imageCaption }) {
-  let x = `  <url>\n    <loc>${loc}</loc>\n`;
+  let x = `  <url>\n    <loc>${normalizeSitemapUrl(loc)}</loc>\n`;
   if (lastmod) x += `    <lastmod>${lastmod}</lastmod>\n`;
   x += `    <changefreq>${freq}</changefreq>\n    <priority>${priority}</priority>\n`;
   if (image) {
@@ -506,8 +518,8 @@ function buildAll(colls, ogMap = {}) {
     //    Purana URL .htaccess se 301 → /sitemap.xml
     "rss.xml": rss,
     "feed.xml": rss,
-    "recent-urls.txt": Array.from(new Set(allUrls.map((u) => u.url))).join("\n"),
-    "_urls.json": JSON.stringify(allUrls.filter((u, i, arr) => arr.findIndex((x) => x.url === u.url) === i), null, 0),
+    "recent-urls.txt": Array.from(new Set(allUrls.map((u) => normalizeSitemapUrl(u.url)))).join("\n"),
+    "_urls.json": JSON.stringify(allUrls.filter((u, i, arr) => arr.findIndex((x) => x.url === u.url) === i).map((u) => ({ ...u, url: normalizeSitemapUrl(u.url) })), null, 0),
   };
 }
 

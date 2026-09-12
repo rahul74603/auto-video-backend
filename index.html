@@ -163,13 +163,32 @@
          openaccess mode me iska koi fayda bhi nahi tha.
     ====================================================== -->
 
-      <!-- OneSignal Push Notifications -->
+      <!-- OneSignal Push Notifications — category-based segmentation -->
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.js" async></script>
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
       OneSignalDeferred.push(function(OneSignal) {
         OneSignal.init({
           appId: "931266b5-659b-43bd-9e54-e2e7faa188e8",
+          notifyButton: {
+            enable: true,
+            position: 'bottom-left',
+            size: 'medium',
+            showCredit: false,
+          },
+          promptOptions: {
+            slidedown: {
+              enabled: true,
+              autoPrompt: true,
+              timeDelay: 10,
+              pageViews: 2,
+              categories: [
+                { tag: 'job_alerts', label: 'Job Alerts' },
+                { tag: 'exam_updates', label: 'Exam Updates' },
+                { tag: 'breaking_news', label: 'Breaking News' }
+              ]
+            }
+          }
         });
       });
     </script>

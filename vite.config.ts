@@ -91,7 +91,24 @@ export default defineConfig({
               return 'vendor-radix';
             }
 
-            // 8. Baaki sab
+            // 8a. Heavy standalone libs — apne chunks me (cache-friendly + fast load)
+            if (/lodash|es-toolkit/.test(id)) {
+              return 'vendor-lodash';
+            }
+            if (id.includes('date-fns')) {
+              return 'vendor-date-fns';
+            }
+            if (id.includes('axios')) {
+              return 'vendor-axios';
+            }
+            if (id.includes('pdfjs-dist')) {
+              return 'vendor-pdfjs';
+            }
+            if (id.includes('recharts')) {
+              return 'vendor-recharts';
+            }
+
+            // 9. Baaki sab
             return 'vendor-others';
           }
         }
