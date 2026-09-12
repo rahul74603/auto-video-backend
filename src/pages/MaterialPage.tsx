@@ -13,6 +13,8 @@ import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLi
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { toDateSafe, type TimestampLike } from '@/types/firestore';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
 
 type Category = { id: string; name: string; parentId: string | null };
 type Material = { id: string; title: string; applyLink: string; category: string; fileSize?: string; updatedAt?: TimestampLike };
@@ -345,6 +347,18 @@ const StudyMaterials: React.FC = () => {
               </section>
 
           </aside>
+        </div>
+
+        {/* Internal Linking - Fixes Orphan Pages */}
+        <div className="max-w-7xl mx-auto px-4 mt-8">
+          <RelatedContent
+            currentId=""
+            exam="GENERAL"
+            category="STUDY_MATERIAL"
+            title=""
+            limit={8}
+            className="mb-6"
+          />
         </div>
       </div>
     </div>
