@@ -244,7 +244,7 @@ if (data.success && data.data) {
         title,
         category: category || 'General',
         author,
-        imageUrl: imageUrl || 'https://via.placeholder.com/1200x600?text=StudyGyaan',
+        imageUrl: imageUrl || '',
         content,
         seoDesc, 
         seoKeywords, 

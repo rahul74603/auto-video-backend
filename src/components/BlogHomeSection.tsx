@@ -3,6 +3,7 @@ import { useBlogs } from '@/features/blogs/hooks/useBlogs';
 import { asText, toDateSafe, type TimestampLike } from '@/types/firestore';
 import { useNavigate, Link } from 'react-router-dom';
 import { Calendar, ChevronRight } from 'lucide-react';
+import SmartImage from './SmartImage';
 
 const BlogHomeSection = () => {
   const { blogs, loading } = useBlogs({ limitCount: 8 });
@@ -34,13 +35,14 @@ const BlogHomeSection = () => {
               onClick={() => navigate(`/blog/${blog.id}`)}
               className="bg-white p-4 rounded-2xl border border-slate-100 hover:border-blue-400 hover:shadow-lg transition-all cursor-pointer flex items-center gap-4 group"
             >
-              {/* छोटी इमेज */}
+              {/* छोटी इमेज — 3-level fallback (kabhi khali nahi dikhega) */}
               <div className="w-16 h-16 md:w-20 md:h-20 rounded-xl overflow-hidden shrink-0 bg-slate-100">
-                <img
-                  src={asText(blog.imageUrl) || asText(blog.image) || '/logo.png'}
+                <SmartImage
+                  src={asText(blog.imageUrl) || asText(blog.image)}
                   alt={asText(blog.title) || 'StudyGyaan Blog Headline'}
+                  fallbackType="blog"
+                  title={asText(blog.title)}
                   className="w-full h-full object-cover group-hover:scale-110 transition-all duration-500"
-                  onError={(e) => { e.currentTarget.src = '/logo.png'; }} // ✅ कनेक्शन फेल होने पर बैकअप इमेज
                 />
               </div>
 

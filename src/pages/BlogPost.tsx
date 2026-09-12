@@ -14,6 +14,7 @@ import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
 import RelatedContent from '../components/RelatedContent';
 import DynamicSidebar from '../components/DynamicSidebar';
+import SmartImage from '../components/SmartImage';
 import ExamHubNavigation from '../components/ExamHubNavigation';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
@@ -354,14 +355,13 @@ const BlogPost = () => {
                 className="relative w-full bg-slate-900 overflow-hidden"
                 style={{ height: 'clamp(180px, 25vh, 40vh)' }}
             >
-                <img
-                    src={blog.imageUrl || '/og-image.jpg'}
+                <SmartImage
+                    src={blog.imageUrl}
+                    fallbackType="blog"
+                    title={blog.title || ''}
+                    eager={true}
                     className="w-full h-full object-cover opacity-30"
-                    alt={blog.title}
-                    fetchPriority="high"
-                    width="1200"
-                    height="630"
-                    decoding="async"
+                    alt={blog.title || 'StudyGyaan Blog'}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#F8FAFC] via-slate-900/50 to-transparent" />
                 <div className="absolute bottom-0 left-0 w-full p-4 md:p-8">

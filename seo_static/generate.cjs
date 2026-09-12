@@ -247,12 +247,19 @@ function urlEntry({ loc, lastmod, freq, priority, image, imageTitle, imageCaptio
   return x + `  </url>\n`;
 }
 
-function buildAll(colls) {
+function buildAll(colls, ogMap = {}) {
   const now = new Date().toISOString();
   const nowUtc = new Date().toUTCString();
   const allUrls = []; // {url, lastmod}
 
   const push = (url, lastmod) => allUrls.push({ url, lastmod });
+
+  // 🖼️ Sitemap/RSS image: doc image → generated OG → type fallback
+  const imgOr = (pathKey, data, field, fbType) => {
+    if (data[field]) return safeXml(data[field]);
+    if (ogMap[pathKey]) return `${WEBSITE_URL}${ogMap[pathKey]}`;
+    return `${WEBSITE_URL}/fallback/${fbType}.png`;
+  };
 
   // --- blogs ---
   let blogsXml = XML_HEAD + URLSET_OPEN_IMG;
@@ -306,7 +313,7 @@ function buildAll(colls) {
     if ((data.type || "").toUpperCase() === "COURSE") return;
     const slug = safeXml(data.slug || id);
     const lastmod = getIsoDate(data.updatedAt || data.createdAt, now);
-    const img = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
+    const img = imgOr(`/job/${data.slug || id}`, data, "imageUrl", "job");
     let expired = false;
     if (parseLastDateFn) {
       const vt = parseLastDateFn(data.lastDate);
@@ -467,7 +474,7 @@ function buildAll(colls) {
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
     const slugOrId = data.slug || id;
     const itemUrl = `${WEBSITE_URL}/blog/${slugOrId}`;
-    const imageUrl = data.imageUrl || `${WEBSITE_URL}/og-image.jpg`;
+    const imageUrl = imgOr(`/blog/${slugOrId}`, data, "imageUrl", "blog");
     rss += `  <item>\n`;
     rss += `    <title><![CDATA[${data.title || "StudyGyaan Update"}]]></title>\n`;
     rss += `    <link>${itemUrl}</link>\n`;
@@ -504,15 +511,110 @@ function buildAll(colls) {
   };
 }
 
+// ---------- OG image generation (pages without image) ----------
+const MAX_OG_PER_RUN = 400;
+
+function collectOgTasks(colls) {
+  const tasks = [];
+  const add = (pathKey, type, data, imgFields) => {
+    if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+    if (imgFields.some((f) => data[f])) return; // image already hai
+    tasks.push({
+      path: pathKey,
+      type,
+      slug: String(data.slug || ""),
+      title: String(data.title || ""),
+      subtitle: String(data.category || data.organization || data.author || ""),
+    });
+  };
+  (colls.blogs || []).forEach(({ id, data }) => add(`/blog/${data.slug || id}`, "blog", data, ["imageUrl", "image"]));
+  (colls.jobs || []).forEach(({ id, data }) => {
+    if ((data.type || "").toUpperCase() === "COURSE") return;
+    add(`/job/${data.slug || id}`, "job", data, ["imageUrl", "image"]);
+  });
+  (colls.fast_track || []).forEach(({ id, data }) => add(`/update/${data.slug || id}`, "update", data, ["imageUrl", "image"]));
+  (colls.mock_tests || []).forEach(({ id, data }) => add(`/test/${data.slug || id}`, "test", data, ["imageUrl", "image"]));
+  (colls.courses || []).forEach(({ id, data }) => add(`/course/${data.slug || id}`, "course", data, ["imageUrl", "image"]));
+  [...(colls.study_materials || []), ...(colls.studyMaterials || [])].forEach(({ id, data }) =>
+    add(`/material/${data.slug || id}`, "material", data, ["imageUrl", "image"])
+  );
+  (colls.web_stories || []).forEach(({ id, data }) => add(`/web-stories/${data.slug || id}`, "story", data, ["coverImage", "imageUrl"]));
+  return tasks;
+}
+
+async function generateOgImages(colls) {
+  const og = require("./og_svg.cjs");
+  const ogDir = path.join(OUT_DIR, "og");
+  fs.mkdirSync(ogDir, { recursive: true });
+  const tasks = collectOgTasks(colls);
+  if (!tasks.length) {
+    console.log("   🖼️ OG images: sab pages ke paas image hai — kuch nahi banana");
+    return {};
+  }
+  console.log(`   🖼️ OG images needed: ${tasks.length} (cap ${MAX_OG_PER_RUN}/run)`);
+  const ogMap = {};
+  let done = 0;
+  let failed = 0;
+  for (const t of tasks.slice(0, MAX_OG_PER_RUN)) {
+    const key = og.ogFileKey(t.type, t.slug || t.path, t.title);
+    const pngPath = path.join(ogDir, `${key}.png`);
+    try {
+      if (!fs.existsSync(pngPath) || fs.statSync(pngPath).size < 1000) {
+        const svg = og.buildOgSvg({ canonicalType: t.type, title: t.title, subtitle: t.subtitle });
+        const ok = await og.renderSvgToPng(svg, pngPath);
+        if (!ok) { failed++; continue; }
+      }
+      ogMap[t.path] = `/og/${key}.png`;
+      done++;
+    } catch {
+      failed++;
+    }
+  }
+  console.log(`   🖼️ OG images ready: ${done}${failed ? ` (failed: ${failed} — fallback use hoga)` : ""}`);
+  return ogMap;
+}
+
+// Type-wise generic fallback thumbs (/fallback/*.png) — ogMap miss hone par kaam aate hain
+async function generateFallbackImages() {
+  const og = require("./og_svg.cjs");
+  const fbDir = path.join(OUT_DIR, "fallback");
+  fs.mkdirSync(fbDir, { recursive: true });
+  const GENERIC = {
+    blog: ["StudyGyaan Study Blog", "Free Notes + Preparation Guide"],
+    job: ["Sarkari Naukri Update", "Latest Govt Job Notification"],
+    update: ["Fast Track Update", "Result / Admit Card / Answer Key"],
+    test: ["Free Mock Test", "Online Practice Set"],
+    material: ["Study Material", "Free PDF Notes Download"],
+    course: ["Preparation Course", "Complete Exam Course"],
+    story: ["Web Story", "Visual Update"],
+    default: ["StudyGyaan", "Sarkari Naukri + Free Study Material"],
+  };
+  let made = 0;
+  for (const [type, [title, sub]] of Object.entries(GENERIC)) {
+    const pngPath = path.join(fbDir, `${type}.png`);
+    try {
+      if (fs.existsSync(pngPath) && fs.statSync(pngPath).size > 1000) { made++; continue; }
+      const svg = og.buildOgSvg({ canonicalType: type, title, subtitle: sub });
+      if (await og.renderSvgToPng(svg, pngPath)) made++;
+    } catch { /* skip */ }
+  }
+  console.log(`   🖼️ Fallback thumbs: ${made}/${Object.keys(GENERIC).length}`);
+}
+
 // ---------- Main ----------
 (async () => {
   const colls = await fetchCollections();
-  const files = buildAll(colls);
+
+  // 🖼️ Pehle OG images banao (jin pages ko image nahi hai) — sitemap/meta dono use karenge
+  const ogMap = await generateOgImages(colls);
+  await generateFallbackImages();
+
+  const files = buildAll(colls, ogMap);
 
   // 🤖 Bot-SEO meta files (meta.php ke liye) — jobs/updates full schema, baaki preview
   try {
     const { buildMetaFiles } = require("./seo_meta.cjs");
-    Object.assign(files, buildMetaFiles(colls));
+    Object.assign(files, buildMetaFiles(colls, { ogMap }));
   } catch (e) {
     console.error("⚠️ seo_meta build error (skip):", e.message);
   }

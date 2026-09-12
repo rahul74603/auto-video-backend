@@ -92,10 +92,30 @@ function faqSchema(faqs) {
 }
 
 // ---------- main builder ----------
-function buildMetaFiles(colls) {
+// opts.ogMap: { "/blog/<slug>": "/og/<file>.png" } — generate.cjs dwara banayi
+// gayi per-page branded OG images (pages jo khud image ke bina hain).
+function buildMetaFiles(colls, opts = {}) {
+  const ogMap = opts.ogMap || {};
   const jobs = {};
   const updates = {};
   const pages = {};
+
+  // 🖼️ Image resolution: per-page OG → doc image → type fallback → default
+  const FALLBACK_BY_TYPE = {
+    blog: "/fallback/blog.png",
+    job: "/fallback/job.png",
+    update: "/fallback/update.png",
+    test: "/fallback/test.png",
+    material: "/fallback/material.png",
+    course: "/fallback/course.png",
+    story: "/fallback/story.png",
+  };
+  const resolveImg = (path, data, imgField, type) => {
+    if (ogMap[path]) return SITE + ogMap[path];
+    if (data[imgField]) return data[imgField];
+    return SITE + (FALLBACK_BY_TYPE[type] || "/og-image.jpg");
+  };
+
 
   // 🔗 INTERNAL LINKING POOLS — har bot-page ke end me related links jayenge
   // (Googlebot ko crawl-path milta hai → "Discovered/Crawled not indexed" fix)
@@ -152,7 +172,7 @@ function buildMetaFiles(colls) {
     const path = `/job/${slug}`;
     const title = data.seoTitle || data.title;
     const desc = truncate(data.metaDescription || stripHtml(data.description), 160);
-    const img = data.imageUrl || DEFAULT_IMG;
+    const img = resolveImg(path, data, "imageUrl", "job");
     const posted = toIso(data.createdAt) || new Date().toISOString();
     const validThrough = parseLastDate(data.lastDate);
     // 🗓️ EXPIRED? — Google guideline: expired bharti pe JobPosting schema NAHI
@@ -251,24 +271,68 @@ function buildMetaFiles(colls) {
     };
   });
 
-  // ===== BAAKI PAGES: sirf preview meta (social bots ke liye) =====
-  const addPage = (path, data, imgField) => {
+  // ===== BAAKI PAGES: preview meta =====
+  const addPage = (path, data, imgField, type) => {
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
     pages[path] = {
       t: truncate(data.seoTitle || data.title, 70),
       d: truncate(data.metaDescription || stripHtml(data.description) || `${stripHtml(data.title)} - StudyGyaan`, 160),
-      img: data[imgField] || DEFAULT_IMG,
+      img: resolveImg(path, data, imgField, type),
       type: "article",
       ld: [],
     };
   };
 
-  (colls.blogs || []).forEach(({ id, data }) => addPage(`/blog/${data.slug || id}`, data, "imageUrl"));
-  (colls.mock_tests || []).forEach(({ id, data }) => addPage(`/test/${data.slug || id}`, data, "imageUrl"));
-  (colls.web_stories || []).forEach(({ id, data }) => addPage(`/web-stories/${data.slug || id}`, data, "coverImage"));
-  (colls.courses || []).forEach(({ id, data }) => addPage(`/course/${data.slug || id}`, data, "imageUrl"));
+  // ===== BLOGS: FULL ARTICLE + BlogPosting schema (bots ko poora content!) =====
+  // Pehle blogs ko sirf preview meta milta tha — Googlebot ko article dikhta hi
+  // nahi tha → thin content → koi ranking nahi. Ab poora article HTML + schema.
+  (colls.blogs || []).forEach(({ id, data }) => {
+    if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+    const slug = data.slug || id;
+    const path = `/blog/${slug}`;
+    const title = data.seoTitle || data.title;
+    const body = data.content || data.description || data.articleHtml || "";
+    const desc = truncate(data.metaDescription || stripHtml(body), 160);
+    const img = resolveImg(path, data, "imageUrl", "blog");
+    const posted = toIso(data.publishedAt || data.createdAt) || new Date().toISOString();
+    const modified = toIso(data.updatedAt) || posted;
+
+    const blogPosting = {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      headline: truncate(stripHtml(data.title), 110),
+      image: [img],
+      datePublished: posted,
+      dateModified: modified,
+      author: { "@type": "Organization", name: stripHtml(data.author) || ORG_NAME, url: SITE },
+      publisher: {
+        "@type": "Organization",
+        name: ORG_NAME,
+        logo: { "@type": "ImageObject", url: LOGO },
+      },
+      mainEntityOfPage: `${SITE}${path}`,
+      inLanguage: "hi",
+    };
+
+    const ld = [blogPosting];
+    const faq = faqSchema(data.faqs);
+    if (faq) ld.push(faq);
+
+    pages[path] = {
+      t: truncate(title, 70),
+      d: desc,
+      img,
+      type: "article",
+      content: body + relatedHtml(slug, String(data.category || "").toLowerCase()),
+      ld,
+    };
+  });
+
+  (colls.mock_tests || []).forEach(({ id, data }) => addPage(`/test/${data.slug || id}`, data, "imageUrl", "test"));
+  (colls.web_stories || []).forEach(({ id, data }) => addPage(`/web-stories/${data.slug || id}`, data, "coverImage", "story"));
+  (colls.courses || []).forEach(({ id, data }) => addPage(`/course/${data.slug || id}`, data, "imageUrl", "course"));
   [...(colls.study_materials || []), ...(colls.studyMaterials || [])].forEach(({ id, data }) =>
-    addPage(`/material/${data.slug || id}`, data, "imageUrl")
+    addPage(`/material/${data.slug || id}`, data, "imageUrl", "material")
   );
 
   // 🎯 HUB PAGES — bots ko real content list (title/desc + matching active jobs)

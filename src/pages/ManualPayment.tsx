@@ -181,7 +181,7 @@ const [finalPayableAmount, setFinalPayableAmount] =
                                         src={qrCodeUrl} 
                                         alt="UPI QR Code" 
                                         className="w-64 h-64 md:w-80 md:h-80 object-contain mx-auto"
-                                        onError={(e) => { e.currentTarget.src = "https://placehold.co/400x400?text=QR+Code+Not+Found"; }}
+                                        onError={(e) => { e.currentTarget.style.display = "none"; }}
                                     />
                                 </div>
                                 <div className="mt-6">

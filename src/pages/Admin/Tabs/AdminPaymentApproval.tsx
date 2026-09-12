@@ -145,7 +145,7 @@ const AdminPaymentApproval = () => {
                                     <div className="flex flex-col">
                                         <p className="text-[9px] font-black text-slate-400 uppercase mb-1 text-center">Screenshot</p>
                                         <a href={req.screenshotUrl || "#"} target="_blank" rel="noreferrer" className="relative group rounded-2xl overflow-hidden border-2 border-slate-100 aspect-square bg-slate-100 block shadow-inner">
-                                            <img src={req.screenshotUrl || "https://placehold.co/400x400?text=No+Screenshot"} alt="Screenshot" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                            <img src={req.screenshotUrl || "/fallback/default.png"} alt="Screenshot" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" onError={(e) => { e.currentTarget.style.opacity = "0.35"; }} />
                                             <div className="absolute inset-0 bg-blue-600/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
                                                 <ExternalLink className="text-white" size={24} />
                                             </div>

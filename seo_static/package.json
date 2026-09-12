@@ -6,7 +6,8 @@
     "node": ">=20"
   },
   "dependencies": {
-    "firebase-admin": "^13.7.0"
+    "firebase-admin": "^13.7.0",
+    "sharp": "^0.35.4"
   },
   "scripts": {
     "generate": "node generate.cjs --out ../seo_out",

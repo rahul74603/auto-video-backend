@@ -6,6 +6,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Clock, Flame, ShoppingCart } from 'lucide-react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import DynamicSidebar from '../components/DynamicSidebar';
+import SmartImage from '../components/SmartImage';
 import { asText, toDateSafe, type TimestampLike } from '@/types/firestore';
 
 type BlogListSettings = {
@@ -81,8 +82,14 @@ const BlogList = () => {
                 {blogs.map((blog) => (
                   <Link to={`/blog/${blog.id}`} key={blog.id} className="group">
                     <div className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl transition-all flex flex-col h-full">
-                      <div className="h-32 md:h-44 overflow-hidden relative">
-                        <img src={asText(blog.imageUrl) || 'https://via.placeholder.com/400x300'} alt={asText(blog.title) || "StudyGyaan Blog"} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      <div className="h-32 md:h-44 overflow-hidden relative bg-slate-100">
+                        <SmartImage
+                          src={asText(blog.imageUrl) || asText(blog.image)}
+                          alt={asText(blog.title) || 'StudyGyaan Blog'}
+                          fallbackType="blog"
+                          title={asText(blog.title)}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
                         <div className="absolute top-2 left-2 bg-blue-600/90 backdrop-blur-md text-white text-[8px] md:text-[10px] font-black px-2.5 py-1 rounded-md uppercase shadow-lg">{asText(blog.category) || 'New'}</div>
                       </div>
                       <div className="p-3 md:p-4 flex-grow flex flex-col justify-between">
