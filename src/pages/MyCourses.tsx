@@ -115,10 +115,10 @@ const MyCourses = () => {
         
         {/* Header Section */}
         <div className="mb-8 md:mb-12">
-          <h2 className="text-2xl md:text-5xl font-black text-slate-900 flex items-center gap-3">
+          <h1 className="text-2xl md:text-5xl font-black text-slate-900 flex items-center gap-3">
             <GraduationCap className="text-blue-600 w-8 h-8 md:w-14 md:h-14" /> 
             मेरे <span className="text-blue-600">नोट्स और कोर्स</span>
-          </h2>
+          </h1>
           <div className="h-1.5 w-20 bg-blue-600 mt-3 rounded-full"></div>
         </div>
 
