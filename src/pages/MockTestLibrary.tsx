@@ -11,6 +11,8 @@ import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
 import { asText } from '@/types/firestore';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
 
 // =========================================================
 // 🧾 SIDEBAR LINK TYPE
@@ -222,6 +224,18 @@ const MockTestLibrary = () => {
                             </section>
                         )}
                     </aside>
+                </div>
+
+                {/* Internal Linking - Fixes Orphan Pages */}
+                <div className="max-w-7xl mx-auto px-4 mt-8">
+                  <RelatedContent
+                    currentId=""
+                    exam="GENERAL"
+                    category="MOCK_TEST"
+                    title=""
+                    limit={8}
+                    className="mb-6"
+                  />
                 </div>
             </div>
         </div>
