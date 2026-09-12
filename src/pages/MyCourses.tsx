@@ -11,6 +11,8 @@ import {
   BookOpen, ArrowRight, Loader2, ShoppingBag, Sparkles,
   Flame, ShoppingCart, Zap, CheckCircle2, GraduationCap
 } from 'lucide-react';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
 type MyCourseView = {
   id: string;
   title?: string;
@@ -222,6 +224,18 @@ const MyCourses = () => {
             <a href="/test" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Free Mock Tests</a>
             <a href="/blog" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Sarkari Yojana & Blogs</a>
           </div>
+        </div>
+
+        {/* Internal Linking - Fixes Orphan Pages */}
+        <div className="max-w-7xl mx-auto px-4 mt-8">
+          <RelatedContent
+            currentId=""
+            exam="GENERAL"
+            category="PREMIUM"
+            title=""
+            limit={8}
+            className="mb-6"
+          />
         </div>
       </div>
     </div>
