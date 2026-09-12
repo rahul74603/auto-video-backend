@@ -2,13 +2,18 @@
 <html lang="hi">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <!-- Favicon: public/logo.png (vite.svg tha jo exist hi nahi karta tha → 404) -->
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <title>StudyGyaan</title>
     <meta name="robots" content="index, follow" />
-    <!-- Default homepage canonical; server renderer replaces it per route. -->
-    <link rel="canonical" href="https://studygyaan.in" />
+
+    <!-- Default meta description (SPA shell ke liye).
+         Har page ka final description/canonical react-helmet (SEO.tsx) set karta hai.
+         Bots ko .htaccess meta.php pe bhejta hai — wahan per-URL meta hoti hai. -->
+    <meta name="description" content="StudyGyaan पर पाएं Latest Sarkari Naukri, Free PDF Notes, Online Mock Tests, Admit Card, Result और Premium Study Material। SSC, Railway, Bank, Police Exam की सबसे बेहतर तैयारी।" />
 
     <!-- =====================================================
          ✅ PRECONNECT — Sirf jo zaruri hai (max 4)

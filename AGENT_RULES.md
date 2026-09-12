@@ -121,6 +121,15 @@ Thin/incomplete **BLOG** pages may get a proposed `articleHtml` (OLD vs PROPOSED
 
 ---
 
+## Rule 8 — cPanel upload: ek baar me, poora (no repeat reminders)
+
+- Kaam ke beech me bar-bar "cPanel pe upload karo" **mat bolo/mat karo**
+- Pehle poora kaam complete + verify karo (build + tests)
+- Uske baad **EK SATH** complete updated code ka upload plan do
+- Har deploy pack me: file list + exact steps + build commands ready hone chahiye
+
+---
+
 ## Quick checklist (har task)
 
 - [ ] Branch: `arena/01a0409f-auto-video-backend` (sirf yahi)

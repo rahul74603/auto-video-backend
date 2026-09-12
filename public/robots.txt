@@ -22,10 +22,9 @@ Disallow: /
 User-agent: ClaudeBot
 Disallow: /
 
-# 🗺️ Sitemap Links (multiple for maximum discovery)
+# 🗺️ Sitemap — sirf EK index entry
+# (sitemap-all.xml ab 301 ho ke sitemap.xml pe jaata hai — duplicate-sitemap warning fix)
 Sitemap: https://studygyaan.in/sitemap.xml
-Sitemap: https://studygyaan.in/sitemap-all.xml
-Sitemap: https://studygyaan.in/recent-urls.txt
 
 # IndexNow key (ownership verification)
 # Key file: /9629c8c41fa94b898f83a53ecd320743.txt

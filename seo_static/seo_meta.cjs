@@ -349,6 +349,135 @@ function buildMetaFiles(colls) {
     ld: [],
   };
 
+  // ============================================================
+  // 🏠 HOMEPAGE + LISTING PAGES — har bot-URL pe proper title/desc/
+  // canonical + internal links (Ahrefs missing-description fix)
+  // ============================================================
+  const jobLinks = (n) => activeJobPool.slice(0, n).map((j) => {
+    const extra = [j.vacancies ? `${j.vacancies} Posts` : "", j.lastDate ? `Last Date: ${j.lastDate}` : ""].filter(Boolean).join(" · ");
+    return `<li><a href="${SITE}/job/${esc(j.slug)}">${esc(j.title)}</a>${extra ? ` — ${esc(extra)}` : ""}</li>`;
+  }).join("");
+
+  const updatesByCategory = (kw, n) => (colls.fast_track || [])
+    .filter(({ data }) => isIndexableDocument(data) && hasUsefulTitle(data))
+    .filter(({ data }) => String(data.category || "").toLowerCase().includes(kw))
+    .slice(0, n)
+    .map(({ id, data }) => `<li><a href="${SITE}/update/${esc(data.slug || id)}">${esc(stripHtml(data.title))}</a></li>`)
+    .join("");
+
+  const collectionLinks = (rows, base, n) => rows
+    .filter(({ data }) => isIndexableDocument(data) && hasUsefulTitle(data))
+    .slice(0, n)
+    .map(({ id, data }) => `<li><a href="${SITE}${base}/${esc(data.slug || id)}">${esc(stripHtml(data.title))}</a></li>`)
+    .join("");
+
+  const addListing = (pathKey, meta) => {
+    if (!pages[pathKey]) {
+      pages[pathKey] = { t: truncate(meta.t, 70), d: truncate(meta.d, 160), img: DEFAULT_IMG, type: "website", content: meta.content || "", ld: [] };
+    }
+  };
+
+  addListing("/", {
+    t: "StudyGyaan - Free Study Material, Govt Jobs & Mock Tests",
+    d: "StudyGyaan par payein Latest Sarkari Naukri, Free PDF Notes, Online Mock Tests, Admit Card, Result aur Premium Study Material. SSC, Railway, Bank, Police Exam ki best taiyari.",
+    content: `<h2>Latest Govt Jobs</h2><ul>${jobLinks(15)}</ul><h2>Fast Track Updates</h2><ul>${collectionLinks(colls.fast_track || [], "/update", 10)}</ul><p><a href="${SITE}/govt-jobs">सभी Latest Govt Jobs</a> | <a href="${SITE}/test">Free Mock Tests</a> | <a href="${SITE}/blog">Blog</a> | <a href="${SITE}/exam-calendar">Exam Calendar</a></p>`,
+  });
+
+  addListing("/govt-jobs", {
+    t: "Latest Govt Jobs 2026 - सरकारी नौकरी | StudyGyaan",
+    d: "Sabhi Latest Government Jobs 2026 ki jankari. SSC, Railway, Bank, Police, UPSC aur State PSC ki Vacancy, Syllabus aur Preparation Tips.",
+    content: `<h2>Active Bhartiyan</h2><ul>${jobLinks(30)}</ul><p><a href="${SITE}/exam-calendar">Exam Calendar</a> | <a href="${SITE}/results">Results</a> | <a href="${SITE}/admit-card">Admit Cards</a></p>`,
+  });
+
+  addListing("/results", {
+    t: "Latest Results 2026 - Sarkari Exam Results | StudyGyaan",
+    d: "Sabhi Sarkari Exam Results, Merit List, Cut Off — university results, board results aur government exam results sabse pehle StudyGyaan par.",
+    content: `<h2>Latest Results</h2><ul>${updatesByCategory("result", 25)}</ul><p><a href="${SITE}/admit-card">Admit Cards</a> | <a href="${SITE}/answer-key">Answer Keys</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
+  });
+
+  addListing("/admit-card", {
+    t: "Admit Card 2026 - Download Hall Ticket | StudyGyaan",
+    d: "Sabhi Sarkari Exam ke Admit Card, Hall Ticket, Call Letter — direct download link ke saath sabse fast update StudyGyaan par.",
+    content: `<h2>Latest Admit Cards</h2><ul>${updatesByCategory("admit", 25)}</ul><p><a href="${SITE}/results">Results</a> | <a href="${SITE}/answer-key">Answer Keys</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
+  });
+
+  addListing("/answer-key", {
+    t: "Answer Key 2026 - Sarkari Exam Answer Keys | StudyGyaan",
+    d: "Sabhi Government Exam ki Official Answer Key, Model Answer Key aur Response Sheet — direct PDF link ke saath.",
+    content: `<h2>Latest Answer Keys</h2><ul>${updatesByCategory("answer", 25)}</ul><p><a href="${SITE}/results">Results</a> | <a href="${SITE}/admit-card">Admit Cards</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
+  });
+
+  addListing("/syllabus", {
+    t: "Exam Syllabus & Pattern 2026 | StudyGyaan",
+    d: "SSC, Railway, Bank, Police, UPSC aur sabhi Sarkari Exam ka latest Syllabus aur Exam Pattern Hindi me.",
+    content: `<h2>Latest Syllabus</h2><ul>${updatesByCategory("syllabus", 25)}</ul><p><a href="${SITE}/test">Free Mock Tests</a> | <a href="${SITE}/free-study-material">Free Study Material</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
+  });
+
+  addListing("/blog", {
+    t: "Education Blog - Exam Tips & Updates | StudyGyaan",
+    d: "Latest Education News, Exam Analysis, Study Tips aur Competitive Exam Updates — Hindi me.",
+    content: `<h2>Latest Blog Posts</h2><ul>${collectionLinks(colls.blogs || [], "/blog", 25)}</ul><p><a href="${SITE}/govt-jobs">Govt Jobs</a> | <a href="${SITE}/test">Mock Tests</a> | <a href="${SITE}/web-stories">Web Stories</a></p>`,
+  });
+
+  addListing("/test", {
+    t: "Free Online Mock Tests - Practice Sets | StudyGyaan",
+    d: "SSC, Railway, Bank, Police ke Free Online Mock Tests. Bilingual Hindi+English Practice Sets with Timer.",
+    content: `<h2>Mock Tests</h2><ul>${collectionLinks(colls.mock_tests || [], "/test", 25)}</ul><p><a href="${SITE}/free-study-material">Free Study Material</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
+  });
+
+  addListing("/web-stories", {
+    t: "Web Stories - Quick Updates & News | StudyGyaan",
+    d: "Latest Sarkari Naukri aur Exam Updates Web Stories format me — quick, visual aur easy to read.",
+    content: `<h2>Latest Web Stories</h2><ul>${collectionLinks(colls.web_stories || [], "/web-stories", 25)}</ul><p><a href="${SITE}/govt-jobs">Govt Jobs</a> | <a href="${SITE}/blog">Blog</a></p>`,
+  });
+
+  addListing("/free-study-material", {
+    t: "Free Study Material PDF Download | StudyGyaan",
+    d: "SSC, Railway, Bank, Police, UPSC ke liye Free PDF Notes, Previous Year Papers aur Topic-wise Study Material download karein.",
+    content: `<h2>Study Material</h2><ul>${[...(colls.study_materials || []), ...(colls.studyMaterials || [])].length ? collectionLinks([...(colls.study_materials || []), ...(colls.studyMaterials || [])], "/material", 25) : "<li>Free PDF notes jaldi hi add ho rahe hain.</li>"}</ul><p><a href="${SITE}/e-books">E-Books</a> | <a href="${SITE}/premium-notes">Premium Notes</a> | <a href="${SITE}/test">Mock Tests</a></p>`,
+  });
+
+  addListing("/e-books", {
+    t: "Free E-Books & Handwritten Notes | StudyGyaan",
+    d: "All Competitive Exams ke liye Free E-Books. GK, Math, Reasoning, English, Hindi aur Science ki complete books.",
+    content: `<p>All Competitive Exams ke liye E-Books aur Handwritten Notes.</p><p><a href="${SITE}/free-study-material">Free Study Material</a> | <a href="${SITE}/premium-notes">Premium Notes</a> | <a href="${SITE}/test">Mock Tests</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
+  });
+
+  addListing("/premium-notes", {
+    t: "Premium Notes - Complete Exam Notes | StudyGyaan",
+    d: "Expert-prepared Premium Notes jo aapki Exam Preparation ko next level lenge. Topic-wise Complete Notes with Practice Questions.",
+    content: `<p>Expert-prepared Premium Notes — topic-wise complete notes with practice questions.</p><p><a href="${SITE}/free-study-material">Free Study Material</a> | <a href="${SITE}/e-books">E-Books</a> | <a href="${SITE}/test">Mock Tests</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
+  });
+
+  addListing("/about-us", {
+    t: "About Us - StudyGyaan",
+    d: "StudyGyaan ke bare me janein. Hamara Mission, Team aur Education ke prati Commitment.",
+  });
+  addListing("/contact-us", {
+    t: "Contact Us - StudyGyaan",
+    d: "StudyGyaan se contact karein. Kisi bhi help, feedback ya query ke liye humse baat karein.",
+  });
+  addListing("/privacy-policy", {
+    t: "Privacy Policy - StudyGyaan",
+    d: "StudyGyaan Privacy Policy - hum aapki personal information kaise protect karte hain.",
+  });
+  addListing("/terms-conditions", {
+    t: "Terms & Conditions - StudyGyaan",
+    d: "StudyGyaan Terms and Conditions - website use ke rules and regulations.",
+  });
+  addListing("/refund-cancellation-policy", {
+    t: "Refund & Cancellation Policy - StudyGyaan",
+    d: "StudyGyaan Refund and Cancellation Policy — payments, refunds aur cancellations ke rules.",
+  });
+  addListing("/shipping-policy", {
+    t: "Shipping Policy - StudyGyaan",
+    d: "StudyGyaan Shipping Policy — digital products aur physical items ke delivery terms.",
+  });
+  addListing("/disclaimer", {
+    t: "Disclaimer - StudyGyaan",
+    d: "StudyGyaan Disclaimer — content ki accuracy aur external links ke regarding information.",
+  });
+
   return {
     "seo-meta-jobs.json": JSON.stringify(jobs),
     "seo-meta-updates.json": JSON.stringify(updates),

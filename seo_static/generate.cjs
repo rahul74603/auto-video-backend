@@ -189,6 +189,18 @@ const URLSET_OPEN_IMG =
   `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"\n` +
   `        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n`;
 
+// 🧹 Duplicate <url> entries ek hi urlset me drop karta hai
+// (study_materials + studyMaterials ka same slug, duplicate slugs etc.)
+function dedupeUrlset(xml) {
+  const seen = new Set();
+  return xml.replace(/  <url>\n[\s\S]*?  <\/url>\n/g, (block) => {
+    const loc = (block.match(/<loc>(.*?)<\/loc>/) || [])[1];
+    if (!loc || seen.has(loc)) return "";
+    seen.add(loc);
+    return block;
+  });
+}
+
 function sitemapIndex() {
   const sitemaps = [
     `${WEBSITE_URL}/sitemap-main.xml`,
@@ -473,20 +485,22 @@ function buildAll(colls) {
 
   return {
     "sitemap.xml": sitemapIndex(),
-    "sitemap-main.xml": sitemapMain(),
-    "sitemap-blogs.xml": blogsXml,
-    "sitemap-jobs.xml": jobsXml,
-    "sitemap-tests.xml": testsXml,
-    "sitemap-stories.xml": storiesXml,
-    "sitemap-updates.xml": updatesXml,
-    "sitemap-courses.xml": coursesXml,
-    "sitemap-materials.xml": matsXml,
-    "sitemap-news.xml": newsXml,
-    "sitemap-all.xml": allXml,
+    "sitemap-main.xml": dedupeUrlset(sitemapMain()),
+    "sitemap-blogs.xml": dedupeUrlset(blogsXml),
+    "sitemap-jobs.xml": dedupeUrlset(jobsXml),
+    "sitemap-tests.xml": dedupeUrlset(testsXml),
+    "sitemap-stories.xml": dedupeUrlset(storiesXml),
+    "sitemap-updates.xml": dedupeUrlset(updatesXml),
+    "sitemap-courses.xml": dedupeUrlset(coursesXml),
+    "sitemap-materials.xml": dedupeUrlset(matsXml),
+    "sitemap-news.xml": dedupeUrlset(newsXml),
+    // ❌ sitemap-all.xml BAND — har URL 2-3 sitemaps me duplicate tha
+    //    (Ahrefs "Page in multiple sitemaps" 2,147 pages ka cause).
+    //    Purana URL .htaccess se 301 → /sitemap.xml
     "rss.xml": rss,
     "feed.xml": rss,
-    "recent-urls.txt": allUrls.map((u) => u.url).join("\n"),
-    "_urls.json": JSON.stringify(allUrls, null, 0),
+    "recent-urls.txt": Array.from(new Set(allUrls.map((u) => u.url))).join("\n"),
+    "_urls.json": JSON.stringify(allUrls.filter((u, i, arr) => arr.findIndex((x) => x.url === u.url) === i), null, 0),
   };
 }
 
