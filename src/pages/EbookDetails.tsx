@@ -11,6 +11,8 @@ import { Button } from '../components/ui/button';
 import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
 
 type EbookView = {
   title?: string;
@@ -202,6 +204,18 @@ const EbookDetails = () => {
               </div>
 
             </article>
+
+            {/* Internal Linking - Fixes Orphan Pages & No Outgoing Links */}
+            <ExamHubNavigation exam="GENERAL" className="mt-6" />
+            <RelatedContent
+              currentId={id || ''}
+              exam="GENERAL"
+              category="EBOOK"
+              title={ebook?.title || ''}
+              limit={6}
+              className="mt-6"
+            />
+
           </div>
 
           <aside className="w-[40%] md:w-[32%] space-y-4 md:space-y-8 sticky top-12 md:top-16">

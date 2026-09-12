@@ -11,6 +11,8 @@ import SEO from '../components/SEO';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
 
 type MaterialView = {
   title?: string;
@@ -182,6 +184,18 @@ const MaterialDetails = () => {
                 </div>
               </div>
             </article>
+
+            {/* Internal Linking - Fixes Orphan Pages & No Outgoing Links */}
+            <ExamHubNavigation exam={item?.subject || 'GENERAL'} className="mt-6" />
+            <RelatedContent
+              currentId={id || ''}
+              exam={item?.subject}
+              category="MATERIAL"
+              title={item?.title || ''}
+              limit={6}
+              className="mt-6"
+            />
+
           </div>
 
           <aside className="w-[40%] md:w-[32%] space-y-3 md:space-y-6 sticky top-12 md:top-16">
