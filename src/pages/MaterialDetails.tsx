@@ -190,7 +190,7 @@ const MaterialDetails = () => {
             <RelatedContent
               currentId={id || ''}
               exam={item?.subject}
-              category="MATERIAL"
+              category="STUDY_MATERIAL"
               title={item?.title || ''}
               limit={6}
               className="mt-6"
