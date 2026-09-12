@@ -25,6 +25,8 @@ import {
   BookOpen
 } from 'lucide-react';
 import SEO from '../components/SEO';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
 
 interface CourseContent { id: string; title: string; seoTitle?: string; link?: string; type: 'PDF' | 'VIDEO' | 'FOLDER'; parentId?: string | null; }
 
@@ -420,6 +422,19 @@ const CourseView = () => {
           <a href="/blog" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Sarkari Yojana & Blogs</a>
         </div>
       </div>
+
+      {/* Internal Linking - Fixes Orphan Pages */}
+      <div className="max-w-7xl mx-auto px-4 mt-8">
+        <RelatedContent
+          currentId={id || ''}
+          exam="GENERAL"
+          category="PREMIUM"
+          title={course?.title || ''}
+          limit={8}
+          className="mb-6"
+        />
+      </div>
+
       <style dangerouslySetInnerHTML={{__html: `
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
