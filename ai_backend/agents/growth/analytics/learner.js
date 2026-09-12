@@ -56,6 +56,18 @@ async function analyzePatterns(db, opts = {}) {
                     sampleSize: records.length,
                     windowDays: opts.windowDays || ROLLING_WINDOW_DAYS
                 }, { merge: true });
+                
+                // Auto-apply high-confidence patterns
+                const highConfidencePatterns = patterns.filter(p => p.confidence >= 0.75);
+                if (highConfidencePatterns.length > 0) {
+                    await db.collection('growth_policies').doc('latest').set({
+                        appliedPatterns: highConfidencePatterns,
+                        appliedAt: Date.now(),
+                        status: 'APPLIED',
+                        count: highConfidencePatterns.length
+                    }, { merge: true });
+                    console.log(`✅ Auto-applied ${highConfidencePatterns.length} high-confidence patterns`);
+                }
             } catch (err) {
                 console.log(`⚠️ insight store failed: ${err.message || err}`);
             }
