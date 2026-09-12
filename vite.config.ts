@@ -91,7 +91,32 @@ export default defineConfig({
               return 'vendor-radix';
             }
 
-            // 8. Baaki sab
+            // 8. Lodash — bahut bada library
+            if (id.includes('lodash')) {
+              return 'vendor-lodash';
+            }
+
+            // 9. Date-fns — date handling
+            if (id.includes('date-fns')) {
+              return 'vendor-date-fns';
+            }
+
+            // 10. Axios — HTTP client
+            if (id.includes('axios')) {
+              return 'vendor-axios';
+            }
+
+            // 11. PDF.js — bahut bada library
+            if (id.includes('pdfjs-dist')) {
+              return 'vendor-pdfjs';
+            }
+
+            // 12. Recharts — charts library
+            if (id.includes('recharts')) {
+              return 'vendor-recharts';
+            }
+
+            // 13. Baaki sab
             return 'vendor-others';
           }
         }
