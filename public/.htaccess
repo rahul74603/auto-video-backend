@@ -1,52 +1,89 @@
 # ==============================================================
-# StudyGyaan.in — cPanel public_html/.htaccess
-# Health-Score Fix Pack (Ahrefs Site Audit friendly)
+# StudyGyaan.in — cPanel public_html/.htaccess — FINAL MERGED
 # --------------------------------------------------------------
-# Kya karta hai:
-#   1. Canonical host force karta hai (https + non-www, Cloudflare-safe)
-#   2. Purana sitemap-all.xml → sitemap.xml 301 (duplicate-sitemap fix)
-#   3. Missing assets (js/css/images) ko HARD 404 deta hai —
-#      kabhi bhi SPA ka index.html JavaScript/CSS ki jagah serve nahi hota
-#      (yehi "Page has broken JavaScript" ka #1 cause hai)
-#   4. SEO meta data files (seo-meta-*.json) ko public access se block karta hai
-#   5. SAB crawlers/bots (Googlebot, Bingbot, AhrefsSiteAudit, Semrush,
-#      WhatsApp/FB/Telegram previews...) ko meta.php pe bhejta hai —
-#      clean static HTML with correct title/description/canonical per URL
-#   6. Normal users ko React SPA deta hai — deep links pe bhi 404 nahi
-#   7. Compression + caching (slow page warnings kam karta hai)
+# Live version ke acche parts (legacy redirects, LiteSpeed cache) +
+# Health-Score fix pack (Ahrefs bot routing, hard-404 assets, etc.)
+#
+# Live file me jo problems thi (yehi Health Score 1 ka reason tha):
+#   - Ahrefs/Semrush/SEO crawlers bot list me NAHI the → unhe raw SPA
+#     shell milta tha → JS crash → 1,735 pages "broken JavaScript"
+#   - Blog/test/course pages pe sirf SOCIAL bots jaate the
+#   - Missing assets ko SPA HTML mil jaata tha (broken-JS cause #1)
+#   - </FilesMatch me ">" missing tha (broken syntax)
 # ==============================================================
 
-DirectoryIndex index.html index.php
+DirectoryIndex index.html
 Options -Indexes
 
-RewriteEngine On
-RewriteBase /
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
 
-# ---------- 1) Canonical host: https + non-www ----------
-# Cloudflare-safe: redirect sirf tab jab origin pe http ho aur
-# Cloudflare ka X-Forwarded-Proto: https header na aaye
-# (warna Flexible SSL me infinite redirect loop lag sakta hai)
-RewriteCond %{HTTPS} =off
-RewriteCond %{HTTP:X-Forwarded-Proto} !https
-RewriteRule ^ https://studygyaan.in%{REQUEST_URI} [R=301,L,NE]
+  # ---------- 0) Canonical host: https + non-www (Cloudflare-safe) ----------
+  # Origin pe http ho par Cloudflare ke through https aaye to redirect nahi (no loop)
+  RewriteCond %{HTTPS} =off
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteRule ^ https://studygyaan.in%{REQUEST_URI} [R=301,L,NE]
 
-# www → apex (host-based hai isliye loop kabhi nahi ban sakta)
-RewriteCond %{HTTP_HOST} ^www\. [NC]
-RewriteRule ^ https://studygyaan.in%{REQUEST_URI} [R=301,L,NE]
+  RewriteCond %{HTTP_HOST} ^www\. [NC]
+  RewriteRule ^ https://studygyaan.in%{REQUEST_URI} [R=301,L,NE]
 
-# ---------- 2) Purana monolithic sitemap → sitemap index ----------
-# (robots.txt me ab sirf sitemap.xml hai; "page in multiple sitemaps" fix)
-RewriteRule ^sitemap-all\.xml$ /sitemap.xml [R=301,L]
+  # ---------- 1) RSS/feed aliases (live se) ----------
+  RewriteRule ^feed/?$ /rss.xml [L,R=302]
+  RewriteRule ^rss/?$ /rss.xml [L,R=302]
+  RewriteRule ^web-stories-sitemap\.xml$ /sitemap-stories.xml [L,R=302]
 
-# ---------- 3) Missing static assets → HARD 404 ----------
-# Rule: jo asset file exist nahi karti wo 404 hogi — SPA ka HTML
-# uski jagah KABHI serve nahi hoga. Iske bina browser JS ki jagah
-# HTML parse karta hai → har page pe "broken JavaScript".
-# (Existing files normally serve hoti hain)
-RewriteRule \.(js|mjs|css|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|otf|eot|mp4|webm|ogg|mp3|pdf|wasm|zip|xml|txt|json)$ - [L,NC]
+  # ---------- 2) Purana sitemap-all → sitemap index (duplicate-sitemap fix) ----------
+  RewriteRule ^sitemap-all\.xml$ /sitemap.xml [R=301,L]
 
-# ---------- 4) SEO data files ko direct access block ----------
-<FilesMatch "^(seo-meta-.+\.json|_urls\.json)$">
+  # ---------- 3) Legacy canonical redirects (live se) ----------
+  RewriteRule ^about/?$ /about-us [R=301,L]
+  RewriteRule ^contact/?$ /contact-us [R=301,L]
+  RewriteRule ^jobs/?$ /govt-jobs [R=301,L]
+  RewriteRule ^mock-tests/?$ /test [R=301,L]
+  RewriteRule ^all-stories/?$ /web-stories [R=301,L]
+  RewriteRule ^fasttrack/?$ /govt-jobs [R=301,L]
+  RewriteRule ^fast-track/?$ /govt-jobs [R=301,L]
+  RewriteRule ^refund-policy/?$ /refund-cancellation-policy [R=301,L]
+
+  # ---------- 4) Missing assets → HARD 404 (broken-JavaScript fix) ----------
+  # Jo asset exist NAHI karti wo 404 hogi — SPA ka index.html uski jagah
+  # KABHI serve nahi hoga. (Yehi "Page has broken JavaScript" ka main cause tha.)
+  # Existing files normally serve hoti hain.
+  RewriteRule \.(js|mjs|css|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|otf|eot|mp4|webm|ogg|mp3|pdf|wasm|zip|xml|txt)$ - [L,NC]
+
+  # ---------- 5) SEO data files ko direct access block ----------
+  <FilesMatch "^(seo-meta-.+\.json|_urls\.json)$">
+    <IfModule mod_authz_core.c>
+      Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+      Order allow,deny
+      Deny from all
+    </IfModule>
+  </FilesMatch>
+
+  # ---------- 6) SAB BOTS → meta.php (Health-Score ka sabse important fix) ----------
+  # AhrefsSiteAudit, AhrefsBot, Semrush, MJ12, Googlebot, Bingbot, Yandex,
+  # DuckDuck, social previews, headless crawlers — SAB ko clean static HTML.
+  # Existing files (sitemaps, robots.txt, images, /og/*.png, fallback/*) skip
+  # hoti hain — wo seedhi milti hain.
+  RewriteCond %{REQUEST_URI} !^/meta\.php$
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{HTTP_USER_AGENT} (ahrefs|semrush|mj12|petalbot|applebot|googlebot|bingbot|yandex|duckduck|baiduspider|sogou|facebookexternalhit|whatsapp|telegram|twitterbot|linkedin|discord|pinterest|slackbot|instagram|embedly|quora|skype|bot|crawl|spider|slurp|headlesschrome|lighthouse|pagespeed|gtmetrix|pingdom|uptimerobot|validator|wget|curl|python|scrapy|okhttp|libwww) [NC]
+  RewriteRule ^ /meta.php [L]
+
+  # ---------- 7) Humans → React SPA fallback ----------
+  # Deep links (/job/xyz, /blog/abc...) directly kholne pe bhi app chalegi
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_URI} !^/index\.html$
+  RewriteRule ^ /index.html [L]
+</IfModule>
+
+# ---------- Security: logs/backups direct download se block (syntax FIXED) ----------
+<FilesMatch "\.(log|bak)$">
   <IfModule mod_authz_core.c>
     Require all denied
   </IfModule>
@@ -56,49 +93,38 @@ RewriteRule \.(js|mjs|css|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|otf|eot
   </IfModule>
 </FilesMatch>
 
-# ---------- 5) SAB BOTS → meta.php (dynamic rendering) ----------
-# Bot = UA me inme se kuch bhi ho. Existing FILES (robots.txt,
-# sitemap-*.xml, images, rss.xml...) skip hoti hain — wo seedhi milti hain.
-# NOTE: AhrefsSiteAudit UA me "bot" word nahi hota — isliye explicit hai.
-RewriteCond %{REQUEST_URI} !^/meta\.php$
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{HTTP_USER_AGENT} (ahrefs|semrush|mj12|petalbot|applebot|googlebot|bingbot|yandex|duckduck|baiduspider|sogou|yeti|facebookexternalhit|whatsapp|telegram|twitterbot|linkedin|discord|pinterest|slackbot|instagram|embedly|quora|skype|bot|crawl|spider|slurp|headlesschrome|lighthouse|pagespeed|gtmetrix|pingdom|uptimerobot|validator|wget|curl|python|scrapy|okhttp|libwww) [NC]
-RewriteRule ^ /meta.php [L]
-
-# ---------- 6) Humans → React SPA fallback ----------
-# Deep links (/job/xyz, /blog/abc...) directly kholne pe bhi app chalegi
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteCond %{REQUEST_URI} !^/meta\.php$
-RewriteCond %{REQUEST_URI} !^/index\.html$
-RewriteRule ^ /index.html [L]
-
-# ---------- 7) Compression ----------
-<IfModule mod_deflate.c>
-  AddOutputFilterByType DEFLATE text/html text/plain text/css text/xml application/javascript text/javascript application/json application/xml application/rss+xml image/svg+xml
+# ---------- SPEED: LiteSpeed Cache (live se) ----------
+<IfModule LiteSpeed>
+  CacheEnable public /
+  RewriteEngine On
+  # Bot requests cache me mat daalo — warna cached bot-HTML humans ko mil sakta hai
+  RewriteCond %{HTTP_USER_AGENT} (ahrefs|semrush|mj12|bot|crawl|spider|slurp|facebookexternalhit|whatsapp|telegram|headlesschrome|curl|wget|python|scrapy) [NC]
+  RewriteRule .* - [E=Cache-Control:no-cache,L]
+  # Baaki pages: 5 min server cache
+  RewriteRule .* - [E=cache-control:max-age=300]
 </IfModule>
 
-# ---------- 8) Caching ----------
 <IfModule mod_expires.c>
   ExpiresActive On
-  ExpiresByType text/html "access plus 0 seconds"
+  ExpiresByType image/webp "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+  ExpiresByType image/x-icon "access plus 1 year"
   ExpiresByType text/css "access plus 1 year"
   ExpiresByType application/javascript "access plus 1 year"
   ExpiresByType text/javascript "access plus 1 year"
-  ExpiresByType image/png "access plus 30 days"
-  ExpiresByType image/jpeg "access plus 30 days"
-  ExpiresByType image/gif "access plus 30 days"
-  ExpiresByType image/webp "access plus 30 days"
-  ExpiresByType image/avif "access plus 30 days"
-  ExpiresByType image/svg+xml "access plus 30 days"
-  ExpiresByType image/x-icon "access plus 30 days"
-  ExpiresByType font/woff "access plus 1 year"
   ExpiresByType font/woff2 "access plus 1 year"
-  ExpiresByType video/mp4 "access plus 30 days"
-  ExpiresByType application/pdf "access plus 30 days"
+  ExpiresByType application/xml "access plus 1 hour"
+  ExpiresByType application/rss+xml "access plus 1 hour"
+  ExpiresByType text/html "access plus 5 minutes"
 </IfModule>
 
-# index.html / service worker / manifest hamesha fresh milne chahiye
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json application/xml text/plain image/svg+xml
+</IfModule>
+
+# index.html / sw.js / manifest hamesha fresh milne chahiye
 # (naya deploy turant users ko dikhe)
 <IfModule mod_headers.c>
   <FilesMatch "^(index\.html|sw\.js|OneSignalSDKWorker\.js|manifest\.json)$">

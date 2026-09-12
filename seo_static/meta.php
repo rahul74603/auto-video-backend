@@ -136,7 +136,7 @@ if (!$entry && $isDetail && isset($detailAlias[$first])) {
 }
 
 header('Content-Type: text/html; charset=utf-8');
-header('Cache-Control: public, max-age=1800');
+header('Cache-Control: public, max-age=300');
 if (!$entry) { http_response_code(200); } // homepage/listing → generic meta, 200
 ?>
 <!DOCTYPE html>
