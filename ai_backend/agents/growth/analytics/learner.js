@@ -86,8 +86,7 @@ async function analyzePatterns(db, opts = {}) {
             patterns.push(...typePatterns);
         }
 
-        // Store insights (reporting artifact; the APPLIED artifact is the
-        // policy built from these patterns by learning/policy_store.js).
+        // Store insights and auto-apply via policy_store
         if (patterns.length > 0) {
             try {
                 await db.collection('growth_insights').doc('latest').set({
@@ -96,8 +95,16 @@ async function analyzePatterns(db, opts = {}) {
                     sampleSize: records.length,
                     windowDays: opts.windowDays || ROLLING_WINDOW_DAYS
                 }, { merge: true });
+                
+                // Auto-apply patterns via policy_store
+                const { buildPolicy, savePolicy } = require('../learning/policy_store');
+                const policy = buildPolicy(patterns, Date.now());
+                if (policy && policy.stats && policy.stats.patternCount > 0) {
+                    await savePolicy(db, policy);
+                    console.log(`✅ Policy applied: ${policy.stats.patternCount} patterns, ${policy.stats.platforms} platforms`);
+                }
             } catch (err) {
-                console.log(`⚠️ insight store failed: ${err.message || err}`);
+                console.log(`️ insight/policy store failed: ${err.message || err}`);
             }
         }
 
