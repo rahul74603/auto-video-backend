@@ -98,7 +98,6 @@ exports.generateSitemapIndex = functions.https.onRequest(async (req, res) => {
             `${WEBSITE_URL}/sitemap-updates.xml`,
             `${WEBSITE_URL}/sitemap-courses.xml`,
             `${WEBSITE_URL}/sitemap-materials.xml`,
-            `${WEBSITE_URL}/sitemap-news.xml`,
             `${WEBSITE_URL}/recent-urls.txt`
         ];
 
