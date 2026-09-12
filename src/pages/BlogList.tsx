@@ -6,6 +6,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Sparkles, Clock, Flame, Tag, ExternalLink, ShoppingCart } from 'lucide-react';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { asText, toDateSafe, type TimestampLike } from '@/types/firestore';
+import RelatedContent from '../components/RelatedContent';
+import ExamHubNavigation from '../components/ExamHubNavigation';
 
 type BlogListLink = {
   title?: string;
@@ -207,6 +209,18 @@ const BlogList = () => {
             </div>
 
           </aside>
+        </div>
+
+        {/* Internal Linking - Fixes Orphan Pages */}
+        <div className="max-w-7xl mx-auto px-4 mt-8">
+          <RelatedContent
+            currentId=""
+            exam="GENERAL"
+            category="JOB"
+            title=""
+            limit={8}
+            className="mb-6"
+          />
         </div>
       </main>
     </div>
