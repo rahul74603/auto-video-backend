@@ -105,6 +105,40 @@
     <div id="root"></div>
 
     <!-- =====================================================
+         ✅ STALE-INDEX SELF-HEAL
+         Deploy ke baad agar browser ke paas PURANA index.html hai
+         (cache/SW) aur naye chunks 404 de rahe hain, to ek baar
+         auto-reload karke naya index utha leta hai. Infinite loop
+         flag se blocked hai; successful load pe flag clear.
+    ====================================================== -->
+    <script>
+      (function () {
+        var KEY = 'sg_stale_reload';
+        function heal(msg) {
+          try {
+            if (!msg || !/dynamically imported module|Importing a module script|Failed to fetch dynamically/i.test(msg)) return;
+            if (sessionStorage.getItem(KEY)) return;
+            sessionStorage.setItem(KEY, '1');
+            setTimeout(function () { location.reload(); }, 50);
+          } catch (e) { /* ignore */ }
+        }
+        window.addEventListener('unhandledrejection', function (e) {
+          var r = e && e.reason;
+          heal(String((r && (r.message || r)) || ''));
+        });
+        window.addEventListener('error', function (e) {
+          var el = e && e.target;
+          if (el && el.tagName === 'SCRIPT' && el.src && el.src.indexOf('/assets/') !== -1) {
+            heal('Failed to fetch dynamically imported module: ' + el.src);
+          }
+        }, true);
+        window.addEventListener('load', function () {
+          try { sessionStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+        });
+      })();
+    </script>
+
+    <!-- =====================================================
          ✅ MAIN SCRIPT — Body ke end mein
          Pehle: <head> mein tha — render blocking tha
          Ab: body end mein — HTML parse hone ke baad load hoga
