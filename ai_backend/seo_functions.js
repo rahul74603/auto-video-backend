@@ -68,6 +68,22 @@ function hasValidSitemapData(data = {}) {
     return true;
 }
 
+// ✅ NEW: Normalize URL to match canonical format
+function normalizeSitemapUrl(url) {
+    if (!url) return url;
+    
+    // Remove trailing slash
+    url = url.replace(/\/$/, '');
+    
+    // Remove www
+    url = url.replace('://www.', '://');
+    
+    // Ensure https
+    url = url.replace('http://', 'https://');
+    
+    return url;
+}
+
 // =========================================================
 // 1. SITEMAP INDEX (Master Sitemap)
 // =========================================================
