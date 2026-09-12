@@ -260,16 +260,6 @@ const JobCard = React.memo(({ job, onWhatsAppShare }: {
                         <span className="ml-auto bg-red-50 text-red-400 border border-red-100 px-2 py-1 md:px-3 md:py-1.5 rounded-lg text-[8px] md:text-xs font-bold cursor-not-allowed">
                             Expired
                         </span>
-                    ) : job.applyLink ? (
-                        <a
-                            href={safeExternalUrl(job.applyLink)}
-                            target="_blank"
-                            rel="nofollow noopener noreferrer"
-                            className="ml-auto bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 md:px-4 md:py-1.5 rounded-lg flex items-center gap-1 font-bold active:scale-95 transition-all text-[8px] md:text-xs"
-                        >
-                            Apply Now
-                            <ExternalLink size={10} className="md:w-3.5 md:h-3.5" aria-hidden="true" />
-                        </a>
                     ) : null}
                 </div>
             </div>
