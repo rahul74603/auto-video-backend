@@ -1,23 +1,27 @@
 import { useState, useEffect } from 'react';
-import { collection, query, orderBy, limit, getDocs, type QueryDocumentSnapshot, type DocumentData } from 'firebase/firestore';
+import {
+  collection, query, orderBy, limit, getDocs, where, onSnapshot,
+  doc, getDoc, setDoc, serverTimestamp, type QueryDocumentSnapshot, type DocumentData
+} from 'firebase/firestore';
 import { db } from '@/firebase/config';
 import { asText, toDateSafe, type TimestampLike } from '@/types/firestore';
-import { 
-  Video, 
-  RefreshCw, 
-  Filter, 
-  Search, 
-  Clock, 
-  CheckCircle2, 
+import {
+  Video,
+  RefreshCw,
+  Filter,
+  Search,
+  Clock,
+  CheckCircle2,
   XCircle,
-  AlertCircle, 
+  AlertCircle,
   Play,
   Youtube,
   Facebook,
   Send,
   RotateCcw,
   Eye,
-  Activity
+  Activity,
+  Eraser
 } from 'lucide-react';
 
 type VideoStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'upload_failed';
@@ -160,15 +164,14 @@ function toVideoRecord(
   };
 }
 
-async function loadVideoRecords(): Promise<VideoRecord[]> {
+async function loadVideoRecords(epoch?: Date | null): Promise<VideoRecord[]> {
   const allVideos: VideoRecord[] = [];
 
-  const jobsQuery = query(
-    collection(db, 'jobs'),
-    orderBy('videoTriggeredAt', 'desc'),
-    limit(100)
-  );
-  const jobsSnap = await getDocs(jobsQuery);
+  // Epoch mode: sirf epoch ke BAAD wale records (old data hide — delete nahi hota)
+  const scopeJobs = epoch
+    ? query(collection(db, 'jobs'), where('videoTriggeredAt', '>=', epoch), orderBy('videoTriggeredAt', 'desc'), limit(300))
+    : query(collection(db, 'jobs'), orderBy('videoTriggeredAt', 'desc'), limit(100));
+  const jobsSnap = await getDocs(scopeJobs);
   jobsSnap.forEach(docSnap => {
     const data = fieldsFromDoc(docSnap);
     if (data.videoTriggeredAt || data.videoStatus) {
@@ -176,12 +179,10 @@ async function loadVideoRecords(): Promise<VideoRecord[]> {
     }
   });
 
-  const fastTrackQuery = query(
-    collection(db, 'fast_track'),
-    orderBy('videoTriggeredAt', 'desc'),
-    limit(100)
-  );
-  const fastTrackSnap = await getDocs(fastTrackQuery);
+  const scopeFastTrack = epoch
+    ? query(collection(db, 'fast_track'), where('videoTriggeredAt', '>=', epoch), orderBy('videoTriggeredAt', 'desc'), limit(300))
+    : query(collection(db, 'fast_track'), orderBy('videoTriggeredAt', 'desc'), limit(100));
+  const fastTrackSnap = await getDocs(scopeFastTrack);
   fastTrackSnap.forEach(docSnap => {
     const data = fieldsFromDoc(docSnap);
     if (data.videoTriggeredAt || data.videoStatus) {
@@ -189,12 +190,10 @@ async function loadVideoRecords(): Promise<VideoRecord[]> {
     }
   });
 
-  const mockTestQuery = query(
-    collection(db, 'mock_tests'),
-    orderBy('videoTriggeredAt', 'desc'),
-    limit(100)
-  );
-  const mockTestSnap = await getDocs(mockTestQuery);
+  const scopeMock = epoch
+    ? query(collection(db, 'mock_tests'), where('videoTriggeredAt', '>=', epoch), orderBy('videoTriggeredAt', 'desc'), limit(300))
+    : query(collection(db, 'mock_tests'), orderBy('videoTriggeredAt', 'desc'), limit(100));
+  const mockTestSnap = await getDocs(scopeMock);
   mockTestSnap.forEach(docSnap => {
     const data = fieldsFromDoc(docSnap);
     if (data.videoTriggeredAt || data.videoStatus || data.mockVideoMade) {
@@ -206,9 +205,79 @@ async function loadVideoRecords(): Promise<VideoRecord[]> {
   return allVideos;
 }
 
+// ============================================================
+// 🧹 FRESH-COUNT EPOCH — "ab se" counting ka marker
+// system_settings/video_queue_meta. epochStartedAt ke baad ke
+// records hi count/show hote hain. Purana data DB me safe rehta
+// hai — sirf view se hide hota hai (kabhi delete nahi).
+// ============================================================
+const VIDEO_EPOCH_DOC = doc(db, 'system_settings', 'video_queue_meta');
+
+async function loadVideoEpoch(): Promise<Date | null> {
+  try {
+    const snap = await getDoc(VIDEO_EPOCH_DOC);
+    if (!snap.exists()) return null;
+    return toDateSafe(snap.data().epochStartedAt as TimestampLike) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function resetVideoEpoch(): Promise<void> {
+  await setDoc(VIDEO_EPOCH_DOC, {
+    epochStartedAt: serverTimestamp(),
+    note: 'Fresh counting started from Video Control Center',
+  }, { merge: true });
+}
+
+// 🔴 LIVE subscription — publish hote hi QUEUED turant dikhega
+function subscribeVideoRecords(
+  epoch: Date | null,
+  onData: (records: VideoRecord[]) => void,
+  onError: (error: unknown) => void,
+): () => void {
+  const latest: Record<'jobs' | 'fast_track' | 'mock_tests', VideoRecord[]> = {
+    jobs: [], fast_track: [], mock_tests: [],
+  };
+
+  const emit = () => {
+    const combined = [...latest.jobs, ...latest.fast_track, ...latest.mock_tests];
+    combined.sort((a, b) => timestampMillis(b.videoTriggeredAt) - timestampMillis(a.videoTriggeredAt));
+    onData(combined);
+  };
+
+  const scope = (name: 'jobs' | 'fast_track' | 'mock_tests') => (epoch
+    ? query(collection(db, name), where('videoTriggeredAt', '>=', epoch), orderBy('videoTriggeredAt', 'desc'), limit(300))
+    : query(collection(db, name), orderBy('videoTriggeredAt', 'desc'), limit(100)));
+
+  const handleDocs = (key: 'jobs' | 'fast_track' | 'mock_tests', type: ContentType) =>
+    (snap: { forEach: (cb: (docSnap: QueryDocumentSnapshot<DocumentData>) => void) => void }) => {
+      const rows: VideoRecord[] = [];
+      snap.forEach(docSnap => {
+        const data = fieldsFromDoc(docSnap);
+        const isMock = type === 'MOCK_TEST';
+        if (data.videoTriggeredAt || data.videoStatus || (isMock && data.mockVideoMade)) {
+          rows.push(toVideoRecord(docSnap.id, data, type, key));
+        }
+      });
+      latest[key] = rows;
+      emit();
+    };
+
+  const unsubs = (['jobs', 'fast_track', 'mock_tests'] as const).map((name) => {
+    const type: ContentType = name === 'jobs' ? 'JOB' : name === 'fast_track' ? 'FAST_TRACK' : 'MOCK_TEST';
+    return onSnapshot(scope(name), handleDocs(name, type), onError);
+  });
+
+  return () => unsubs.forEach(u => u());
+}
+
 const VideoControlCenter = () => {
   const [videos, setVideos] = useState<VideoRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [epochDate, setEpochDate] = useState<Date | null>(null);
+  const [epochLoaded, setEpochLoaded] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [filterStatus, setFilterStatus] = useState<VideoStatus | 'all'>('all');
   const [filterType, setFilterType] = useState<ContentType | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -218,7 +287,7 @@ const VideoControlCenter = () => {
   const fetchVideos = async () => {
     setLoading(true);
     try {
-      setVideos(await loadVideoRecords());
+      setVideos(await loadVideoRecords(epochDate));
     } catch (error) {
       console.error('Error fetching videos:', error);
     } finally {
@@ -226,22 +295,61 @@ const VideoControlCenter = () => {
     }
   };
 
+  // Epoch meta load (fresh-count marker)
   useEffect(() => {
     let cancelled = false;
-    void loadVideoRecords()
-      .then((records) => {
-        if (!cancelled) setVideos(records);
+    void loadVideoEpoch()
+      .then((epoch) => {
+        if (!cancelled) {
+          setEpochDate(epoch);
+          setEpochLoaded(true);
+        }
       })
-      .catch((error: unknown) => {
-        console.error('Error fetching videos:', error);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+      .catch(() => {
+        if (!cancelled) setEpochLoaded(true);
       });
+    return () => { cancelled = true; };
+  }, []);
+
+  // 🔴 LIVE subscription — publish hote hi records turant update
+  useEffect(() => {
+    if (!epochLoaded) return;
+    let cancelled = false;
+    const unsub = subscribeVideoRecords(
+      epochDate,
+      (records) => {
+        if (!cancelled) {
+          setVideos(records);
+          setLoading(false);
+        }
+      },
+      (error) => {
+        console.error('Video live-subscription error:', error);
+        if (!cancelled) setLoading(false);
+      }
+    );
     return () => {
       cancelled = true;
+      unsub();
     };
-  }, []);
+  }, [epochDate, epochLoaded]);
+
+  // 🧹 Fresh start — ab se nayi counting (purana data hide, delete nahi)
+  const handleStartFresh = async () => {
+    if (!confirm('Fresh counting START karein?\n\n• Purane records (queued/completed/failed sab) is dashboard se HIDE ho jayenge — data delete NAHI hoga.\n• Ab se jo bhi naya publish hoga wahi count hoga.')) {
+      return;
+    }
+    setResetting(true);
+    try {
+      await resetVideoEpoch();
+      setEpochDate(new Date());
+    } catch (error) {
+      console.error('Epoch reset error:', error);
+      alert('Reset failed. Please try again.');
+    } finally {
+      setResetting(false);
+    }
+  };
 
   // Filter and search
   const filteredVideos = videos.filter(video => {
@@ -258,11 +366,18 @@ const VideoControlCenter = () => {
     return true;
   });
 
-  // Summary counts
+  // Summary counts — epoch scope me
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0); // aaj ki aadhi raat (browser local = IST)
+  const isCompletedToday = (v: VideoRecord) =>
+    v.status === 'completed' &&
+    (timestampMillis(v.videoCompletedAt) || timestampMillis(v.videoTriggeredAt)) >= todayStart.getTime();
+
   const summary = {
     queued: videos.filter(v => v.status === 'queued').length,
     processing: videos.filter(v => v.status === 'processing').length,
-    completed: videos.filter(v => v.status === 'completed').length,
+    completedToday: videos.filter(isCompletedToday).length,
+    completedAll: videos.filter(v => v.status === 'completed').length,
     failed: videos.filter(v => v.status === 'failed' || v.status === 'upload_failed').length,
     total: videos.length
   };
@@ -376,16 +491,42 @@ const VideoControlCenter = () => {
               <Video className="text-purple-600" size={28} />
               Video Control Center
             </h2>
-            <p className="text-gray-600 mt-1">Monitor and manage your video generation queue</p>
+            <p className="text-gray-600 mt-1">Live video queue — publish hote hi QUEUED me turant dikhega</p>
           </div>
-          <button
-            onClick={() => { void fetchVideos(); }}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
-          >
-            <RefreshCw size={16} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleStartFresh}
+              disabled={resetting}
+              className="flex items-center gap-2 px-4 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-lg transition disabled:opacity-50"
+              title="Purane records hide karke ab se nayi counting shuru karo"
+            >
+              <Eraser size={16} />
+              {resetting ? 'Resetting...' : 'Start Fresh'}
+            </button>
+            <button
+              onClick={() => { void fetchVideos(); }}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+            >
+              <RefreshCw size={16} />
+              Refresh
+            </button>
+          </div>
         </div>
+
+        {/* Fresh-Count banner */}
+        {epochLoaded && (
+          epochDate ? (
+            <div className="mb-4 px-4 py-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-bold flex items-center gap-2">
+              <CheckCircle2 size={16} />
+              FRESH COUNTING ON — since {toDateSafe(epochDate as unknown as TimestampLike)?.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · Purane records hide hain (delete NAHI hue) · Naye publish LIVE dikhte hain
+            </div>
+          ) : (
+            <div className="mb-4 px-4 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm font-bold flex items-center gap-2">
+              <AlertCircle size={16} />
+              Abhi PURANA data dikh raha hai. Nayi clean counting ke liye &quot;Start Fresh&quot; dabao — uske baad sirf naye publish count honge.
+            </div>
+          )
+        )}
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
@@ -412,8 +553,8 @@ const VideoControlCenter = () => {
               <CheckCircle2 className="text-green-600" size={20} />
               <span className="text-sm font-medium text-green-800">COMPLETED TODAY</span>
             </div>
-            <div className="text-2xl font-bold text-green-900">{summary.completed}</div>
-            <div className="text-xs text-green-700">Published</div>
+            <div className="text-2xl font-bold text-green-900">{summary.completedToday}</div>
+            <div className="text-xs text-green-700">Aaj ke ({summary.completedAll} total)</div>
           </div>
 
           <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
@@ -454,6 +595,10 @@ const VideoControlCenter = () => {
                   <div className="flex justify-between">
                     <span className="text-green-700">Completed:</span>
                     <span className="font-bold">{breakdown.completed}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-emerald-700">Aaj complete:</span>
+                    <span className="font-bold">{videos.filter(v => v.type === type && isCompletedToday(v)).length}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-red-700">Failed:</span>
