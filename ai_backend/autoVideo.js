@@ -907,7 +907,14 @@ async function runFFmpeg(ffmpegPath, args, mode = 'full') {
         // resolveRenderPlan is the same module the closed-loop tests prove
         // behaviorally.
         const durationFitter = require('./agents/growth/duration_fitter');
-        const renderPlan = durationFitter.resolveRenderPlan(script, growthEnabled ? growthRec : null);
+        // 🎯 SHORTS REACH FALLBACK: growth engine off/growthRec null ho to bhi
+        // jobs/fast_track video 12-22s window me hi render honi chahiye —
+        // 18s default target ke saath fitter script ko FULL DETAIL rakhte hue
+        // fit karta hai (hook + facts + CTA, sirf trim/rate — content invent nahi).
+        const renderPlan = durationFitter.resolveRenderPlan(
+            script,
+            growthEnabled ? growthRec : { duration: 18 }
+        );
         let speakingRate = renderPlan.speakingRate;
         if (renderPlan.applied) {
             if (renderPlan.script && renderPlan.script.trim()) script = renderPlan.script;

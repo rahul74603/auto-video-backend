@@ -549,13 +549,16 @@ test('policy consumption: legacy fields unchanged without policy (backwards comp
 // PHASE 5 — Duration math + fitter
 // ─────────────────────────────────────────────────────────────────────
 
-test('duration: estimateDuration blends learned target 60/40', () => {
+test('duration: estimateDuration blends learned target 60/40 (within shorts window)', () => {
     const base = retentionEngine.estimateDuration(TEST_CONTENT, { recommendedFormat: 'JOB_ALERT', urgency: 'MEDIUM' });
+    // Learned target 15s — window ke andar refine (22s cap se drag-up block)
     const learned = retentionEngine.estimateDuration(
-        TEST_CONTENT, { recommendedFormat: 'JOB_ALERT', urgency: 'MEDIUM' }, { learnedTargetSeconds: 22 }
+        TEST_CONTENT, { recommendedFormat: 'JOB_ALERT', urgency: 'MEDIUM' }, { learnedTargetSeconds: 15 }
     );
-    assert.equal(learned.duration, Math.round(base.duration * 0.4 + 22 * 0.6));
+    const expected = Math.min(22, Math.max(12, Math.round(base.duration * 0.4 + 15 * 0.6)));
+    assert.equal(learned.duration, expected);
     assert.notEqual(learned.duration, base.duration);
+    assert.ok(learned.duration >= 12 && learned.duration <= 22, `learned ${learned.duration} outside window`);
 });
 
 test('duration fitter: trims the script and never invents content', () => {

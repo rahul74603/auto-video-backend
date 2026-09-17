@@ -9,11 +9,15 @@
 
 const flags = require('./feature_flags');
 
-// Starting heuristics (Phase 8) — will be learned from analytics
+// Starting heuristics (Phase 8) — SHORTS REACH WINDOW (12-22s) se update:
+// 10-22s shorts ko hi reach milta hai (user-observed data), isliye JOB_ALERT
+// aur UPDATE (jobs + fast_track) ab is window me target hote hain. FULL
+// DETAIL phir bhi hoti hai — duration_fitter script ko isi budget me fit
+// karta hai (hook + saare facts + CTA, rate 1.0-1.25x).
 const DURATION_DEFAULTS = {
-    BREAKING_SHORT: { min: 15, max: 25, target: 20 },
-    UPDATE: { min: 20, max: 35, target: 25 },
-    JOB_ALERT: { min: 25, max: 45, target: 35 },
+    BREAKING_SHORT: { min: 10, max: 22, target: 15 },
+    UPDATE: { min: 12, max: 22, target: 18 },
+    JOB_ALERT: { min: 12, max: 22, target: 18 },
     DETAILED: { min: 40, max: 60, target: 50 }
 };
 
@@ -45,7 +49,7 @@ function estimateDuration(content, opportunity, opts = {}) {
 
     // Factor 3: Urgency — urgent content should be shorter
     if (opportunity?.urgency === 'CRITICAL') {
-        duration = Math.max(15, duration - 10);
+        duration = Math.max(12, duration - 10);
     }
 
     // Factor 4: Historical optimal duration (if available from analytics)
@@ -59,6 +63,14 @@ function estimateDuration(content, opportunity, opts = {}) {
     // measurable influence on the target duration that generation uses.
     if (opts.learnedTargetSeconds && Number.isFinite(opts.learnedTargetSeconds) && opts.learnedTargetSeconds > 0) {
         duration = Math.round(duration * 0.4 + opts.learnedTargetSeconds * 0.6);
+    }
+
+    // Factor 4c — 🎯 SHORTS REACH WINDOW HARD CLAMP: jobs/fast_track videos
+    // 12-22s se bahar NAHI ja sakti — learned policy ya historical data
+    // chahe kuch bhi bole (purane 35-45s data se drag-up block). Learning
+    // window ke ANDAR refine karti hai, bahar nahi kheench sakti.
+    if (format === 'JOB_ALERT' || format === 'UPDATE' || format === 'BREAKING_SHORT') {
+        duration = Math.min(22, Math.max(12, duration));
     }
 
     // Factor 5: Platform constraints
