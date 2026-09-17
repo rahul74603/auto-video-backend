@@ -46,6 +46,12 @@ Options -Indexes
   RewriteRule ^fast-track/?$ /govt-jobs [R=301,L]
   RewriteRule ^refund-policy/?$ /refund-cancellation-policy [R=301,L]
 
+  # ---------- 3b) Trailing slash → no-slash 301 (duplicate URL consolidate) ----------
+  # Virtual pages (/blog/x/ → /blog/x) — canonical chain strong, GSC duplicate kam
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_URI} ^/(.+)/$
+  RewriteRule ^ /%1 [R=301,L,NE]
+
   # ---------- 4) Missing assets → HARD 404 (broken-JavaScript fix) ----------
   # Jo asset exist NAHI karti wo 404 hogi — SPA ka index.html uski jagah
   # KABHI serve nahi hoga. (Yehi "Page has broken JavaScript" ka main cause tha.)

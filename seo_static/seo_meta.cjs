@@ -208,6 +208,14 @@ function buildMetaFiles(colls, opts = {}) {
     if (data.totalPosts || data.vacancy) {
       jobPosting.totalJobOpenings = String(data.totalPosts || data.vacancy).replace(/[^\d]/g, "") || undefined;
     }
+    // Rich-results hardening (Google Rich Results Test requirements)
+    jobPosting.identifier = {
+      "@type": "PropertyValue",
+      name: stripHtml(data.organization) || "StudyGyaan",
+      value: slug,
+    };
+    if (data.qualification) jobPosting.qualifications = stripHtml(data.qualification);
+    if (data.experience) jobPosting.experienceRequirements = stripHtml(data.experience);
 
     const ld = [];
     if (!isExpired) ld.push(jobPosting);

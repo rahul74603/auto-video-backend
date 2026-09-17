@@ -110,6 +110,49 @@ $ld = $entry['ld'] ?? [];
 
 $h = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
 
+// ---------- 🧭 Extra schema: Home = Organization + WebSite · Detail = BreadcrumbList ----------
+// (Google rich-results signals: clear entity + site structure)
+$extraLd = [];
+if ($path === '/') {
+    $extraLd[] = [
+        '@context' => 'https://schema.org',
+        '@type' => 'Organization',
+        'name' => 'StudyGyaan',
+        'url' => $SITE,
+        'logo' => $SITE . '/logo.png',
+    ];
+    $extraLd[] = [
+        '@context' => 'https://schema.org',
+        '@type' => 'WebSite',
+        'name' => 'StudyGyaan',
+        'url' => $SITE,
+        'inLanguage' => 'hi',
+        'publisher' => ['@type' => 'Organization', 'name' => 'StudyGyaan', 'url' => $SITE],
+    ];
+} else {
+    $sectionMap = [
+        'job'         => ['/govt-jobs', 'Govt Jobs'],
+        'jobs'        => ['/govt-jobs', 'Govt Jobs'],
+        'update'      => ['/results', 'Results & Updates'],
+        'blog'        => ['/blog', 'Blog'],
+        'test'        => ['/test', 'Mock Tests'],
+        'material'    => ['/free-study-material', 'Free Study Material'],
+        'pdf'         => ['/free-study-material', 'Free Study Material'],
+        'ebook'       => ['/e-books', 'E-Books'],
+        'web-stories' => ['/web-stories', 'Web Stories'],
+    ];
+    $seg1 = strtolower($segments[0] ?? '');
+    $items = [['@type' => 'ListItem', 'position' => 1, 'name' => 'Home', 'item' => $SITE]];
+    $pos = 2;
+    if (isset($sectionMap[$seg1]) && $path !== $sectionMap[$seg1][0]) {
+        $items[] = ['@type' => 'ListItem', 'position' => 2, 'name' => $sectionMap[$seg1][1], 'item' => $SITE . $sectionMap[$seg1][0]];
+        $pos = 3;
+    }
+    $items[] = ['@type' => 'ListItem', 'position' => $pos, 'name' => $title, 'item' => $canonical];
+    $extraLd[] = ['@context' => 'https://schema.org', '@type' => 'BreadcrumbList', 'itemListElement' => $items];
+}
+$allLd = array_merge(is_array($ld) ? $ld : [], $extraLd);
+
 // 🛑 SOFT-404 KILLER: content-detail URL hai lekin data me entry NAHI —
 // matlab ye page exist hi nahi karta (deleted/galat slug). Bots ko asli 404 do
 // taaki Google "Soft 404" / "Duplicate canonical" me na phansaye.
@@ -161,7 +204,7 @@ if (!$entry) { http_response_code(200); } // homepage/listing → generic meta, 
 <meta name="twitter:title" content="<?= $h($title) ?>">
 <meta name="twitter:description" content="<?= $h($desc) ?>">
 <meta name="twitter:image" content="<?= $h($img) ?>">
-<?php foreach ($ld as $schema): ?>
+<?php foreach ($allLd as $schema): ?>
 <script type="application/ld+json"><?= json_encode($schema, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?></script>
 <?php endforeach; ?>
 </head>
