@@ -105,7 +105,7 @@ const AdminPage = () => {
     if (!user) return (
         <div className="h-screen flex items-center justify-center bg-gray-100 p-3 md:p-4">
             {/* ✅ NEW SEO COMPONENT FOR LOGIN */}
-            <SEO customTitle="Admin Login - StudyGyaan" />
+            <SEO customTitle="Admin Login - StudyGyaan" noIndex={true} noFollow={true} />
             <div className="bg-white p-4 md:p-8 rounded-xl md:rounded-2xl shadow-xl border-t-8 border-blue-600 w-full max-w-md">
                 <h2 className="text-lg md:text-2xl font-bold mb-6 text-center text-gray-800">Admin Control Center</h2>
                 
@@ -137,7 +137,7 @@ const AdminPage = () => {
     return (
         <section className="py-2 md:py-10 bg-gray-50 min-h-screen">
             {/* ✅ NEW SEO COMPONENT FOR DASHBOARD */}
-            <SEO customTitle="Admin Panel - StudyGyaan" />
+            <SEO customTitle="Admin Panel - StudyGyaan" noIndex={true} noFollow={true} />
             <div className="max-w-7xl mx-auto px-1.5 md:px-4">
                 {/* 🏷️ TOP HEADER & NAVIGATION */}
                 <div className="flex flex-col lg:flex-row justify-between lg:items-center mb-4 md:mb-8 bg-white p-2 md:p-6 rounded-lg md:rounded-2xl shadow-sm border gap-4">
