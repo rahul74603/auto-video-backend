@@ -15,6 +15,7 @@ import {
   formatOutcomePct,
   formatOutcomePosition,
   getSeoIntelligenceWorkflowUrl,
+  ingestSearchConsoleFiles,
   outcomeEvidenceLabel,
   prepareSearchConsoleImport,
   fetchProposalArticleHtml,
@@ -262,6 +263,7 @@ const AdminSeoDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [gscText, setGscText] = useState('');
   const [preparedGscJson, setPreparedGscJson] = useState('');
+  const [gscImporting, setGscImporting] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [selectedProposal, setSelectedProposal] = useState<SeoOptimizationProposal | null>(null);
   const [checkedIds, setCheckedIds] = useState<string[]>([]);
@@ -390,6 +392,28 @@ const AdminSeoDashboard = () => {
   const handleRunInstructions = () => {
     window.open(workflowUrl, '_blank', 'noopener,noreferrer');
     toast('GitHub Actions page opened. Choose “Run workflow” to scan without Cloud Run.');
+  };
+
+  // 📁 GSC ZIP/CSV upload — browser me parse → seedha Firestore (koi GitHub paste nahi)
+  const handleGscFileUpload = async (fileList: FileList | null) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    setGscImporting(true);
+    try {
+      const count = await ingestSearchConsoleFiles(files);
+      toast.success(`${count} GSC rows seedha save ho gaye \u2713 Scan ke liye "Open GitHub Actions" \u2192 Run workflow (ya kal 7:15 AM auto).`);
+      await load();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const permission = /permission|rules/i.test(msg);
+      toast.error(
+        permission
+          ? 'Firestore ne mana kiya (rules live nahi). Niche "Prepare GSC JSON" wala paste-path use karo, ya firebase deploy --only firestore:rules chalao.'
+          : `GSC upload: ${msg}`,
+      );
+    } finally {
+      setGscImporting(false);
+    }
   };
 
   const handlePrepareGsc = async () => {
@@ -1549,10 +1573,32 @@ const AdminSeoDashboard = () => {
 
       <div className="bg-white border rounded-[2rem] p-6">
         <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Search Console Data Import</h3>
+        {/* 📄 TARIIKA #1 — ZIP/CSV seedha upload (browser → Firestore, admin-only rules) */}
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-4">
+          <p className="text-xs font-black text-blue-800 mb-2">
+            📥 SABSE AASAN TARIKA: GSC ki ZIP yahin upload karo — bas.
+          </p>
+          <p className="text-[11px] text-blue-700 mb-3">
+            Search Console → Performance → Export → Download CSV (ZIP) → wo file yahin drag karo.
+            Data seedha Firestore me save hoga (sirf tumhara admin account likh sakta hai — public kabhi nahi).
+            Scan daily 7:15 AM khud chalta hai; turant chahiye to &quot;Open GitHub Actions&quot; → Run workflow.
+          </p>
+          <label className={`inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs cursor-pointer transition-all active:scale-95 ${gscImporting ? 'opacity-60 pointer-events-none' : ''}`}>
+            <input
+              type="file"
+              accept=".zip,.csv,.txt"
+              multiple
+              className="hidden"
+              disabled={gscImporting}
+              onChange={(e) => { void handleGscFileUpload(e.target.files); e.target.value = ''; }}
+            />
+            {gscImporting ? '⏳ Import ho raha hai...' : '📁 GSC ZIP / CSV Upload — Ek Click Import'}
+          </label>
+        </div>
+        {/* TARIIKA #2 (fallback) — manual JSON paste → workflow input */}
         <p className="text-xs text-gray-500 mb-3">
-          Manual JSON import is preserved, but browser direct Firestore write is disabled because Firestore rules are not in this repo.
-          Paste rows here to validate and prepare safe JSON, then paste the prepared JSON into the GitHub Actions workflow input named <b>gsc_json</b>.
-          Tokens, API keys and service-account JSON are never stored.
+          Fallback: rows paste karke validate karo, phir prepared JSON ko GitHub Actions workflow input <b>gsc_json</b> me paste karo.
+          Tokens, API keys aur service-account JSON kabhi store nahi hote.
         </p>
         <textarea
           value={gscText}

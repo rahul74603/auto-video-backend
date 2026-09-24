@@ -1,11 +1,31 @@
 # GSC Data Import — SEO Intelligence me Search Console data daalne ka tarika
 
 ## Ye kya hai?
-`SEO Intelligence Runner` workflow (daily 7:15 AM) me Google Search Console ka
-real data daal kar **CTR opportunities** on karte hain — matlab kaunse pages
+SEO Intelligence ko Google Search Console ka real data milta hai — kaunse pages
 impressions le rahe hain par clicks nahi (title/meta improve karne layak).
 
-## Steps (5 minute, mahine me 1-2 baar kaafi hai)
+---
+
+# ⭐ TARIIKA 1 — SABSE AASAN: Admin panel me ZIP upload (recommended)
+
+**Bas 2 clicks:**
+1. GSC → Performance → Search results → Last 3 months → **Export → Download CSV** (ZIP milega)
+2. Site ke **Admin panel → SEO Dashboard → "Search Console Data Import"** card me
+   wo ZIP file upload kar do — **DONE!**
+
+Data seedha Firestore me save hota hai (sirf admin login se — public kabhi nahi).
+Scan daily 7:15 AM khud chalta hai; turant dekhna hai to GitHub Actions →
+SEO Intelligence Runner → Run workflow (2 second ka kaam).
+
+*Agar "Firestore ne mana kiya" error aaye: live rules purani hain —
+PC se `firebase deploy --only firestore:rules` chala do (ya niche wala
+paste-tarika ek baar use kar lo).*
+
+---
+
+# TARIIKA 2 — Manual paste (fallback, 5 minute)
+
+## Steps
 
 ### Step 1 — GSC se export
 1. [search.google.com/search-console](https://search.google.com/search-console) kholo → **studygyaan.in** property

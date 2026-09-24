@@ -7,6 +7,7 @@ import {
   limit,
   orderBy,
   query,
+  serverTimestamp,
   setDoc,
 } from 'firebase/firestore';
 import { classifyJobLifecycle } from '@/utils/jobExpiry';
@@ -325,15 +326,38 @@ export function prepareSearchConsoleImport(rows: unknown): { rows: SearchConsole
 }
 
 /**
- * Direct browser writes to the GSC Firestore snapshot are intentionally disabled
- * because this repository does not contain Firestore security rules to verify
- * that only the admin can write system_settings/seo_search_console. Use the
- * GitHub Actions workflow input instead; the runner writes with server-side
- * Firebase Admin credentials kept in GitHub Secrets.
+ * Admin browser → Firestore DIRECT write (GSC snapshot).
+ * Firestore rules (repo: firestore.rules) `system_settings/seo_search_console`
+ * pe sirf admin email ko write dete hain — isliye direct write SAFE hai.
+ * Agar live rules purani hain to write permission-denied dega; dashboard ka
+ * paste-fallback (prepareSearchConsoleImport + workflow gsc_json) tab bhi kaam karta hai.
  */
 export async function ingestSearchConsoleRows(rows: Array<Record<string, unknown>>): Promise<number> {
-  prepareSearchConsoleImport(rows);
-  throw new Error('Direct browser GSC writes are disabled. Use the SEO Intelligence GitHub Actions workflow input.');
+  const normalized = prepareSearchConsoleImport(rows).rows;
+  const capped = normalized.slice(0, 300); // doc-size safety (~1MB limit se bahut andar)
+  await setDoc(
+    doc(db, SETTINGS_COLLECTION, GSC_DOC),
+    {
+      rows: capped,
+      source: 'admin-dashboard-upload',
+      ingestedAt: new Date().toISOString(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+  return capped.length;
+}
+
+/**
+ * Admin GSC ZIP/CSV upload → parse (browser me) → Firestore write.
+ * Ye "ek jagah upload, kaam ho gaya" wala path hai — GitHub/workflow paste ki
+ * zaroorat nahi. Scan phir bhi Actions runner me hi hota hai (daily 7:15 AM ya
+ * manual "Run workflow") kyunki wahi secrets-safe radar hai.
+ */
+export async function ingestSearchConsoleFiles(files: File[]): Promise<number> {
+  const { rowsFromGscFiles } = await import('./gscCsv');
+  const rows = await rowsFromGscFiles(files);
+  return ingestSearchConsoleRows(rows as unknown as Array<Record<string, unknown>>);
 }
 
 export function getSeoIntelligenceWorkflowUrl(): string {

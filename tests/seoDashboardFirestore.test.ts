@@ -16,6 +16,7 @@ vi.mock('firebase/firestore', () => ({
   query: vi.fn((...args: unknown[]) => ({ type: 'query', args })),
   orderBy: vi.fn((field: string, direction?: string) => ({ field, direction })),
   limit: vi.fn((count: number) => ({ count })),
+  serverTimestamp: vi.fn(() => ({ __serverTimestamp: true })),
 }));
 
 vi.mock('@/firebase/config', () => ({
@@ -188,9 +189,16 @@ describe('SEO dashboard Firestore repository', () => {
     expect(prepareSearchConsoleImport(rows).json).toContain('studygyaan.in');
   });
 
-  it('does not allow direct browser GSC writes when rules are not available in repo', async () => {
-    await expect(ingestSearchConsoleRows([
+  it('writes GSC snapshot directly from admin browser (firestore.rules allow admin email)', async () => {
+    mockSetDoc.mockResolvedValue(undefined);
+    const count = await ingestSearchConsoleRows([
       { query: 'ssc', page: 'https://studygyaan.in/job/ssc', clicks: 1, impressions: 100, ctr: 0.02, position: 7 },
-    ])).rejects.toThrow(/Direct browser GSC writes are disabled/);
+    ]);
+    expect(count).toBe(1);
+    expect(mockSetDoc).toHaveBeenCalledTimes(1);
+    const [docRef, payload, opts] = mockSetDoc.mock.calls[0];
+    expect(docRef).toMatchObject({ collectionName: 'system_settings', id: 'seo_search_console' });
+    expect((payload as { source: string }).source).toBe('admin-dashboard-upload');
+    expect(opts).toMatchObject({ merge: true });
   });
 });
