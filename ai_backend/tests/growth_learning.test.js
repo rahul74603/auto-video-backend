@@ -555,10 +555,10 @@ test('duration: estimateDuration blends learned target 60/40 (within shorts wind
     const learned = retentionEngine.estimateDuration(
         TEST_CONTENT, { recommendedFormat: 'JOB_ALERT', urgency: 'MEDIUM' }, { learnedTargetSeconds: 15 }
     );
-    const expected = Math.min(22, Math.max(12, Math.round(base.duration * 0.4 + 15 * 0.6)));
+    const expected = Math.min(23, Math.max(13, Math.round(base.duration * 0.4 + 15 * 0.6)));
     assert.equal(learned.duration, expected);
     assert.notEqual(learned.duration, base.duration);
-    assert.ok(learned.duration >= 12 && learned.duration <= 22, `learned ${learned.duration} outside window`);
+    assert.ok(learned.duration >= 13 && learned.duration <= 23, `learned ${learned.duration} outside window`);
 });
 
 test('duration fitter: trims the script and never invents content', () => {

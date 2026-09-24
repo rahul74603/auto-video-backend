@@ -15,9 +15,9 @@ const flags = require('./feature_flags');
 // DETAIL phir bhi hoti hai — duration_fitter script ko isi budget me fit
 // karta hai (hook + saare facts + CTA, rate 1.0-1.25x).
 const DURATION_DEFAULTS = {
-    BREAKING_SHORT: { min: 10, max: 22, target: 15 },
-    UPDATE: { min: 12, max: 22, target: 18 },
-    JOB_ALERT: { min: 12, max: 22, target: 18 },
+    BREAKING_SHORT: { min: 13, max: 23, target: 16 },
+    UPDATE: { min: 13, max: 23, target: 18 },
+    JOB_ALERT: { min: 13, max: 23, target: 18 },
     DETAILED: { min: 40, max: 60, target: 50 }
 };
 
@@ -49,7 +49,7 @@ function estimateDuration(content, opportunity, opts = {}) {
 
     // Factor 3: Urgency — urgent content should be shorter
     if (opportunity?.urgency === 'CRITICAL') {
-        duration = Math.max(12, duration - 10);
+        duration = Math.max(13, duration - 10);
     }
 
     // Factor 4: Historical optimal duration (if available from analytics)
@@ -65,12 +65,11 @@ function estimateDuration(content, opportunity, opts = {}) {
         duration = Math.round(duration * 0.4 + opts.learnedTargetSeconds * 0.6);
     }
 
-    // Factor 4c — 🎯 SHORTS REACH WINDOW HARD CLAMP: jobs/fast_track videos
-    // 12-22s se bahar NAHI ja sakti — learned policy ya historical data
-    // chahe kuch bhi bole (purane 35-45s data se drag-up block). Learning
-    // window ke ANDAR refine karti hai, bahar nahi kheench sakti.
+    // Factor 4c — 🎯 SHORTS REACH WINDOW HARD CLAMP (13-23s): jobs/fast_track
+    // videos is window se bahar NAHI ja sakti — learned policy ya historical
+    // data chahe kuch bhi bole. Learning window ke ANDAR refine karti hai.
     if (format === 'JOB_ALERT' || format === 'UPDATE' || format === 'BREAKING_SHORT') {
-        duration = Math.min(22, Math.max(12, duration));
+        duration = Math.min(23, Math.max(13, duration));
     }
 
     // Factor 5: Platform constraints

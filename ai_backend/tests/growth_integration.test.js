@@ -69,13 +69,25 @@ test('autoVideo: accepts growthRecommendation in options', () => {
     );
 });
 
-test('autoVideo: uses growth script when available', () => {
+test('autoVideo: shorts-template scripts for job/fast_track (structure-first)', () => {
+    // USER REQUIREMENT (reach data): 13-23s shorts me fixed structure —
+    // hook → title → type+last date → subscribe + studygyaan.in/1st-comment CTA.
+    // Growth script override jaan-bujh ke hataya gaya (structure tootta tha);
+    // growth engine duration/presenter/visual/music policy influence barkarar.
     const autoVideoSrc = fs.readFileSync(
         path.join(__dirname, '..', 'autoVideo.js'), 'utf8'
     );
     assert.ok(
-        autoVideoSrc.includes('growthRec.script') && autoVideoSrc.includes('growthRec.script.script'),
-        'autoVideo.js must use growth engine script when provided'
+        autoVideoSrc.includes('shorts-template') && autoVideoSrc.includes('lastDateText'),
+        'autoVideo.js must use deterministic shorts scripts (hook+title+last date+CTA)'
+    );
+    assert.ok(
+        autoVideoSrc.includes('studygyaan.in पर'),
+        'shorts scripts must speak the studygyaan.in visit CTA'
+    );
+    assert.ok(
+        !autoVideoSrc.includes('growthRec.script.script'),
+        'growth script must NOT override the shorts template'
     );
 });
 

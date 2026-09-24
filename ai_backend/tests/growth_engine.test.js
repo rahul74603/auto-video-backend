@@ -275,8 +275,8 @@ test('retention: estimateDuration returns reasonable value', () => {
         { vacancies: '5000', lastDate: '28 Aug' },
         { recommendedFormat: 'JOB_ALERT', urgency: 'MEDIUM' }
     );
-    // SHORTS REACH WINDOW: jobs 12-22s me clamp hote hain (10-22s shorts ko reach milta hai)
-    assert.ok(dur.duration >= 12 && dur.duration <= 22, `duration ${dur.duration} outside 12-22 window`);
+    // SHORTS REACH WINDOW: jobs 13-23s me clamp hote hain (13-23s shorts ko reach milta hai)
+    assert.ok(dur.duration >= 13 && dur.duration <= 23, `duration ${dur.duration} outside 13-23 window`);
 });
 
 test('retention: breaking content has shorter duration', () => {

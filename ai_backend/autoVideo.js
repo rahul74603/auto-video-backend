@@ -851,32 +851,37 @@ async function runFFmpeg(ffmpegPath, args, mode = 'full') {
 
         const telegramChannel = process.env.TELEGRAM_CHANNEL_NAME || "स्टडी ज्ञान";
 
+        // 🎯 SHORTS SCRIPT STRUCTURE (13-23s reach window):
+        // hook → job title → type + LAST DATE → subscribe + studygyaan.in/1st-comment CTA.
+        // ~50-60 words = 13-20s TTS — beech me koi extra detail NAHI.
+        const lastDateText = (jobData.lastDate && jobData.lastDate !== 'undefined' && String(jobData.lastDate).trim())
+            ? String(jobData.lastDate).trim()
+            : 'जल्द ही जारी';
         const jobScripts = [
-            `बेरोजगार हो? तो ये मौका हाथ से जाने मत देना! ${cleanName} की नई वैकेंसी आउट हो गई है। फॉर्म भरने की पूरी डिटेल पहले कमेंट में है। ${telegramChannel} टेलीग्राम से जुड़ें।`,
-            `एक और शानदार सरकारी नौकरी आ गई है! ${cleanName} के लिए अभी अप्लाई करें। लास्ट डेट निकलने से पहले फॉर्म भर दो। लिंक पहले कमेंट में है।`,
-            `तैयारी शुरू कर दो! ${cleanName} की बम्पर भर्ती आई है। योग्यता और अप्लाई लिंक पहले कमेंट में देखें। स्टडी ज्ञान से जुड़े रहें।`
+            `सरकारी नौकरी का सपना पूरा करना है? ${cleanName} की भर्ती आ गई है! आवेदन की आखिरी तारीख है ${lastDateText}। योग्यता, आयु सीमा, फीस और selection process की पूरी जानकारी studygyaan.in पर है। चैनल को अभी subscribe करें और direct apply करने के लिए पहला कमेंट खोलें।`,
+            `एक और बंपर सरकारी भर्ती आ गई है! ${cleanName} के पदों पर ऑनलाइन आवेदन मांगे गए हैं। लास्ट डेट है ${lastDateText} — निकलने से पहले फॉर्म भर दें। योग्यता और पूरी डिटेल studygyaan.in पर है। अभी चैनल subscribe करें और apply link के लिए पहला कमेंट देखें।`
         ];
 
         const fastTrackScripts = {
             'Result': [
-                `क्या आपने भी इसका एग्जाम दिया था? तो दिल थाम के बैठिये! ${cleanName} का रिजल्ट फाइनली डिक्लेयर हो चुका है। अपना रिजल्ट चेक करने के लिए पहला कमेंट देखें, और हमारे टेलीग्राम चैनल ${telegramChannel} से जुड़ें।`,
-                `जिस रिजल्ट का इंतज़ार था, वो आ गया! ${cleanName} रिजल्ट जारी हो गया है। डायरेक्ट लिंक पहले कमेंट में है। अभी चेक करें।`
+                `रिजल्ट आ गया है! ${cleanName} का रिजल्ट डिक्लेयर हो चुका है। अपना रोल नंबर चेक करें, कटऑफ और मेरिट लिस्ट भी देखें — direct link studygyaan.in पर है। चैनल को अभी subscribe करें और पहला कमेंट खोलकर अभी अपना रिजल्ट चेक करें।`,
+                `जिसका इंतज़ार था, वो आ गया है! ${cleanName} का रिजल्ट जारी हो गया है। अपना स्कोर कार्ड डाउनलोड करें — direct link studygyaan.in पर है। चैनल subscribe करें और पहले कमेंट से सीधे अपना रिजल्ट देखें।`
             ],
             'Admit Card': [
-                `एग्जाम डेट पास आ रही है! ${cleanName} का एडमिट कार्ड जारी हो चुका है। अपना एग्जाम सेंटर और टाइमिंग चेक करने के लिए पहला कमेंट देखें।`,
-                `बिना इसके एग्जाम सेंटर में एंट्री नहीं मिलेगी! ${cleanName} एडमिट कार्ड डाउनलोड करें। लिंक पहले कमेंट में है।`
+                `एडमिट कार्ड जारी हो गया है! ${cleanName} का एडमिट कार्ड डाउनलोड शुरू हो चुका है। एग्जाम सेंटर, टाइमिंग और दिशा-निर्देश ज़रूर चेक करें। direct link studygyaan.in पर है। चैनल subscribe करें और पहला कमेंट खोलें।`,
+                `एग्जाम पास आ गया है! ${cleanName} का हॉल टिकट जारी हो गया है। याद रखें — बिना एडमिट कार्ड entry नहीं मिलेगी। studygyaan.in से डाउनलोड करें, चैनल subscribe करें और पहले कमेंट में direct link देखें।`
             ],
             'Answer Key': [
-                `एग्जाम में टॉप करना है? ${cleanName} की आंसर की जारी हो गई है। अपने जवाब मिलाएं और कटऑफ का अंदाज़ा लगाएं। डायरेक्ट लिंक पहले कमेंट में है।`,
-                `${cleanName} आंसर की चेक करें और ऑब्जेक्शन डालने का मौका मत चूकें! लिंक पहले कमेंट में है।`
+                `आंसर की आ गई है! ${cleanName} की ऑफिशियल आंसर की जारी हो चुकी है। अपने जवाब मिलाएं और स्कोर का अंदाज़ा लगाएं। PDF studygyaan.in पर है। चैनल subscribe करें और पहले कमेंट से अभी चेक करें।`,
+                `अपना स्कोर चेक करने का टाइम आ गया है! ${cleanName} की ऑफिशियल आंसर की आ गई है। objection भी डाल सकते हैं, आखिरी तारीख देख लें। PDF studygyaan.in पर है। subscribe करें और पहला कमेंट खोलें।`
             ],
             'Syllabus': [
-                `सिलेक्शन चाहिए तो ये ज़रूर देखें! ${cleanName} का नया सिलेबस जारी हो गया है। फ्री पीडीएफ डाउनलोड करें, लिंक पहले कमेंट में है।`,
-                `${cleanName} एग्जाम पैटर्न बदल गया है! नया सिलेबस चेक करें। फ्री पीडीएफ पहले कमेंट में है।`
+                `सिलेक्शन पाना है? ${cleanName} का नया सिलेबस आ गया है। एग्जाम पैटर्न, subjects और marks distribution की पूरी लिस्ट studygyaan.in पर है। फ्री PDF — चैनल subscribe करें और पहले कमेंट से डाउनलोड करें।`,
+                `एग्जाम पैटर्न बदल गया है! ${cleanName} का लेटेस्ट सिलेबस जारी हो गया है। नया पैटर्न पहले समझो, वैसे तैयारी करो। पूरी डिटेल studygyaan.in पर है। subscribe करें और पहले कमेंट में फ्री PDF देखें।`
             ],
             'Default': [
-                `बेरोजगार हो? तो ये मौका हाथ से जाने मत देना! ${cleanName} की नई वैकेंसी आउट हो गई है। फॉर्म भरने की पूरी डिटेल पहले कमेंट में है।`,
-                `एक और शानदार सरकारी नौकरी आ गई है! ${cleanName} के लिए अभी अप्लाई करें। लिंक पहले कमेंट में है।`
+                `बड़ा अपडेट आ गया है! ${cleanName} से जुड़ी नई जानकारी जारी हो गई है। पूरी डिटेल और official link studygyaan.in पर है। चैनल subscribe करें और पहले कमेंट से सीधे देखें।`,
+                `सरकारी अपडेट! ${cleanName} की ताज़ा जानकारी जारी हो गई है। ना चूकें — पूरी डिटेल studygyaan.in पर है। चैनल subscribe करें और पहला कमेंट देखें।`
             ]
         };
 
@@ -887,15 +892,24 @@ async function runFFmpeg(ffmpegPath, args, mode = 'full') {
             scriptArray = fastTrackScripts[jobCat] || fastTrackScripts['Default'];
         }
 
-        // 🧠 GROWTH ENGINE: use generated script if available and high-quality
-        let script;
-        if (growthEnabled && growthRec.script && growthRec.script.script && growthRec.contentScore >= 40) {
-            script = growthRec.script.script;
-            console.log(`🎙️ Script (growth): ${script.substring(0, 80)}...`);
-        } else {
-            script = scriptArray[Math.floor(Math.random() * scriptArray.length)];
-            console.log(`🎙️ Script: ${script.substring(0, 80)}...`);
+        // 🎯 SCRIPT: deterministic shorts template (structure HAMESHA:
+        // hook → title → type+last date → subscribe+visit CTA). Growth engine
+        // ka script override band — warna structure/CTA toot jaata tha.
+        // (Duration/presenter/visualStyle/learning policy influence barkarar hai)
+        let script = scriptArray[Math.floor(Math.random() * scriptArray.length)];
+        // 🎯 MIN-DURATION GUARD: TTS voice hi video length hai — chhoti titles
+        // pe script 13s se kam na rahe. 42 words se kam ho to natural closing
+        // lines judti hain (koi filler/naya claim nahi — sirf retention lines).
+        const MIN_SCRIPT_WORDS = 42;
+        const closingLines = [
+            ' और हाँ, ऐसे ही नए अपडेट सबसे पहले यहीं मिलेंगे।',
+            ' रोज़ नए सरकारी अपडेट के लिए studygyaan.in खोलें।',
+        ];
+        let padIdx = 0;
+        while (script.split(/\s+/).filter(Boolean).length < MIN_SCRIPT_WORDS && padIdx < closingLines.length) {
+            script += closingLines[padIdx++];
         }
+        console.log(`🎙️ Script (shorts-template): ${script.substring(0, 80)}...`);
 
         // 🧠 LEARNED DURATION (Growth Self-Learning, Phase 5): the target
         // duration from the recommendation (blended with the learned policy
