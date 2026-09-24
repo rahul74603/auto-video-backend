@@ -202,8 +202,13 @@ async function refreshLifecycleFields(db, jobs, now, maxWrites = 50) {
 }
 
 /**
- * Stored relatedLinks writes were removed in the fix phase.
- * Internal linking is scored at render time by the existing RelatedContent widget.
+ * refreshRelatedLinks — INTENTIONAL NO-OP (architecture decision, do NOT "fix"):
+ * Internal linking 2 render-side systems se hoti hai —
+ *   1. JS users: RelatedContent widget (JobDetails.tsx related jobs + ExamHubNavigation)
+ *   2. Bots: seo_static/seo_meta.cjs relatedHtml() → meta.php static HTML me
+ *      "ये भी देखें" links (5 jobs + 3 updates, same-category first)
+ * Firestore me stored relatedLinks likhna TEEsra redundant system ban jata
+ * hai jise koi renderer nahi padhta — isliye ye stub sahi hai.
  */
 async function refreshRelatedLinks() {
   return 0;
