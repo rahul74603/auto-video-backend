@@ -99,6 +99,7 @@ function buildMetaFiles(colls, opts = {}) {
   const jobs = {};
   const updates = {};
   const pages = {};
+  const stories = {};
 
   // 🖼️ Image resolution: per-page OG → doc image → type fallback → default
   const FALLBACK_BY_TYPE = {
@@ -337,11 +338,95 @@ function buildMetaFiles(colls, opts = {}) {
   });
 
   (colls.mock_tests || []).forEach(({ id, data }) => addPage(`/test/${data.slug || id}`, data, "imageUrl", "test"));
-  (colls.web_stories || []).forEach(({ id, data }) => addPage(`/web-stories/${data.slug || id}`, data, "coverImage", "story"));
+  // 📱 Web stories ab NEECHE full-content builder me jaate hain (preview nahi) —
+  // Google Discover/Web-Stories surface ke liye poora text + schema + internal links.
   (colls.courses || []).forEach(({ id, data }) => addPage(`/course/${data.slug || id}`, data, "imageUrl", "course"));
   [...(colls.study_materials || []), ...(colls.studyMaterials || [])].forEach(({ id, data }) =>
     addPage(`/material/${data.slug || id}`, data, "imageUrl", "material")
   );
+
+  // ===== WEB STORIES: FULL CONTENT + Article schema (Google Discover power-up) =====
+  // Pehle stories ko sirf preview meta milta tha → thin content → Discover/Web-Stories
+  // surface pe koi baat nahi. Ab bots ko cover + saare slides ka text + CTA +
+  // doosri stories ke links + Article schema milta hai.
+  const storyPool = (colls.web_stories || [])
+    .filter(({ data }) => isIndexableDocument(data) && hasUsefulTitle(data))
+    .map(({ id, data }) => ({
+      slug: data.slug || id,
+      title: stripHtml(data.title),
+      category: String(data.category || "").toLowerCase(),
+    }));
+  (colls.web_stories || []).forEach(({ id, data }) => {
+    if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+    const slug = data.slug || id;
+    const path = `/web-stories/${slug}`;
+    const title = stripHtml(data.title);
+    const desc = truncate(data.metaDescription || stripHtml(data.description) || `${title} — StudyGyaan Web Story`, 160);
+    const img = resolveImg(path, data, "coverImage", "story");
+    const posted = toIso(data.publishedAt || data.createdAt) || new Date().toISOString();
+
+    // slide text nikalo (title/heading/subtitle/lines — jo bhi mile)
+    const slideText = (s) => {
+      if (!s || typeof s !== "object") return "";
+      const parts = [];
+      const head = s.title || s.heading;
+      if (head) parts.push(String(head));
+      if (s.subtitle) parts.push(String(s.subtitle));
+      if (s.badge) parts.push(String(s.badge));
+      if (Array.isArray(s.lines)) parts.push(s.lines.filter(Boolean).join(" "));
+      if (Array.isArray(s.stats)) parts.push(s.stats.map((st) => [st.value, st.label].filter(Boolean).join(" ")).filter(Boolean).join(", "));
+      return parts.join(" — ").replace(/\s+/g, " ").trim();
+    };
+
+    let body = `<p><img src="${esc(data.coverImage || img)}" alt="${esc(title)}" width="1200" height="630" loading="eager"></p>`;
+    const descText = stripHtml(data.description);
+    if (descText) body += `<p>${esc(descText)}</p>`;
+    const slides = Array.isArray(data.slides) ? data.slides : [];
+    slides.forEach((s, idx) => {
+      const text = slideText(s);
+      if (!text) return;
+      const head = (s && (s.title || s.heading)) || `Page ${idx + 1}`;
+      body += `<h2>${esc(`${idx + 1}. ${head}`)}</h2><p>${esc(text)}</p>`;
+    });
+    if (data.applyLink) {
+      body += `<p>🔗 <a href="${esc(data.applyLink)}">${esc(title)} — full details yahan padhein</a></p>`;
+    }
+    // internal links: doosri stories + hub + related jobs/updates
+    const others = storyPool.filter((p) => p.slug !== slug).slice(0, 5);
+    body += `<h2>Aur Web Stories</h2><ul>`;
+    others.forEach((p) => { body += `<li><a href="${SITE}/web-stories/${esc(p.slug)}">${esc(p.title)}</a></li>`; });
+    body += `<li><a href="${SITE}/web-stories">Saari Web Stories dekhein</a></li>`;
+    body += `</ul>`;
+    body += relatedHtml(slug, String(data.category || "").toLowerCase());
+
+    const articleLd = {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      headline: truncate(title, 110),
+      description: desc,
+      image: [img],
+      datePublished: posted,
+      dateModified: posted,
+      inLanguage: "hi",
+      author: { "@type": "Organization", name: stripHtml(data.author) || "StudyGyaan" },
+      publisher: {
+        "@type": "Organization",
+        name: "StudyGyaan",
+        logo: { "@type": "ImageObject", url: `${SITE}/logo.png` },
+      },
+      mainEntityOfPage: `${SITE}${path}`,
+      articleSection: stripHtml(data.category) || "Web Stories",
+    };
+
+    stories[path] = {
+      t: truncate(title, 70),
+      d: desc,
+      img,
+      type: "article",
+      content: body,
+      ld: [articleLd],
+    };
+  });
 
   // 🎯 HUB PAGES — bots ko real content list (title/desc + matching active jobs)
   try {
@@ -554,6 +639,7 @@ function buildMetaFiles(colls, opts = {}) {
     "seo-meta-jobs.json": JSON.stringify(jobs),
     "seo-meta-updates.json": JSON.stringify(updates),
     "seo-meta-pages.json": JSON.stringify(pages),
+    "seo-meta-stories.json": JSON.stringify(stories),
   };
 }
 

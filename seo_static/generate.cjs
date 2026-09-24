@@ -500,6 +500,23 @@ function buildAll(colls, ogMap = {}) {
     rss += `    <media:thumbnail url="${safeXml(imageUrl)}" width="300" height="200"/>\n`;
     rss += `  </item>\n`;
   });
+  // 📱 Web Stories bhi feed me — subscribers/Readers apps ko turant milegi
+  (colls.web_stories || []).slice(0, 20).forEach(({ id, data }) => {
+    if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+    const slugOrId = data.slug || id;
+    const itemUrl = `${WEBSITE_URL}/web-stories/${slugOrId}`;
+    const imageUrl = imgOr(`/web-stories/${slugOrId}`, data, "coverImage", "story");
+    rss += `  <item>\n`;
+    rss += `    <title><![CDATA[${data.title || "StudyGyaan Web Story"}]]></title>\n`;
+    rss += `    <link>${itemUrl}</link>\n`;
+    rss += `    <guid isPermaLink="true">${itemUrl}</guid>\n`;
+    rss += `    <pubDate>${getUtcDate(data.createdAt, nowUtc)}</pubDate>\n`;
+    rss += `    <description><![CDATA[${data.description ? String(data.description).substring(0, 300) : "Tap karke story padhein — StudyGyaan.in"}]]></description>\n`;
+    rss += `    <category><![CDATA[${data.category || "Web Story"}]]></category>\n`;
+    rss += `    <media:content\n      url="${safeXml(imageUrl)}"\n      medium="image"\n      type="image/jpeg"\n      width="1200"\n      height="630"/>\n`;
+    rss += `    <media:thumbnail url="${safeXml(imageUrl)}" width="300" height="200"/>\n`;
+    rss += `  </item>\n`;
+  });
   rss += `</channel>\n</rss>`;
 
   return {

@@ -19,6 +19,7 @@ const MaterialPage = lazy(() => import('./MaterialPage'));
 const MockTestHomeSection = lazy(() => import('@/components/MockTestHomeSection'));
 const EBooks = lazy(() => import('@/sections/Notes'));
 const BlogHomeSection = lazy(() => import('@/components/BlogHomeSection'));
+const WebStoriesHomeSection = lazy(() => import('@/components/WebStoriesHomeSection'));
 
 // =========================================================
 // ⏳ LOADING FALLBACKS
@@ -240,7 +241,17 @@ const Home = () => {
                 <EBooks />
             </LazySection>
 
-            
+            {/* =========================================================
+                📱 10. WEB STORIES — story circles (views + internal links)
+            ========================================================= */}
+            <LazySection
+                id="web-stories"
+                fallback={<GridSkeleton />}
+                minHeight="220px"
+                className="py-2"
+            >
+                <WebStoriesHomeSection />
+            </LazySection>
 
         </main>
     );

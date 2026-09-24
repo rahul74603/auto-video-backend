@@ -76,7 +76,7 @@ $detailAlias = [
     'ebook'           => 'pages',
     'pdf'             => 'pages',
     'material'        => 'pages',
-    'web-stories'     => 'pages',
+    'web-stories'     => 'stories',
 ];
 
 $entry = null;
@@ -84,7 +84,11 @@ if ($isDetail && isset($detailAlias[$first])) {
     $kind = $detailAlias[$first];
     $file = $kind === 'jobs'
         ? __DIR__ . '/seo-meta-jobs.json'
-        : ($kind === 'updates' ? __DIR__ . '/seo-meta-updates.json' : __DIR__ . '/seo-meta-pages.json');
+        : ($kind === 'updates'
+            ? __DIR__ . '/seo-meta-updates.json'
+            : ($kind === 'stories'
+                ? __DIR__ . '/seo-meta-stories.json'
+                : __DIR__ . '/seo-meta-pages.json'));
 } else {
     // listing / static pages bhi pages JSON me se mil sakti hain (/govt-jobs, /exam-calendar...)
     $file = __DIR__ . '/seo-meta-pages.json';
