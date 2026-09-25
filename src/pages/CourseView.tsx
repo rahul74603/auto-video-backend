@@ -27,6 +27,7 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import RelatedContent from '../components/RelatedContent';
 import ExamHubNavigation from '../components/ExamHubNavigation';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
+import { stripHtmlToText } from '@/utils/updateSeoFields';
 
 interface CourseContent { id: string; title: string; seoTitle?: string; link?: string; type: 'PDF' | 'VIDEO' | 'FOLDER'; parentId?: string | null; }
 
@@ -217,7 +218,7 @@ const CourseView = () => {
       {/* 🔥 नया डायनामिक SEO टैग जो कोर्स का नाम और फोटो गूगल/WhatsApp पर दिखाएगा */}
       <SEO 
         customTitle={`${course.title} - StudyGyaan 2026`}
-        customDescription={course.description || `Get high-quality study materials, notes and expert guidance for ${course.title} on StudyGyaan Portal.`}
+        customDescription={stripHtmlToText(course.description).slice(0, 160) || `Get high-quality study materials, notes and expert guidance for ${course.title} on StudyGyaan Portal.`}
         customUrl={`https://studygyaan.in/course/${id}`}
         customImage="https://studygyaan.in/og-image.jpg"
       />

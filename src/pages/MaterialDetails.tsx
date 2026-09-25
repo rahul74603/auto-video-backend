@@ -11,6 +11,7 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import RelatedContent from '../components/RelatedContent';
 import ExamHubNavigation from '../components/ExamHubNavigation';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
+import { stripHtmlToText } from '@/utils/updateSeoFields';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import DynamicSidebar from '../components/DynamicSidebar';
 
@@ -71,7 +72,7 @@ const MaterialDetails = () => {
       {/* 🔥 नया डायनामिक SEO टैग जो PDF का नाम और फोटो गूगल/WhatsApp पर दिखाएगा */}
       <SEO 
         customTitle={`${item.title} - Free PDF Download | StudyGyaan 2026`}
-        customDescription={item.description || `Download free PDF: ${item.title} for your exam preparation. Best high-quality study notes on StudyGyaan.`}
+        customDescription={stripHtmlToText(item.description).slice(0, 160) || `Download free PDF: ${item.title} for your exam preparation. Best high-quality study notes on StudyGyaan.`}
         customUrl={`https://studygyaan.in/material/${id}`}
         customImage="https://studygyaan.in/og-image.jpg"
       />

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import SEO from '../components/SEO';
 import { toDateSafe } from '@/types/firestore';
+import { stripHtmlToText } from '@/utils/updateSeoFields';
 import type { TimestampLike } from '@/types/firestore';
 
 // =========================================================
@@ -640,7 +641,7 @@ const WebStoryViewer = () => {
             <SEO
                 customTitle={`${storyData.title} | Web Story | StudyGyaan`}
                 customDescription={
-                    storyData.description
+                    stripHtmlToText(storyData.description).slice(0, 160)
                     || `${storyData.title} - StudyGyaan Web Story पर पढ़ें।`
                 }
                 customUrl={canonicalUrl}

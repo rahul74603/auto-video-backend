@@ -17,6 +17,7 @@ import DynamicSidebar from '../components/DynamicSidebar';
 import SmartImage from '../components/SmartImage';
 import ExamHubNavigation from '../components/ExamHubNavigation';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
+import { stripHtmlToText } from '@/utils/updateSeoFields';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import type { BlogPostRecord, TimestampLike } from '@/types/firestore';
 
@@ -284,9 +285,11 @@ const BlogPost = () => {
     const seoTitle = blog.title
         ? `${blog.title} | StudyGyaan`
         : 'StudyGyaan Blog';
-    const seoDesc = blog.description
-        || blog.metaDescription
-        || `${blog.title} - पूरी जानकारी StudyGyaan पर पढ़ें।`;
+    // 📝 Curated metaDescription PEHLE — pehle `description` (poori HTML post!)
+    // meta me leak ho rahi thi. Dono ko strip + 160 cap.
+    const seoDesc = stripHtmlToText(blog.metaDescription).slice(0, 160)
+        || stripHtmlToText(blog.description).slice(0, 160)
+        || `${blog.title} - पूरी जानकारी StudyGyaan पर पढ़ें।`.slice(0, 160);
 
 
     // =========================================================

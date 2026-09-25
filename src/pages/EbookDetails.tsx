@@ -14,6 +14,7 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import RelatedContent from '../components/RelatedContent';
 import ExamHubNavigation from '../components/ExamHubNavigation';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
+import { stripHtmlToText } from '@/utils/updateSeoFields';
 
 type EbookView = {
   title?: string;
@@ -89,7 +90,7 @@ const EbookDetails = () => {
       {/* 🔥 नया डायनामिक SEO टैग जो ई-बुक का असली नाम और फोटो गूगल/WhatsApp पर दिखाएगा */}
       <SEO 
         customTitle={`${ebook.title} - StudyGyaan 2026`}
-        customDescription={ebook.description || "Get the best study material and e-books for govt exams on StudyGyaan."}
+        customDescription={stripHtmlToText(ebook.description).slice(0, 160) || "Get the best study material and e-books for govt exams on StudyGyaan."}
         customUrl={`https://studygyaan.in/ebook/${id}`}
         customImage={ebook.imageUrl || "https://studygyaan.in/og-image.jpg"}
       />

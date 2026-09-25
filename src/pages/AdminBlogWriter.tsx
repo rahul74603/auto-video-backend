@@ -4,6 +4,7 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { serverTimestamp } from 'firebase/firestore';
 import { blogRepository } from '@/features/blogs/data/blogRepository';
 import { ARTICLE_API_BASE } from '@/features/ai-articles/data/aiArticleRepository';
+import { stripHtmlToText } from '@/utils/updateSeoFields';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; 
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css'; 
@@ -16,6 +17,7 @@ type BlogRow = {
   imageUrl?: string;
   content?: string;
   seoDesc?: string;
+  metaDescription?: string;
   seoKeywords?: string;
   status?: string;
 };
@@ -70,6 +72,37 @@ const [aiGenerating, setAiGenerating] = useState(false);
       setBlogsList(blogs as BlogRow[]);
     } catch (error) {
       console.error("Error fetching blogs:", error);
+    }
+  };
+
+  // 🔧 Bulk meta repair: jis blog me metaDescription MISSING hai use bharo —
+  // pehle purana seoDesc (jo page kabhi nahi padhta tha) migrate hota hai,
+  // warna content se tags strip karke 160 chars. Existing meta untouched.
+  const [seoFixLoading, setSeoFixLoading] = useState(false);
+  const handleFixMissingSeo = async () => {
+    if (seoFixLoading) return;
+    setSeoFixLoading(true);
+    try {
+      const targets = blogsList.filter(b => !String(b.metaDescription || '').trim());
+      if (!targets.length) {
+        alert('✅ Sabhi blogs me metaDescription pehle se maujood hai!');
+        return;
+      }
+      let fixed = 0;
+      for (const b of targets) {
+        const meta = String(b.seoDesc || '').trim()
+          || stripHtmlToText(b.content).slice(0, 160);
+        if (!meta) continue;
+        await blogRepository.update(b.id, { metaDescription: meta });
+        fixed += 1;
+      }
+      await fetchBlogs();
+      alert(`✅ ${fixed} blogs me metaDescription bhar diya (existing values untouched)`);
+    } catch (error) {
+      console.error("SEO fix error:", error);
+      alert('❌ SEO fix failed: ' + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setSeoFixLoading(false);
     }
   };
 
@@ -246,9 +279,12 @@ if (data.success && data.data) {
         author,
         imageUrl: imageUrl || '',
         content,
-        seoDesc, 
-        seoKeywords, 
-        status: action 
+        seoDesc,
+        // 📝 dual-write: BlogPost page metaDescription padhta hai — pehle sirf
+        // seoDesc likhta tha (jo koi nahi padhta tha) -> edit+save par meta UDD jata tha.
+        metaDescription: seoDesc,
+        seoKeywords,
+        status: action
       };
 
       if (editingId) {
@@ -522,6 +558,14 @@ if (data.success && data.data) {
          <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-2 border-b pb-4">
             📚 All Written Blogs
             <span className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full">{blogsList.length} Total</span>
+            <button
+              onClick={handleFixMissingSeo}
+              disabled={seoFixLoading}
+              title="Jis blog me metaDescription missing hai use blog-data se bharo (existing values overwrite nahi hoti)"
+              className="ml-auto flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100 transition-all disabled:opacity-60"
+            >
+              {seoFixLoading ? '⏳ Fixing...' : '🪄 Fix missing SEO'}
+            </button>
          </h2>
 
          {blogsList.length === 0 ? (
