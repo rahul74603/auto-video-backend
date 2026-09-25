@@ -8,11 +8,12 @@ import {
     Banknote,
     Edit, Trash2, Plus, X, Save,
     UploadCloud, ShieldCheck, AlertTriangle,
-    CheckCircle, Loader2, Eye
+    CheckCircle, Loader2, Eye, Wand2
 } from 'lucide-react';
 import { storage } from '../../../firebase/config';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { jobDraftRepository } from '@/features/job-drafts/data/jobDraftRepository';
+import { getContentYear, buildJobSeoTitle, buildJobMetaDescription } from '@/utils/jobSeoFields';
 import type { JobPost } from '@/types/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -240,6 +241,57 @@ const AdminBrowseTab = () => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 4000);
     }, []);
+
+    // 🔧 Bulk SEO repair: jo jobs me seoTitle/metaDescription MISSING hai unme
+    // shared job-builders se value bharo. Curated fields kabhi overwrite NAHI —
+    // sirf gap-fill (FastTrackManager ke "Fix missing SEO" jaisa hi behavior).
+    const [seoFixLoading, setSeoFixLoading] = useState(false);
+    const handleFixMissingSeo = useCallback(async () => {
+        if (seoFixLoading) return;
+        setSeoFixLoading(true);
+        try {
+            const targets = posts.filter(p =>
+                !String(p.seoTitle || '').trim() || !String(p.metaDescription || '').trim()
+            );
+            if (!targets.length) {
+                showToast('Is list ki sabhi jobs me SEO title/description pehle se maujood hain ✅');
+                return;
+            }
+            let fixed = 0;
+            const CHUNK = 20; // Firestore write pacing
+            for (let i = 0; i < targets.length; i += CHUNK) {
+                const slice = targets.slice(i, i + CHUNK);
+                await Promise.all(slice.map(async (p) => {
+                    const year = getContentYear(p);
+                    const patch: Record<string, string> = {};
+                    if (!String(p.seoTitle || '').trim()) {
+                        patch.seoTitle = buildJobSeoTitle(p.seoTitle, p.title, year, p.vacancies);
+                    }
+                    if (!String(p.metaDescription || '').trim()) {
+                        patch.metaDescription = buildJobMetaDescription(
+                            p.metaDescription, p.shortInfo, p.description,
+                            {
+                                title: p.title,
+                                contentYear: year,
+                                organization: p.organization,
+                                vacancies: p.vacancies,
+                                salary: p.salary,
+                                lastDate: p.lastDate,
+                            }
+                        );
+                    }
+                    if (!Object.keys(patch).length) return;
+                    await jobRepository.update(p.id, patch);
+                    fixed += 1;
+                }));
+            }
+            showToast(`✅ ${fixed} jobs me missing SEO title/description bhar diya (existing fields untouched)`);
+        } catch (err) {
+            showToast('SEO fix failed: ' + errMsg(err), 'error');
+        } finally {
+            setSeoFixLoading(false);
+        }
+    }, [posts, seoFixLoading, showToast]);
 
     // =========================================================
     // 📝 FORM FIELD UPDATER
@@ -587,6 +639,17 @@ const AdminBrowseTab = () => {
                             >
                                 <Plus size={14} />
                                 Product
+                            </button>
+                            <button
+                                onClick={handleFixMissingSeo}
+                                disabled={seoFixLoading}
+                                title="Jo jobs me SEO title/metaDescription missing hai unhe job-data se bharo (existing values overwrite nahi hoti)"
+                                className="px-4 py-2 bg-amber-50 text-amber-700 border border-amber-300 rounded-xl font-black text-xs uppercase hover:bg-amber-100 transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-60"
+                            >
+                                {seoFixLoading
+                                    ? <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                                    : <Wand2 size={14} aria-hidden="true" />}
+                                Fix missing SEO
                             </button>
                         </div>
 

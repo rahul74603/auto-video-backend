@@ -7,6 +7,7 @@ import { useJob } from '@/features/jobs/hooks/useJob';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { checkIsExpired } from '@/utils/jobExpiry';
 import { deriveAddressRegion, parseBaseSalary } from '@/utils/jobSchemaFields';
+import { getContentYear, buildJobSeoTitle, buildJobMetaDescription } from '@/utils/jobSeoFields';
 import { youtubeIdFromUrl } from '@/utils/youtubeId';
 import DynamicSidebar from '../components/DynamicSidebar';
 import type { JobPost, SiteContentDoc, TimestampLike } from '@/types/firestore';
@@ -47,21 +48,6 @@ interface GlobalSettings {
     premiumPrice: string;
     mrpPrice: string;
     discountPercent: string;
-}
-
-function getContentYear(job: JobPost | null): string {
-    const titleYear = String(job?.title || '').match(/\b20\d{2}\b/)?.[0];
-    if (titleYear) return titleYear;
-    try {
-        const ts = job?.createdAt as { seconds?: number; toDate?: () => Date } | undefined;
-        const value = ts?.seconds
-            ? new Date(ts.seconds * 1000)
-            : ts?.toDate
-                ? ts.toDate()
-                : new Date(job?.createdAt as string);
-        if (!Number.isNaN(value.getTime())) return String(value.getFullYear());
-    } catch { /* use current year */ }
-    return String(new Date().getFullYear());
 }
 
 function getIsoDate(d: TimestampLike): string {
@@ -254,11 +240,17 @@ const JobDetails = () => {
     const contentYear = getContentYear(job);
     const titleAlreadyHasYear = String(job.title || '').includes(contentYear);
 
-    const seoTitle = String(job.seoTitle || '').trim()
-        || `${job.title}${titleAlreadyHasYear ? '' : ` ${contentYear}`} - ${job.vacancies || 'Latest'} Vacancies | StudyGyaan`;
-    const seoDesc = job.metaDescription || (job.description
-        ? job.description.substring(0, 160)
-        : `Apply online for ${job.title} recruitment ${contentYear}. ${job.organization || ''} - ${job.vacancies || 'Various'} vacancies. Check eligibility, salary ₹${job.salary || 'as per rules'}, last date ${job.lastDate || 'check notification'}.`);
+    // 🏷️ Shared builders (Admin BROWSE "Fix missing SEO" bhi yahi use karta hai) —
+    // curated jeetega; year/vacancy dedup + HTML-strip fallback built-in.
+    const seoTitle = buildJobSeoTitle(job.seoTitle, job.title, contentYear, job.vacancies);
+    const seoDesc = buildJobMetaDescription(job.metaDescription, job.shortInfo, job.description, {
+        title: job.title,
+        contentYear,
+        organization: job.organization,
+        vacancies: job.vacancies,
+        salary: job.salary,
+        lastDate: job.lastDate,
+    });
 
     const seoImage = job.imageUrl
         || job.image
