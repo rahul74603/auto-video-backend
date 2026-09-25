@@ -94,6 +94,82 @@ function faqSchema(faqs) {
 // ---------- main builder ----------
 // opts.ogMap: { "/blog/<slug>": "/og/<file>.png" } — generate.cjs dwara banayi
 // gayi per-page branded OG images (pages jo khud image ke bina hain).
+// ---------- 🎯 FACTUAL JobPosting helpers (GSC improve-appearance, conditional-only) ----------
+// Rule: NEVER invent data — region sirf EXACT Indian state match pe, salary sirf
+// salary/payScale field ke STRICT parse se. Ambiguous → field OMIT (fake nahi).
+const IN_STATES = new Set([
+    "andhra pradesh", "arunachal pradesh", "assam", "bihar", "chhattisgarh", "chattisgarh",
+    "goa", "gujarat", "haryana", "himachal pradesh", "jharkhand", "karnataka", "kerala",
+    "madhya pradesh", "maharashtra", "manipur", "meghalaya", "mizoram", "nagaland",
+    "odisha", "orissa", "punjab", "rajasthan", "sikkim", "tamil nadu", "telangana",
+    "tripura", "uttar pradesh", "uttarakhand", "uttaranchal", "west bengal",
+    "delhi", "new delhi", "jammu and kashmir", "jammu & kashmir", "ladakh", "chandigarh",
+    "puducherry", "pondicherry", "andaman and nicobar islands", "andaman & nicobar islands",
+    "dadra and nagar haveli and daman and diu", "dadra & nagar haveli and daman & diu",
+    "lakshadweep",
+]);
+const IN_STATE_CODES = new Set(["up", "mp", "hp"]);
+
+function normStateJs(text) {
+    return String(text || "").toLowerCase().replace(/[^a-z&\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function titleCaseStateJs(s) {
+    const map = { up: "Uttar Pradesh", mp: "Madhya Pradesh", hp: "Himachal Pradesh", delhi: "Delhi", "new delhi": "Delhi" };
+    if (map[s]) return map[s];
+    return s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+}
+
+function deriveAddressRegionCjs(location) {
+    const raw = String(location || "").trim();
+    if (!raw) return null;
+    const whole = normStateJs(raw);
+    if (IN_STATES.has(whole)) return titleCaseStateJs(whole);
+    const parts = raw.split(",").map((p) => normStateJs(p)).filter(Boolean);
+    for (const part of parts) {
+        if (IN_STATES.has(part)) return titleCaseStateJs(part);
+    }
+    for (const part of [whole, ...parts]) {
+        const words = part.split(" ");
+        const code = words.find((w) => IN_STATE_CODES.has(w));
+        if (code) return titleCaseStateJs(code);
+    }
+    return null;
+}
+
+const SALARY_MIN_MONTHLY = 3000;
+const SALARY_MAX_MONTHLY = 1000000;
+
+function parseBaseSalaryCjs(raw) {
+    const text = String(raw || "").replace(/[,\s]/g, "").replace(/\u20b9/g, " ");
+    if (!text) return null;
+    const range = text.match(/(\d{4,7})\s*(?:-|\u2013|to|\u0938\u0947)\s*(\d{4,7})/i);
+    if (range) {
+        const min = Number(range[1]);
+        const max = Number(range[2]);
+        if (min >= SALARY_MIN_MONTHLY && max <= SALARY_MAX_MONTHLY && min < max) {
+            return {
+                "@type": "MonetaryAmount",
+                currency: "INR",
+                value: { "@type": "QuantitativeValue", unitText: "MONTH", minValue: min, maxValue: max },
+            };
+        }
+        return null;
+    }
+    const single = text.match(/(?:^|\D)(\d{4,7})(?:\D|$)/);
+    if (single) {
+        const value = Number(single[1]);
+        if (value >= SALARY_MIN_MONTHLY && value <= SALARY_MAX_MONTHLY) {
+            return {
+                "@type": "MonetaryAmount",
+                currency: "INR",
+                value: { "@type": "QuantitativeValue", unitText: "MONTH", value },
+            };
+        }
+    }
+    return null;
+}
+
 function buildMetaFiles(colls, opts = {}) {
   const ogMap = opts.ogMap || {};
   const jobs = {};
@@ -182,6 +258,8 @@ function buildMetaFiles(colls, opts = {}) {
       validThrough && Date.parse(`${validThrough}T23:59:59+05:30`) < Date.now()
     );
 
+    const jobRegion = deriveAddressRegionCjs(data.location);
+    const jobBaseSalary = parseBaseSalaryCjs(data.salary || data.payScale);
     const jobPosting = {
       "@context": "https://schema.org",
       "@type": "JobPosting",
@@ -198,9 +276,11 @@ function buildMetaFiles(colls, opts = {}) {
         address: {
           "@type": "PostalAddress",
           addressLocality: stripHtml(data.location) || "India",
+          ...(jobRegion ? { addressRegion: jobRegion } : {}),
           addressCountry: "IN",
         },
       },
+      ...(jobBaseSalary ? { baseSalary: jobBaseSalary } : {}),
       employmentType: "FULL_TIME",
       directApply: false,
       url: `${SITE}${path}`,

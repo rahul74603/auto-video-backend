@@ -6,6 +6,7 @@ import { db } from '../firebase/config';
 import { useJob } from '@/features/jobs/hooks/useJob';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { checkIsExpired } from '@/utils/jobExpiry';
+import { deriveAddressRegion, parseBaseSalary } from '@/utils/jobSchemaFields';
 import { youtubeIdFromUrl } from '@/utils/youtubeId';
 import DynamicSidebar from '../components/DynamicSidebar';
 import type { JobPost, SiteContentDoc, TimestampLike } from '@/types/firestore';
@@ -277,6 +278,12 @@ const JobDetails = () => {
     const parsedLastDate = job.lastDate ? new Date(job.lastDate) : null;
     // 🗓️ Expired? (lastDate nikal chuki) — banner + JobPosting schema skip
     const jobExpired = job.isExpired === true || checkIsExpired(String(job.lastDate || ''));
+    // 🎯 FACTUAL schema fields (koi fabrication nahi):
+    // addressRegion = sirf EXACT Indian state match pe; baseSalary = sirf
+    // salary/payScale field ke STRICT parse se. Fake postalCode ("110001")
+    // hataya gaya — Rule: never invent data (galat pin = galat signal).
+    const schemaRegion = deriveAddressRegion(job.location);
+    const schemaBaseSalary = parseBaseSalary((job as { salary?: unknown; payScale?: unknown }).salary ?? (job as { payScale?: unknown }).payScale);
     const jobPostingSchema = {
         "@context": "https://schema.org",
         "@type": "JobPosting",
@@ -295,13 +302,12 @@ const JobDetails = () => {
             "@type": "Place",
             address: {
                 "@type": "PostalAddress",
-                streetAddress: (job.location || "India").slice(0, 200),
                 addressLocality: (job.location || "India").split(',')[0].trim().slice(0, 100) || "India",
-                addressRegion: (job.location || "India").split(',')[0].trim().slice(0, 100) || "India",
-                postalCode: (job as any).postalCode || "110001",
+                ...(schemaRegion ? { addressRegion: schemaRegion } : {}),
                 addressCountry: "IN"
             }
         },
+        ...(schemaBaseSalary ? { baseSalary: schemaBaseSalary } : {}),
         ...(job.vacancies ? { totalJobOpenings: String(job.vacancies) } : {}),
         url: canonicalUrl,
         directApply: false
