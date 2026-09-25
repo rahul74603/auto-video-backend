@@ -29,6 +29,12 @@ function getIsoDate(dateField: TimestampLike): string {
     }
 }
 
+// "2026-09-19" → "19-09-2026" (card me "Check Link" placeholder ki jagah asli date)
+function formatDateIso(iso: string): string {
+    const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : iso.slice(0, 10);
+}
+
 interface CategoryColors {
     bg: string;
     text: string;
@@ -273,10 +279,24 @@ const FastTrackDetails = () => {
     const canonicalUrl = `https://studygyaan.in/update/${canonicalSlug}`;
     const publishedIso = getIsoDate(data.createdAt);
 
+    // 🏷️ Title fallback: agar title me category pehle se hai (jaise "...Admit Card 2026")
+    // to dobara category jodna duplication karta tha ("Admit Card 2026 - Admit Card 2026").
+    const rawTitle = String(data.title || '').trim() || 'Update';
+    const rawCategory = String(data.category || '').trim();
+    const titleHasCategory = rawCategory !== '' && rawTitle.toLowerCase().includes(rawCategory.toLowerCase());
     const seoTitle = String(data.seoTitle || '').trim()
-        || `${data.title} - ${data.category} ${new Date().getFullYear()} | StudyGyaan`;
-    const seoDesc = data.description || data.shortInfo
-        || `Check latest ${data.category} for ${data.title}. Get direct links and official updates on StudyGyaan.in`;
+        || (titleHasCategory
+            ? `${rawTitle} | StudyGyaan`
+            : `${rawTitle}${rawCategory ? ` - ${rawCategory}` : ''} | StudyGyaan`);
+    // 📝 Description fallback: description HTML ho sakta hai — meta me raw HTML jaana
+    // Google ko junk dikhata tha. shortInfo prefer karo, warna tags strip karke 160 chars.
+    const stripHtmlTags = (value: string): string =>
+        value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const shortInfoText = String(data.shortInfo || '').trim();
+    const descFromHtml = !shortInfoText && data.description ? stripHtmlTags(String(data.description)) : '';
+    const seoDesc = shortInfoText
+        || (descFromHtml ? descFromHtml.slice(0, 160) : '')
+        || `${rawTitle} — direct link, important dates aur official updates StudyGyaan.in par.`;
 
     // =========================================================
     // 🎨 RENDER
@@ -380,7 +400,7 @@ const FastTrackDetails = () => {
                                         Update Date
                                     </p>
                                     <p className="font-bold text-xs text-slate-800">
-                                        {data.updateDate || "Check Link"}
+                                        {data.updateDate || formatDateIso(publishedIso)}
                                     </p>
                                 </div>
                             </div>
