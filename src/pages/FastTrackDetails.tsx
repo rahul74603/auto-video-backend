@@ -13,6 +13,7 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import RelatedContent from '../components/RelatedContent';
 import ExamHubNavigation from '../components/ExamHubNavigation';
 import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
+import { buildUpdateSeoTitle, buildUpdateMetaDescription } from '@/utils/updateSeoFields';
 
 // =========================================================
 // 🛠️ HELPERS
@@ -279,24 +280,15 @@ const FastTrackDetails = () => {
     const canonicalUrl = `https://studygyaan.in/update/${canonicalSlug}`;
     const publishedIso = getIsoDate(data.createdAt);
 
-    // 🏷️ Title fallback: agar title me category pehle se hai (jaise "...Admit Card 2026")
-    // to dobara category jodna duplication karta tha ("Admit Card 2026 - Admit Card 2026").
-    const rawTitle = String(data.title || '').trim() || 'Update';
-    const rawCategory = String(data.category || '').trim();
-    const titleHasCategory = rawCategory !== '' && rawTitle.toLowerCase().includes(rawCategory.toLowerCase());
-    const seoTitle = String(data.seoTitle || '').trim()
-        || (titleHasCategory
-            ? `${rawTitle} | StudyGyaan`
-            : `${rawTitle}${rawCategory ? ` - ${rawCategory}` : ''} | StudyGyaan`);
-    // 📝 Description fallback: description HTML ho sakta hai — meta me raw HTML jaana
-    // Google ko junk dikhata tha. shortInfo prefer karo, warna tags strip karke 160 chars.
-    const stripHtmlTags = (value: string): string =>
-        value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-    const shortInfoText = String(data.shortInfo || '').trim();
-    const descFromHtml = !shortInfoText && data.description ? stripHtmlTags(String(data.description)) : '';
-    const seoDesc = shortInfoText
-        || (descFromHtml ? descFromHtml.slice(0, 160) : '')
-        || `${rawTitle} — direct link, important dates aur official updates StudyGyaan.in par.`;
+    // 🏷️ Shared builders (Admin "Fix missing SEO" bhi yahi use karta hai) —
+    // curated seoTitle/metaDescription jeetega, warna dedup fallback.
+    const seoTitle = buildUpdateSeoTitle(data.seoTitle, data.title, data.category);
+    const seoDesc = buildUpdateMetaDescription(
+        data.metaDescription,
+        data.shortInfo,
+        data.description,
+        data.title,
+    );
 
     // =========================================================
     // 🎨 RENDER

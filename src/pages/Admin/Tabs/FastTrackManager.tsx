@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import type { FastTrackItem } from '@/types/firestore';
 import { enrichPublicDocument } from '@/features/seo-intelligence/taxonomy';
+import { buildUpdateSeoTitle, buildUpdateMetaDescription } from '@/utils/updateSeoFields';
 
 // =========================================================
 // 🛠️ HELPERS
@@ -349,6 +350,48 @@ const FastTrackManager = () => {
             setToasts(prev => prev.filter(t => t.id !== id));
         }, 4000);
     }, []);
+
+    // 🔧 Bulk SEO repair: jo updates me seoTitle/metaDescription MISSING hai
+    // (purane pipeline ke docs), unme shared builders se value bharo.
+    // Curated (pehle se maujood) fields kabhi overwrite NAHI hote — sirf gap-fill.
+    const [seoFixLoading, setSeoFixLoading] = useState(false);
+    const handleFixMissingSeo = useCallback(async () => {
+        if (seoFixLoading) return;
+        setSeoFixLoading(true);
+        try {
+            const targets = updates.filter(u =>
+                !String(u.seoTitle || '').trim() || !String(u.metaDescription || '').trim()
+            );
+            if (!targets.length) {
+                showToast('Is list ke sabhi updates me SEO title/description pehle se maujood hain ✅');
+                return;
+            }
+            let fixed = 0;
+            const CHUNK = 20; // Firestore write pacing
+            for (let i = 0; i < targets.length; i += CHUNK) {
+                const slice = targets.slice(i, i + CHUNK);
+                await Promise.all(slice.map(async (u) => {
+                    const patch: Record<string, string> = {};
+                    if (!String(u.seoTitle || '').trim()) {
+                        patch.seoTitle = buildUpdateSeoTitle(u.seoTitle, u.title, u.category);
+                    }
+                    if (!String(u.metaDescription || '').trim()) {
+                        patch.metaDescription = buildUpdateMetaDescription(
+                            u.metaDescription, u.shortInfo, u.description, u.title
+                        );
+                    }
+                    if (!Object.keys(patch).length) return;
+                    await updateDoc(doc(db, 'fast_track', u.id), patch);
+                    fixed += 1;
+                }));
+            }
+            showToast(`${fixed} updates me missing SEO title/description bhar diya (existing fields untouched)`);
+        } catch (e) {
+            showToast('SEO fix failed: ' + errMsg(e), 'error');
+        } finally {
+            setSeoFixLoading(false);
+        }
+    }, [updates, seoFixLoading, showToast]);
 
     // ✨ AI Article: is update ko AI queue me daalo — agli AI Drafts run (GitHub
     // Actions) full article bana ke "Review AI Drafts" (JOBS AI tab) me de degi.
@@ -945,13 +988,26 @@ const FastTrackManager = () => {
 
                         {/* List Header */}
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 gap-3">
-                            <h3 className="font-black text-slate-800 text-lg uppercase flex items-center gap-2">
-                                <Filter size={18} className="text-blue-500" />
-                                Updates
-                                <span className="text-xs bg-slate-100 px-2 py-0.5 rounded-full text-slate-500 font-bold">
-                                    {filteredUpdates.length}
-                                </span>
-                            </h3>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-black text-slate-800 text-lg uppercase flex items-center gap-2">
+                                    <Filter size={18} className="text-blue-500" />
+                                    Updates
+                                    <span className="text-xs bg-slate-100 px-2 py-0.5 rounded-full text-slate-500 font-bold">
+                                        {filteredUpdates.length}
+                                    </span>
+                                </h3>
+                                <button
+                                    onClick={handleFixMissingSeo}
+                                    disabled={seoFixLoading}
+                                    title="Jo updates me SEO title/metaDescription missing hai unhe doc-data se bharo (existing values overwrite nahi hoti)"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-all disabled:opacity-60"
+                                >
+                                    {seoFixLoading
+                                        ? <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                                        : <Wand2 size={12} aria-hidden="true" />}
+                                    Fix missing SEO
+                                </button>
+                            </div>
 
                             {/* Tab Buttons */}
                             <div className="flex bg-slate-100 p-1 rounded-xl">
