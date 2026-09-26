@@ -36,6 +36,8 @@ registerAgentRoutes(app);
 const articleAuth = createArticleAuthMiddleware(admin.auth());
 require("./agents/article_agents/article_routes").registerArticleAgentRoutes(app, db, { authMiddleware: articleAuth });
 require("./agents/seo_intelligence/routes").registerSeoIntelligenceRoutes(app, db, { authMiddleware: articleAuth });
+// 📥 PDF → Premium Set builder (extract + rewrite + answer-guard → course content)
+require("./pdf_set_routes").registerPdfSetRoutes(app, db, { authMiddleware: articleAuth });
 // 📱 Article → Web Story backfill endpoint (POST /stories/backfill)
 require("./article_to_story").registerStoryRoutes(app, db, admin.firestore.FieldValue);
 app.post("/seo/indexing-audit", async (req, res) => {

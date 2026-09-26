@@ -10,6 +10,7 @@ import {
   orderBy, doc, getDoc,
   addDoc, updateDoc, deleteDoc
 } from 'firebase/firestore';
+import { callArticleApi } from '@/features/ai-articles/data/aiArticleRepository';
 import {
   Zap, BookOpen,
   CheckCircle, AlertCircle, Loader2,
@@ -434,6 +435,112 @@ const PremiumTab = () => {
   // ============================================
   const addLog = (log: GenerationLog) => {
     setLogs(prev => [log, ...prev].slice(0, 20));
+  };
+
+  // ============================================
+  // 📥 PDF → SET BUILDER (source PDF → AI rewrite → PREMIUM set)
+  // ============================================
+  interface PdfQ {
+    qText: string;
+    options: string[];
+    correctOption: number;
+    explanation: string;
+    confidence: number;
+    flag: string;
+  }
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfStatus, setPdfStatus] = useState('');
+  const [pdfError, setPdfError] = useState('');
+  const [pdfQuestions, setPdfQuestions] = useState<PdfQ[] | null>(null);
+
+  // Is course me abhi tak ka max setNumber → next auto number (11 sets => Set 12)
+  const pdfNextSetNumber = allContentItems.reduce(
+    (m, c) => Math.max(m, Number(c.setNumber) || 0), 0
+  ) + 1;
+
+  const pdfFileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handlePdfExtract = async () => {
+    if (!pdfFile) return alert('Pehle PDF choose karo!');
+    if (!selectedCourse) return alert('Upar generator form me Course select karo!');
+    setPdfBusy(true);
+    setPdfError('');
+    setPdfQuestions(null);
+    setPdfStatus('📖 PDF padha ja raha hai + AI extraction chal raha hai (2-4 min lag sakte hain)...');
+    try {
+      const pdfBase64 = await pdfFileToBase64(pdfFile);
+      const data = await callArticleApi<{ questions: PdfQ[]; stats?: { extracted?: number; needsReview?: number } }>(
+        '/pdf-set/extract',
+        { pdfBase64, exam: exam || 'Government Exam' }
+      );
+      const qs = data.questions || [];
+      setPdfQuestions(qs);
+      const review = qs.filter(q => q.flag === 'REVIEW').length;
+      setPdfStatus(`✅ ${qs.length} questions ready — inme ${review} REVIEW-flagged (answer verify karke publish karo)`);
+    } catch (err) {
+      setPdfError(err instanceof Error ? err.message : String(err));
+      setPdfStatus('');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
+  const updatePdfQ = (idx: number, patch: Partial<PdfQ>) => {
+    setPdfQuestions(prev => prev ? prev.map((q, i) => i === idx ? { ...q, ...patch } : q) : prev);
+  };
+  const removePdfQ = (idx: number) => {
+    setPdfQuestions(prev => prev ? prev.filter((_, i) => i !== idx) : prev);
+  };
+
+  const handlePdfPublish = async () => {
+    if (!selectedCourse) return alert('Course select karo!');
+    if (!pdfQuestions || !pdfQuestions.length) return alert('Pehle Extract karo!');
+    const unanswered = pdfQuestions.filter(q => q.correctOption < 0).length;
+    if (unanswered > 0 && !confirm(`${unanswered} questions ka answer set nahi hai. Wo publish NAHI honge. Aage badhein?`)) return;
+    setPdfBusy(true);
+    setPdfError('');
+    setPdfStatus(`🚀 "${selectedCourse}" course me Set ${setNumber} publish ho raha hai (PREMIUM)...`);
+    try {
+      const data = await callArticleApi<{ id: string; questionCount: number }>(
+        '/pdf-set/publish',
+        {
+          packId: selectedCourse,
+          folderId: selectedFolder || null,
+          setNumber,
+          exam,
+          subject: subject || exam || 'Practice',
+          questions: pdfQuestions.filter(q => q.correctOption >= 0),
+          title: `${subject || exam || 'Practice'} — Practice Set ${setNumber} (PDF)`,
+          sourceNote: pdfFile ? pdfFile.name.replace(/\.pdf$/i, '') : ''
+        }
+      );
+      addLog({
+        topic: subject || 'PDF Import Set',
+        exam,
+        setNumber,
+        provider: 'gemini',
+        status: 'success',
+        message: `✅ PDF Set saved! ID: ${data.id} | ${data.questionCount} Qs | PREMIUM`,
+        id: data.id,
+        time: new Date().toLocaleTimeString()
+      });
+      await fetchAllContent(selectedCourse);
+      setPdfStatus(`🎉 Set ${setNumber} course me publish ho gaya (${data.questionCount} questions, PAID content)`);
+      setPdfQuestions(null);
+      setPdfFile(null);
+    } catch (err) {
+      setPdfError(err instanceof Error ? err.message : String(err));
+      setPdfStatus('');
+    } finally {
+      setPdfBusy(false);
+    }
   };
 
   const generateSingle = async (
@@ -903,6 +1010,113 @@ const PremiumTab = () => {
               </button>
             </div>
           )}
+
+          {/* ===== 📥 PDF → SET BUILDER ===== */}
+          <div className="bg-white border-2 border-amber-200 rounded-2xl p-6 mb-6">
+            <div className="flex items-center gap-2 flex-wrap mb-2">
+              <h3 className="font-bold text-slate-800 text-lg">📥 PDF se Set banao</h3>
+              <span className="text-[10px] font-black uppercase bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">PREMIUM — paid course ke andar jayega</span>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">
+              Source PDF (PYQ/practice) → AI extract → wording rewrite (answer same, copy nahi) →{' '}
+              <b>{selectedCourse ? (courses.find(c => c.id === selectedCourse)?.title || selectedCourse) : 'upar course select karo'}</b>
+              {' '}me <b>Set {setNumber}</b> ke roop me save. Free/mock-test section me kuch NAHI jata.
+            </p>
+
+            <div className="flex flex-col md:flex-row gap-3 md:items-center">
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={e => { setPdfFile(e.target.files?.[0] || null); setPdfError(''); setPdfQuestions(null); setPdfStatus(''); }}
+                disabled={pdfBusy}
+                className="flex-1 text-xs text-gray-600 border-2 border-dashed border-gray-200 rounded-xl p-3 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 file:font-bold"
+              />
+              <button
+                onClick={() => setSetNumber(pdfNextSetNumber)}
+                disabled={pdfBusy}
+                title={`Is course me abhi ${pdfNextSetNumber - 1} sets hain — next number auto-fill`}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 border border-slate-200 font-black text-xs uppercase hover:bg-slate-200 transition-all disabled:opacity-60 whitespace-nowrap"
+              >
+                🔢 Auto: Set {pdfNextSetNumber}
+              </button>
+              <button
+                onClick={handlePdfExtract}
+                disabled={pdfBusy || !pdfFile || !selectedCourse}
+                className="px-5 py-2.5 rounded-xl bg-blue-600 text-white font-black text-xs uppercase shadow-lg hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-60 whitespace-nowrap flex items-center gap-1.5"
+              >
+                {pdfBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                Extract & Rewrite
+              </button>
+            </div>
+
+            {pdfStatus && <p className="text-xs font-bold text-blue-700 mt-3">{pdfStatus}</p>}
+            {pdfError && (
+              <p className="text-xs font-bold text-red-600 mt-2 bg-red-50 border border-red-100 rounded-xl p-3">⚠️ {pdfError}</p>
+            )}
+
+            {/* Review table */}
+            {pdfQuestions && pdfQuestions.length > 0 && (
+              <div className="mt-5">
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                  <h4 className="font-black text-slate-700 text-sm uppercase">
+                    Review — {pdfQuestions.length} questions
+                    <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                      {pdfQuestions.filter(q => q.flag === 'REVIEW').length} REVIEW
+                    </span>
+                  </h4>
+                  <button
+                    onClick={handlePdfPublish}
+                    disabled={pdfBusy}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-black text-xs uppercase shadow-lg hover:bg-emerald-700 transition-all active:scale-95 disabled:opacity-60"
+                  >
+                    🚀 Publish as Set {setNumber} (PREMIUM)
+                  </button>
+                </div>
+                <div className="max-h-[45vh] overflow-y-auto space-y-2 pr-1">
+                  {pdfQuestions.map((q, idx) => (
+                    <div key={idx} className={`border rounded-xl p-3 ${q.flag === 'REVIEW' ? 'border-amber-300 bg-amber-50/50' : 'border-slate-100 bg-white'}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-xs font-bold text-slate-700 flex-1" title={q.qText}>
+                          <span className="text-slate-400">Q{idx + 1}.</span> {q.qText.split('\n')[0].slice(0, 140)}
+                          {q.confidence < 0.7 && <span className="ml-2 text-[10px] text-slate-400">(conf {q.confidence.toFixed(2)})</span>}
+                        </p>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {q.flag === 'REVIEW' && <span className="text-[9px] font-black bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded">REVIEW</span>}
+                          <button onClick={() => removePdfQ(idx)} className="text-slate-300 hover:text-red-500 font-black text-xs px-1" title="Remove">✕</button>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {q.options.map((opt, oi) => (
+                          <button
+                            key={oi}
+                            onClick={() => updatePdfQ(idx, { correctOption: oi })}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-all ${
+                              q.correctOption === oi
+                                ? 'bg-emerald-100 border-emerald-400 text-emerald-800'
+                                : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
+                            }`}
+                            title={opt}
+                          >
+                            {'ABCD'[oi]}. {opt.slice(0, 40)}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="text"
+                        value={q.explanation}
+                        onChange={e => updatePdfQ(idx, { explanation: e.target.value })}
+                        placeholder="Explanation (optional — buyer value yahi hai)"
+                        className="w-full mt-2 px-2.5 py-1.5 border border-slate-100 rounded-lg text-[11px] outline-none focus:border-blue-300"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-2">
+                  ⭐ Sahi option par click karke answer set karo • REVIEW-flag = AI unsure tha, verify karo • ✕ = skip
+                </p>
+              </div>
+            )}
+          </div>
 
           {/* ===== QUICK TIPS ===== */}
           <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
