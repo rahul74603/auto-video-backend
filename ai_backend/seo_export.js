@@ -31,6 +31,18 @@ const proxy = (name) => functions.https.onRequest(withCors((req, res) => {
   catch (e) { console.error(name + " error:", e); return res.status(500).send(e.message); }
 }));
 
+// ⭐ LAZY `api` export (full Express backend — /pdf-set, articles, SEO agents):
+// Cloud Run container FUNCTION_TARGET ko package.json `main` (yahi file) se
+// resolve karta hai. api deploy ke waqt target `api` yahan milna ZAROORI hai
+// warna container start hi nahi hota ("Container Healthcheck failed",
+// revision api-00001...). Lazy getter: SIRF api ke container me index.js
+// load hota hai — sitemap/rss containers is property ko touch nahi karte,
+// isliye wo halka (Spark-safe) boot bana rehte hain.
+Object.defineProperty(exports, "api", {
+  enumerable: false,
+  get() { return require("./index").api; },
+});
+
 exports.serverSideMetaTags = functions.https.onRequest(withCors((req, res) => handleMetaTags(req, res)));
 exports.rssFeed = functions.https.onRequest(withCors((req, res) => require("./newsFeed").rssFeed(req, res)));
 
