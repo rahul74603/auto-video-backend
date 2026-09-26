@@ -137,3 +137,16 @@ Thin/incomplete **BLOG** pages may get a proposed `articleHtml` (OLD vs PROPOSED
 - [ ] Workflow change? → `WORKFLOW_COPY/*.yml.txt` only
 - [ ] Push ke baad VS Code pull commands do
 - [ ] Naya agent / naya session mat suggest karo
+
+
+## Backend (ai_backend) deploy — functions.yaml rule (2026-09-26)
+
+- `firebase deploy --only functions:api` local PC pe "User code failed to load" deta tha
+  (CLI discovery timeout = 10s; index.js bhaari hai, Windows+antivirus slow).
+- FIX committed: `ai_backend/functions.yaml` — deploy isi se backend spec banata hai,
+  user-code load skip. CI ka seo-functions deploy bhi isi se chalta hai (sab endpoints included).
+- ⚠️ Jab bhi functions add/change ho → `ai_backend/gen_functions_yaml.cjs` chala ke
+  functions.yaml regenerate + commit karna (script ke andar steps likhe hain).
+- `ai_backend/package.json` "main" = `seo_export.js` HI rehna chahiye (CI isi pe dependent).
+  Sirf gen_functions_yaml.cjs ke waqt temporarily index.js karna hota hai.
+- Node 20 runtime decommission: 2026-10-30 — usse pehle functions runtime upgrade karna hai.
