@@ -170,3 +170,9 @@ Thin/incomplete **BLOG** pages may get a proposed `articleHtml` (OLD vs PROPOSED
   WORKFLOW_COPY/deploy.yml.txt — RULE ke mutabik main .github/workflows me push
   nahi karta; user khud copy karke push karega). CI me .env nahi hota, isliye
   runtime env-vars workflow ke andar secrets se likhe jate hain.
+
+- 🎨 `canvas` = optionalDependencies (node22 prebuilt nahi deta, source-build me
+  pixman chahiye). Video workflows (node20) me normal install hota hai —
+  video pipeline untouched. Deploy CI (node22) pe canvas skip hota hai —
+  api function canvas use hi nahi karta. Isliye npm ci red NAHI hona chahiye;
+  agar hua to canvas-related error dhundo.
