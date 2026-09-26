@@ -176,3 +176,11 @@ Thin/incomplete **BLOG** pages may get a proposed `articleHtml` (OLD vs PROPOSED
   video pipeline untouched. Deploy CI (node22) pe canvas skip hota hai —
   api function canvas use hi nahi karta. Isliye npm ci red NAHI hona chahiye;
   agar hua to canvas-related error dhundo.
+
+- ⭐ ENTRYPOINT RULE: Cloud Run container FUNCTION_TARGET package.json `main`
+  (seo_export.js) se resolve hota hai — jo function deploy filter me ho uska
+  export seo_export.js me milna chahiye warna container "Healthcheck failed"
+  dega (revision api-00001...). api ke liye lazy getter laga diya hai —
+  future me agar index.js ka aur function (telegramDraftWebhook, trigger*,
+  fetchLatestGovtJobs...) deploy karna ho to pehle uska bhi lazy getter
+  seo_export.js me jodna (enumerable:false — sitemap containers light rahen).
