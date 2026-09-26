@@ -19,26 +19,46 @@ const {
 } = require("./pdf_set_builder");
 
 // pdf-parse lazy-loaded (sirf PDF aane par chahiye) — source_fetcher pattern
-let pdfParse;
-function getPdfParse() {
-  if (pdfParse === undefined) {
+let pdfParseMod;
+function getPdfParseModule() {
+  if (pdfParseMod === undefined) {
     try {
-      pdfParse = require("pdf-parse");
+      pdfParseMod = require("pdf-parse");
     } catch (e) {
-      pdfParse = null;
+      pdfParseMod = null;
     }
   }
-  return pdfParse;
+  return pdfParseMod;
 }
 
 /** PDF base64 → text. Scanned/image PDFs me text nahi hota — clear error. */
 async function parsePdfBase64(pdfBase64) {
-  const PdfParse = getPdfParse();
-  if (!PdfParse) throw new Error("pdf-parse not installed on server");
+  const mod = getPdfParseModule();
+  if (!mod) throw new Error("pdf-parse not installed on server");
   const buffer = Buffer.from(String(pdfBase64 || ""), "base64");
   if (!buffer.length) throw new Error("PDF file empty");
-  const parsed = await PdfParse(buffer);
-  const text = String(parsed && parsed.text ? parsed.text : "").trim();
+  let text = "";
+  if (typeof mod === "function") {
+    // pdf-parse v1 API: module khud function hai — await mod(buffer)
+    const parsed = await mod(buffer);
+    text = String((parsed && parsed.text) || "").trim();
+  } else if (mod.PDFParse) {
+    // pdf-parse v2 API (installed 2.4.5): class hai — new PDFParse({data}) → getText()
+    const parser = new mod.PDFParse({ data: buffer });
+    try {
+      const res = await parser.getText();
+      text = String(
+        (res && res.text) ||
+          ((res && Array.isArray(res.pages) && res.pages.map((p) => p.text).join("\n")) || "")
+      ).trim();
+    } finally {
+      if (typeof parser.destroy === "function") {
+        await parser.destroy().catch(() => {});
+      }
+    }
+  } else {
+    throw new Error("pdf-parse unsupported version on server");
+  }
   if (text.length < 50) {
     throw new Error(
       "Is PDF me extractable text nahi mila (scanned/image PDF lagti hai). Text wali PDF do, ya pehle OCR karke bhejo."

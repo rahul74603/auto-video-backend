@@ -184,3 +184,16 @@ Thin/incomplete **BLOG** pages may get a proposed `articleHtml` (OLD vs PROPOSED
   future me agar index.js ka aur function (telegramDraftWebhook, trigger*,
   fetchLatestGovtJobs...) deploy karna ho to pehle uska bhi lazy getter
   seo_export.js me jodna (enumerable:false — sitemap containers light rahen).
+
+- ⭐ INVOKER RULE (2026-09-26, live 403 se seekha): NAYA Gen-2 (onRequest v2)
+  HTTP function default **IAM-PRIVATE** Cloud Run service banta hai — browser ka
+  CORS preflight Cloud Run ke darwaze pe hi 403 ho jata hai (Google error page,
+  bina Access-Control-Allow-Origin ke; Express cors() tak request pahunchti hi
+  nahi). Console me "Response to preflight request doesn't pass access control
+  check" + "Failed to fetch (sw.js)" dikhta hai. FIX: onRequest options me
+  `invoker: "public"` lagao + functions.yaml regen karo (yaml me
+  `"httpsTrigger":{"invoker":["public"]}` aana chahiye). `api` pe laga hai.
+  Purane services (sitemap waghera) pehle se public IAM rakhte hain — unhe mat
+  chhedo; sirf naya HTTP endpoint banate waqt ye rule yaad rakho.
+  Verify: `https://<fn>-hf6vlh5cpq-uc.a.run.app/` pe GET karo — "403 Forbidden:
+  Your client does not have permission" aaye to invoker missing hai.
