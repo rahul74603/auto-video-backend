@@ -56,6 +56,7 @@ jobs:
           S_GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
           S_SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
           S_AGENT_ADMIN_TOKEN: ${{ secrets.AGENT_ADMIN_TOKEN }}
+          S_ARTICLE_ADMIN_EMAILS: ${{ secrets.ARTICLE_ADMIN_EMAILS }}
         run: node ../scripts/write-functions-env.cjs
 
       - name: Deploy Firebase Functions (v1 — Spark plan free)
