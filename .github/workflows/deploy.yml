@@ -48,17 +48,15 @@ jobs:
       - name: Write ai_backend/.env from GitHub Secrets (runtime env-vars)
         working-directory: ai_backend
         shell: bash
-        run: |
-          cat > .env <<ENVEOF
-          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_ADMIN_CHAT_ID=${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
-          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-          GMAIL_CREDENTIALS=${{ secrets.GMAIL_CREDENTIALS }}
-          SERVICE_ACCOUNT_JSON=${{ secrets.SERVICE_ACCOUNT_JSON }}
-          AGENT_ADMIN_TOKEN=${{ secrets.AGENT_ADMIN_TOKEN || 'unset' }}
-          ENVEOF
-          echo "Written keys:"; cut -d= -f1 .env
+        env:
+          S_TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          S_TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          S_TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          S_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          S_GMAIL_CREDENTIALS: ${{ secrets.GMAIL_CREDENTIALS }}
+          S_SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          S_AGENT_ADMIN_TOKEN: ${{ secrets.AGENT_ADMIN_TOKEN }}
+        run: node ../scripts/write-functions-env.cjs
 
       - name: Deploy Firebase Functions (v1 — Spark plan free)
         run: firebase deploy --only functions:api,functions:serverSideMetaTags,functions:rssFeed,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemapCourses,functions:generateSitemapMaterials,functions:generateSitemap,functions:generateRss,functions:pingIndexNow,functions:bulkIndexNow,functions:recentUrls,functions:recentUrlsTxt --project studymaterial-406ad --non-interactive --force
