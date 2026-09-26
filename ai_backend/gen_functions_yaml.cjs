@@ -39,6 +39,7 @@ if (!fs.existsSync(bin)) {
 
 const port = 8800 + Math.floor(Math.random() * 120);
 const child = spawn(process.execPath, [bin, here], {
+  cwd: here, // loader cwd-based resolve karta hai — repo-root se chala to root load karne lagta hai
   env: {
     ...process.env,
     PORT: String(port),

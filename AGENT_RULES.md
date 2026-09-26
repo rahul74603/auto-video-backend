@@ -150,3 +150,13 @@ Thin/incomplete **BLOG** pages may get a proposed `articleHtml` (OLD vs PROPOSED
 - `ai_backend/package.json` "main" = `seo_export.js` HI rehna chahiye (CI isi pe dependent).
   Sirf gen_functions_yaml.cjs ke waqt temporarily index.js karna hota hai.
 - Node 20 runtime decommission: 2026-10-30 — usse pehle functions runtime upgrade karna hai.
+
+- ⭐ SECRETS ARCHITECTURE (user decision): Firebase Secret Manager me KOI secrets
+  NAHI hain (free/Spark plan) — sab `ai_backend/.env` (local deploy) + GitHub
+  Secrets (Actions) me hain. `exports.api` ka `secrets:` declaration hata diya
+  (5cbe26d ke baad wala commit) — wapas lagaya to deploy 404 validation fail dega.
+  Baaki functions (telegramDraftWebhook, onJobApproved..., scheduled*, trigger*)
+  abhi bhi `secrets:` declare karte hain — wo functions tab tak REDEPLOY nahi
+  honge jab tak unka `secrets:` bhi nahi hatata (sirf api deploy karo).
+- Deploy machine ke `ai_backend/.env` me saare keys hone chahiye (TELEGRAM_*,
+  GEMINI_API_KEY, GMAIL_CREDENTIALS, SERVICE_ACCOUNT_JSON, AGENT_ADMIN_TOKEN).

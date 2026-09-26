@@ -479,8 +479,11 @@ ${enhancedIntent.prompt}
 /* ================= FINAL EXPORTS (TIMEOUT FIX & VISIBLE) ================= */
 
 // 0. API Core & Meta Tags (Working)
+// ⚠️ NO `secrets:` here — Spark/free plan pe Secret Manager nahi hai (user ne
+// secrets Firebase se hata ke .env + GitHub Secrets me rakhe hain). Values
+// ai_backend/.env se plain env-vars ke roop me deploy hoti hain. `secrets:`
+// wapas lagaya to deploy "Failed to validate secret versions 404" dega.
 exports.api = onRequest({
- secrets: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_ADMIN_CHAT_ID", "GEMINI_API_KEY", "GMAIL_CREDENTIALS", "SERVICE_ACCOUNT_JSON", "AGENT_ADMIN_TOKEN"],
   maxInstances: 10,
   timeoutSeconds: 300,
   memory: "1GiB",
