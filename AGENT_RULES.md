@@ -160,3 +160,13 @@ Thin/incomplete **BLOG** pages may get a proposed `articleHtml` (OLD vs PROPOSED
   honge jab tak unka `secrets:` bhi nahi hatata (sirf api deploy karo).
 - Deploy machine ke `ai_backend/.env` me saare keys hone chahiye (TELEGRAM_*,
   GEMINI_API_KEY, GMAIL_CREDENTIALS, SERVICE_ACCOUNT_JSON, AGENT_ADMIN_TOKEN).
+
+- ⚙️ FUNCTIONS RUNTIME = Node 22 (engines) + CLI firebase-tools@latest (2026-09-26):
+  Node 20 runtime 2026-10-30 ko decommission — naya `api` container nodejs20 pe
+  start hi nahi hua (Cloud Run healthcheck fail). functions.yaml me runtime field
+  NAHI hai — engines.node se aata hai, isliye yaml regen ki zaroorat nahi padi.
+- `api` ka deploy ab GitHub Actions ("Deploy Firebase Functions Only") se bhi ho
+  sakta hai — workflow me functions:api + .env-from-secrets step add (file:
+  WORKFLOW_COPY/deploy.yml.txt — RULE ke mutabik main .github/workflows me push
+  nahi karta; user khud copy karke push karega). CI me .env nahi hota, isliye
+  runtime env-vars workflow ke andar secrets se likhe jate hain.
