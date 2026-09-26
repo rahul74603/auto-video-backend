@@ -1,7 +1,9 @@
-// StudyGyaan Service Worker v3
+// StudyGyaan Service Worker v4
 // Change: network-first for page navigations (deploy ke baad users ko turant
 // naya version milta hai — purana cached app nahi dikhta). Baaki offline fallback.
-const CACHE_NAME = 'studygyaan-v3';
+// v4: SW ab sirf same-origin GET requests handle karta hai — cross-origin API
+// calls (Cloud Functions) browser direct bhejta hai, SW beech me nahi aata.
+const CACHE_NAME = 'studygyaan-v4';
 const urlsToCache = ['/'];
 
 self.addEventListener('install', (event) => {
@@ -21,6 +23,14 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
+
+  // Cross-origin (Cloud Functions API, CDNs) aur non-GET requests: SW haath
+  // nahi lagata — browser ka default network behaviour. API POST/preflight ko
+  // intercept karne se sirf confusing "Failed to fetch (sw.js)" errors milti thi.
+  const reqUrl = new URL(req.url);
+  if (reqUrl.origin !== self.location.origin || req.method !== 'GET') {
+    return;
+  }
 
   // Page navigations: pehle network, fail hone par cache fallback
   if (req.mode === 'navigate') {

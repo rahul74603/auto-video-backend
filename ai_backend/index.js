@@ -487,7 +487,12 @@ exports.api = onRequest({
   maxInstances: 10,
   timeoutSeconds: 300,
   memory: "1GiB",
-  cors: true
+  cors: true,
+  // ⚠️ ZAROORI: naya Gen-2 Cloud Run service default IAM-PRIVATE banta hai —
+  // browser/CORS preflight pe Cloud Run khud 403 deta hai (bina CORS headers),
+  // Express cors() tak request pahunchti hi nahi. invoker public = allUsers allow.
+  // Naya HTTP endpoint add karo to yahi lagana + functions.yaml regen karna.
+  invoker: "public"
 }, app);
 
 // Spark-safe HTTP SEO functions live in seo_export.js (package.json "main")
