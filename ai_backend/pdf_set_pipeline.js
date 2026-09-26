@@ -74,11 +74,11 @@ async function defaultCallJson(prompt) {
     const mod = require("./agents/article_agents/model_client");
     cachedGenerateJson = mod.generateJson;
   }
-  const res = await cachedGenerateJson(prompt, {});
-  if (!res || !res.ok) {
-    throw new Error((res && res.error) || "Gemini call failed");
-  }
-  return res.data;
+  // ⚠️ generateJson model ka parsed JSON object DIRECT return karta hai
+  // (jaise {questions:[...]}) — {ok,data} envelope NAHI hai. Failures pe ye
+  // khud friendly errors throw karta hai (AI_RATE_LIMITED / GEMINI_CALL_FAILED).
+  // Envelope check lagaya to successful call bhi "Gemini call failed" ban jati hai.
+  return cachedGenerateJson(prompt, {});
 }
 
 /** Stage 1+2: PDF text → chunks → Gemini extract → normalized questions. */
