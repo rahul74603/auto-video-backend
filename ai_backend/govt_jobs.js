@@ -411,20 +411,16 @@ async function scrapeJobPageOnce(url) {
 // 🌐 MULTI-SOURCE JOB FEEDS (ek site down/429 ho to baaki chalte rahen)
 // Round-robin merge — koi ek site dominate nahi karti.
 // =========================================================
-const JOB_SOURCES = [
-    // ✅ Sab feeds LIVE-VERIFIED hain (23 Aug 2026)
-    { name: 'IndGovtJobs',    url: 'https://www.indgovtjobs.in/feeds/posts/default?alt=rss' },
-    { name: 'FreeJobAlert',   url: 'https://www.freejobalert.com/feed/' },
-    { name: 'SarkariExam',    url: 'https://www.sarkariexam.com/feed' },
-    { name: 'SarkariJobFind', url: 'https://sarkarijobfind.com/feed/' },
-    { name: 'RojgarResult',   url: 'https://rojgarresult.com/feed/' },
-    { name: 'GovtJobsBlog',   url: 'https://www.govtjobsblog.in/feed/' },
-    { name: 'SarkariNaukriD', url: 'https://www.sarkarinaukridaily.in/feed/' },
-];
+// PHASE-2: sources ab source_registry me (Firestore `sources` collection override +
+// health tracking). Ye list fallback hai — registry khali ho to yahi chalti hai.
+const { DEFAULT_SOURCES, getEnabledSources, recordSourceCheck } = require("./source_registry");
+const JOB_SOURCES = DEFAULT_SOURCES;
 
 async function fetchAllJobItems(perSource = 12, limitTotal = 60) {
     const buckets = [];
-    for (const src of JOB_SOURCES) {
+    // Registry-enabled sources (Firestore `sources`), warna legacy fallback
+    const sources = await getEnabledSources(db, JOB_SOURCES);
+    for (const src of sources) {
         try {
             const feed = await parser.parseURL(src.url);
             const items = (feed.items || []).slice(0, perSource).map((it) => ({
@@ -434,8 +430,10 @@ async function fetchAllJobItems(perSource = 12, limitTotal = 60) {
             })).filter((it) => it.title && it.link && !it.link.includes('127.0.0.1'));
             buckets.push(items);
             console.log(`📰 ${src.name}: ${items.length} items`);
+            await recordSourceCheck(db, src.name, { ok: true, itemCount: items.length });
         } catch (e) {
             console.warn(`⚠️ ${src.name} feed fail (skip): ${e.message.slice(0, 80)}`);
+            await recordSourceCheck(db, src.name, { ok: false, error: e.message });
         }
         await sleep(1500);
     }

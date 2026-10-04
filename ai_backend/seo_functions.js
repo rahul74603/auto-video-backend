@@ -7,6 +7,8 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 const WEBSITE_URL = "https://studygyaan.in";
+// PHASE-2: Google News sitemap ka pure builder (blogs+jobs+fast_track, tests ke saath)
+const { buildNewsEntries, renderNewsSitemapXml } = require("./news_sitemap");
 
 // =========================================================
 // 🛠️ HELPER FUNCTIONS
@@ -467,51 +469,24 @@ exports.generateSitemapMaterials = functions.https.onRequest(async (req, res) =>
 // =========================================================
 exports.generateSitemapNews = functions.https.onRequest(async (req, res) => {
     try {
-        // ✅ News sitemap - sirf last 2 din ke articles
-        const twoDaysAgo = new Date();
-        twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-
-        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-        xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"\n`;
-        xml += `        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">\n`;
-
-        const snap = await db.collection("blogs")
-            .orderBy("createdAt", "desc")
-            .limit(100)
-            .get();
-
-        snap.forEach(doc => {
-            const data = doc.data();
-            if (!isIndexableDocument(data) || !hasUsefulTitle(data) || !data.createdAt) return;
-
-            const pubDate = data.createdAt.toDate
-                ? data.createdAt.toDate()
-                : new Date(data.createdAt);
-
-            // ✅ सिर्फ 2 दिन पुराने articles
-            if (pubDate < twoDaysAgo) return;
-
-            const slugOrId = data.slug || doc.id;
-            const safeSlug = safeXml(slugOrId);
-            const pubIso = pubDate.toISOString();
-            const newsTitle = safeXml(data.title || "StudyGyaan Update");
-            const category = safeXml(data.category || "Education");
-
-            xml += `  <url>\n`;
-            xml += `    <loc>${WEBSITE_URL}/blog/${safeSlug}</loc>\n`;
-            xml += `    <news:news>\n`;
-            xml += `      <news:publication>\n`;
-            xml += `        <news:name>StudyGyaan</news:name>\n`;
-            xml += `        <news:language>hi</news:language>\n`;
-            xml += `      </news:publication>\n`;
-            xml += `      <news:publication_date>${pubIso}</news:publication_date>\n`;
-            xml += `      <news:title>${newsTitle}</news:title>\n`;
-            xml += `      <news:keywords>${category}, StudyGyaan, Sarkari Naukri, Exam Preparation</news:keywords>\n`;
-            xml += `    </news:news>\n`;
-            xml += `  </url>\n`;
+        // PHASE-2: news sitemap ab blogs + jobs + fast_track cover karta hai —
+        // site ka sabse fresh content Google News tak pahunchta hai.
+        // Filtering/sorting/XML = pure builder (news_sitemap.js, tested).
+        const [blogSnap, jobSnap, updateSnap] = await Promise.all([
+            db.collection("blogs").orderBy("createdAt", "desc").limit(100).get(),
+            db.collection("jobs").orderBy("createdAt", "desc").limit(100).get(),
+            db.collection("fast_track").orderBy("createdAt", "desc").limit(100).get(),
+        ]);
+        const toDocs = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const entries = buildNewsEntries({
+            blogs: toDocs(blogSnap),
+            jobs: toDocs(jobSnap),
+            updates: toDocs(updateSnap),
+            now: new Date(),
+            maxAgeDays: 2,
+            limit: 200,
         });
-
-        xml += `</urlset>`;
+        const xml = renderNewsSitemapXml(entries, { baseUrl: WEBSITE_URL });
 
         // ✅ News sitemap cache कम रखो - fresh content
         res.set('Cache-Control', 'public, max-age=60, s-maxage=120');
