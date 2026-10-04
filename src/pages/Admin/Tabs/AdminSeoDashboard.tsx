@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, RefreshCw, Search, ShieldCheck, AlertTriangle, Play, Clipboard } from 'lucide-react';
 import toast from 'react-hot-toast';
+import NewsDeskWidget from '@/components/NewsDeskWidget';
 import {
   applyOptimizationProposal,
   applyOptimizationProposals,
@@ -649,6 +650,7 @@ const AdminSeoDashboard = () => {
 
   return (
     <div className="space-y-6">
+      <NewsDeskWidget />
       <div className="bg-white border rounded-[2rem] p-6 md:p-8 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
