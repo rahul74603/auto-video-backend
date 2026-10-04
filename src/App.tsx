@@ -37,6 +37,9 @@ const CategoryPage = lazy(() => import('./pages/CategoryPage'));
 const BlogList = lazy(() => import('./pages/BlogList'));
 const BlogPost = lazy(() => import('./pages/BlogPost'));
 
+// News Hub (PHASE-2)
+const NewsHub = lazy(() => import('./pages/NewsHub'));
+
 // Tests
 const MockTestLibrary = lazy(() => import('./pages/MockTestLibrary'));
 const PlayMockTest = lazy(() => import('./pages/PlayMockTest'));
@@ -288,6 +291,16 @@ function App() {
                                                     pageTitle={`Syllabus & Exam Pattern ${new Date().getFullYear()}`}
                                                     description="सभी परीक्षाओं का लेटेस्ट सिलेबस और एग्जाम पैटर्न यहाँ देखें।"
                                                 />
+                                            }
+                                        />
+
+                                        {/* 📰 NEWS HUB */}
+                                        <Route
+                                            path="/news"
+                                            element={
+                                                <PageWrapper>
+                                                    <NewsHub />
+                                                </PageWrapper>
                                             }
                                         />
 

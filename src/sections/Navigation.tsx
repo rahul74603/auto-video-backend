@@ -24,7 +24,8 @@ const navLinks = [
     { name: 'Govt Jobs', path: '/govt-jobs' },
     { name: 'E-Books', path: '/e-books' },
     { name: 'Free Study Material', path: '/free-study-material' },
-    { name: 'Blog', path: '/blog' }
+    { name: 'Blog', path: '/blog' },
+    { name: 'News', path: '/news' }
 ];
 
 const Navigation = () => {
@@ -303,6 +304,19 @@ const Navigation = () => {
                     }`}
                 >
                     E-Books
+                </Link>
+
+                <Link
+                    to="/news"
+                    role="tab"
+                    aria-selected={isActive('/news')}
+                    className={`whitespace-nowrap px-4 py-1.5 rounded-full text-[11px] font-bold border shrink-0 ${
+                        isActive('/news')
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-slate-600'
+                    }`}
+                >
+                    News
                 </Link>
 
                 <Link
