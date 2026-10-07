@@ -555,6 +555,15 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
     }
 
     logger(`🎉 Complete! ${results.length} new items saved`);
+    // 🟢 STATUS (admin "System Status" tab ke liye — user ko dikhe kab chala)
+    try {
+        await db.collection("system_configs").doc("fasttrack_status").set({
+            lastRun: admin.firestore.FieldValue.serverTimestamp(),
+            status: "completed",
+            lastCount: (results || []).length,
+        }, { merge: true });
+    } catch (e) { console.warn("fasttrack status write failed:", e.message); }
+
     return results;
 }
 
