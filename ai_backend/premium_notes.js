@@ -769,14 +769,7 @@ exports.isAcceptableSetSize = isAcceptableSetSize;
 // PHASE-3: dynamic year — 2026 → 2027 automatic (titles/SEO/slug)
 const CURRENT_YEAR = new Date().getFullYear();
 exports.CURRENT_YEAR = CURRENT_YEAR;
-exports.generatePremiumNote = onRequest(
-  {
-    cors: true,
-    timeoutSeconds: 540,
-    memory: "2GiB",
-    secrets: ["SERVICE_ACCOUNT_JSON", "GEMINI_API_KEY"]
-  },
-  async (req, res) => {
+async function premiumSetHandler(req, res) {
 
     // CORS
     res.set("Access-Control-Allow-Origin", "*");
@@ -1079,15 +1072,26 @@ exports.generatePremiumNote = onRequest(
         time: totalTime + "s"
       });
     }
-  }
+}
+// HTTP entry — wahi handler, firebase-functions ke CORS/timeout config ke saath
+exports.generatePremiumNote = onRequest(
+  {
+    cors: true,
+    timeoutSeconds: 540,
+    memory: "2GiB",
+    secrets: ["SERVICE_ACCOUNT_JSON", "GEMINI_API_KEY"]
+  },
+  premiumSetHandler
 );
 
 // ============================================
 // 🤖 PROGRAMMATIC ENTRY (daily auto-sets)
 // ============================================
-// PHASE-3: wahi generation logic, HTTP ke bina — fake req/res ke through
-// existing handler ko call karte hain (koi logic duplication NAHI, pattern
-// hamesha identical). auto_premium_sets.js isi pe ride karta hai.
+// PHASE-3: wahi generation logic, HTTP ke bina — inner handler ko seedha
+// fake req/res ke through call karte hain (koi logic duplication NAHI).
+// NOTE: exports.generatePremiumNote (onRequest wrapper) ko call NAHI karna —
+// functions-framework real Express res expect karta hai (res.on etc.) →
+// "res.on is not a function" (2026-10-07 workflow failure ka root cause).
 async function runPremiumSetGeneration(params = {}) {
   const req = { method: "POST", body: params, get: () => "" };
   const res = {
@@ -1098,7 +1102,7 @@ async function runPremiumSetGeneration(params = {}) {
     json(payload) { this._payload = payload; return this; },
     send(payload) { this._payload = payload; return this; }
   };
-  await exports.generatePremiumNote(req, res);
+  await premiumSetHandler(req, res);
   const payload = res._payload || {};
   if (!payload || payload.success !== true) {
     throw new Error((payload && payload.error) || `Premium set generation failed (HTTP ${res._code})`);

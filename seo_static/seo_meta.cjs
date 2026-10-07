@@ -28,6 +28,24 @@ function truncate(s, n) {
   return s.length <= n ? s : s.slice(0, n - 1).trimEnd() + "…";
 }
 
+/**
+ * 🚑 LONE-SURROGATE KILLER (404-massacre fix, 2026-10-07):
+ * truncate()/slice() UTF-16 code-units pe emoji pair ko beech me kaat sakta hai
+ * → JSON.stringify lone `\ud83d` escape likhta hai → PHP json_decode NULL
+ * → meta.php har story URL pe 404 de deta tha. Ye helper lone surrogates
+ * hata deta hai (paired emoji safe rehte hain).
+ */
+function stripLoneSurrogates(s) {
+  return String(s == null ? "" : s).replace(
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+    ""
+  );
+}
+// JSON.stringify replacer — har string value sanitize hoti hai
+function jsonSanitizer(key, value) {
+  return typeof value === "string" ? stripLoneSurrogates(value) : value;
+}
+
 function toIso(t, fallback) {
   if (!t) return fallback || null;
   try {
@@ -716,10 +734,10 @@ function buildMetaFiles(colls, opts = {}) {
   });
 
   return {
-    "seo-meta-jobs.json": JSON.stringify(jobs),
-    "seo-meta-updates.json": JSON.stringify(updates),
-    "seo-meta-pages.json": JSON.stringify(pages),
-    "seo-meta-stories.json": JSON.stringify(stories),
+    "seo-meta-jobs.json": JSON.stringify(jobs, jsonSanitizer),
+    "seo-meta-updates.json": JSON.stringify(updates, jsonSanitizer),
+    "seo-meta-pages.json": JSON.stringify(pages, jsonSanitizer),
+    "seo-meta-stories.json": JSON.stringify(stories, jsonSanitizer),
   };
 }
 
