@@ -733,6 +733,26 @@ function buildMetaFiles(colls, opts = {}) {
     d: "StudyGyaan Disclaimer — content ki accuracy aur external links ke regarding information.",
   });
 
+  // 🏷️ TITLE-DEDUPE GUARD (SE Ranking audit: 278 "duplicate page titles"):
+  // same-title pages (e.g. repeated story titles) ko unique suffix milta hai —
+  // Google duplicate-title signal na de. 404 titles audit se sitemap-regen ke
+  // baad khud hatenge.
+  {
+    const seen = new Map();
+    for (const map of [jobs, updates, pages, stories]) {
+      for (const [path, e] of Object.entries(map)) {
+        const key = String(e.t || "").toLowerCase().trim();
+        if (!key) continue;
+        const n = seen.get(key) || 0;
+        seen.set(key, n + 1);
+        if (n > 0) {
+          const suffix = ` (${path.split("/").pop().slice(0, 18)}…)`;
+          e.t = truncate(String(e.t) + suffix, 70);
+        }
+      }
+    }
+  }
+
   // 🕸️ SEO-NAV (2026-10-07, SE Ranking audit: 730 pages "no inbound links"):
   // har shell page ke footer me latest detail-links ka static block — bots ko
   // test/material/course/story pages tak inbound links milte hain.
