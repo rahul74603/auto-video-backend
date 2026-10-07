@@ -287,6 +287,30 @@ if (!$entry) { http_response_code(200); } // homepage/listing → generic meta, 
     <a href="<?= $h($SITE) ?>/jobs/police">Police Jobs</a>
   </p>
   <p>&copy; StudyGyaan.in — Sarkari Naukri &amp; Exam Preparation</p>
+  <?php
+  // 🕸️ SEO-NAV: latest detail pages ke static inbound links (orphan-pages fix)
+  $navFile = __DIR__ . '/seo-nav.json';
+  $nav = is_readable($navFile) ? json_decode((string)file_get_contents($navFile), true) : null;
+  if (is_array($nav)): ?>
+  <nav aria-label="Latest on StudyGyaan">
+    <?php
+    $navRows = [
+      'Latest Govt Jobs'   => $nav['jobs'] ?? [],
+      'Latest Updates'     => $nav['updates'] ?? [],
+      'Free Mock Tests'    => $nav['tests'] ?? [],
+      'Free Study Material'=> $nav['materials'] ?? [],
+      'Web Stories'        => $nav['stories'] ?? [],
+      'Premium Courses'    => $nav['courses'] ?? [],
+    ];
+    foreach ($navRows as $label => $links): if (!is_array($links) || !$links) continue; ?>
+    <p><strong><?= $h($label) ?>:</strong>
+      <?php foreach ($links as $l): if (!is_array($l) || empty($l['u'])) continue; ?>
+      <a href="<?= $h($SITE . $l['u']) ?>"><?= $h($l['t'] ?? $l['u']) ?></a> ·
+      <?php endforeach; ?>
+    </p>
+    <?php endforeach; ?>
+  </nav>
+  <?php endif; ?>
 </footer>
 </body>
 </html>
