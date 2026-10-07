@@ -68,7 +68,7 @@ async function analyzePatterns(db, opts = {}) {
     }
 
     try {
-        const windowStart = Date.now() - (opts.windowDays || ROLLING_WINDOW_DAYS) * 24 * 60 * 60 * 1000;
+        const windowStart = (opts.now || Date.now()) - (opts.windowDays || ROLLING_WINDOW_DAYS) * 24 * 60 * 60 * 1000;
 
         const snap = await db.collection('content_performance')
             .where('collectedAt', '>=', windowStart)

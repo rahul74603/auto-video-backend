@@ -62,6 +62,12 @@ const { EDITORIAL_AUTHOR } = require("../agents/article_agents/constants");
 
 const SOURCE_URL = "https://ssc.gov.in/portal/cgl-notification-2026";
 
+// 📅 DYNAMIC DATES — hardcoded dates time ke saath stale ho jaati hain
+// (2026-10-07 incident: 31/07/2026 expire hua → GOOD fixture freshness fail).
+const _fd = new Date(Date.now() + 45 * 86400000);
+const FUTURE_DATE = `${String(_fd.getUTCDate()).padStart(2, "0")}/${String(_fd.getUTCMonth() + 1).padStart(2, "0")}/${_fd.getUTCFullYear()}`;
+const FUTURE_DATE_ISO = _fd.toISOString().slice(0, 10);
+
 const JOB_SOURCE_HTML = `<!doctype html><html><head>
 <title>SSC CGL 2026 Notification - Apply Online for 5432 Posts</title>
 <meta name="description" content="SSC CGL 2026 recruitment notification">
@@ -74,7 +80,7 @@ Advt No: SSC/CGL/2026/01. Eligible candidates can apply online at the official w
 <table>
 <tr><th>Event</th><th>Date</th></tr>
 <tr><td>Application Start Date</td><td>01/07/2026</td></tr>
-<tr><td>Last Date to Apply</td><td>31/07/2026</td></tr>
+<tr><td>Last Date to Apply</td><td>${FUTURE_DATE}</td></tr>
 <tr><td>Exam Date</td><td>October 2026</td></tr>
 </table>
 <table>
@@ -102,17 +108,17 @@ function groundedWriterPayload(overrides = {}) {
   return {
     seoTitle: "SSC CGL 2026 Recruitment 5432 Posts - Apply Online",
     metaDescription:
-      "SSC CGL 2026 भर्ती के लिए ऑनलाइन आवेदन करें। 5432 पदों पर नौकरी, आवेदन 31/07/2026 तक। फीस, पात्रता, सैलरी और चयन प्रक्रिया की पूरी जानकारी यहाँ देखें।",
+      `SSC CGL 2026 भर्ती के लिए ऑनलाइन आवेदन करें। 5432 पदों पर नौकरी, आवेदन ${FUTURE_DATE} तक। फीस, पात्रता, सैलरी और चयन प्रक्रिया की पूरी जानकारी यहाँ देखें।`,
     slug: "ssc-cgl-2026-recruitment",
     h1: "SSC CGL 2026 Recruitment",
-    shortDescription: "Staff Selection Commission ने SSC CGL 2026 के 5432 पदों के लिए नोटिफिकेशन जारी किया है। ऑनलाइन आवेदन 31/07/2026 तक।",
+    shortDescription: `Staff Selection Commission ने SSC CGL 2026 के 5432 पदों के लिए नोटिफिकेशन जारी किया है। ऑनलाइन आवेदन ${FUTURE_DATE} तक।`,
     facts: {
       title: "SSC CGL 2026",
       organization: "Staff Selection Commission (SSC)",
       advtNo: "SSC/CGL/2026/01",
       category: "ssc",
       startDate: "01/07/2026",
-      lastDate: "31/07/2026",
+      lastDate: FUTURE_DATE,
       examDate: "October 2026",
       vacancies: "5432",
       salary: "Pay Level 4 to Level 8 (Rs. 25500 to Rs. 151100)",
@@ -177,11 +183,11 @@ function groundedContentHtml(wordTarget = 1450) {
     <tr><td>आयु सीमा</td><td>18 से 32 वर्ष</td></tr>
     </tbody></table></div>
     <h2>महत्वपूर्ण तिथियाँ (Important Dates)</h2>
-    <p>Notification के अनुसार आवेदन की प्रक्रिया 01/07/2026 से शुरू हो रही है और अंतिम तिथि 31/07/2026 है। परीक्षा October 2026 में आयोजित होने की बात कही गई है।</p>
+    <p>Notification के अनुसार आवेदन की प्रक्रिया 01/07/2026 से शुरू हो रही है और अंतिम तिथि ${FUTURE_DATE} है। परीक्षा October 2026 में आयोजित होने की बात कही गई है।</p>
     <div class="table-responsive"><table class="ai-data-table"><thead><tr><th>घटना</th><th>तिथि</th></tr></thead>
     <tbody>
     <tr><td>आवेदन शुरू</td><td>01/07/2026</td></tr>
-    <tr><td>अंतिम तिथि</td><td>31/07/2026</td></tr>
+    <tr><td>अंतिम तिथि</td><td>${FUTURE_DATE}</td></tr>
     </tbody></table></div>
     <h2>आवेदन शुल्क (Application Fee)</h2>
     <p>General, OBC और EWS श्रेणी के उम्मीदवारों के लिए शुल्क Rs. 100 रखा गया है, जबकि SC, ST और Female अभ्यर्थियों के लिए शुल्क Rs. 0 यानी शून्य है।</p>
@@ -222,7 +228,7 @@ function groundedContentHtml(wordTarget = 1450) {
 function groundedFaqs() {
   return [
     { question: "SSC CGL 2026 में कुल कितने पद हैं?", answer: "Notification के अनुसार कुल 5432 posts भरे जाने हैं।" },
-    { question: "SSC CGL 2026 आवेदन की अंतिम तिथि क्या है?", answer: "ऑनलाइन आवेदन की अंतिम तिथि 31/07/2026 बताई गई है।" },
+    { question: "SSC CGL 2026 आवेदन की अंतिम तिथि क्या है?", answer: `ऑनलाइन आवेदन की अंतिम तिथि ${FUTURE_DATE} बताई गई है।` },
     { question: "आवेदन शुल्क कितना है?", answer: "General, OBC, EWS के लिए Rs. 100 और SC, ST, Female के लिए Rs. 0 है।" },
     { question: "SSC CGL 2026 के लिए योग्यता क्या है?", answer: "मान्यता प्राप्त university से Bachelor Degree होना आवश्यक है।" },
     { question: "चयन प्रक्रिया क्या है?", answer: "Tier-I परीक्षा, Tier-II परीक्षा और Document Verification।" }
@@ -346,7 +352,7 @@ test("job writer applies source-url fallback for applyLink and structured data o
   assert.match(schemaText, /Staff Selection Commission/);
   assert.match(schemaText, /5432/);
   const jobPosting = article.structuredData[0];
-  assert.equal(jobPosting.validThrough, "31/07/2026");
+  assert.equal(jobPosting.validThrough, FUTURE_DATE);
   assert.equal("baseSalary" in jobPosting, true);
   assert.match(JSON.stringify(jobPosting.baseSalary), /151100/);
 });
@@ -624,7 +630,7 @@ test("publish payload builders map to existing jobs / fast_track shapes", async 
   assert.equal(jobPayload.authorName, EDITORIAL_AUTHOR);
   assert.equal(jobPayload.organization, "Staff Selection Commission (SSC)");
   assert.equal(jobPayload.vacancies, "5432");
-  assert.equal(jobPayload.lastDate, "2026-07-31"); // panel ke liye ISO normalize hota hai
+  assert.equal(jobPayload.lastDate, FUTURE_DATE_ISO); // panel ke liye ISO normalize hota hai
   assert.equal(jobPayload.applyLink, "https://ssc.gov.in/apply-cgl-2026");
   assert.equal(jobPayload.publishedFromDraftId, "draft-123");
   assert.ok(Array.isArray(jobPayload.faqs) && jobPayload.faqs.length >= 4);

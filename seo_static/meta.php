@@ -160,6 +160,24 @@ if ($path === '/') {
     }
     $items[] = ['@type' => 'ListItem', 'position' => $pos, 'name' => $title, 'item' => $canonical];
     $extraLd[] = ['@context' => 'https://schema.org', '@type' => 'BreadcrumbList', 'itemListElement' => $items];
+
+    // 🎓 Course pages → Course schema (rich results: provider + offer)
+    if ($seg1 === 'course') {
+        $extraLd[] = [
+            '@context' => 'https://schema.org',
+            '@type' => 'Course',
+            'name' => $title,
+            'description' => function_exists('mb_substr') ? mb_substr((string)$desc, 0, 500) : substr((string)$desc, 0, 500),
+            'url' => $canonical,
+            'inLanguage' => 'hi',
+            'provider' => ['@type' => 'Organization', 'name' => 'StudyGyaan', 'sameAs' => $SITE],
+            'offers' => [
+                '@type' => 'Offer',
+                'priceCurrency' => 'INR',
+                'availability' => 'https://schema.org/InStock',
+            ],
+        ];
+    }
 }
 $allLd = array_merge(is_array($ld) ? $ld : [], $extraLd);
 
