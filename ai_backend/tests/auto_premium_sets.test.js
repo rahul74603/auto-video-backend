@@ -297,16 +297,16 @@ test("withRetries: 2 fail ke baad success → result; 3 fail → throw", async (
 // ---------- v3.2: multi-exam rotation ----------
 test("pickBlueprintEntry: 4 din me saare 8 entries cover, slot alag", () => {
   const { pickBlueprintEntry, DEFAULT_BLUEPRINTS } = require("../auto_premium_sets");
-  assert.equal(DEFAULT_BLUEPRINTS.length, 8);
+  assert.equal(DEFAULT_BLUEPRINTS.length, 16);
   const exams = new Set(DEFAULT_BLUEPRINTS.map((b) => b.exam));
   assert.deepEqual([...exams].sort(), ["Banking", "Railway", "SSC", "Teaching"]);
   const seen = new Set();
-  for (let d = 0; d < 4; d++) {
+  for (let d = 0; d < 8; d++) {
     const day = new Date(2026, 0, 1 + d);
     seen.add(pickBlueprintEntry(DEFAULT_BLUEPRINTS, 0, day).section);
     seen.add(pickBlueprintEntry(DEFAULT_BLUEPRINTS, 1, day).section);
   }
-  assert.equal(seen.size, 8);
+  assert.equal(seen.size, 16);
   // same din+slot deterministic
   const d = new Date(2026, 0, 1);
   assert.deepEqual(pickBlueprintEntry(DEFAULT_BLUEPRINTS, 0, d), pickBlueprintEntry(DEFAULT_BLUEPRINTS, 0, d));

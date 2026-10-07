@@ -54,6 +54,9 @@ const CourseView = () => {
   const [allContent, setAllContent] = useState<CourseContent[]>([]); 
   const [loading, setLoading] = useState(true);
   const [finalPrice, setFinalPrice] = useState<number | null>(null);
+  // 🆓 FREE syllabus preview (user rule 2026-10-07): syllabus doc bina purchase
+  // ke dikhe — user ko bahar se pata chale kya milega; baki notes locked.
+  const [syllabusDoc, setSyllabusDoc] = useState<{ title: string; content: string } | null>(null);
   
   // 📂 FOLDER STATE
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
@@ -75,6 +78,14 @@ const CourseView = () => {
 
           // 2. Fetch Content
           const content = await courseContentRepository.listContent(id, { orderByCreatedAt: true });
+          // 🆓 syllabus-overview doc = FREE preview (bina purchase)
+          const syl = content.find((r) => (r as Record<string, unknown>).topic === "syllabus-overview");
+          if (syl && typeof (syl as Record<string, unknown>).content === "string") {
+            setSyllabusDoc({
+              title: String((syl as Record<string, unknown>).title || "Syllabus & Exam Pattern"),
+              content: String((syl as Record<string, unknown>).content),
+            });
+          }
           setAllContent(content.map((record) => {
             const rawType = typeof record.type === 'string' ? record.type : 'PDF';
             return {
@@ -284,6 +295,26 @@ const CourseView = () => {
         </div>
         <div className="absolute top-0 right-0 w-64 h-64 md:w-96 md:h-96 bg-blue-600/20 rounded-full blur-[80px] md:blur-[120px] -mr-32 -mt-32 md:-mr-40 md:-mt-40"></div>
       </div>
+
+      {/* 🆓 FREE SYLLABUS PREVIEW — bina purchase ke sab dekh saken (user rule) */}
+      {!hasAccess && syllabusDoc && (
+        <div className="bg-white rounded-2xl md:rounded-[2.5rem] border-2 border-emerald-200 p-5 md:p-10 mb-5 md:mb-10 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-4 md:mb-6">
+            <span className="bg-emerald-100 text-emerald-700 px-2.5 py-1 md:px-4 md:py-1.5 rounded-full text-[9px] md:text-xs font-black uppercase tracking-widest">
+              🆓 Free Preview — No Purchase Needed
+            </span>
+          </div>
+          <h2 className="text-base md:text-2xl font-black text-gray-900 mb-3 md:mb-5">{syllabusDoc.title}</h2>
+          <div
+            className="text-xs md:text-sm text-gray-700 leading-relaxed space-y-2 [&_h1]:text-lg [&_h1]:font-black [&_h2]:text-base [&_h2]:font-black [&_h2]:mt-4 [&_h3]:font-bold [&_li]:ml-4 [&_li]:list-disc"
+            dangerouslySetInnerHTML={{ __html: syllabusDoc.content }}
+          />
+          <p className="mt-4 md:mt-6 text-[10px] md:text-sm font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl p-3 md:p-4">
+            🔒 Isi syllabus ke har question-type pe bane premium practice sets (20-30 Q each)
+            unlock karne ke baad milenge — upar "अभी अनलॉक करें" button se lifetime access lein.
+          </p>
+        </div>
+      )}
 
       {!hasAccess && (
         <div className="bg-white border-2 border-dashed border-blue-100 rounded-2xl md:rounded-[2.5rem] p-6 md:p-12 text-center mb-5 md:mb-10 animate-in fade-in slide-in-from-bottom-4">

@@ -32,14 +32,26 @@ const { generateJson } = require("./agents/article_agents/model_client");
 // Din me 2 sets (user rule) → entries day-wise rotate hoti hain (4 din me full
 // cycle). Firestore system_settings/auto_premium_sets.blueprints se override.
 const DEFAULT_BLUEPRINTS = [
+  // 🚂 Railway (5)
   { exam: "Railway", section: "Group D", packId: "__auto__" },
   { exam: "Railway", section: "RRB ALP", packId: "__auto__" },
+  { exam: "Railway", section: "RRB NTPC", packId: "__auto__" },
+  { exam: "Railway", section: "RPF Constable", packId: "__auto__" },
+  { exam: "Railway", section: "RRB JE", packId: "__auto__" },
+  // 🏛️ SSC (4)
   { exam: "SSC", section: "SSC CGL", packId: "__auto__" },
   { exam: "SSC", section: "SSC GD", packId: "__auto__" },
+  { exam: "SSC", section: "SSC CHSL", packId: "__auto__" },
+  { exam: "SSC", section: "SSC MTS", packId: "__auto__" },
+  // 📖 Teaching (3)
   { exam: "Teaching", section: "CTET", packId: "__auto__" },
   { exam: "Teaching", section: "UPTET", packId: "__auto__" },
+  { exam: "Teaching", section: "REET", packId: "__auto__" },
+  // 🏦 Banking (4)
   { exam: "Banking", section: "IBPS PO & Clerk", packId: "__auto__" },
   { exam: "Banking", section: "SBI PO", packId: "__auto__" },
+  { exam: "Banking", section: "IBPS RRB", packId: "__auto__" },
+  { exam: "Banking", section: "RBI Assistant", packId: "__auto__" },
 ];
 
 /** Din-wise rotation: 2 slots/din → saari entries 4 din me cover. */
