@@ -63,11 +63,23 @@ async function fetchNewsOnce(): Promise<NewsItem[]> {
         getDocs(query(collection(db, 'blogs'), orderBy('createdAt', 'desc'), limit(40)))
     ]);
     const rows = (s: typeof jobs) => s.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }));
-    const items = [
+    const merged = [
         ...mapRows(rows(jobs), 'job', 'job'),
         ...mapRows(rows(updates), 'update', 'update'),
         ...mapRows(rows(blogs), 'blog', 'blog')
-    ]
+    ];
+    // 🧹 Duplicate-content shield (2026-10-07): same title sirf EK baar —
+    // jobs vs fast_track vs blogs cross-duplication (user rule: Google
+    // duplicate content na maane). Pehli (latest) entry jeet-ti hai.
+    const normTitle = (t: string) => t.toLowerCase().replace(/[^a-z0-9ऀ-ॿ]+/g, ' ').trim();
+    const seenTitles = new Set<string>();
+    const items = merged
+        .filter((i) => {
+            const k = normTitle(i.title);
+            if (seenTitles.has(k)) return false;
+            seenTitles.add(k);
+            return true;
+        })
         .sort((a, b) => b.ts - a.ts)
         .slice(0, 60);
     newsCache = { items, at: Date.now() };

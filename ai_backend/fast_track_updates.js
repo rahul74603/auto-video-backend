@@ -425,6 +425,15 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
             .get();
         recentSnap.forEach(d => recentTitles.push(d.data().title || ""));
         logger(`🛡️ Duplicate shield: ${recentTitles.length} recent titles loaded`);
+        // v3.4 (2026-10-07): JOBS ke titles bhi shield me — same notification
+        // jobs + fast_track DONO me duplicate nahi banegi (Google duplicate-content)
+        try {
+            const jobsSnap = await db.collection("jobs").orderBy("createdAt", "desc").limit(100).get();
+            jobsSnap.forEach(d => recentTitles.push(d.data().title || ""));
+            logger(`🛡️ + ${jobsSnap.size} job titles cross-shield me`);
+        } catch (crossErr) {
+            logger(`⚠️ Cross-shield jobs fetch skip: ${crossErr.message}`);
+        }
     } catch (shieldErr) {
         logger(`⚠️ Title shield load failed (continue anyway): ${shieldErr.message}`);
     }

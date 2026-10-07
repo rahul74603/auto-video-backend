@@ -494,6 +494,14 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
         ]);
         jobsSnap.forEach((d) => { const t = d.data().title; if (t) recentTitles.push(String(t)); });
         draftsSnap.forEach((d) => { const t = d.data().title; if (t) recentTitles.push(String(t)); });
+        // v3.4 (2026-10-07): fast_track titles bhi shield me — cross-collection
+        // duplicate content roko (jobs me wahi news dobara nahi aayegi)
+        try {
+            const ftSnap = await db.collection("fast_track").orderBy("createdAt", "desc").limit(60).get();
+            ftSnap.forEach((d) => { const t = d.data().title; if (t) recentTitles.push(String(t)); });
+        } catch (e) {
+            console.warn("fast_track cross-shield skip:", e.message);
+        }
     } catch (e) {
         console.warn("Recent titles fetch failed:", e.message);
     }
