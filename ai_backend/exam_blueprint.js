@@ -135,10 +135,16 @@ async function ensureExamPack(db, exam) {
     found = d.id;
   });
   if (found) return found;
+  // SEO + Shop-ready: slug (sitemap /course/slug), description (ranking + users)
   const ref = await db.collection("courses").add({
     title,
+    slug: seoSlug(title),
     exam: String(exam || "").trim(),
     autoCreated: true,
+    description:
+      `${exam} ${CURRENT_YEAR()} ki complete taiyari — section-wise syllabus, ` +
+      `exam pattern, eligibility & physical requirements + har subject ke important ` +
+      `question-type practice sets (20-30 Q). StudyGyaan premium quality content.`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });

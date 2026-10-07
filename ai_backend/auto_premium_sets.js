@@ -27,14 +27,26 @@ const { isAutomationEnabled } = require("./agents/automation_guard");
 const blueprint = require("./exam_blueprint");
 const { generateJson } = require("./agents/article_agents/model_client");
 
-// PHASE-3 v3 (2026-10-07): exam-driven mode ab DEFAULT hai — config ki zaroorat
-// nahi. "Railway Special {YEAR}" course khud banta hai; andar sections
-// (Group D / RRB ALP) → subjects → question-type sets + syllabus doc.
-// Firestore system_settings/auto_premium_sets.blueprints se override kar sakte ho.
+// PHASE-3 v3.2 (2026-10-07): MULTI-EXAM — har famous exam ka apna course
+// ("{Exam} Special {YEAR}"), andar sections → subjects → sets + syllabus doc.
+// Din me 2 sets (user rule) → entries day-wise rotate hoti hain (4 din me full
+// cycle). Firestore system_settings/auto_premium_sets.blueprints se override.
 const DEFAULT_BLUEPRINTS = [
   { exam: "Railway", section: "Group D", packId: "__auto__" },
   { exam: "Railway", section: "RRB ALP", packId: "__auto__" },
+  { exam: "SSC", section: "SSC CGL", packId: "__auto__" },
+  { exam: "SSC", section: "SSC GD", packId: "__auto__" },
+  { exam: "Teaching", section: "CTET", packId: "__auto__" },
+  { exam: "Teaching", section: "UPTET", packId: "__auto__" },
+  { exam: "Banking", section: "IBPS PO & Clerk", packId: "__auto__" },
+  { exam: "Banking", section: "SBI PO", packId: "__auto__" },
 ];
+
+/** Din-wise rotation: 2 slots/din → saari entries 4 din me cover. */
+function pickBlueprintEntry(blueprints, slot = 0, now = new Date()) {
+  if (!Array.isArray(blueprints) || !blueprints.length) return null;
+  return blueprints[(dayIndex(now) * 2 + slot) % blueprints.length];
+}
 
 // Purane "Dhamaka"-era packs — public Shop se hide (admin me dikhte rahenge).
 // Ek baar hi update hota hai (system_settings.legacyHidden flag).
@@ -314,7 +326,7 @@ async function runDailyPremiumSets(db, opts = {}) {
     } catch {
       /* non-fatal */
     }
-    const entry = blueprints[slot % blueprints.length];
+    const entry = pickBlueprintEntry(blueprints, slot, new Date());
     let combos = [];
     try {
       const bp = await blueprint.getOrBuildBlueprint({ db, exam: entry.exam, section: entry.section, callJson: generateJson });
@@ -355,6 +367,7 @@ module.exports = {
   qHash,
   collectAvoidQuestions,
   withRetries,
+  pickBlueprintEntry,
   DEFAULT_TOPIC_POOL,
   DEFAULT_BLUEPRINTS,
   LEGACY_PACK_IDS,
