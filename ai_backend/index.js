@@ -38,6 +38,18 @@ require("./agents/article_agents/article_routes").registerArticleAgentRoutes(app
 require("./agents/seo_intelligence/routes").registerSeoIntelligenceRoutes(app, db, { authMiddleware: articleAuth });
 // 📥 PDF → Premium Set builder (extract + rewrite + answer-guard → course content)
 require("./pdf_set_routes").registerPdfSetRoutes(app, db, { authMiddleware: articleAuth });
+
+// 📚 DAILY AUTO PREMIUM SETS (PHASE-3) — 2 sets × 25 Qs, premium_notes pattern pe.
+// Agent-token/admin-auth protected; GitHub Actions cron se chalta hai.
+app.post("/premium-sets/auto-run", articleAuth, async (req, res) => {
+  try {
+    const report = await require("./auto_premium_sets").runDailyPremiumSets(db, req.body || {});
+    return res.json({ success: true, ...report });
+  } catch (e) {
+    console.error("❌ premium-sets/auto-run:", e);
+    return res.status(500).json({ success: false, error: e.message });
+  }
+});
 // 📱 Article → Web Story backfill endpoint (POST /stories/backfill)
 require("./article_to_story").registerStoryRoutes(app, db, admin.firestore.FieldValue);
 app.post("/seo/indexing-audit", async (req, res) => {
