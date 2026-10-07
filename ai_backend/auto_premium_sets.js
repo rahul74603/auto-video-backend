@@ -174,6 +174,26 @@ async function getDefaultPacks(db) {
 
 /* ---------------- main runner ---------------- */
 
+/**
+ * 🔄 Retry helper — user rule (2026-10-07): "ek fail ho to retry 3 bar,
+ * usse zyada nahi — phir next timer pe agla". Injectable sleep (tests).
+ */
+async function withRetries(fn, { attempts = 3, sleepMs = 30000, label = "task", _sleep = null } = {}) {
+  const sleep = _sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  let lastErr = null;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await fn(i);
+    } catch (e) {
+      lastErr = e;
+      console.warn(`⚠️ ${label} — attempt ${i}/${attempts} failed: ${String(e.message || e).slice(0, 160)}`);
+      if (i < attempts) await sleep(sleepMs);
+    }
+  }
+  throw lastErr;
+}
+exports.withRetries = withRetries;
+
 async function generateOneExamSet({ db, entry, slot, combo }) {
   const { exam, section } = entry;
   let packId = entry.packId;
@@ -295,20 +315,25 @@ async function runDailyPremiumSets(db, opts = {}) {
       /* non-fatal */
     }
     const entry = blueprints[slot % blueprints.length];
-    let bp = null;
     let combos = [];
     try {
-      bp = await blueprint.getOrBuildBlueprint({ db, exam: entry.exam, section: entry.section, callJson: generateJson });
-      combos = combosForRun(bp, slot, new Date(), 2);
+      const bp = await blueprint.getOrBuildBlueprint({ db, exam: entry.exam, section: entry.section, callJson: generateJson });
+      // USER RULE: din me sirf 2 sets total → har cron run me SIRF 1 set
+      combos = combosForRun(bp, slot, new Date(), 1);
       if (!combos.length) throw new Error("blueprint me subjects nahi");
     } catch (e) {
       report.errors.push({ entry, stage: "blueprint", error: String(e.message || e).slice(0, 250) });
     }
     for (const combo of combos) {
       try {
-        report.sets.push(await generateOneExamSet({ db, entry, slot, combo }));
+        // USER RULE: fail ho to max 3 attempts (30s backoff), phir next timer
+        const set = await withRetries(
+          () => generateOneExamSet({ db, entry, slot, combo }),
+          { attempts: 3, sleepMs: 30000, label: `set ${entry.section}/${combo.subject?.name}` }
+        );
+        report.sets.push(set);
       } catch (e) {
-        report.errors.push({ entry, subject: combo.subject?.name, error: String(e.message || e).slice(0, 250) });
+        report.errors.push({ entry, subject: combo.subject?.name, attempts: 3, error: String(e.message || e).slice(0, 250) });
       }
     }
     return report;
@@ -329,6 +354,7 @@ module.exports = {
   normalizeQ,
   qHash,
   collectAvoidQuestions,
+  withRetries,
   DEFAULT_TOPIC_POOL,
   DEFAULT_BLUEPRINTS,
   LEGACY_PACK_IDS,
