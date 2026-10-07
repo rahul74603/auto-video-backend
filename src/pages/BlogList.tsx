@@ -15,11 +15,22 @@ type BlogListSettings = {
   discountPercent?: string | number;
 };
 
+// ⚡ SPEED (user rule 2026-10-07): 10 items/page + Next/Prev — render fast.
+const PAGE_SIZE = 10;
+
 const BlogList = () => {
   const { blogs, loading: blogsLoading } = useBlogs();
   const [globalSettings, setGlobalSettings] = useState<BlogListSettings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const navigate = useNavigate();
+
+  const totalPages = Math.max(1, Math.ceil(blogs.length / PAGE_SIZE));
+  const visibleBlogs = blogs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const gotoPage = (p: number) => {
+    setPage(Math.min(Math.max(1, p), totalPages));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -80,7 +91,7 @@ const BlogList = () => {
               <p className="text-center text-sm py-10 text-slate-400 font-bold">कोई लेख नहीं मिला।</p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-5">
-                {blogs.map((blog) => (
+                {visibleBlogs.map((blog) => (
                   <Link to={`/blog/${blog.id}`} key={blog.id} className="group">
                     <div className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl transition-all flex flex-col h-full">
                       <div className="h-32 md:h-44 overflow-hidden relative bg-slate-100">
@@ -106,6 +117,29 @@ const BlogList = () => {
                   </Link>
                 ))}
               </div>
+            )}
+
+            {/* 📄 PAGINATION — 10/page, baaki Next pe (speed rule) */}
+            {blogs.length > 0 && totalPages > 1 && (
+              <nav className="flex items-center justify-center gap-2 md:gap-4 mt-6" aria-label="Blog pages">
+                <button
+                  onClick={() => gotoPage(page - 1)}
+                  disabled={page <= 1}
+                  className="px-3 md:px-5 py-2 md:py-2.5 rounded-xl bg-white border border-slate-200 text-[11px] md:text-sm font-black text-slate-700 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed hover:enabled:border-blue-400 hover:enabled:text-blue-600 transition"
+                >
+                  ← Previous
+                </button>
+                <span className="text-[11px] md:text-sm font-black text-slate-500">
+                  Page {page} / {totalPages}
+                </span>
+                <button
+                  onClick={() => gotoPage(page + 1)}
+                  disabled={page >= totalPages}
+                  className="px-3 md:px-5 py-2 md:py-2.5 rounded-xl bg-blue-600 text-white text-[11px] md:text-sm font-black shadow-sm disabled:opacity-40 disabled:cursor-not-allowed hover:enabled:bg-blue-700 transition"
+                >
+                  Next →
+                </button>
+              </nav>
             )}
           </div>
 

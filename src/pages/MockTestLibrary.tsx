@@ -25,8 +25,19 @@ interface SidebarLinkItem {
 const toLinkList = (value: unknown): SidebarLinkItem[] =>
     Array.isArray(value) ? (value as SidebarLinkItem[]) : [];
 
+// ⚡ SPEED (user rule 2026-10-07): 10 items/page + Next/Prev — render fast.
+const PAGE_SIZE = 10;
+
 const MockTestLibrary = () => {
     const { tests, loading: testsLoading } = useMockTests();
+    const [page, setPage] = useState(1);
+
+    const totalPages = Math.max(1, Math.ceil(tests.length / PAGE_SIZE));
+    const visibleTests = tests.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    const gotoPage = (p: number) => {
+        setPage(Math.min(Math.max(1, p), totalPages));
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
     const [mockBlogs, setMockBlogs] = useState<SidebarLinkItem[]>([]);
     const [mockLinks, setMockLinks] = useState<SidebarLinkItem[]>([]);
     const [loading, setLoading] = useState(true);
@@ -122,7 +133,7 @@ const MockTestLibrary = () => {
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                                {tests.map((test) => (
+                                {visibleTests.map((test) => (
                                     <article key={test.id} className="relative group">
                                         <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-600 to-purple-600 rounded-[35px] blur opacity-10 group-hover:opacity-30 transition duration-500"></div>
                                         
@@ -168,6 +179,29 @@ const MockTestLibrary = () => {
                                     </article>
                                 ))}
                             </div>
+                        )}
+
+                        {/* 📄 PAGINATION — 10/page (speed rule) */}
+                        {tests.length > 0 && totalPages > 1 && (
+                            <nav className="flex items-center justify-center gap-2 md:gap-4 mt-8" aria-label="Test pages">
+                                <button
+                                    onClick={() => gotoPage(page - 1)}
+                                    disabled={page <= 1}
+                                    className="px-3 md:px-5 py-2 md:py-2.5 rounded-xl bg-white/5 border border-white/10 text-[11px] md:text-sm font-black text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:enabled:border-blue-400 hover:enabled:text-blue-300 transition"
+                                >
+                                    ← Previous
+                                </button>
+                                <span className="text-[11px] md:text-sm font-black text-slate-400">
+                                    Page {page} / {totalPages}
+                                </span>
+                                <button
+                                    onClick={() => gotoPage(page + 1)}
+                                    disabled={page >= totalPages}
+                                    className="px-3 md:px-5 py-2 md:py-2.5 rounded-xl bg-blue-600 text-white text-[11px] md:text-sm font-black disabled:opacity-40 disabled:cursor-not-allowed hover:enabled:bg-blue-500 transition"
+                                >
+                                    Next →
+                                </button>
+                            </nav>
                         )}
                         {/* ✅ SEO FIX: Internal Links Section (Fixes 'No outgoing links' and 'Orphan page' error) */}
                             <div className="bg-white/5 p-6 md:p-8 rounded-[2rem] border border-white/10 shadow-sm mt-8">
