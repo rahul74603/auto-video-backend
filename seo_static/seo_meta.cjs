@@ -733,11 +733,29 @@ function buildMetaFiles(colls, opts = {}) {
     d: "StudyGyaan Disclaimer — content ki accuracy aur external links ke regarding information.",
   });
 
+  // 🕸️ SEO-NAV (2026-10-07, SE Ranking audit: 730 pages "no inbound links"):
+  // har shell page ke footer me latest detail-links ka static block — bots ko
+  // test/material/course/story pages tak inbound links milte hain.
+  const pick = (map, prefix, cap) =>
+    Object.entries(map)
+      .filter(([p]) => p.startsWith(prefix))
+      .slice(0, cap)
+      .map(([p, e]) => ({ u: p, t: e.t }));
+  const nav = {
+    jobs: pick(jobs, "/job/", 20),
+    updates: pick(updates, "/update/", 12),
+    tests: pick(pages, "/test/", 20),
+    materials: pick(pages, "/free-study-material/", 12),
+    courses: pick(pages, "/course/", 12),
+    stories: pick(stories, "/web-stories/", 12),
+  };
+
   return {
     "seo-meta-jobs.json": JSON.stringify(jobs, jsonSanitizer),
     "seo-meta-updates.json": JSON.stringify(updates, jsonSanitizer),
     "seo-meta-pages.json": JSON.stringify(pages, jsonSanitizer),
     "seo-meta-stories.json": JSON.stringify(stories, jsonSanitizer),
+    "seo-nav.json": JSON.stringify(nav, jsonSanitizer),
   };
 }
 
