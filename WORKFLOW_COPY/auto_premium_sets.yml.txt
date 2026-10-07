@@ -1,27 +1,63 @@
-name: Auto Premium Sets (Daily 2 x 25 Qs)
-
-# PHASE-3: roz subah 2 premium practice sets (25 most-important Qs each)
-# existing premium_notes pattern pe auto-generate hote hain.
-# Runner backend me hai: ai_backend/auto_premium_sets.js (api route pe).
-# Config (optional): Firestore doc system_settings/auto_premium_sets
-#   { packs: ["<packId>"], topics: ["..."], exam: "..." }
-# Kill-switch: Admin → Automation Control (feature: auto_premium_sets).
+# =====================================================================
+#  Auto Premium Set Generator (PHASE-3 v2) — ⚠️ MANUAL COPY REQUIRED
+#  Copy this file to: .github/workflows/auto_premium_sets.yml
+#  (AGENT_RULES: agent khud .github/workflows/*.yml push nahi kar sakta)
+#
+#  Timing (user rule — low traffic = kam failure):
+#    2:30 AM IST (21:00 UTC) → slot 0
+#    3:20 AM IST (21:50 UTC) → slot 1
+#  Compute: GitHub Actions runner (FREE — Firebase pe koi cron load nahi)
+#
+#  Required repo secrets: SERVICE_ACCOUNT_JSON, GEMINI_API_KEY
+#  Config: Firestore system_settings/auto_premium_sets
+#    { blueprints: [{ exam, section, packId }] }  ← exam-driven mode
+#  Kill-switch: system_settings/automation_guard feature "auto_premium_sets"
+# =====================================================================
+name: Auto Premium Set Generator
 
 on:
   schedule:
-    - cron: '30 1 * * *'   # 7:00 AM IST daily
-  workflow_dispatch: {}
+    - cron: '0 21 * * *'   # 2:30 AM IST
+    - cron: '50 21 * * *'  # 3:20 AM IST
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: 'Slot (0 = first exam entry, 1 = next)'
+        default: '0'
 
 jobs:
-  run:
+  generate-slot-0:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 21 * * *'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
     steps:
-      - name: Trigger api /premium-sets/auto-run
-        run: |
-          RESPONSE=$(curl -sS -X POST "https://api-hf6vlh5cpq-uc.a.run.app/premium-sets/auto-run" \
-            -H "Content-Type: application/json" \
-            -H "x-agent-token: ${{ secrets.AGENT_ADMIN_TOKEN }}" \
-            -d '{}' --max-time 560)
-          echo "$RESPONSE"
-          echo "$RESPONSE" | grep -q '"success":true' || exit 1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install ai_backend deps
+        run: npm ci --ignore-scripts
+        working-directory: ai_backend
+      - name: Generate premium set (slot 0)
+        working-directory: ai_backend
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node run_auto_premium_sets.js --slot=${{ github.event.inputs.slot || '0' }}
+
+  generate-slot-1:
+    if: github.event.schedule == '50 21 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install ai_backend deps
+        run: npm ci --ignore-scripts
+        working-directory: ai_backend
+      - name: Generate premium set (slot 1)
+        working-directory: ai_backend
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node run_auto_premium_sets.js --slot=1

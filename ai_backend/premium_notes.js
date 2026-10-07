@@ -157,10 +157,10 @@ function generateSEO(topic, exam, subject, setNumber, subjectType) {
     .substring(0, 100);
 
   // Meta Title (60 chars optimized)
-  const metaTitle = `${topic} MCQ Practice Set ${setNumber} | ${exam} 2026 | ${BRAND.name}`;
+  const metaTitle = `${topic} MCQ Practice Set ${setNumber} | ${exam} ${CURRENT_YEAR} | ${BRAND.name}`;
 
   // Meta Description (155 chars optimized)
-  const metaDescription = `${exam} 2026 के लिए ${topic} के ${setNumber} MCQ Practice Set। ` +
+  const metaDescription = `${exam} ${CURRENT_YEAR} के लिए ${topic} के ${setNumber} MCQ Practice Set। ` +
     `25 Questions with Answers, Formula & Solutions। Hindi + English। ${BRAND.website}`;
 
   // Focus Keywords
@@ -172,7 +172,7 @@ function generateSEO(topic, exam, subject, setNumber, subjectType) {
     `${exam} ${topic}`,
     `${topic} practice set`,
     `${topic} quiz`,
-    `${exam} preparation 2026`,
+    `${exam} preparation ${CURRENT_YEAR}`,
     `${topic} notes in hindi`,
     `${topic} formula`,
     `${topic} tricks`,
@@ -663,7 +663,7 @@ FILE_NAME:
 ${topic} - ${exam} Practice Set ${currentSet}
 
 SEO_TITLE:
-${topic} MCQ Practice Set ${currentSet} | ${exam} 2026 | ${BRAND.name}
+${topic} MCQ Practice Set ${currentSet} | ${exam} ${CURRENT_YEAR} | ${BRAND.name}
 
 CONTENT_HTML:
 [Only clean inner HTML - no DOCTYPE, html, head, body tags]
@@ -759,6 +759,16 @@ function countQuestions(html) {
   return m ? m.length : 0;
 }
 exports.countQuestions = countQuestions;
+
+// PHASE-3: set-size contract — 20-30 questions (user rule: kam-jada ho to bhi save ho)
+function isAcceptableSetSize(n) {
+  return Number.isInteger(n) && n >= 20 && n <= 30;
+}
+exports.isAcceptableSetSize = isAcceptableSetSize;
+
+// PHASE-3: dynamic year — 2026 → 2027 automatic (titles/SEO/slug)
+const CURRENT_YEAR = new Date().getFullYear();
+exports.CURRENT_YEAR = CURRENT_YEAR;
 exports.generatePremiumNote = onRequest(
   {
     cors: true,
@@ -845,6 +855,14 @@ exports.generatePremiumNote = onRequest(
 
       console.log(`📊 Found ${existingSets} existing sets for "${topic}"`);
 
+      // PHASE-3: runner-side cross-set DEDUPE — recent sets ke question texts
+      // prompt me inject hote hain taaki AI unhe repeat NA kare (zero-duplicate rule)
+      const avoid = String(body.avoidQuestions || "");
+      if (avoid) {
+        previousContent += "\n[⛔ IN QUESTIONS KO REPEAT MAT KARO — pehle sets me aa chuke hain]\n" + avoid;
+        console.log(`🧿 Avoid-list injected: ${avoid.split("\n").length} old questions`);
+      }
+
       // ===== STEP 2: DETECT SUBJECT TYPE =====
       const subjectType = detectSubjectType(topic, subject);
       console.log(`📊 Step 2: Subject type = ${subjectType}`);
@@ -904,12 +922,12 @@ exports.generatePremiumNote = onRequest(
 
       console.log(`✅ Content length: ${contentHTML.length} chars`);
 
-      // PHASE-3 IMPROVEMENT: 25-Q quality gate — adhoora AI set kabhi save nahi hota
+      // PHASE-3 IMPROVEMENT: 20-30 Q quality gate — adhoora/bahut-bada AI set save nahi hota
       const qCount = countQuestions(contentHTML);
-      if (qCount < 20) {
-        throw new Error(`Content me sirf ${qCount} questions mile (min 20 chahiye). AI response adhoora tha — dobara try karo.`);
+      if (!isAcceptableSetSize(qCount)) {
+        throw new Error(`Content me ${qCount} questions mile — acceptable range 20-30 hai. AI response dobara try karo.`);
       }
-      console.log(`✅ Question gate: ${qCount} questions detected`);
+      console.log(`✅ Question gate: ${qCount} questions (20-30 range OK)`);
 
       // ===== STEP 7: ADD BRANDING + WATERMARK =====
       console.log("🎨 Step 7: Adding branding...");
