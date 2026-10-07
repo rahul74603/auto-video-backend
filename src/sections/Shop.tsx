@@ -83,10 +83,12 @@ const Shop: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Courses लाना
+        // Courses लाना — hidden packs (purana Dhamaka system) public se filter;
+        // admin PremiumTab me sab dikhta rehta hai.
         const fetched = (await courseRepository.listCourses()) as ShopCourse[];
-        fetched.sort((a, b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999));
-        setCourses(fetched);
+        const visible = fetched.filter((c) => (c as { hidden?: boolean }).hidden !== true);
+        visible.sort((a, b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999));
+        setCourses(visible);
 
         // ✅ Global Settings लाना (अब यह एरर नहीं देगा क्योंकि getDoc इम्पोर्टेड है)
         const settings = await siteSettingsRepository.getGlobal();

@@ -123,18 +123,40 @@ async function ensureFolder(db, packId, parentId, title) {
 }
 
 /**
- * "{Exam} Special {YEAR}" → section → subject folders.
- * @returns {{l1: string, l2: string, subjectFolders: Record<string,string>}}
+ * Auto exam-pack ensure — "{Exam} Special {YEAR}" naam ka COURSE (pack)
+ * idempotent-create karta hai (title-exact match). User ke naye system me
+ * har famous exam ka apna course hota hai, sections uske andar folders.
+ */
+async function ensureExamPack(db, exam) {
+  const title = `${String(exam || "").trim()} Special ${CURRENT_YEAR()}`;
+  const snap = await db.collection("courses").where("title", "==", title).limit(1).get();
+  let found = null;
+  snap.forEach((d) => {
+    found = d.id;
+  });
+  if (found) return found;
+  const ref = await db.collection("courses").add({
+    title,
+    exam: String(exam || "").trim(),
+    autoCreated: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  return ref.id;
+}
+
+/**
+ * Pack ke andar hierarchy: "{Section}" → "{Subject}" folders.
+ * (Pack khud "{Exam} Special {YEAR}" hota hai — ensureExamPack se.)
+ * @returns {{sectionFolderId: string, subjectFolders: Record<string,string>}}
  */
 async function ensureHierarchy(db, packId, blueprint) {
-  const year = CURRENT_YEAR();
-  const l1 = await ensureFolder(db, packId, null, `${blueprint.exam} Special ${year}`);
-  const l2 = await ensureFolder(db, packId, l1, blueprint.section);
+  const sectionFolderId = await ensureFolder(db, packId, null, blueprint.section);
   const subjectFolders = {};
   for (const s of blueprint.subjects || []) {
-    subjectFolders[s.name] = await ensureFolder(db, packId, l2, s.name);
+    subjectFolders[s.name] = await ensureFolder(db, packId, sectionFolderId, s.name);
   }
-  return { l1, l2, subjectFolders };
+  return { sectionFolderId, subjectFolders };
 }
 
 function renderSyllabusHtml(bp, year) {
@@ -207,6 +229,7 @@ module.exports = {
   researchExam,
   generateBlueprint,
   getOrBuildBlueprint,
+  ensureExamPack,
   ensureFolder,
   ensureHierarchy,
   ensureSyllabusDoc,
