@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../firebase/config';
-import { doc, getDoc, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, serverTimestamp, deleteDoc, collection, query, where, limit } from 'firebase/firestore';
 import { courseRepository } from '@/features/courses/data/courseRepository';
 import { useCourseAccess } from '../hooks/useCourseAccess';
 import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
@@ -46,10 +46,18 @@ type GlobalSettingsView = {
   discountPercent?: string;
 };
 
+const slugifyTitle = (t: string) =>
+  String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+
 const CourseView = () => {
-  const { id } = useParams();
+  const { id: urlParam } = useParams();
   const navigate = useNavigate();
-  const { hasAccess, loading: authLoading } = useCourseAccess(id || "");
+  // 🔗 SEO SLUG URL: /course/railway-special-2026 (id wala link bhi chalta hai,
+  // canonical slug pe replace ho jata hai)
+  const [resolvedId, setResolvedId] = useState<string | null>(null);
+  const [slug, setSlug] = useState<string | null>(null);
+  const id = resolvedId || undefined;
+  const { hasAccess, loading: authLoading } = useCourseAccess(resolvedId || "");
 
   const [course, setCourse] = useState<CourseViewData | null>(null);
   const [globalSettings, setGlobalSettings] = useState<GlobalSettingsView | null>(null);
@@ -59,6 +67,7 @@ const CourseView = () => {
   // 🆓 FREE syllabus preview (user rule 2026-10-07): syllabus doc bina purchase
   // ke dikhe — user ko bahar se pata chale kya milega; baki notes locked.
   const [syllabusDoc, setSyllabusDoc] = useState<{ title: string; content: string } | null>(null);
+  const [sylItemId, setSylItemId] = useState<string | null>(null);
   const [sylModal, setSylModal] = useState(false);
   
   // 📂 FOLDER STATE
@@ -70,20 +79,46 @@ const CourseView = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!id) return;
-      
+      if (!urlParam) return;
+
       try {
         setLoading(true);
-        // 1. Fetch Course Data
-        const courseData = await courseRepository.getCourseById(id);
+        // 1. Course resolve — Firestore id YA SEO slug, dono se khulta hai
+        let realId: string | null = null;
+        let courseData: unknown = await courseRepository.getCourseById(urlParam).catch(() => null);
         if (courseData) {
+          realId = urlParam;
+        } else {
+          const bySlug = await getDocs(
+            query(collection(db, "courses"), where("slug", "==", urlParam), limit(1))
+          );
+          if (!bySlug.empty) {
+            realId = bySlug.docs[0].id;
+            courseData = bySlug.docs[0].data();
+          }
+        }
+        if (courseData && realId) {
+          setResolvedId(realId);
+          const cd = courseData as Record<string, unknown>;
+          const slugNow =
+            typeof cd.slug === "string" && cd.slug ? String(cd.slug) : slugifyTitle(String(cd.title || ""));
+          if (slugNow) {
+            setSlug(slugNow);
+            // purane course docs me slug nahi tha → patch (idempotent)
+            if (cd.slug !== slugNow) {
+              setDoc(doc(db, "courses", realId), { slug: slugNow }, { merge: true }).catch(() => {});
+            }
+            // canonical: random-id URL → slug URL (301-equivalent client-side)
+            if (urlParam !== slugNow) navigate(`/course/${slugNow}`, { replace: true });
+          }
           setCourse(courseData as unknown as CourseViewData);
 
           // 2. Fetch Content
-          const content = await courseContentRepository.listContent(id, { orderByCreatedAt: true });
+          const content = await courseContentRepository.listContent(realId, { orderByCreatedAt: true });
           // 🆓 syllabus-overview doc = FREE preview (bina purchase)
           const syl = content.find((r) => (r as Record<string, unknown>).topic === "syllabus-overview");
           if (syl && typeof (syl as Record<string, unknown>).content === "string") {
+            setSylItemId(syl.id);
             setSyllabusDoc({
               title: String((syl as Record<string, unknown>).title || "Syllabus & Exam Pattern"),
               content: String((syl as Record<string, unknown>).content),
@@ -115,7 +150,7 @@ const CourseView = () => {
     };
     fetchData();
     window.scrollTo(0, 0);
-  }, [id]);
+  }, [urlParam]);
 
   useEffect(() => {
     const lockAmount = async () => {
@@ -233,7 +268,7 @@ const CourseView = () => {
       <SEO 
         customTitle={`${course.title} - StudyGyaan 2026`}
         customDescription={stripHtmlToText(course.description).slice(0, 160) || `Get high-quality study materials, notes and expert guidance for ${course.title} on StudyGyaan Portal.`}
-        customUrl={`https://studygyaan.in/course/${id}`}
+        customUrl={`https://studygyaan.in/course/${slug || id}`}
         customImage="https://studygyaan.in/og-image.jpg"
       />
 
@@ -300,24 +335,8 @@ const CourseView = () => {
       </div>
 
       {/* 🆓 FREE SYLLABUS PREVIEW — bina purchase ke sab dekh saken (user rule) */}
-      {!hasAccess && syllabusDoc && (
-        <div className="bg-white rounded-2xl md:rounded-[2.5rem] border-2 border-emerald-200 p-5 md:p-10 mb-5 md:mb-10 shadow-sm">
-          <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-4 md:mb-6">
-            <span className="bg-emerald-100 text-emerald-700 px-2.5 py-1 md:px-4 md:py-1.5 rounded-full text-[9px] md:text-xs font-black uppercase tracking-widest">
-              🆓 Free Preview — No Purchase Needed
-            </span>
-          </div>
-          <h2 className="text-base md:text-2xl font-black text-gray-900 mb-3 md:mb-5">{syllabusDoc.title}</h2>
-          <div
-            className="text-xs md:text-sm text-gray-700 leading-relaxed space-y-2 [&_h1]:text-lg [&_h1]:font-black [&_h2]:text-base [&_h2]:font-black [&_h2]:mt-4 [&_h3]:font-bold [&_li]:ml-4 [&_li]:list-disc"
-            dangerouslySetInnerHTML={{ __html: syllabusDoc.content }}
-          />
-          <p className="mt-4 md:mt-6 text-[10px] md:text-sm font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl p-3 md:p-4">
-            🔒 Isi syllabus ke har question-type pe bane premium practice sets (20-30 Q each)
-            unlock karne ke baad milenge — upar "अभी अनलॉक करें" button se lifetime access lein.
-          </p>
-        </div>
-      )}
+      {/* NOTE (user rule 2026-10-07 rev-2): syllabus DIRECT nahi dikhta — pehle
+          folders, folder ke andar highlighted 👁 eye-button, click pe modal. */}
 
       {!hasAccess && (
         <div className="bg-white border-2 border-dashed border-blue-100 rounded-2xl md:rounded-[2.5rem] p-6 md:p-12 text-center mb-5 md:mb-10 animate-in fade-in slide-in-from-bottom-4">
@@ -350,33 +369,8 @@ const CourseView = () => {
         </div>
       )}
 
-      {/* 👁️ SYLLABUS EYE-PREVIEW ROW (non-owners): highlighted + eye button —
-          click pe modal me poora syllabus. Folders/locked tree bahar NAHI dikhte
-          (user rule 2026-10-07). */}
-      {!hasAccess && syllabusDoc && (
-        <button
-          onClick={() => setSylModal(true)}
-          className="w-full mb-5 md:mb-10 flex items-center justify-between gap-3 p-4 md:p-6 rounded-2xl md:rounded-[1.5rem] border-2 border-emerald-300 bg-emerald-50 hover:bg-emerald-100 shadow-lg ring-2 ring-emerald-200/70 transition-all group"
-        >
-          <div className="flex items-center gap-3 md:gap-5 min-w-0 text-left">
-            <div className="p-2 md:p-4 rounded-xl md:rounded-2xl bg-emerald-100 text-emerald-600 shrink-0">
-              <FileText className="w-5 h-5 md:w-8 md:h-8" />
-            </div>
-            <div className="min-w-0">
-              <h4 className="font-black text-emerald-900 text-sm md:text-xl truncate">{syllabusDoc.title}</h4>
-              <p className="text-[9px] md:text-[11px] font-black uppercase tracking-widest text-emerald-600 flex items-center gap-1 mt-1">
-                <Eye className="w-3 h-3 md:w-3.5 md:h-3.5" /> FREE Syllabus Preview — Click Karke Dekhein
-              </p>
-            </div>
-          </div>
-          <span className="p-2 md:p-3 rounded-xl bg-emerald-600 text-white shrink-0 group-hover:scale-110 transition-transform">
-            <Eye className="w-5 h-5 md:w-6 md:h-6" />
-          </span>
-        </button>
-      )}
-
-      {/* 🌳 CONTENT TREE — sirf owners ke liye (bahar folders/locked list nahi) */}
-      {hasAccess && (
+      {/* 🌳 CONTENT TREE — folders sabko dikhte hain; syllabus row non-owners ke
+          liye highlighted 👁 eye-button (click pe modal); baaki files locked. */}
       <div className="animate-in fade-in duration-500">
          <div className="flex items-center gap-1.5 md:gap-2 text-[10px] md:text-sm text-gray-600 bg-white px-3 py-2 md:px-5 md:py-4 rounded-xl md:rounded-2xl border shadow-sm mb-3 md:mb-6 overflow-x-auto hide-scrollbar">
                <button onClick={() => navigateToBreadcrumb(-1)} className="flex items-center gap-1 text-blue-600 hover:underline font-bold whitespace-nowrap shrink-0">
@@ -399,14 +393,16 @@ const CourseView = () => {
             {visibleContent.map((item) => (
                <div 
                    key={item.id} 
-                   onClick={() => item.type === 'FOLDER' ? enterFolder(item.id, item.title) : handleFileClick(item)}
+                   onClick={() => item.type === 'FOLDER' ? enterFolder(item.id, item.title) : (!hasAccess && item.id === sylItemId ? setSylModal(true) : handleFileClick(item))}
                    className={`flex items-center justify-between p-3 md:p-6 rounded-xl md:rounded-[1.5rem] border transition-all group cursor-pointer ${
+                      !hasAccess && item.id === sylItemId ? 'bg-emerald-50 border-emerald-300 ring-2 ring-emerald-200/70 shadow-lg hover:bg-emerald-100' :
                       hasAccess || item.type === 'FOLDER' ? 'bg-white border-gray-100 hover:border-blue-400 hover:shadow-xl' : 'bg-gray-50 border-gray-100 opacity-80'
                    }`}
                >
                    <div className="flex items-center gap-3 md:gap-5 overflow-hidden flex-1">
                        <div className={`p-2 md:p-4 rounded-xl md:rounded-2xl shrink-0 ${
-                         item.type === 'FOLDER' ? 'bg-amber-50 text-amber-600' : 
+                         item.type === 'FOLDER' ? 'bg-amber-50 text-amber-600' :
+                         !hasAccess && item.id === sylItemId ? 'bg-emerald-100 text-emerald-600' :
                          item.type === 'PDF' ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'
                        }`}>
                            {item.type === 'FOLDER' ? <Folder fill="currentColor" className="w-5 h-5 md:w-8 md:h-8"/> : <FileText className="w-5 h-5 md:w-8 md:h-8"/>}
@@ -415,14 +411,16 @@ const CourseView = () => {
                            <h4 className="font-bold text-gray-800 text-sm md:text-xl truncate mb-0.5">{item.seoTitle || item.title}</h4>
                            <div className="flex items-center gap-2">
                                <p className="text-[8px] md:text-[11px] font-black uppercase tracking-[0.15em] text-gray-400">{item.type}</p>
-                               {!hasAccess && item.type !== 'FOLDER' && (
+                               {!hasAccess && item.id === sylItemId ? (
+                                  <span className="text-[8px] md:text-[10px] font-black text-emerald-700 bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded flex items-center gap-0.5"><Eye className="w-2.5 h-2.5 md:w-3 md:h-3"/> FREE PREVIEW — CLICK KARKE DEKHEIN</span>
+                               ) : (!hasAccess && item.type !== 'FOLDER' && (
                                   <span className="text-[8px] md:text-[10px] font-black text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded flex items-center gap-0.5"><Lock className="w-2.5 h-2.5 md:w-3 md:h-3"/> PREMIUM</span>
-                               )}
+                               ))}
                            </div>
                        </div>
                    </div>
-                   <div className={`p-2 rounded-xl transition-all shrink-0 ml-2 ${hasAccess ? 'bg-gray-50 text-gray-300 md:group-hover:bg-blue-600 md:group-hover:text-white' : 'text-gray-200'}`}>
-                       {item.type === 'FOLDER' ? <ChevronRight className="w-5 h-5 md:w-6 md:h-6"/> : hasAccess ? <ExternalLink className="w-5 h-5 md:w-6 md:h-6"/> : <Lock className="w-5 h-5 md:w-6 md:h-6"/>}
+                   <div className={`p-2 rounded-xl transition-all shrink-0 ml-2 ${!hasAccess && item.id === sylItemId ? 'bg-emerald-600 text-white group-hover:scale-110' : hasAccess ? 'bg-gray-50 text-gray-300 md:group-hover:bg-blue-600 md:group-hover:text-white' : 'text-gray-200'}`}>
+                       {item.type === 'FOLDER' ? <ChevronRight className="w-5 h-5 md:w-6 md:h-6"/> : !hasAccess && item.id === sylItemId ? <Eye className="w-5 h-5 md:w-6 md:h-6"/> : hasAccess ? <ExternalLink className="w-5 h-5 md:w-6 md:h-6"/> : <Lock className="w-5 h-5 md:w-6 md:h-6"/>}
                    </div>
                </div>
             ))}
@@ -438,7 +436,6 @@ const CourseView = () => {
 
          </div>
       </div>
-      )}
 
       {/* 🆓 SYLLABUS MODAL — eye button click pe poora syllabus */}
       {sylModal && syllabusDoc && (
