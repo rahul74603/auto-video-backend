@@ -307,6 +307,19 @@ async function generateLegacySets({ db, cfg, opts }) {
  * @param {{slot?: number, packs?: string[], topics?: string[], exam?: string}} opts
  * slot: 0 = 2:30 AM run, 1 = 3:20 AM run (exam mode me 1 set per slot)
  */
+// 🟢 STATUS (admin "System Status" tab): kab chala, kitne sets, kitni errors
+async function writeSetsStatus(db, report) {
+  try {
+    await db.collection("system_settings").doc("auto_premium_sets").set({
+      lastRunAt: new Date().toISOString(),
+      lastSlot: report && report.slot !== undefined ? report.slot : null,
+      lastSets: (report && report.sets || []).length,
+      lastErrors: (report && report.errors || []).length,
+      lastMode: (report && report.mode) || "exam",
+    }, { merge: true });
+  } catch { /* non-fatal */ }
+}
+
 async function runDailyPremiumSets(db, opts = {}) {
   const guard = await isAutomationEnabled(db, "auto_premium_sets");
   if (!guard.enabled) {
@@ -360,12 +373,15 @@ async function runDailyPremiumSets(db, opts = {}) {
         report.errors.push({ entry, subject: combo.subject?.name, attempts: 3, error: String(e.message || e).slice(0, 250) });
       }
     }
+    await writeSetsStatus(db, report);
     return report;
   }
 
   // LEGACY MODE (sirf cfg.mode==="legacy" pe)
   const legacy = await generateLegacySets({ db, cfg, opts });
-  return { date, mode: "legacy", slot, sets: legacy.sets || [], errors: legacy.errors || [], skipped: legacy.skipped, reason: legacy.reason };
+  const out = { date, mode: "legacy", slot, sets: legacy.sets || [], errors: legacy.errors || [], skipped: legacy.skipped, reason: legacy.reason };
+  await writeSetsStatus(db, out);
+  return out;
 }
 
 module.exports = {

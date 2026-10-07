@@ -10,6 +10,7 @@ import {
 import {
     FilePenLine, ShieldCheck, Sparkles, Zap, Layers, IndianRupee, Power, Brain
 } from 'lucide-react';
+import { Activity } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { auth } from '../firebase/config';
@@ -38,6 +39,7 @@ import AdminAutomationControl from './Admin/Tabs/AdminAutomationControl';
 import AdminSeoDashboard from './Admin/Tabs/AdminSeoDashboard';
 import AdminAutoOptimizer from './Admin/Tabs/AdminAutoOptimizer';
 import AdminGrowthLearner from './Admin/Tabs/AdminGrowthLearner';
+import AdminSystemStatus from './Admin/Tabs/AdminSystemStatus';
 
 const AdminPage = () => {
     const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -49,8 +51,9 @@ const AdminPage = () => {
     const location = useLocation(); 
 
     // ✅ Active Tab State — AI Article Studio अब JOBS AI tab के अंदर ही है + Automation Control
-    type AdminTab = 'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'PAYMENTS' | 'AUTOMATION' | 'VIDEO' | 'SEO' | 'OPTIMIZER' | 'GROWTH';
-    const [activeTab, setActiveTab] = useState<AdminTab>('BROWSE');
+    type AdminTab = 'STATUS' | 'BROWSE' | 'FOLDERS' | 'PREMIUM' | 'ORDERS' | 'NOTIFICATIONS' | 'SETTINGS' | 'HOMEPAGE' | 'FAST TRACK' | 'WEB STORIES' | 'CUSTOMIZE' | 'MOCK TEST' | 'STORAGE' | 'JOBS AI' | 'PAYMENTS' | 'AUTOMATION' | 'VIDEO' | 'SEO' | 'OPTIMIZER' | 'GROWTH';
+    // 🟢 DEFAULT = STATUS (user 2026-10-07: "samajh nahi aata" → pehle clear status dikhe)
+    const [activeTab, setActiveTab] = useState<AdminTab>('STATUS');
 
     const { content: siteContent, updateContent: updateSiteContent } = useSiteContent();
 
@@ -153,13 +156,16 @@ const AdminPage = () => {
                     
                     {/* NAVIGATION TABS (Added PAYMENTS + AUTOMATION) */}
                     <div className="flex flex-wrap gap-1 md:gap-2 w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scroll-smooth items-center no-scrollbar">
-                        {['BROWSE', 'JOBS AI', 'SEO', 'OPTIMIZER', 'GROWTH', 'AUTOMATION', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE', 'VIDEO'].map(t => (
+                        {/* USER 2026-10-07: SEO/OPTIMIZER/GROWTH tabs hide (confusing/faltu feel) —
+                            URL se abhi bhi khul sakte hain; unka live status STATUS tab me dikhta hai */}
+                        {['STATUS', 'BROWSE', 'JOBS AI', 'AUTOMATION', 'MOCK TEST', 'WEB STORIES', 'HOMEPAGE', 'FAST TRACK', 'PAYMENTS', 'FOLDERS', 'PREMIUM', 'ORDERS', 'NOTIFICATIONS', 'SETTINGS', 'CUSTOMIZE', 'STORAGE', 'VIDEO'].map(t => (
                             <button 
                                 key={t} 
                                 onClick={() => setActiveTab(t as AdminTab)} 
                                 className={`px-3 py-1.5 md:px-5 md:py-2.5 rounded-md md:rounded-xl font-black text-[9px] md:text-xs whitespace-nowrap shrink-0 transition-all uppercase tracking-tighter ${activeTab === t ? 'bg-blue-600 text-white shadow-xl scale-105' : 'bg-gray-50 text-gray-400 border border-gray-100 hover:bg-white hover:text-blue-600 hover:shadow-md'}`}
                             >
-                                {t === 'JOBS AI' ? <span className="flex items-center gap-1"><Sparkles size={12}/> JOBS AI</span> :
+                                {t === 'STATUS' ? <span className="flex items-center gap-1 text-emerald-600 group-hover:text-white"><Activity size={12}/> STATUS</span> :
+                                 t === 'JOBS AI' ? <span className="flex items-center gap-1"><Sparkles size={12}/> JOBS AI</span> :
                                  t === 'AUTOMATION' ? <span className="flex items-center gap-1 text-red-500 group-hover:text-white"><Power size={12}/> AUTOMATION</span> :
                                  t === 'OPTIMIZER' ? <span className="flex items-center gap-1"><Zap size={12}/> OPTIMIZER</span> :
                                  t === 'GROWTH' ? <span className="flex items-center gap-1"><Brain size={12}/> GROWTH</span> :
@@ -182,6 +188,7 @@ const AdminPage = () => {
 
                 {/* 🧩 DYNAMIC TAB CONTENT AREA */}
                 <div className="min-h-[60vh]">
+                    {activeTab === 'STATUS' && <AdminSystemStatus />}
                     {activeTab === 'BROWSE' && <AdminBrowseTab />}
                     {activeTab === 'JOBS AI' && (
                         <div className="space-y-4">
