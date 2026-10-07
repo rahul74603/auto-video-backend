@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { fastTrackRepository } from '@/features/fast-track/data/fastTrackRepository';
+import { jobRepository } from '@/features/jobs/data/jobRepository';
 import type { FastTrackItem, TimestampLike } from '@/types/firestore';
 import { toDateSafe } from '@/types/firestore';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -31,12 +32,22 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ category, pageTitle, descri
 
   useEffect(() => {
     let cancelled = false;
-    fastTrackRepository
-      .listByCategory(category)
-      .then((fetchedData) => {
+    // 🧹 DUPLICATE-CONTENT FIX (user rule 2026-10-07): jo update JOBS me bhi
+    // hai wo yahan dobara NAHI dikhe — users ka trust + Google ranking dono.
+    // (Naye duplicates scraper cross-shield se bante hi nahi.)
+    Promise.all([
+      fastTrackRepository.listByCategory(category),
+      jobRepository.listLatest({ limitCount: 40 }).catch(() => []),
+    ])
+      .then(([fetchedData, recentJobs]) => {
         if (cancelled) return;
+        const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9ऀ-ॿ]+/g, ' ').trim();
+        const jobTitles = new Set(
+          (recentJobs as Array<Record<string, unknown>>).map((j) => norm(String(j.title || '')))
+        );
         setData(fetchedData
           .filter(item => item.status === "published" || !item.status)
+          .filter(item => !jobTitles.has(norm(String(item.title || ''))))
           .sort((a, b) =>
             (toDateSafe(b.createdAt)?.getTime() ?? 0) - (toDateSafe(a.createdAt)?.getTime() ?? 0)));
         setLoadedCategory(category);

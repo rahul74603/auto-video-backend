@@ -42,6 +42,8 @@ Options -Indexes
   RewriteRule ^jobs/?$ /govt-jobs [R=301,L]
   RewriteRule ^mock-tests/?$ /test [R=301,L]
   RewriteRule ^all-stories/?$ /web-stories [R=301,L]
+  # News hub removed (2026-10-07, duplicate-content) — equity govt-jobs ko
+  RewriteRule ^news/?$ /govt-jobs [R=301,L]
   RewriteRule ^fasttrack/?$ /govt-jobs [R=301,L]
   RewriteRule ^fast-track/?$ /govt-jobs [R=301,L]
   RewriteRule ^refund-policy/?$ /refund-cancellation-policy [R=301,L]
