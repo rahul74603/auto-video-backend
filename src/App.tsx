@@ -38,7 +38,6 @@ const BlogList = lazy(() => import('./pages/BlogList'));
 const BlogPost = lazy(() => import('./pages/BlogPost'));
 
 // News Hub (PHASE-2)
-const NewsHub = lazy(() => import('./pages/NewsHub'));
 
 // Tests
 const MockTestLibrary = lazy(() => import('./pages/MockTestLibrary'));
@@ -294,15 +293,6 @@ function App() {
                                             }
                                         />
 
-                                        {/* 📰 NEWS HUB */}
-                                        <Route
-                                            path="/news"
-                                            element={
-                                                <PageWrapper>
-                                                    <NewsHub />
-                                                </PageWrapper>
-                                            }
-                                        />
 
                                         {/* 📝 BLOG */}
                                         <Route
