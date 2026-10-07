@@ -176,3 +176,89 @@ test("ensureFolder idempotent (same title → same id, naya nahi)", async () => 
   assert.equal(added[0].type, "FOLDER");
   assert.equal(added[0].seoSlug, "ssc-special-2027");
 });
+
+// ---------- PHASE-3 v3: exam-default system ----------
+const { combosForRun, DEFAULT_BLUEPRINTS } = require("../auto_premium_sets");
+const { ensureExamPack, ensureHierarchy } = require("../exam_blueprint");
+
+test("combosForRun alag subjects cover karta hai + deterministic", () => {
+  const bp = {
+    subjects: [
+      { name: "Maths", questionTypes: ["A", "B"] },
+      { name: "Reasoning", questionTypes: ["C"] },
+      { name: "Science", questionTypes: ["D"] },
+      { name: "GK", questionTypes: ["E"] },
+    ],
+  };
+  const d1 = new Date("2026-01-01T00:00:00Z");
+  const c = combosForRun(bp, 0, d1, 2);
+  assert.equal(c.length, 2);
+  assert.notEqual(c[0].subject.name, c[1].subject.name);
+  assert.deepEqual(combosForRun(bp, 0, d1, 2), c);
+  // 2 din me saare 4 subjects cover
+  const d2 = new Date("2026-01-02T00:00:00Z");
+  const names = new Set([...combosForRun(bp, 0, d1, 2), ...combosForRun(bp, 0, d2, 2), ...combosForRun(bp, 1, d1, 2), ...combosForRun(bp, 1, d2, 2)].map((x) => x.subject.name));
+  assert.equal(names.size, 4);
+  assert.ok(DEFAULT_BLUEPRINTS.length >= 2);
+});
+
+test("ensureExamPack idempotent — same title → same pack", async () => {
+  const added = [];
+  const fakeDb = {
+    collection: (name) => {
+      assert.equal(name, "courses");
+      return {
+        where: (f, op, val) => ({
+          limit: () => ({
+            get: async () => ({
+              forEach: (cb) => {
+                if (val.startsWith("Railway Special") && added.length) cb({ id: "packX" });
+              },
+            }),
+          }),
+        }),
+        add: async (d) => {
+          const id = "new" + added.length;
+          added.push({ id, ...d });
+          return { id };
+        },
+      };
+    },
+  };
+  const first = await ensureExamPack(fakeDb, "Railway");
+  assert.equal(first, "new0");
+  assert.equal(added[0].autoCreated, true);
+  const second = await ensureExamPack(fakeDb, "Railway");
+  assert.equal(second, "packX");
+  assert.equal(added.length, 1);
+});
+
+test("ensureHierarchy: section root folder + subjects andar", async () => {
+  const store = [];
+  const fakeDb = {
+    collection: () => ({
+      doc: () => ({
+        collection: () => ({
+          where: (f, op, val) => ({
+            limit: () => ({
+              get: async () => ({ forEach: (cb) => store.filter((d) => d.parentId === val).forEach((d) => cb({ id: d.id, data: () => d })) }),
+            }),
+          }),
+          add: async (d) => {
+            const id = "f" + store.length;
+            store.push({ id, ...d });
+            return { id };
+          },
+        }),
+      }),
+    }),
+  };
+  const bp = { exam: "Railway", section: "Group D", subjects: [{ name: "Maths" }, { name: "Hindi" }] };
+  const h = await ensureHierarchy(fakeDb, "packX", bp);
+  assert.equal(h.sectionFolderId, "f0");
+  assert.equal(store[0].parentId, null);
+  assert.equal(store[0].title, "Group D");
+  assert.equal(store[1].parentId, "f0");
+  assert.equal(store[1].title, "Maths");
+  assert.equal(h.subjectFolders["Hindi"], "f2");
+});

@@ -27,6 +27,26 @@ const { isAutomationEnabled } = require("./agents/automation_guard");
 const blueprint = require("./exam_blueprint");
 const { generateJson } = require("./agents/article_agents/model_client");
 
+// PHASE-3 v3 (2026-10-07): exam-driven mode ab DEFAULT hai — config ki zaroorat
+// nahi. "Railway Special {YEAR}" course khud banta hai; andar sections
+// (Group D / RRB ALP) → subjects → question-type sets + syllabus doc.
+// Firestore system_settings/auto_premium_sets.blueprints se override kar sakte ho.
+const DEFAULT_BLUEPRINTS = [
+  { exam: "Railway", section: "Group D", packId: "__auto__" },
+  { exam: "Railway", section: "RRB ALP", packId: "__auto__" },
+];
+
+// Purane "Dhamaka"-era packs — public Shop se hide (admin me dikhte rahenge).
+// Ek baar hi update hota hai (system_settings.legacyHidden flag).
+const LEGACY_PACK_IDS = [
+  "KiHo60rN1f2gqpKCDsJn", // State Police & PET Dhamaka
+  "KuCwULFEum71NBF8r5VJ", // Railway Exam Dhamaka 2026
+  "T9uKeuIvAa6ZQdfswftA", // Teaching Master Dhamaka
+  "j27uPy1IckNnFX00ZYN2", // SSC Exam Dhamaka 2026
+  "tOIzBFXn7LQtZ18ueA8G", // Banking Selection Dhamaka
+  "tQ42dLy5BLevJJh6qpoT", // Defense Warriors Dhamaka
+];
+
 const DEFAULT_TOPIC_POOL = [
   "Maths: Percentage, Ratio & Average",
   "Maths: Time-Speed-Distance & Trains",
@@ -110,6 +130,27 @@ function pickDailyCombo(bp, slot = 0, now = new Date()) {
   return { subject, type };
 }
 
+/**
+ * Ek run me `count` alag subjects cover hote hain (rotation) —
+ * 2-3 din me har subject me sets aa jaate hain, Gemini quota bhi safe.
+ */
+function combosForRun(bp, slot = 0, now = new Date(), count = 2) {
+  const subjects = bp.subjects || [];
+  if (!subjects.length) return [];
+  const di = dayIndex(now);
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < count && out.length < subjects.length; i++) {
+    const subject = subjects[(di * count + slot * count + i) % subjects.length];
+    if (seen.has(subject.name)) continue;
+    seen.add(subject.name);
+    const types = subject.questionTypes || [];
+    const type = types.length ? types[(di + slot + i) % types.length] : "Important Questions";
+    out.push({ subject, type });
+  }
+  return out;
+}
+
 async function nextSetNumber(db, packId, topic, folderId = null) {
   try {
     const col = db.collection("courses").doc(packId).collection("content");
@@ -133,18 +174,19 @@ async function getDefaultPacks(db) {
 
 /* ---------------- main runner ---------------- */
 
-async function generateOneExamSet({ db, entry, slot, cfg }) {
-  const { exam, section, packId } = entry;
+async function generateOneExamSet({ db, entry, slot, combo }) {
+  const { exam, section } = entry;
+  let packId = entry.packId;
+  if (!packId || packId === "__auto__") packId = await blueprint.ensureExamPack(db, exam);
   const bp = await blueprint.getOrBuildBlueprint({ db, exam, section, callJson: generateJson });
   if (!bp.subjects || !bp.subjects.length) {
     throw new Error(`Blueprint me subjects nahi mile (${exam} ${section})`);
   }
-  const { l2, subjectFolders } = await blueprint.ensureHierarchy(db, packId, bp);
-  await blueprint.ensureSyllabusDoc(db, packId, l2, bp);
+  const { sectionFolderId, subjectFolders } = await blueprint.ensureHierarchy(db, packId, bp);
+  await blueprint.ensureSyllabusDoc(db, packId, sectionFolderId, bp);
 
-  const combo = pickDailyCombo(bp, slot);
   if (!combo) throw new Error("combo nahi bana");
-  const folderId = subjectFolders[combo.subject.name] || l2;
+  const folderId = subjectFolders[combo.subject.name] || sectionFolderId;
   const topic = `${combo.subject.name}: ${combo.type}`;
   const setNumber = await nextSetNumber(db, packId, topic, folderId);
   const avoid = await collectAvoidQuestions(db, packId, folderId);
@@ -159,6 +201,30 @@ async function generateOneExamSet({ db, entry, slot, cfg }) {
     avoidQuestions: avoid,
   });
   return { packId, exam, section, subject: combo.subject.name, questionType: combo.type, setNumber, docId: result.id, model: result.model };
+}
+
+/** Ek baar: purane Dhamaka packs public se hide (admin safe). */
+async function hideLegacyPacksOnce(db, cfg) {
+  if (cfg.legacyHidden === true) return 0;
+  let n = 0;
+  for (const id of LEGACY_PACK_IDS) {
+    try {
+      await db.collection("courses").doc(id).update({
+        hidden: true,
+        hiddenAt: new Date().toISOString(),
+        hiddenBy: "auto-premium-sets-v3",
+      });
+      n++;
+    } catch {
+      /* pack missing/permissions — skip */
+    }
+  }
+  try {
+    await db.collection("system_settings").doc("auto_premium_sets").set({ legacyHidden: true }, { merge: true });
+  } catch {
+    /* non-fatal */
+  }
+  return n;
 }
 
 async function generateLegacySets({ db, cfg, opts }) {
@@ -213,19 +279,42 @@ async function runDailyPremiumSets(db, opts = {}) {
   const slot = Number(opts.slot ?? 0);
   const date = new Date().toISOString().slice(0, 10);
 
-  // EXAM-DRIVEN MODE
-  if (Array.isArray(cfg.blueprints) && cfg.blueprints.length) {
-    const entry = cfg.blueprints[slot % cfg.blueprints.length];
-    const report = { date, mode: "exam", slot, sets: [], errors: [] };
+  // EXAM-DRIVEN MODE (DEFAULT) — cfg.mode==="legacy" explicit ho tabhi legacy
+  const blueprints =
+    cfg.mode === "legacy"
+      ? null
+      : Array.isArray(cfg.blueprints) && cfg.blueprints.length
+        ? cfg.blueprints
+        : DEFAULT_BLUEPRINTS;
+
+  if (blueprints) {
+    const report = { date, mode: "exam", slot, sets: [], errors: [], hiddenLegacyPacks: 0 };
     try {
-      report.sets.push(await generateOneExamSet({ db, entry, slot, cfg }));
+      report.hiddenLegacyPacks = await hideLegacyPacksOnce(db, cfg);
+    } catch {
+      /* non-fatal */
+    }
+    const entry = blueprints[slot % blueprints.length];
+    let bp = null;
+    let combos = [];
+    try {
+      bp = await blueprint.getOrBuildBlueprint({ db, exam: entry.exam, section: entry.section, callJson: generateJson });
+      combos = combosForRun(bp, slot, new Date(), 2);
+      if (!combos.length) throw new Error("blueprint me subjects nahi");
     } catch (e) {
-      report.errors.push({ entry, error: String(e.message || e).slice(0, 250) });
+      report.errors.push({ entry, stage: "blueprint", error: String(e.message || e).slice(0, 250) });
+    }
+    for (const combo of combos) {
+      try {
+        report.sets.push(await generateOneExamSet({ db, entry, slot, combo }));
+      } catch (e) {
+        report.errors.push({ entry, subject: combo.subject?.name, error: String(e.message || e).slice(0, 250) });
+      }
     }
     return report;
   }
 
-  // LEGACY MODE (2 sets per run nahi — legacy cron ek baar; slot ignore)
+  // LEGACY MODE (sirf cfg.mode==="legacy" pe)
   const legacy = await generateLegacySets({ db, cfg, opts });
   return { date, mode: "legacy", slot, sets: legacy.sets || [], errors: legacy.errors || [], skipped: legacy.skipped, reason: legacy.reason };
 }
@@ -234,10 +323,13 @@ module.exports = {
   runDailyPremiumSets,
   pickDailyTopics,
   pickDailyCombo,
+  combosForRun,
   dayIndex,
   nextSetNumber,
   normalizeQ,
   qHash,
   collectAvoidQuestions,
   DEFAULT_TOPIC_POOL,
+  DEFAULT_BLUEPRINTS,
+  LEGACY_PACK_IDS,
 };
