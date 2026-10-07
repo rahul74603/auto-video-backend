@@ -261,6 +261,27 @@ const CourseView = () => {
   if (loading || authLoading) return <div className="h-screen flex justify-center items-center bg-gray-50"><Loader2 className="w-10 h-10 animate-spin text-blue-600"/></div>;
   if (!course) return <div className="p-10 text-center font-bold text-red-500">Course Not Found</div>;
 
+  // 🎓 COURSE SCHEMA (rich results): name/desc/url/provider/offer — real base price
+  const basePrice = Math.round(
+    parseInt(globalSettings?.mrpPrice || "499") * (1 - parseInt(globalSettings?.discountPercent || "85") / 100)
+  );
+  const courseSchema = {
+    "@context": "https://schema.org",
+    "@type": "Course",
+    name: course.title,
+    description: stripHtmlToText(course.description).slice(0, 500),
+    url: `https://studygyaan.in/course/${slug || id}`,
+    inLanguage: "hi",
+    provider: { "@type": "Organization", name: "StudyGyaan", sameAs: "https://studygyaan.in" },
+    offers: {
+      "@type": "Offer",
+      priceCurrency: "INR",
+      price: String(basePrice),
+      availability: "https://schema.org/InStock",
+      url: `https://studygyaan.in/course/${slug || id}`,
+    },
+  };
+
   return (
     <div className="max-w-5xl mx-auto p-2.5 md:p-8 min-h-screen bg-gray-50 font-hindi">
       
@@ -270,6 +291,7 @@ const CourseView = () => {
         customDescription={stripHtmlToText(course.description).slice(0, 160) || `Get high-quality study materials, notes and expert guidance for ${course.title} on StudyGyaan Portal.`}
         customUrl={`https://studygyaan.in/course/${slug || id}`}
         customImage="https://studygyaan.in/og-image.jpg"
+        customSchema={courseSchema}
       />
 
       {/* 🍞 Breadcrumbs — fixes orphan pages */}

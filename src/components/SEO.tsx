@@ -28,6 +28,7 @@ export interface SEOProps {
     noIndex?: boolean;
     noFollow?: boolean;
     schemaType?: string;
+    customSchema?: SchemaObject | SchemaObject[];
 }
 
 // =========================================================
@@ -314,7 +315,8 @@ const SEO = ({
     noFollow = false,     // External pages के लिए
 
     // Schema
-    schemaType = "website" // website | article | breadcrumb | all
+    schemaType = "website", // website | article | breadcrumb | all
+    customSchema
 }: SEOProps) => {
     const location = useLocation();
     const baseUrl = "https://studygyaan.in";
@@ -379,6 +381,11 @@ const SEO = ({
     if (cleanPathname !== '/' && cleanPathname !== '') {
         const breadcrumb = getBreadcrumbSchema(cleanPathname);
         if (breadcrumb) schemas.push(breadcrumb);
+    }
+
+    // 🎁 Page-specific extra schema (Course/FAQ/etc.) — caller banata hai
+    if (customSchema) {
+        (Array.isArray(customSchema) ? customSchema : [customSchema]).forEach((s) => schemas.push(s));
     }
 
     // ✅ Published time for articles
