@@ -1,0 +1,27 @@
+name: Auto Premium Sets (Daily 2 x 25 Qs)
+
+# PHASE-3: roz subah 2 premium practice sets (25 most-important Qs each)
+# existing premium_notes pattern pe auto-generate hote hain.
+# Runner backend me hai: ai_backend/auto_premium_sets.js (api route pe).
+# Config (optional): Firestore doc system_settings/auto_premium_sets
+#   { packs: ["<packId>"], topics: ["..."], exam: "..." }
+# Kill-switch: Admin → Automation Control (feature: auto_premium_sets).
+
+on:
+  schedule:
+    - cron: '30 1 * * *'   # 7:00 AM IST daily
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Trigger api /premium-sets/auto-run
+        run: |
+          RESPONSE=$(curl -sS -X POST "https://api-hf6vlh5cpq-uc.a.run.app/premium-sets/auto-run" \
+            -H "Content-Type: application/json" \
+            -H "x-agent-token: ${{ secrets.AGENT_ADMIN_TOKEN }}" \
+            -d '{}' --max-time 560)
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q '"success":true' || exit 1

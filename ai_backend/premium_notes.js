@@ -753,6 +753,12 @@ async function callGemini(prompt) {
 // ============================================
 // 🚀 MAIN CLOUD FUNCTION
 // ============================================
+// PHASE-3: question-count gate helper (25-Q pattern integrity)
+function countQuestions(html) {
+  const m = String(html || "").match(/Q\.\s?\d+/g);
+  return m ? m.length : 0;
+}
+exports.countQuestions = countQuestions;
 exports.generatePremiumNote = onRequest(
   {
     cors: true,
@@ -897,6 +903,13 @@ exports.generatePremiumNote = onRequest(
       }
 
       console.log(`✅ Content length: ${contentHTML.length} chars`);
+
+      // PHASE-3 IMPROVEMENT: 25-Q quality gate — adhoora AI set kabhi save nahi hota
+      const qCount = countQuestions(contentHTML);
+      if (qCount < 20) {
+        throw new Error(`Content me sirf ${qCount} questions mile (min 20 chahiye). AI response adhoora tha — dobara try karo.`);
+      }
+      console.log(`✅ Question gate: ${qCount} questions detected`);
 
       // ===== STEP 7: ADD BRANDING + WATERMARK =====
       console.log("🎨 Step 7: Adding branding...");
@@ -1050,3 +1063,28 @@ exports.generatePremiumNote = onRequest(
     }
   }
 );
+
+// ============================================
+// 🤖 PROGRAMMATIC ENTRY (daily auto-sets)
+// ============================================
+// PHASE-3: wahi generation logic, HTTP ke bina — fake req/res ke through
+// existing handler ko call karte hain (koi logic duplication NAHI, pattern
+// hamesha identical). auto_premium_sets.js isi pe ride karta hai.
+async function runPremiumSetGeneration(params = {}) {
+  const req = { method: "POST", body: params, get: () => "" };
+  const res = {
+    _code: 200,
+    _payload: null,
+    set() { return this; },
+    status(code) { this._code = code; return this; },
+    json(payload) { this._payload = payload; return this; },
+    send(payload) { this._payload = payload; return this; }
+  };
+  await exports.generatePremiumNote(req, res);
+  const payload = res._payload || {};
+  if (!payload || payload.success !== true) {
+    throw new Error((payload && payload.error) || `Premium set generation failed (HTTP ${res._code})`);
+  }
+  return payload;
+}
+exports.runPremiumSetGeneration = runPremiumSetGeneration;
