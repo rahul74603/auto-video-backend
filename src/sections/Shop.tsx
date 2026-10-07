@@ -187,7 +187,7 @@ if (settings) {
 
                   {/* Action Button */}
                   <button 
-                    onClick={() => navigate(`/course/${course.id}`)}
+                    onClick={() => navigate(`/course/${(course as { slug?: string }).slug || course.id}`)}
                     className="w-full bg-[#0F172A] text-white py-3 md:py-5 rounded-xl font-black text-[10px] md:text-base uppercase tracking-widest shadow-lg active:scale-95 transition-transform"
                   >
                     {isPurchased ? "OWNED ✅" : "GET FULL ACCESS"}
