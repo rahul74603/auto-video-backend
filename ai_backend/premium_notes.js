@@ -685,17 +685,23 @@ async function callGemini(prompt) {
   console.log(`🔑 API Key: length=${apiKey.length}, prefix=${apiKey.substring(0, 6)}...`);
 
   // Try models in order of preference
+  // NOTE (2026-10-07): gemini-2.5-pro is key pe 404 deta hai ("no longer
+  // available to new users") — list se hataya. 503 = high-demand (transient)
+  // → har model pe ek backoff-retry.
   const modelsToTry = [
     "gemini-2.5-flash",
-    "gemini-2.5-pro",
-    "gemini-flash-latest"
+    "gemini-2.5-flash-lite",
+    "gemini-flash-latest",
+    "gemini-2.0-flash"
   ];
+  const RETRYABLE = new Set([429, 503]);
 
   let lastError = null;
 
   for (const model of modelsToTry) {
-    try {
-      console.log(`🤖 Trying model: ${model}`);
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        console.log(`🤖 Trying model: ${model}${attempt > 1 ? " (retry)" : ""}`);
 
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
@@ -722,28 +728,36 @@ async function callGemini(prompt) {
         })
       });
 
-      if (!response.ok) {
-        const errText = await response.text();
-        console.warn(`❌ Model ${model} failed (${response.status}):`, errText.substring(0, 150));
-        lastError = new Error(`${model}: ${response.status}`);
-        continue;
+        if (!response.ok) {
+          const errText = await response.text();
+          console.warn(`❌ Model ${model} failed (${response.status}):`, errText.substring(0, 150));
+          lastError = new Error(`${model}: ${response.status}`);
+          // 429/503 = quota/high-demand (transient) → ek backoff retry same model pe
+          if (RETRYABLE.has(response.status) && attempt === 1) {
+            console.log(`⏳ ${model}: high demand — 15s backoff ke baad retry...`);
+            await new Promise((r) => setTimeout(r, 15000));
+            continue;
+          }
+          break; // agla model try karo
+        }
+
+        const data = await response.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!text || text.length < 500) {
+          console.warn(`⚠️ Model ${model}: Response too short (${text?.length || 0} chars)`);
+          lastError = new Error(`${model}: Response too short`);
+          break; // agla model
+        }
+
+        console.log(`✅ Model ${model} succeeded (${text.length} chars)`);
+        return { text, model };
+
+      } catch (err) {
+        console.warn(`❌ Model ${model} exception:`, err.message);
+        lastError = err;
+        break; // agla model
       }
-
-      const data = await response.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-      if (!text || text.length < 500) {
-        console.warn(`⚠️ Model ${model}: Response too short (${text?.length || 0} chars)`);
-        lastError = new Error(`${model}: Response too short`);
-        continue;
-      }
-
-      console.log(`✅ Model ${model} succeeded (${text.length} chars)`);
-      return { text, model };
-
-    } catch (err) {
-      console.warn(`❌ Model ${model} exception:`, err.message);
-      lastError = err;
     }
   }
 
