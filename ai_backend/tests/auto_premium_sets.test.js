@@ -262,3 +262,34 @@ test("ensureHierarchy: section root folder + subjects andar", async () => {
   assert.equal(store[1].title, "Maths");
   assert.equal(h.subjectFolders["Hindi"], "f2");
 });
+
+// ---------- USER RULE 2026-10-07: max 3 retry ----------
+test("withRetries: 2 fail ke baad success → result; 3 fail → throw", async () => {
+  const { withRetries } = require("../auto_premium_sets");
+  const sleeps = [];
+  let calls = 0;
+  const ok = await withRetries(
+    () => {
+      calls++;
+      if (calls < 3) throw new Error("boom");
+      return "done";
+    },
+    { attempts: 3, sleepMs: 1, _sleep: async (ms) => sleeps.push(ms) }
+  );
+  assert.equal(ok, "done");
+  assert.equal(calls, 3);
+  assert.equal(sleeps.length, 2); // last attempt ke baad sleep NAHI
+
+  calls = 0;
+  await assert.rejects(
+    withRetries(
+      () => {
+        calls++;
+        throw new Error("hamesha fail");
+      },
+      { attempts: 3, sleepMs: 1, _sleep: async () => {} }
+    ),
+    /hamesha fail/
+  );
+  assert.equal(calls, 3); // 3 se zyada NAHI
+});
