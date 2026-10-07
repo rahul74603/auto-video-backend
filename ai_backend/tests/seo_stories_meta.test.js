@@ -83,3 +83,23 @@ test("noindex/junk stories skip ho jaati hain", () => {
   const stories = JSON.parse(files["seo-meta-stories.json"]);
   assert.ok(!stories["/web-stories/junk-story"], "noIndex story ko entry nahi milni chahiye");
 });
+
+// 🚑 REGRESSION (2026-10-07): emoji-splitting truncate → lone surrogate →
+// PHP json_decode NULL → mass 404 on /web-stories/*. Kabhi wapas nahi aana chahiye.
+test("seo-meta jsons me lone-surrogate escapes NAHI (PHP json_decode safe)", () => {
+  const emojiTitle = "🔥".repeat(40) + " SSC CGL Mock Test Full"; // truncate(70) emoji pair kaatega
+  const files = buildMetaFiles({
+    jobs: [],
+    fast_track: [],
+    mock_tests: [],
+    blogs: [],
+    web_stories: [story("emoji-split-story", emojiTitle, { description: "🏆".repeat(100) })],
+  });
+  const loneSurrogate = /\\u[dD][89abAB][0-9a-fA-F]{2}(?!\\u[dD][cCdDfF][0-9a-fA-F]{2})/;
+  for (const [name, raw] of Object.entries(files)) {
+    assert.ok(!loneSurrogate.test(raw), `${name} contains lone surrogate escape`);
+    assert.ok(JSON.parse(raw), `${name} parses`);
+  }
+  const stories = JSON.parse(files["seo-meta-stories.json"]);
+  assert.ok(stories["/web-stories/emoji-split-story"], "story entry present");
+});

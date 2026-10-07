@@ -94,10 +94,16 @@ if ($isDetail && isset($detailAlias[$first])) {
     $file = __DIR__ . '/seo-meta-pages.json';
 }
 
+$jsonOk = false;
 if ($file && is_readable($file)) {
     $raw = file_get_contents($file);
-    $data = $raw ? json_decode($raw, true) : null;
+    // JSON_INVALID_UTF8_SUBSTITUTE: lone-surrogate/invalid UTF-8 pe NULL ki
+    // jagah substitute — warna ek kharab char POORI file ko null kar deta hai
+    // (2026-10-07 incident: stories json ka lone surrogate → saare stories 404)
+    $flags = defined('JSON_INVALID_UTF8_SUBSTITUTE') ? JSON_INVALID_UTF8_SUBSTITUTE : 0;
+    $data = $raw ? json_decode($raw, true, 512, $flags) : null;
     if (is_array($data)) {
+        $jsonOk = true;
         $entry = $data[$path] ?? null;
     }
     // corrupt/empty JSON → $entry null hi rahega, 5xx nahi aayega
@@ -160,7 +166,9 @@ $allLd = array_merge(is_array($ld) ? $ld : [], $extraLd);
 // 🛑 SOFT-404 KILLER: content-detail URL hai lekin data me entry NAHI —
 // matlab ye page exist hi nahi karta (deleted/galat slug). Bots ko asli 404 do
 // taaki Google "Soft 404" / "Duplicate canonical" me na phansaye.
-if (!$entry && $isDetail && isset($detailAlias[$first])) {
+// ⚠️ $jsonOk guard: JSON file corrupt/unparseable ho to MASS-404 NAHI —
+//    tab generic 200 do (infra failure ko content-404 mat banao).
+if (!$entry && $jsonOk && $isDetail && isset($detailAlias[$first])) {
     http_response_code(404);
     header('Content-Type: text/html; charset=utf-8');
     header('X-Robots-Tag: noindex, nofollow');
