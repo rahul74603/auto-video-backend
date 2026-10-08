@@ -316,6 +316,7 @@ async function writeSetsStatus(db, report) {
       lastSets: (report && report.sets || []).length,
       lastErrors: (report && report.errors || []).length,
       lastMode: (report && report.mode) || "exam",
+      lastPaid: !!(report && report.paidFallback),
     }, { merge: true });
   } catch { /* non-fatal */ }
 }
@@ -353,18 +354,33 @@ async function runDailyPremiumSets(db, opts = {}) {
     }
     const entry = pickBlueprintEntry(blueprints, slot, new Date());
     let combos = [];
+    // USER RULE (2026-10-08): pehle 3 retry FREE flash pe; teeno fail to
+    // PAID flash-lite fallback (sasta — ₹300-400/month cap). Sirf premium sets.
+    const FREE_MODEL = process.env.AI_AGENT_MODEL || "gemini-2.5-flash";
+    const PAID_LITE_MODEL = process.env.SETS_PAID_FALLBACK_MODEL || "gemini-2.5-flash-lite";
+    const callJsonFor = (model) => (prompt, options = {}) => generateJson(prompt, { ...options, model });
+    const buildCombos = (callJson, label) =>
+      withRetries(async () => {
+        const bp = await blueprint.getOrBuildBlueprint({ db, exam: entry.exam, section: entry.section, callJson });
+        const c = combosForRun(bp, slot, new Date(), 1);
+        if (!c.length) throw new Error("blueprint me subjects nahi");
+        return c;
+      }, { attempts: 3, sleepMs: 30000, label: `blueprint ${entry.exam}/${entry.section} [${label}]` });
+
     try {
-      // USER RULE (retry max 3): blueprint stage bhi RECITATION/503 pe retry ho —
-      // pehle yahan seedha error girta tha (2026-10-08 slot-0 incident)
-      const bp = await withRetries(
-        () => blueprint.getOrBuildBlueprint({ db, exam: entry.exam, section: entry.section, callJson: generateJson }),
-        { attempts: 3, sleepMs: 30000, label: `blueprint ${entry.exam}/${entry.section}` }
-      );
-      // USER RULE: din me sirf 2 sets total → har cron run me SIRF 1 set
-      combos = combosForRun(bp, slot, new Date(), 1);
-      if (!combos.length) throw new Error("blueprint me subjects nahi");
-    } catch (e) {
-      report.errors.push({ entry, stage: "blueprint", error: String(e.message || e).slice(0, 250) });
+      combos = await buildCombos(callJsonFor(FREE_MODEL), "free-flash");
+    } catch (freeErr) {
+      console.warn(`⚠️ FREE flash 3/3 fail — PAID flash-lite fallback: ${String(freeErr.message || freeErr).slice(0, 140)}`);
+      try {
+        combos = await buildCombos(callJsonFor(PAID_LITE_MODEL), "paid-flash-lite");
+        report.paidFallback = true;
+      } catch (paidErr) {
+        report.errors.push({
+          entry,
+          stage: "blueprint",
+          error: `free: ${String(freeErr.message || freeErr).slice(0, 110)} | paid-lite: ${String(paidErr.message || paidErr).slice(0, 110)}`,
+        });
+      }
     }
     for (const combo of combos) {
       try {
