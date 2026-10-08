@@ -151,6 +151,21 @@ async function generateJson(prompt, options = {}, deps = {}) {
         throw friendly;
       }
 
+      // 🛡️ RECITATION filter (factual syllabus pe false-positive) → apne shabdon me
+      // likhne ki instruction + random seed ke saath retry (2026-10-08: slot-0 fail)
+      if (/RECITATION/i.test(msg) && attempt < maxAttempts - 1) {
+        const seed = Math.floor(Math.random() * 10000);
+        currentPrompt =
+          `${prompt}\n\nIMPORTANT (attempt ${attempt + 2}): Write EVERYTHING in your own ` +
+          `original words, original phrasing and original structure. Do not reproduce ` +
+          `any source text verbatim. (seed ${seed})`;
+        console.warn(
+          `Gemini RECITATION block (koshish ${attempt + 1}/${maxAttempts}) — rephrased prompt se retry`
+        );
+        await sleep(2500 * (attempt + 1));
+        continue;
+      }
+
       throw err; // AI_NOT_CONFIGURED / final WRITER_BAD_JSON / any non-transient error
     }
   }

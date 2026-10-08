@@ -354,7 +354,12 @@ async function runDailyPremiumSets(db, opts = {}) {
     const entry = pickBlueprintEntry(blueprints, slot, new Date());
     let combos = [];
     try {
-      const bp = await blueprint.getOrBuildBlueprint({ db, exam: entry.exam, section: entry.section, callJson: generateJson });
+      // USER RULE (retry max 3): blueprint stage bhi RECITATION/503 pe retry ho —
+      // pehle yahan seedha error girta tha (2026-10-08 slot-0 incident)
+      const bp = await withRetries(
+        () => blueprint.getOrBuildBlueprint({ db, exam: entry.exam, section: entry.section, callJson: generateJson }),
+        { attempts: 3, sleepMs: 30000, label: `blueprint ${entry.exam}/${entry.section}` }
+      );
       // USER RULE: din me sirf 2 sets total → har cron run me SIRF 1 set
       combos = combosForRun(bp, slot, new Date(), 1);
       if (!combos.length) throw new Error("blueprint me subjects nahi");
