@@ -43,6 +43,16 @@ function getClient() {
   return client;
 }
 
+/** Do-key architecture (2026-10-08, user rule): free key blogs/articles ke liye,
+ *  paid (billing-enabled) key SIRF premium sets ke liye. Process ke beech key
+ *  switch karo — cache reset + env update (premium_notes env se hi padhta hai). */
+function setGeminiApiKey(key) {
+  if (!key) return false;
+  process.env.GEMINI_API_KEY = key;
+  client = new GoogleGenerativeAI(key);
+  return true;
+}
+
 function parseJsonObject(text) {
   const clean = String(text || "").replace(/```json/gi, "").replace(/```/g, "").trim();
   const start = clean.indexOf("{");
@@ -176,4 +186,4 @@ async function generateJson(prompt, options = {}, deps = {}) {
   throw err;
 }
 
-module.exports = { generateJson, parseJsonObject, isTransientGeminiError, isRateLimitError };
+module.exports = { generateJson, parseJsonObject, isTransientGeminiError, isRateLimitError, setGeminiApiKey };

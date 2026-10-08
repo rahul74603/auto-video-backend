@@ -42,6 +42,7 @@ jobs:
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SETS_GEMINI_API_KEY: ${{ secrets.SETS_GEMINI_API_KEY }}
         run: node run_auto_premium_sets.js --slot=${{ github.event.inputs.slot || '0' }}
 
   generate-slot-1:
@@ -60,4 +61,5 @@ jobs:
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SETS_GEMINI_API_KEY: ${{ secrets.SETS_GEMINI_API_KEY }}
         run: node run_auto_premium_sets.js --slot=1

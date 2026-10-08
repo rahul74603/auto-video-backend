@@ -25,7 +25,7 @@ const crypto = require("crypto");
 const { runPremiumSetGeneration } = require("./premium_notes");
 const { isAutomationEnabled } = require("./agents/automation_guard");
 const blueprint = require("./exam_blueprint");
-const { generateJson } = require("./agents/article_agents/model_client");
+const { generateJson, setGeminiApiKey } = require("./agents/article_agents/model_client");
 
 // PHASE-3 v3.2 (2026-10-07): MULTI-EXAM — har famous exam ka apna course
 // ("{Exam} Special {YEAR}"), andar sections → subjects → sets + syllabus doc.
@@ -371,9 +371,17 @@ async function runDailyPremiumSets(db, opts = {}) {
       combos = await buildCombos(callJsonFor(FREE_MODEL), "free-flash");
     } catch (freeErr) {
       console.warn(`⚠️ FREE flash 3/3 fail — PAID flash-lite fallback: ${String(freeErr.message || freeErr).slice(0, 140)}`);
+      // Do-key rule: paid (billing-enabled) SETS_GEMINI_API_KEY ho tabhi paid chale —
+      // warna blogs/articles wala free key hi sab kuch hai (charge sirf sets pe).
+      const paidKey = process.env.SETS_GEMINI_API_KEY;
+      if (!paidKey) {
+        console.warn("ℹ️ SETS_GEMINI_API_KEY (paid) set nahi hai — free key pe hi continue.");
+      } else {
+        setGeminiApiKey(paidKey); // model_client cache + env (premium_notes bhi env padhta hai)
+      }
       try {
-        combos = await buildCombos(callJsonFor(PAID_LITE_MODEL), "paid-flash-lite");
-        report.paidFallback = true;
+        combos = await buildCombos(callJsonFor(PAID_LITE_MODEL), paidKey ? "paid-flash-lite" : "free-flash-lite");
+        report.paidFallback = !!paidKey;
       } catch (paidErr) {
         report.errors.push({
           entry,
