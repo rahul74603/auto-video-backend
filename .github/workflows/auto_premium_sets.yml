@@ -1,17 +1,8 @@
 # =====================================================================
-#  Auto Premium Set Generator (PHASE-3 v2) — ⚠️ MANUAL COPY REQUIRED
-#  Copy this file to: .github/workflows/auto_premium_sets.yml
-#  (AGENT_RULES: agent khud .github/workflows/*.yml push nahi kar sakta)
-#
-#  Timing (user rule — low traffic = kam failure):
-#    2:30 AM IST (21:00 UTC) → slot 0
-#    3:20 AM IST (21:50 UTC) → slot 1
-#  Compute: GitHub Actions runner (FREE — Firebase pe koi cron load nahi)
-#
-#  Required repo secrets: SERVICE_ACCOUNT_JSON, GEMINI_API_KEY
-#  Config: Firestore system_settings/auto_premium_sets
-#    { blueprints: [{ exam, section, packId }] }  ← exam-driven mode
-#  Kill-switch: system_settings/automation_guard feature "auto_premium_sets"
+#  Auto Premium Set Generator (PHASE-3 v3) — .github/workflows/auto_premium_sets.yml
+#  Timing: 2:30 AM IST (slot 0) · 3:20 AM IST (slot 1)
+#  Secrets: SERVICE_ACCOUNT_JSON, GEMINI_API_KEY, SETS_GEMINI_API_KEY (paid)
+#  Cost rule: pehle 3 retry FREE flash → fail to paid flash-lite (sirf sets)
 # =====================================================================
 name: Auto Premium Set Generator
 
@@ -42,6 +33,7 @@ jobs:
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SETS_GEMINI_API_KEY: ${{ secrets.SETS_GEMINI_API_KEY }}
         run: node run_auto_premium_sets.js --slot=${{ github.event.inputs.slot || '0' }}
 
   generate-slot-1:
@@ -60,4 +52,5 @@ jobs:
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SETS_GEMINI_API_KEY: ${{ secrets.SETS_GEMINI_API_KEY }}
         run: node run_auto_premium_sets.js --slot=1
