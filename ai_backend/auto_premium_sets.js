@@ -25,7 +25,7 @@ const crypto = require("crypto");
 const { runPremiumSetGeneration } = require("./premium_notes");
 const { isAutomationEnabled } = require("./agents/automation_guard");
 const blueprint = require("./exam_blueprint");
-const { generateJson } = require("./agents/article_agents/model_client");
+const { generateJson, setGeminiApiKey } = require("./agents/article_agents/model_client");
 
 // PHASE-3 v3.2 (2026-10-07): MULTI-EXAM — har famous exam ka apna course
 // ("{Exam} Special {YEAR}"), andar sections → subjects → sets + syllabus doc.
@@ -316,6 +316,7 @@ async function writeSetsStatus(db, report) {
       lastSets: (report && report.sets || []).length,
       lastErrors: (report && report.errors || []).length,
       lastMode: (report && report.mode) || "exam",
+      lastPaid: !!(report && report.paidFallback),
     }, { merge: true });
   } catch { /* non-fatal */ }
 }
@@ -353,13 +354,41 @@ async function runDailyPremiumSets(db, opts = {}) {
     }
     const entry = pickBlueprintEntry(blueprints, slot, new Date());
     let combos = [];
+    // USER RULE (2026-10-08): pehle 3 retry FREE flash pe; teeno fail to
+    // PAID flash-lite fallback (sasta — ₹300-400/month cap). Sirf premium sets.
+    const FREE_MODEL = process.env.AI_AGENT_MODEL || "gemini-2.5-flash";
+    const PAID_LITE_MODEL = process.env.SETS_PAID_FALLBACK_MODEL || "gemini-2.5-flash-lite";
+    const callJsonFor = (model) => (prompt, options = {}) => generateJson(prompt, { ...options, model });
+    const buildCombos = (callJson, label) =>
+      withRetries(async () => {
+        const bp = await blueprint.getOrBuildBlueprint({ db, exam: entry.exam, section: entry.section, callJson });
+        const c = combosForRun(bp, slot, new Date(), 1);
+        if (!c.length) throw new Error("blueprint me subjects nahi");
+        return c;
+      }, { attempts: 3, sleepMs: 30000, label: `blueprint ${entry.exam}/${entry.section} [${label}]` });
+
     try {
-      const bp = await blueprint.getOrBuildBlueprint({ db, exam: entry.exam, section: entry.section, callJson: generateJson });
-      // USER RULE: din me sirf 2 sets total → har cron run me SIRF 1 set
-      combos = combosForRun(bp, slot, new Date(), 1);
-      if (!combos.length) throw new Error("blueprint me subjects nahi");
-    } catch (e) {
-      report.errors.push({ entry, stage: "blueprint", error: String(e.message || e).slice(0, 250) });
+      combos = await buildCombos(callJsonFor(FREE_MODEL), "free-flash");
+    } catch (freeErr) {
+      console.warn(`⚠️ FREE flash 3/3 fail — PAID flash-lite fallback: ${String(freeErr.message || freeErr).slice(0, 140)}`);
+      // Do-key rule: paid (billing-enabled) SETS_GEMINI_API_KEY ho tabhi paid chale —
+      // warna blogs/articles wala free key hi sab kuch hai (charge sirf sets pe).
+      const paidKey = process.env.SETS_GEMINI_API_KEY;
+      if (!paidKey) {
+        console.warn("ℹ️ SETS_GEMINI_API_KEY (paid) set nahi hai — free key pe hi continue.");
+      } else {
+        setGeminiApiKey(paidKey); // model_client cache + env (premium_notes bhi env padhta hai)
+      }
+      try {
+        combos = await buildCombos(callJsonFor(PAID_LITE_MODEL), paidKey ? "paid-flash-lite" : "free-flash-lite");
+        report.paidFallback = !!paidKey;
+      } catch (paidErr) {
+        report.errors.push({
+          entry,
+          stage: "blueprint",
+          error: `free: ${String(freeErr.message || freeErr).slice(0, 110)} | paid-lite: ${String(paidErr.message || paidErr).slice(0, 110)}`,
+        });
+      }
     }
     for (const combo of combos) {
       try {

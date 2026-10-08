@@ -104,7 +104,7 @@ const AdminSystemStatus = () => {
         kaam: 'Har exam ke course me practice sets auto banata hai (1 per timer)',
         state: !sets?.lastRunAt ? 'never' : m !== null && m > 60 * 30 ? 'stale' : 'ok',
         last: last || undefined,
-        detail: sets?.lastRunAt ? `${sets.lastSets ?? 0} set bane · ${sets.lastErrors ?? 0} errors · mode: ${sets.lastMode ?? 'exam'}` : undefined,
+        detail: sets?.lastRunAt ? `${sets.lastSets ?? 0} set bane · ${sets.lastErrors ?? 0} errors · mode: ${sets.lastMode ?? 'exam'} · paid-lite fallback: ${sets.lastPaid ? 'HAAN (₹)' : 'nahi (free)'}` : undefined,
       });
     }
     // 4) SEO master
