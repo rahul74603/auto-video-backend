@@ -1,5 +1,5 @@
 # =====================================================================
-#  Auto Premium Set Generator (PHASE-3 v2) — ⚠️ MANUAL COPY REQUIRED
+#  Auto Premium Set Generator (PHASE-3 v3) — ⚠️ MANUAL COPY REQUIRED
 #  Copy this file to: .github/workflows/auto_premium_sets.yml
 #  (AGENT_RULES: agent khud .github/workflows/*.yml push nahi kar sakta)
 #
@@ -8,9 +8,11 @@
 #    3:20 AM IST (21:50 UTC) → slot 1
 #  Compute: GitHub Actions runner (FREE — Firebase pe koi cron load nahi)
 #
-#  Required repo secrets: SERVICE_ACCOUNT_JSON, GEMINI_API_KEY
+#  Required repo secrets: SERVICE_ACCOUNT_JSON, GEMINI_API_KEY,
+#                         SETS_GEMINI_API_KEY (paid key — SIRF premium sets)
+#  Cost rule (2026-10-08, user): pehle 3 retry FREE flash pe; teeno fail
+#  to SETS_GEMINI_API_KEY (paid) se flash-lite — blog/articles free rehte hain
 #  Config: Firestore system_settings/auto_premium_sets
-#    { blueprints: [{ exam, section, packId }] }  ← exam-driven mode
 #  Kill-switch: system_settings/automation_guard feature "auto_premium_sets"
 # =====================================================================
 name: Auto Premium Set Generator
