@@ -10,6 +10,7 @@ const V = require('./video_state');
 const ttsEngine = require('./tts_engine');
 const flags = require('./agents/growth/feature_flags');
 const motionEngine = require('./agents/growth/motion_engine');
+const { sanitizeYouTubeTags } = require('./agents/growth/platform_packaging');
 const aiVisualEngine = require('./agents/growth/ai_visual_engine');
 const { containsApplyLanguage } = require('./agents/growth/content_intent');
 require("dotenv").config();
@@ -1160,8 +1161,10 @@ const motionEngine = require('./agents/growth/motion_engine');
         }
 
         // ✅ YouTube Upload with full SEO
+        // 🛡️ 2026-10-10: tags sanitize — YouTube "invalid video keywords" reject se bachav
+        const safeTags = sanitizeYouTubeTags(seoData.tags);
         console.log('📤 YouTube पर Upload हो रहा है...');
-        console.log(`🏷️  Uploading ${seoData.tags.length} tags...`);
+        console.log(`🏷️  Uploading ${safeTags.length} tags (sanitized from ${seoData.tags.length})...`);
         
         const ytRes = await youtube.videos.insert({
             part: 'snippet,status',
@@ -1169,7 +1172,7 @@ const motionEngine = require('./agents/growth/motion_engine');
                 snippet: {
                     title:          finalTitle,
                     description:    youtubeDescription,
-                    tags:           seoData.tags,
+                    tags:           safeTags,
                     categoryId:     '27',  // Education
                     defaultLanguage: 'hi',
                     defaultAudioLanguage: 'hi'
