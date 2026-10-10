@@ -154,12 +154,55 @@ function generateHashtags(category, content) {
 function generateRelevantTags(category, content) {
     const tags = ['sarkari naukri', 'govt jobs', 'studygyaan'];
     const org = content.organization || '';
-    
+
     if (org) tags.push(`${org.toLowerCase()} vacancy`);
     if (category && category !== 'GENERAL') tags.push(`${category.toLowerCase()} jobs ${getCurrentYear()}`);
-    if (content.qualification) tags.push(`${content.qualification} pass jobs`);
-    
-    return tags.slice(0, 10);
+    if (content.qualification) {
+        // 🛡️ 2026-10-10 FIX: qualification kabhi-kabhi FULL eligibility paragraph hota hai
+        // (BSSA Head Coach incident — YouTube ne "invalid video keywords" se upload reject kiya).
+        // Lambi qualification se sirf degree/diploma token nikalo, warna generic tag.
+        const q = String(content.qualification).replace(/\s+/g, ' ').trim();
+        if (q.length <= 40) {
+            tags.push(`${q.toLowerCase()} pass jobs`);
+        } else {
+            const m = q.match(QUAL_TOKEN_RE);
+            if (m) tags.push(`${m[0].toLowerCase().replace(/[^a-z0-9.]/g, '')} pass jobs`);
+            tags.push('eligibility criteria');
+        }
+    }
+
+    // YouTube API guard: har tag chhota, combined limit ke andar
+    return sanitizeYouTubeTags(tags);
+}
+
+// Degree/diploma tokens jo "X pass jobs" tag ke liye meaningful hain
+const QUAL_TOKEN_RE = /\b(diploma|degree|bachelors?|masters?|ph\.?d|graduate|graduation|10th|12th|iti|b\.ed|m\.ed|b\.tech|m\.tech|b\.sc|m\.sc|mba|b\.com|llb)\b/i;
+
+/**
+ * YouTube keywords safety net (API limit: combined ~500 chars).
+ * - control chars + extra whitespace strip
+ * - har tag ≤ maxPerTag (word boundary pe cut)
+ * - combined ≤ maxTotal, duplicates drop
+ */
+function sanitizeYouTubeTags(list, { maxPerTag = 60, maxTotal = 480 } = {}) {
+    const out = [];
+    let total = 0;
+    for (const raw of Array.isArray(list) ? list : []) {
+        const clean = String(raw || '')
+            .replace(/[\u0000-\u001f]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (!clean) continue;
+        let tag = clean;
+        if (tag.length > maxPerTag) {
+            tag = tag.slice(0, maxPerTag).replace(/\s+\S*$/, '').trim();
+        }
+        if (!tag || out.includes(tag)) continue;
+        if (total + tag.length > maxTotal) break;
+        out.push(tag);
+        total += tag.length + 1;
+    }
+    return out;
 }
 
 function getCoreTopic(topic) {
@@ -206,6 +249,7 @@ module.exports = {
     generateSEO,
     generateHashtags,
     generateRelevantTags,
+    sanitizeYouTubeTags,
     computeRelevanceScore,
     truncate
 };
