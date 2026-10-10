@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
 import { db } from '@/firebase/config';
 import { Activity, CheckCircle2, XCircle, RefreshCw, AlertTriangle } from 'lucide-react';
 
@@ -60,12 +60,21 @@ const AdminSystemStatus = () => {
       }
     };
 
-    const [scraper, fasttrack, sets, seo, growth] = await Promise.all([
+    const [scraper, fasttrack, sets, seo, growth, ftDrafts] = await Promise.all([
       grab('system_configs', 'scraper_status'),
       grab('system_configs', 'fasttrack_status'),
       grab('system_settings', 'auto_premium_sets'),
       grab('system_settings', 'seo_intelligence'),
       grab('growth_insights', 'latest'),
+      // ⚡ kitni fast track drafts approval ke intezar me hain (JOBS AI tab me review hoti hain)
+      (async () => {
+        try {
+          const s = await getDocs(query(collection(db, 'fast_track'), where('status', '==', 'draft'), limit(100)));
+          return s.size;
+        } catch {
+          return -1;
+        }
+      })(),
     ]);
 
     // 1) Jobs scraper
@@ -89,9 +98,12 @@ const AdminSystemStatus = () => {
         key: 'ft',
         name: '⚡ FastTrack Updates',
         kaam: 'Result / Admit Card / Answer Key updates site + Telegram pe',
-        state: !fasttrack ? 'never' : m !== null && m > 60 * 36 ? 'stale' : 'ok',
+        // drafts pending = action chahiye → amber dikhe
+        state: !fasttrack ? 'never' : (ftDrafts as number) > 0 || (m !== null && m > 60 * 36) ? 'stale' : 'ok',
         last: last || undefined,
-        detail: fasttrack ? `last run me ${fasttrack.lastCount ?? 0} updates` : undefined,
+        detail: fasttrack
+          ? `last run me ${fasttrack.lastCount ?? 0} updates${(ftDrafts as number) >= 0 ? ` · 🟡 ${ftDrafts} draft(s) review pending (JOBS AI tab)` : ''}`
+          : undefined,
       });
     }
     // 3) Premium sets
