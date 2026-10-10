@@ -1052,10 +1052,22 @@ async function generateDailyBlog() {
         const randomCat = categories[Math.floor(Math.random() * categories.length)];
         console.log(`🎯 Category: ${randomCat}`);
 
-        // 🎲 STEP 2: Random Topic
+        // 🎲 STEP 2: Topic — 📡 TRENDING RADAR queue pehle, warna random pool
         const availableTopics = MASTER_POOL[randomCat];
-        const rawTopic = availableTopics[Math.floor(Math.random() * availableTopics.length)];
-        console.log(`📝 Topic: ${rawTopic}`);
+        let rawTopic = availableTopics[Math.floor(Math.random() * availableTopics.length)];
+        let topicFrom = 'random-pool';
+        try {
+            const radarSnap = await db.collection('system_configs').doc('trending_radar').get();
+            const queue = radarSnap.exists && Array.isArray(radarSnap.data().blogQueue) ? radarSnap.data().blogQueue : [];
+            if (queue.length && queue[0]?.topic) {
+                rawTopic = String(queue[0].topic);
+                topicFrom = `TRENDING RADAR (score ${queue[0].score ?? '?'})`;
+                await db.collection('system_configs').doc('trending_radar').update({ blogQueue: queue.slice(1) });
+            }
+        } catch (radarErr) {
+            console.log('⚠️ Radar queue read fail — random topic continue:', radarErr.message);
+        }
+        console.log(`📝 Topic: ${rawTopic} [${topicFrom}]`);
 
         // 🎲 STEP 3: Random Writing Style
         const writingStyle = WRITING_STYLES[Math.floor(Math.random() * WRITING_STYLES.length)];
