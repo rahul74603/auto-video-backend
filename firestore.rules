@@ -17,7 +17,9 @@ service cloud.firestore {
         collectionId == "seo_backfill_tracker" ||
         collectionId == "seo_change_events" ||
         collectionId == "seo_change_outcomes" ||
-        collectionId == "gsc_search_analytics_daily";
+        collectionId == "gsc_search_analytics_daily" ||
+        // 2026-10-10: radar/trend strategy data internal hai — public read band
+        collectionId == "content_opportunities";
     }
 
     match /orders/{orderId} {
