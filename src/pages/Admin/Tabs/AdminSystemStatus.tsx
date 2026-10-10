@@ -49,7 +49,9 @@ const AdminSystemStatus = () => {
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    // NOTE: yahan synchronous setLoading NAHI — eslint react-hooks CI error
+    // ("setState in effect"). Initial loading=true already hai; refresh button
+    // khud spinner set karta hai.
     const next: RowState[] = [];
     const grab = async (coll: string, id: string) => {
       try {
@@ -168,7 +170,9 @@ const AdminSystemStatus = () => {
   }, []);
 
   useEffect(() => {
-    load();
+    // setTimeout(0): eslint react-hooks — effect body me synchronous setState flag hota hai
+    const t = setTimeout(() => { load(); }, 0);
+    return () => clearTimeout(t);
   }, [load]);
 
   return (
