@@ -60,7 +60,7 @@ const AdminSystemStatus = () => {
       }
     };
 
-    const [scraper, fasttrack, sets, seo, growth, ftDrafts] = await Promise.all([
+    const [scraper, fasttrack, sets, seo, growth, ftDrafts, radar] = await Promise.all([
       grab('system_configs', 'scraper_status'),
       grab('system_configs', 'fasttrack_status'),
       grab('system_settings', 'auto_premium_sets'),
@@ -75,6 +75,7 @@ const AdminSystemStatus = () => {
           return -1;
         }
       })(),
+      grab('system_configs', 'trending_radar'),
     ]);
 
     // 1) Jobs scraper
@@ -104,6 +105,22 @@ const AdminSystemStatus = () => {
         detail: fasttrack
           ? `last run me ${fasttrack.lastCount ?? 0} updates${(ftDrafts as number) >= 0 ? ` · 🟡 ${ftDrafts} draft(s) review pending (JOBS AI tab)` : ''}`
           : undefined,
+      });
+    }
+    // 2.5) Trending Radar
+    {
+      const r = (radar ?? {}) as Record<string, unknown>;
+      const last = timeAgo(r.lastRun);
+      const m = minsOf(r.lastRun);
+      const queueLen = Array.isArray(r.blogQueue) ? (r.blogQueue as unknown[]).length : 0;
+      const topPick = Array.isArray(r.lastPicks) ? ((r.lastPicks as string[])[0] ?? '—') : '—';
+      next.push({
+        key: 'radar',
+        name: '📡 Trending Radar',
+        kaam: 'GSC + official feeds se trending topics khud dhundta hai, blog queue me daalta hai',
+        state: !r.lastRun ? 'never' : m !== null && m > 60 * 30 ? 'stale' : 'ok',
+        last: last || undefined,
+        detail: r.lastRun ? `blog queue: ${queueLen} · top pick: ${topPick}` : undefined,
       });
     }
     // 3) Premium sets
