@@ -41,7 +41,7 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ category, pageTitle, descri
     ])
       .then(([fetchedData, recentJobs]) => {
         if (cancelled) return;
-        const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9ऀ-ॿ]+/g, ' ').trim();
+        const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
         const jobTitles = new Set(
           (recentJobs as Array<Record<string, unknown>>).map((j) => norm(String(j.title || '')))
         );
