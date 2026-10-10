@@ -31,6 +31,7 @@ import AdminJobDrafts from './Admin/Tabs/AdminJobDrafts';
 import AdminBrowseAIDrafts from './Admin/Tabs/AdminBrowseAIDrafts';
 import VideoControlCenter from './Admin/Tabs/VideoControlCenter';
 import FastTrackManager from './Admin/Tabs/FastTrackManager'; 
+import AdminFastTrackDrafts from './Admin/Tabs/AdminFastTrackDrafts'; 
 import AdminWebStories from './Admin/Tabs/AdminWebStories';
 // 🔥 NEW: Payment Approval Tab Import
 import AdminPaymentApproval from './Admin/Tabs/AdminPaymentApproval';
@@ -194,6 +195,8 @@ const AdminPage = () => {
                         <div className="space-y-4">
                             {/* 📋 Review AI Drafts — PRIMARY workflow: AI-generated full articles review/edit/publish */}
                             <AdminBrowseAIDrafts />
+                            {/* ⚡ Fast Track Drafts — scraper ki pakdi updates, approval se PEHLE review (jobs jaisa) */}
+                            <AdminFastTrackDrafts />
                             {/* 📥 Fetched Job Drafts — auto-fetched jobs (AI queue + review & publish) */}
                             <AdminJobDrafts />
                         </div>
