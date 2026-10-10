@@ -490,6 +490,12 @@ ${enhancedIntent.prompt}
 
 /* ================= FINAL EXPORTS (TIMEOUT FIX & VISIBLE) ================= */
 
+// 🧩 SEO/IndexNow endpoints (sitemaps, rss, meta tags, IndexNow) — 2026-10-10 FIX:
+// ye functions seo_export.js me the par index.js se export NAHI hote the,
+// isliye deploy --only list (functions:generateSitemapIndex wagera) fail hoti.
+// Ab re-export — collision check kiya: koi name overlap nahi.
+Object.assign(module.exports, require('./seo_export'));
+
 // 0. API Core & Meta Tags (Working)
 // ⚠️ NO `secrets:` here — Spark/free plan pe Secret Manager nahi hai (user ne
 // secrets Firebase se hata ke .env + GitHub Secrets me rakhe hain). Values
