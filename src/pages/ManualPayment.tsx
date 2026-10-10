@@ -25,23 +25,24 @@ const baseAmount =
 
 const [loading, setLoading] = useState(false);
 const [success, setSuccess] = useState(false);
+const [utr, setUtr] = useState("");
 const [finalPayableAmount, setFinalPayableAmount] =
   useState<number>(baseAmount);
 
     const upiId = import.meta.env.VITE_UPI_ID; 
 
-    // ✅ 16 Minute Lock & Unique Amount Generator Logic
+    // ✅ 60 Minute Lock & Unique Amount Generator Logic
     useEffect(() => {
         const fetchUniqueAmount = async () => {
             try {
-                // 16 मिनट पहले का टाइम निकालें
+                // पिछले 60 मिनट की पेमेंट्स की विंडो निकालें
                 const timeLimit = new Date();
                 timeLimit.setMinutes(timeLimit.getMinutes() - 60);
 
                 // फायरबेस से इस कोर्स के पेंडिंग पेमेंट्स निकालें
                 const pendingPayments = await paymentRepository.listPendingPayments(itemId);
 
-                // पिछले 16 मिनट में इस्तेमाल हुए सभी अमाउंट्स की लिस्ट बनाएँ
+                // पिछले 60 मिनट में इस्तेमाल हुए सभी अमाउंट्स की लिस्ट बनाएँ
                 const usedAmounts: number[] = [];
                 pendingPayments.forEach(data => {
                     const purchaseDate = toDateSafe(data.timestamp as TimestampLike);
@@ -78,12 +79,14 @@ const [finalPayableAmount, setFinalPayableAmount] =
 
         setLoading(true);
         try {
-            // ✅ सिर्फ अमाउंट और टाइम सेव होगा, कोई UTR/Photo नहीं
+            // ✅ अमाउंट, टाइम + optional UTR (UTR मिलने पर auto-verify तेज़ और पक्का होता है)
+            const cleanUtr = utr.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
             await paymentRepository.createPaymentRequest({
                 userId: user.uid,
                 userEmail: user.email,
                 courseId: itemId,
                 amount: finalPayableAmount,
+                ...(cleanUtr ? { utr: cleanUtr } : {}),
                 status: "pending"
             });
 
@@ -197,9 +200,24 @@ const [finalPayableAmount, setFinalPayableAmount] =
                                 <h3 className="font-black text-slate-900 uppercase text-xs tracking-widest">Confirm Payment</h3>
                             </div>
 
-                            <div className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-5 md:p-8 text-center">
-                                <p className="text-sm md:text-base text-slate-600 font-bold mb-6">क्या आपने <span className="text-slate-900 text-lg font-black bg-yellow-100 px-2 py-0.5 rounded">₹{finalPayableAmount.toFixed(2)}</span> का पेमेंट कर दिया है?</p>
-                                <button 
+                    <div className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-5 md:p-8 text-center">
+                        <p className="text-sm md:text-base text-slate-600 font-bold mb-6">क्या आपने <span className="text-slate-900 text-lg font-black bg-yellow-100 px-2 py-0.5 rounded">₹{finalPayableAmount.toFixed(2)}</span> का पेमेंट कर दिया है?</p>
+
+                        {/* 🔑 Optional UTR — भरने पर auto-verify सबसे पहले UTR से match करता है */}
+                        <div className="mb-6 text-left">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">
+                                UTR / Transaction ID <span className="text-slate-400 normal-case tracking-normal">(मिला हो तो डालें — अनलॉक तेज़ होगा, optional है)</span>
+                            </label>
+                            <input
+                                type="text"
+                                value={utr}
+                                onChange={(e) => setUtr(e.target.value.slice(0, 22))}
+                                placeholder="जैसे: 402319845678"
+                                className="w-full bg-white border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 uppercase placeholder:normal-case placeholder:text-slate-300 focus:border-blue-400 focus:outline-none"
+                            />
+                        </div>
+
+                        <button 
                                     type="submit" 
                                     disabled={loading}
                                     className="w-full bg-blue-600 text-white py-4 md:py-5 rounded-2xl font-black uppercase tracking-[0.1em] text-sm md:text-base hover:bg-blue-700 disabled:bg-slate-300 transition-all shadow-xl shadow-blue-100 flex items-center justify-center"

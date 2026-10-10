@@ -88,8 +88,8 @@ const AdminPaymentApproval = () => {
             <div className="max-w-6xl mx-auto">
                 <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
-                        <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Payment Desk</h1>
-                        <p className="text-slate-500 font-bold italic">Verify manually uploaded screenshots</p>
+                                        <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Payment Desk</h1>
+                        <p className="text-slate-500 font-bold italic">Auto UPI email verification + manual approval</p>
                     </div>
                     <div className="bg-white px-6 py-3 rounded-2xl shadow-sm border border-slate-200">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pending Requests</p>
@@ -130,7 +130,7 @@ const AdminPaymentApproval = () => {
                                             <p className="text-[9px] font-black text-slate-400 uppercase mb-1">UTR / Trans ID</p>
                                             <div className="flex items-center text-slate-900 bg-slate-50 p-2 rounded-xl border border-slate-100">
                                                 <Hash size={14} className="mr-2 text-blue-500" />
-                                                <span className="text-sm font-black uppercase">{req.utr || "Auto-Generated"}</span>
+                                                <span className="text-sm font-black uppercase">{req.utr || "User ne nahi diya"}</span>
                                             </div>
                                         </div>
                                         <div>

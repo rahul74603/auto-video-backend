@@ -2,6 +2,14 @@ const admin = require("firebase-admin");
 const { google } = require("googleapis");
 require("dotenv").config();
 
+const {
+    DEFAULT_ALERT_SENDERS,
+    MATCH_WINDOW_MS,
+    EXPIRE_AFTER_MS,
+    matchTransaction,
+    buildGmailQuery,
+} = require("./payment_matcher");
+
 // ✅ Firebase Admin Initialization
 if (!admin.apps.length) {
     const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
@@ -19,7 +27,7 @@ const db = admin.firestore();
 
 exports.checkPayments = async () => {
     console.log("🚀 Starting Automatic Payment Checker...");
-    
+
     const credentialsVar = process.env.GMAIL_CREDENTIALS;
     const tokenVar = process.env.PAYMENT_GMAIL_TOKEN;
 
@@ -48,19 +56,25 @@ exports.checkPayments = async () => {
             return;
         }
 
+        // 🔧 Multiple bank senders supported via PAYMENT_ALERT_SENDERS (comma separated)
+        const senders = (process.env.PAYMENT_ALERT_SENDERS || DEFAULT_ALERT_SENDERS.join(","))
+            .split(",").map((s) => s.trim()).filter(Boolean);
+        const gmailQuery = buildGmailQuery(senders);
+        console.log(`📬 Gmail query: ${gmailQuery}`);
+
         const res = await gmail.users.messages.list({
             userId: "me",
-            q: "from:alert@mail.uco.bank.in",
-            maxResults: 50,
+            q: gmailQuery,
+            maxResults: 100,
         });
 
         const messages = res.data.messages || [];
         const bankTransactions = [];
-        
+
         for (const msg of messages) {
             const emailData = await gmail.users.messages.get({ userId: "me", id: msg.id });
             let fullText = "";
-            
+
             // ✅ Recursive Scraper: विज्ञापन और बैनर के पीछे छिपे टेक्स्ट को निकालने के लिए
             const extractText = (part) => {
                 if (part.parts) {
@@ -76,79 +90,86 @@ exports.checkPayments = async () => {
             if (emailData.data.payload) {
                 extractText(emailData.data.payload);
             }
-            
+
             // ✅ HTML टैग्स हटाना और क्लीन टेक्स्ट बनाना
             fullText = fullText.replace(/<[^>]*>?/gm, ' ') || emailData.data.snippet || "";
 
-            bankTransactions.push({ 
-                id: msg.id, 
-                text: fullText, 
-                time: parseInt(emailData.data.internalDate),
-                isUsed: false 
+            bankTransactions.push({
+                id: msg.id,
+                text: fullText,
+                time: parseInt(emailData.data.internalDate, 10),
+                isUsed: false
             });
         }
 
         for (const doc of pendingSnapshot.docs) {
             const purchase = doc.data();
             const expectedAmount = Number(purchase.amount).toFixed(2);
-            let purchaseTime = (typeof purchase.timestamp.toDate === 'function') ? 
-                               purchase.timestamp.toDate().getTime() : 
+            let purchaseTime = (purchase.timestamp && typeof purchase.timestamp.toDate === 'function') ?
+                               purchase.timestamp.toDate().getTime() :
                                new Date(purchase.timestamp).getTime();
 
-            console.log(`\n🔎 CHECKING: Amount ${expectedAmount} for User ${purchase.userEmail}`);
+            console.log(`\n🔎 CHECKING: Amount ${expectedAmount} for User ${purchase.userEmail}${purchase.utr ? ` (UTR: ${purchase.utr})` : ""}`);
 
-            // ✅ Junk Cleanup: 2 घंटे से पुराना डेटा हटाना
-            if (Date.now() - purchaseTime > 2 * 60 * 60 * 1000) {
-                await db.collection("purchases").doc(doc.id).delete();
-                console.log(`🗑️ Deleted junk request: ${expectedAmount}`);
+            // 🗑️ Fix: पुरानी requests को delete करने के बजाय "expired" mark करो —
+            //    पैसा आया तो history रहेगी, admin/user को record दिखेगा।
+            if (Date.now() - purchaseTime > EXPIRE_AFTER_MS) {
+                await db.collection("purchases").doc(doc.id).update({
+                    status: "expired",
+                    expiredAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                console.log(`⌛ Marked expired (>${EXPIRE_AFTER_MS / 3600000}h old): ${expectedAmount}`);
                 continue;
             }
 
             let isMatchFound = false;
 
             for (const tx of bankTransactions) {
-                // ✅ Regex Match
-                const strictExpectedAmount = expectedAmount.replace('.', '\\.');
-                const amountRegex = new RegExp(`${strictExpectedAmount}`, "i");
-                const isAmountMatch = amountRegex.test(tx.text);
+                if (tx.isUsed) continue;
 
-                // ✅ Time Match (120 min buffer)
-                const timeDifference = Math.abs(tx.time - purchaseTime);
-                // ✅ टाइम बफर को बढ़ाकर 24 घंटे (1440 मिनट) कर दिया है ताकि UTC/IST का फर्क खत्म हो जाए
-                 const isTimeMatch = timeDifference <= 24 * 60 * 60 * 1000;
+                // 🔒 Accuracy fix: सिर्फ CREDIT alerts match होंगे (debit alerts skip),
+                //    amount exact-parse से compare होगा, UTR मिला तो वो भी strong match।
+                const result = matchTransaction({
+                    emailText: tx.text,
+                    emailTimeMs: tx.time,
+                    purchaseTimeMs: purchaseTime,
+                    expectedAmount,
+                    utr: purchase.utr,
+                });
 
-                // 🔴 DEBUG LOGS: यहाँ से पता चलेगा गड़बड़ कहाँ है
-                if (isAmountMatch || timeDifference < 180 * 60 * 1000) {
-                    console.log(`--- Potential Match Found ---`);
-                    console.log(`💰 Expected: ${expectedAmount} | In Email: ${isAmountMatch ? 'YES' : 'NO'}`);
-                    console.log(`⏰ Time Diff: ${Math.round(timeDifference / 60000)} mins | Match: ${isTimeMatch ? 'YES' : 'NO'}`);
-                    console.log(`📧 Email Snippet: ${tx.text.substring(0, 150).replace(/\n/g, ' ')}`);
-                }
-
-                if (isAmountMatch && isTimeMatch) {
-                    if (tx.isUsed) continue;
-                    const usedCheck = await db.collection("purchases").where("emailMessageId", "==", tx.id).get();
-                    if (!usedCheck.empty) { tx.isUsed = true; continue; }
-
-                    console.log(`✅ SUCCESS! Matching Email Found.`);
-                    tx.isUsed = true;
-                    
-                    await db.collection("purchases").doc(doc.id).update({
-                        status: "completed",
-                        emailMessageId: tx.id,
-                        unlockedAt: admin.firestore.FieldValue.serverTimestamp()
-                    });
-
-                    if (purchase.userId && purchase.courseId) {
-                        await db.collection("users").doc(purchase.userId).set({
-                            [`purchased_${purchase.courseId}`]: true,
-                            lastPurchaseDate: new Date().toISOString()
-                        }, { merge: true });
+                if (!result.matched) {
+                    // DEBUG: सिर्फ amount पास-पास दिखे तो log
+                    if (tx.text.includes(expectedAmount)) {
+                        const timeDiff = Math.abs(tx.time - purchaseTime);
+                        console.log(`--- Near Match (rejected) ---`);
+                        console.log(`💰 Amount text seen | Time Diff: ${Math.round(timeDiff / 60000)} mins | Window: ${MATCH_WINDOW_MS / 3600000}h`);
+                        console.log(`📧 Email Snippet: ${tx.text.substring(0, 150).replace(/\n/g, ' ')}`);
                     }
-
-                    isMatchFound = true;
-                    break;
+                    continue;
                 }
+
+                const usedCheck = await db.collection("purchases").where("emailMessageId", "==", tx.id).get();
+                if (!usedCheck.empty) { tx.isUsed = true; continue; }
+
+                console.log(`✅ SUCCESS! Matching credit email found (via ${result.via}).`);
+                tx.isUsed = true;
+
+                await db.collection("purchases").doc(doc.id).update({
+                    status: "completed",
+                    emailMessageId: tx.id,
+                    verifiedVia: result.via,
+                    unlockedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+
+                if (purchase.userId && purchase.courseId) {
+                    await db.collection("users").doc(purchase.userId).set({
+                        [`purchased_${purchase.courseId}`]: true,
+                        lastPurchaseDate: new Date().toISOString()
+                    }, { merge: true });
+                }
+
+                isMatchFound = true;
+                break;
             }
 
             if (!isMatchFound) {
