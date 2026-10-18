@@ -62,11 +62,10 @@ const DEFAULT_MAX_ATTEMPTS = 3;
 // before the poller also picks the document up (avoids duplicate renders).
 const DEFAULT_LEGACY_GRACE_MS = 30 * 60 * 1000; // 30 minutes
 
-// Freshness guard: auto-render ONLY content published within the last day.
-// Older content — including legacy backlog and stale queued/failed docs — is
-// never auto-rendered. Publishing fresh content is what triggers a video.
-// Force a specific old doc manually with --doc=<id> --max-age-days=0.
-const DEFAULT_MAX_AGE_DAYS = 0.5;   // STRICT: only last 12 hours of fresh publishes
+// Freshness guard: allow the recent one-week queue to drain when GitHub's
+// scheduled runner is delayed. 2024/2025 legacy posts remain ineligible.
+// Force an older specific doc manually with --doc=<id> --max-age-days=0.
+const DEFAULT_MAX_AGE_DAYS = 7;
 
 const JOB_BLOCKED_STATUSES = ['draft', 'pending', 'archived', 'rejected', 'unpublished', 'deleted', 'expired'];
 const NON_JOB_TYPES = ['MATERIAL', 'AFFILIATE', 'FAST_TRACK', 'BLOG', 'NOTE', 'PDF', 'STORY'];

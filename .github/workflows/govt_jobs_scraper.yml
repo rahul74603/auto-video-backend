@@ -2,7 +2,7 @@ name: 🤖 Govt Jobs Scraper
 
 on:
   schedule:
-    - cron: '0 4 * * *'    # रोज़ 9:30 AM IST (4:00 UTC)
+    - cron: '0 0,6,12,18 * * *' # हर 6 घंटे: fresher source queue; IST 5:30, 11:30, 17:30, 23:30
   workflow_dispatch:         # Manual Run बटन
 
 jobs:

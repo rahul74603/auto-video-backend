@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../firebase/config';
-import { doc, getDoc, getDocs, setDoc, serverTimestamp, deleteDoc, collection, query, where, limit } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { courseRepository } from '@/features/courses/data/courseRepository';
 import { useCourseAccess } from '../hooks/useCourseAccess';
 import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
@@ -84,34 +84,28 @@ const CourseView = () => {
       try {
         setLoading(true);
         // 1. Course resolve — Firestore id YA SEO slug, dono se khulta hai
-        let realId: string | null = null;
-        let courseData: unknown = await courseRepository.getCourseById(urlParam).catch(() => null);
-        if (courseData) {
-          realId = urlParam;
-        } else {
-          const bySlug = await getDocs(
-            query(collection(db, "courses"), where("slug", "==", urlParam), limit(1))
-          );
-          if (!bySlug.empty) {
-            realId = bySlug.docs[0].id;
-            courseData = bySlug.docs[0].data();
-          }
+        let courseRecord = await courseRepository.getCourseById(urlParam).catch(() => null);
+        // A slug route is resolved only after an ID miss. Keep ID routes stable:
+        // automatic ID→slug navigation can strand older/duplicate slugs on a blank page.
+        if (!courseRecord) {
+          courseRecord = await courseRepository.getCourseBySlug(urlParam).catch(() => null);
         }
-        if (courseData && realId) {
+        if (courseRecord) {
+          const realId = courseRecord.id;
+          const cd = courseRecord as Record<string, unknown>;
           setResolvedId(realId);
-          const cd = courseData as Record<string, unknown>;
-          const slugNow =
-            typeof cd.slug === "string" && cd.slug ? String(cd.slug) : slugifyTitle(String(cd.title || ""));
-          if (slugNow) {
-            setSlug(slugNow);
-            // purane course docs me slug nahi tha → patch (idempotent)
-            if (cd.slug !== slugNow) {
-              setDoc(doc(db, "courses", realId), { slug: slugNow }, { merge: true }).catch(() => {});
-            }
-            // canonical: random-id URL → slug URL (301-equivalent client-side)
-            if (urlParam !== slugNow) navigate(`/course/${slugNow}`, { replace: true });
-          }
-          setCourse(courseData as unknown as CourseViewData);
+          const slugNow = typeof cd.slug === "string" && cd.slug
+            ? cd.slug
+            : slugifyTitle(String(cd.title || ""));
+          setSlug(slugNow || null);
+          // Read-only page: do not try to backfill Firestore slugs while rendering.
+          setCourse({
+            title: typeof cd.title === "string" ? cd.title : "Course",
+            description: typeof cd.description === "string" ? cd.description : "",
+            imageUrl: typeof cd.imageUrl === "string" ? cd.imageUrl : undefined,
+            lockMessage: typeof cd.lockMessage === "string" ? cd.lockMessage : undefined,
+            features: Array.isArray(cd.features) ? cd.features.filter((x): x is string => typeof x === "string") : undefined,
+          });
 
           // 2. Fetch Content
           const content = await courseContentRepository.listContent(realId, { orderByCreatedAt: true });
@@ -148,6 +142,13 @@ const CourseView = () => {
         setLoading(false);
       }
     };
+    setResolvedId(null);
+    setCourse(null);
+    setAllContent([]);
+    setSyllabusDoc(null);
+    setSylItemId(null);
+    setCurrentFolderId(null);
+    setFolderPath([]);
     fetchData();
     window.scrollTo(0, 0);
   }, [urlParam]);

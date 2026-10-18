@@ -54,10 +54,12 @@ const DEFAULT_BLUEPRINTS = [
   { exam: "Banking", section: "RBI Assistant", packId: "__auto__" },
 ];
 
-/** Din-wise rotation: 2 slots/din → saari entries 4 din me cover. */
+/** Din-wise rotation: 4 slots/din → saari entries 4x speed se cover. */
+const BLUEPRINT_SLOTS_PER_DAY = 4;
 function pickBlueprintEntry(blueprints, slot = 0, now = new Date()) {
   if (!Array.isArray(blueprints) || !blueprints.length) return null;
-  return blueprints[(dayIndex(now) * 2 + slot) % blueprints.length];
+  const safeSlot = ((Number(slot) || 0) % BLUEPRINT_SLOTS_PER_DAY + BLUEPRINT_SLOTS_PER_DAY) % BLUEPRINT_SLOTS_PER_DAY;
+  return blueprints[(dayIndex(now) * BLUEPRINT_SLOTS_PER_DAY + safeSlot) % blueprints.length];
 }
 
 // Purane "Dhamaka"-era packs — public Shop se hide (admin me dikhte rahenge).
@@ -89,8 +91,13 @@ const DEFAULT_TOPIC_POOL = [
 ];
 
 function dayIndex(now = new Date()) {
-  const start = new Date(now.getFullYear(), 0, 0);
-  return Math.floor((now.getTime() - start.getTime()) / 86400000);
+  // GitHub runs in UTC, but slots are scheduled by IST day. Normalize to IST
+  // so the 2:30 AM UTC-previous-evening run and the later three slots share
+  // one stable daily rotation instead of skipping/repeating blueprint entries.
+  const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+  const dayStart = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate());
+  const yearStart = Date.UTC(ist.getUTCFullYear(), 0, 0);
+  return Math.floor((dayStart - yearStart) / 86400000);
 }
 
 function pickDailyTopics(topics, now = new Date(), count = 2) {
@@ -277,27 +284,25 @@ async function generateLegacySets({ db, cfg, opts }) {
   if (!packs || !packs.length) packs = (await getDefaultPacks(db)).map((p) => p.id);
   if (!packs.length) return { skipped: true, reason: "koi course pack nahi mila" };
 
-  const picked = pickDailyTopics(topics, new Date(), 2);
+  const picked = pickDailyTopics(topics, new Date(), BLUEPRINT_SLOTS_PER_DAY);
   const out = { sets: [], errors: [] };
-  for (let i = 0; i < picked.length; i++) {
-    const packId = packs[i % packs.length];
-    const topic = picked[i];
-    try {
-      let exam = opts.exam || cfg.exam || "";
-      if (!exam) {
-        try {
-          const p = (await db.collection("courses").doc(packId).get()).data();
-          exam = (p && (p.exam || p.title)) || "SSC CGL";
-        } catch {
-          exam = "SSC CGL";
-        }
+  const topic = picked[((Number(opts.slot) || 0) % picked.length + picked.length) % picked.length];
+  const packId = packs[(Number(opts.slot) || 0) % packs.length];
+  try {
+    let exam = opts.exam || cfg.exam || "";
+    if (!exam) {
+      try {
+        const p = (await db.collection("courses").doc(packId).get()).data();
+        exam = (p && (p.exam || p.title)) || "SSC CGL";
+      } catch {
+        exam = "SSC CGL";
       }
-      const setNumber = await nextSetNumber(db, packId, topic);
-      const result = await runPremiumSetGeneration({ topic, packId, setNumber, exam, subject: topic });
-      out.sets.push({ packId, topic, setNumber, docId: result.id, model: result.model });
-    } catch (e) {
-      out.errors.push({ packId, topic, error: String(e.message || e).slice(0, 200) });
     }
+    const setNumber = await nextSetNumber(db, packId, topic);
+    const result = await runPremiumSetGeneration({ topic, packId, setNumber, exam, subject: topic });
+    out.sets.push({ packId, topic, setNumber, docId: result.id, model: result.model });
+  } catch (e) {
+    out.errors.push({ packId, topic, error: String(e.message || e).slice(0, 200) });
   }
   return out;
 }
@@ -305,7 +310,7 @@ async function generateLegacySets({ db, cfg, opts }) {
 /**
  * @param {object} db
  * @param {{slot?: number, packs?: string[], topics?: string[], exam?: string}} opts
- * slot: 0 = 2:30 AM run, 1 = 3:20 AM run (exam mode me 1 set per slot)
+ * slot: 0..3 = four spread-out daily runs (exam mode me 1 set per slot)
  */
 // 🟢 STATUS (admin "System Status" tab): kab chala, kitne sets, kitni errors
 async function writeSetsStatus(db, report) {
@@ -427,5 +432,6 @@ module.exports = {
   pickBlueprintEntry,
   DEFAULT_TOPIC_POOL,
   DEFAULT_BLUEPRINTS,
+  BLUEPRINT_SLOTS_PER_DAY,
   LEGACY_PACK_IDS,
 };

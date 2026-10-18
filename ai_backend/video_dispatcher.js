@@ -273,6 +273,38 @@ function buildFastTrackPayload(id, data) {
     };
 }
 
+/** Save queue state and Telegram-alert when there is nothing eligible to render. */
+async function updateQueueHealth(db, { pendingCount, now = Date.now(), botToken = process.env.TELEGRAM_BOT_TOKEN, chatId = process.env.TELEGRAM_CHAT_ID } = {}) {
+    const ref = db.collection('system_configs').doc('video_dispatcher_status');
+    try {
+        const snap = await ref.get();
+        const previous = snap.exists ? (snap.data() || {}) : {};
+        const lastAlert = Date.parse(previous.lastEmptyAlertAt || '') || 0;
+        const shouldAlert = pendingCount === 0 && botToken && chatId && (now - lastAlert >= 6 * 60 * 60 * 1000);
+        await ref.set({
+            queueState: pendingCount > 0 ? 'pending' : 'empty',
+            pendingCount: Number(pendingCount) || 0,
+            lastCheckedAt: new Date(now).toISOString(),
+            ...(pendingCount > 0 ? { lastEmptyAlertAt: null } : {})
+        }, { merge: true });
+
+        if (!shouldAlert) return { notified: false };
+        const axios = require('axios');
+        const message = '🎬 Video queue abhi empty hai — koi eligible published Job/Fast Track/Mock Test pending nahi hai. Nayi post publish karoge to dispatcher next check me video process karega.';
+        await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            chat_id: chatId,
+            text: message,
+            disable_web_page_preview: true
+        }, { timeout: 10000 });
+        await ref.set({ lastEmptyAlertAt: new Date(now).toISOString() }, { merge: true });
+        console.log('📣 Queue-empty Telegram notification sent (6-hour cooldown).');
+        return { notified: true };
+    } catch (err) {
+        console.log(`⚠️ Queue health/notification skipped: ${V.shortError(err, 120)}`);
+        return { notified: false, error: V.shortError(err, 120) };
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* Processing                                                          */
 /* ------------------------------------------------------------------ */
@@ -584,6 +616,8 @@ async function main() {
 
     const results = [];
     let produced = 0;
+    let scannedKinds = 0;
+    let eligiblePendingCount = 0;
 
     // YouTube allows ~5 uploads/day on the default API quota. Stop before
     // burning runner time on renders that would fail at the upload step (and
@@ -642,6 +676,9 @@ async function main() {
             continue;
         }
 
+        scannedKinds += 1;
+        eligiblePendingCount += candidates.length;
+
         // In a dry run show what the next few real runs would pick up, in order.
         let shownForKind = 0;
 
@@ -689,6 +726,12 @@ async function main() {
     }
     console.log('='.repeat(60));
 
+    // Only report an empty queue after every requested kind scanned successfully.
+    // No post means a Telegram reminder (max once per 6 hours) plus dashboard status.
+    if (!args.dryRun && !args.doc && scannedKinds === kinds.length) {
+        await updateQueueHealth(db, { pendingCount: eligiblePendingCount });
+    }
+
     const hardFailures = results.filter((r) => r.status === 'failed' || r.status === 'upload_failed' || r.status === 'error');
     return hardFailures.length === 0 ? 0 : 1;
 }
@@ -701,6 +744,7 @@ module.exports = {
     buildFastTrackPayload,
     buildAttribution,
     scanCollection,
+    updateQueueHealth,
     main
 };
 

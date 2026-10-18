@@ -214,10 +214,13 @@ test("recently published content still retries inside the fresh window", () => {
   assert.equal(V.evaluateJob(data).eligible, true);
 });
 
-test("default freshness window is 0.5 day (12 hours) — fresh content eligible, older skipped", () => {
+test("default freshness window is seven days — delayed recent posts eligible, old backlog skipped", () => {
   const fresh = { type: "JOB", title: "Just published", createdAt: now() - 6 * HOUR };
-  const stale = { type: "JOB", title: "Two days old", createdAt: now() - 2 * DAY };
+  const delayed = { type: "JOB", title: "Delayed by a day", createdAt: now() - 2 * DAY };
+  const stale = { type: "JOB", title: "Eight days old", createdAt: now() - 8 * DAY };
+  assert.equal(V.DEFAULT_MAX_AGE_DAYS, 7);
   assert.equal(V.evaluateJob(fresh).eligible, true);
+  assert.equal(V.evaluateJob(delayed).eligible, true);
   const verdict = V.evaluateJob(stale);
   assert.equal(verdict.eligible, false);
   assert.ok(/backlog window|freshness window|legacy content/.test(verdict.reason),
@@ -271,6 +274,11 @@ test("toMillis understands Firestore Timestamps, Dates, ISO strings and epochs",
   assert.equal(V.toMillis("not a date"), 0);
 });
 
+test("fresh approval timestamp takes precedence over an old draft-created timestamp", () => {
+  const data = { type: "JOB", title: "Approved today", createdAt: now() - 30 * DAY, publishedAt: now() - 1 * DAY };
+  assert.equal(V.evaluateJob(data).eligible, true);
+});
+
 test("publishedAtMs prefers publishedAt then createdAt", () => {
   assert.equal(V.publishedAtMs({ publishedAt: 2000, createdAt: 1000 }), 2000);
   assert.equal(V.publishedAtMs({ createdAt: 1000 }), 1000);
@@ -297,6 +305,22 @@ test("blank VIDEO_MAX_AGE_DAYS env falls back to the default (never 0 = guard of
   } finally {
     if (prev === undefined) delete process.env.VIDEO_MAX_AGE_DAYS; else process.env.VIDEO_MAX_AGE_DAYS = prev;
   }
+});
+
+test("queue health stores an empty/pending status without requiring Telegram secrets", async () => {
+  const state = {};
+  const ref = {
+    get: async () => ({ exists: Object.keys(state).length > 0, data: () => ({ ...state }) }),
+    set: async (patch) => Object.assign(state, patch),
+  };
+  const db = { collection: (name) => ({ doc: (id) => { assert.equal(name, "system_configs"); assert.equal(id, "video_dispatcher_status"); return ref; } }) };
+  assert.deepEqual(await dispatcher.updateQueueHealth(db, { pendingCount: 0, now: Date.parse("2026-10-18T00:00:00Z"), botToken: "", chatId: "" }), { notified: false });
+  assert.equal(state.queueState, "empty");
+  assert.equal(state.pendingCount, 0);
+  await dispatcher.updateQueueHealth(db, { pendingCount: 2, now: Date.parse("2026-10-18T01:00:00Z"), botToken: "", chatId: "" });
+  assert.equal(state.queueState, "pending");
+  assert.equal(state.pendingCount, 2);
+  assert.equal(state.lastEmptyAlertAt, null);
 });
 
 test("numeric VIDEO_MAX_AGE_DAYS env is honored", () => {
