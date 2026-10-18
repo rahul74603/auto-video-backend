@@ -36,7 +36,7 @@ test('HTML summary strips tags and decodes common entities', () => {
     assert.equal(summary, 'Result & merit list are available on the official website for candidates.');
 });
 
-test('fallback articles render only saved facts and safe official URLs', () => {
+test('fallback articles render only saved facts and safe links with honest labels', () => {
     const article = buildFallbackArticleHtml({
         kind: 'job',
         title: 'Board Assistant Recruitment',
@@ -50,6 +50,15 @@ test('fallback articles render only saved facts and safe official URLs', () => {
     assert.match(article, /https:\/\/board\.gov\.in\/apply/);
     assert.ok(htmlWordCount(article) > 40);
     assert.doesNotMatch(article, /undefined|null/);
+
+    const fastTrack = buildFallbackArticleHtml({
+        kind: 'fast_track',
+        title: 'University Result 2026',
+        category: 'Result',
+        originalLink: 'https://results-publisher.example/update',
+    });
+    assert.match(fastTrack, /Original source page — verify official notice/);
+    assert.doesNotMatch(fastTrack, /Verified official source/);
 });
 
 test('backfill gap-fills only permitted draft statuses and never changes published documents', async () => {

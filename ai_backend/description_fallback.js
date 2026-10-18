@@ -141,8 +141,14 @@ function buildFallbackArticleHtml(options = {}) {
         .map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(plainText(value))}</td></tr>`)
         .join('');
 
+    const primaryLink = kind === 'fast_track'
+        ? (options.officialSourceUrl || options.originalLink || options.directLink)
+        : (options.applyLink || options.directLink);
+    const primaryLinkLabel = kind === 'fast_track'
+        ? (options.officialSourceUrl ? 'Verified official source' : 'Original source page — verify official notice')
+        : 'Apply / Official link';
     const officialLinks = [
-        ['Apply / Official link', options.applyLink || options.directLink],
+        [primaryLinkLabel, primaryLink],
         ['Notification', options.notificationLink],
         ['Official website', options.officialSiteLink],
     ].filter(([, value]) => /^https:\/\//i.test(String(value || '').trim()));

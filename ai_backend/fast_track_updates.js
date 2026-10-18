@@ -8,6 +8,8 @@ const axios = require("axios");
 const { google } = require("googleapis");
 const cheerio = require("cheerio");
 const Parser = require("rss-parser");
+const { DEFAULT_SOURCES } = require("./source_registry");
+const { buildFastTrackSources, isOfficialSourceUrl, chooseEditorialAngle } = require("./fast_track_sources");
 const { parsePublishedAt, extractPublishedAtFromHtml } = require("./source_freshness");
 const {
     MAX_SCRAPER_AGE_DAYS,
@@ -17,6 +19,7 @@ const {
 } = require("./scraper_policy");
 const {
     buildDescription,
+    plainText,
     buildFallbackArticleHtml,
     htmlWordCount,
     backfillDraftDescriptions,
@@ -258,6 +261,23 @@ async function scrapePage(url) {
     return `SOURCE_PUBLISHED_AT: ${sourceDate}\nCONTENT:\n${bodyText}\nLINKS:\n${Array.from(links).join("\n")}`.substring(0, 12000);
 }
 
+async function fetchOfficialSourceText(url, logger = console.log) {
+    if (!isOfficialSourceUrl(url)) return { text: '', status: 'official_link_unavailable' };
+    try {
+        const text = await scrapePage(url);
+        const content = text.match(/CONTENT:\n([\s\S]*?)(?:\nLINKS:\n|$)/)?.[1] || '';
+        if (plainText(content).length < 100) {
+            logger(`⚠️ Official source page had too little readable text: ${url}`);
+            return { text: '', status: 'official_page_thin' };
+        }
+        logger(`✅ Official source page verified: ${url}`);
+        return { text, status: 'verified' };
+    } catch (err) {
+        logger(`⚠️ Official source fetch failed [${url}]: ${err.message}`);
+        return { text: '', status: 'official_fetch_failed' };
+    }
+}
+
 // =========================================================
 // 🤖 AI EXTRACTOR
 // ✅ Smart Retry - 429 aane par retryDelay se wait karo
@@ -268,29 +288,35 @@ async function scrapePage(url) {
 // JOB wala 13-section structure yahan force NAHI hota (spec ke hisaab se).
 // =========================================================
 async function generateFullFastTrackArticle(extracted, sourceText, category, title, apiKey, logger = console.log) {
+    const editorialAngle = chooseEditorialAngle(title, category);
     const facts = JSON.stringify({
         title,
         org: extracted.org || '',
         updateDate: extracted.updateDate || '',
         shortInfo: extracted.shortInfo || '',
-        directLink: extracted.directLink || '',
-        category
+        officialSourceUrl: extracted.officialSourceUrl || '',
+        category,
     });
 
     const prompt = `Act as StudyGyaan's editorial writer. Write a COMPLETE, ORIGINAL, source-grounded article
 for this "${category}" update, in easy Hinglish (Hindi-English mix, Devanagari for Hindi words).
 
-=== VERIFIED FACTS ===
+=== EXTRACTED FIELDS (official source text below is authoritative when available) ===
 ${facts}
+
+=== ITEM-SPECIFIC EDITORIAL ANGLE ===
+${editorialAngle}
+Build the article structure around this angle; do not force the same section sequence onto every update.
 
 === SOURCE TEXT (ground truth) ===
 ${String(sourceText).slice(0, 12000)}
 
 === STRICT RULES ===
-1. Facts SIRF source/facts se lo — dates/numbers/names INVENT mat karo.
+1. Names, dates, numbers, status and URLs ko authoritative source se EXACT rakho; conflicting/missing fact ko guess, change, ya invent mat karo.
 2. Missing info par likho: "अधिक जानकारी के लिए आधिकारिक वेबसाइट देखें।" — guess kabhi nahi.
-3. Source ka word-by-word copy mana hai — original editorial wording.
+3. Sirf synonym badal kar source ko spin mat karo. Apna useful explanation, item-specific structure, and reader ke liye next-check guidance do; source ki original wording copy bhi mat karo.
 4. Koi filler/keyword-stuffing nahi. Ye ${category} update hai — job-recruitment wale sections (fee/age/vacancy) FORCE mat karo, sirf relevant sections likho.
+5. Official source text agar supplied ho tabhi use verified official source bolo. Warna source ko verified claim mat karo aur readers ko official notice cross-check karne ko bolo.
 
 === OUTPUT ===
 Return ONLY clean HTML (no markdown, no \`\`\`). NO <h1>. Structure:
@@ -302,9 +328,9 @@ Return ONLY clean HTML (no markdown, no \`\`\`). NO <h1>. Structure:
    - Answer Key → kaise download/objection process (agar source me ho)
    - Syllabus/Admission → key details, important points <ul>
 4. <h2>महत्वपूर्ण लिंक</h2> + <table> (sirf official links <a href> ke saath)
-5. <h2>अक्सर पूछे जाने वाले प्रश्न (FAQs)</h2> + 4-6 <h3>Q</h3><p>A</p> pairs (source-grounded)
-6. Chhota conclusion <p>
-Target: 800-1500 meaningful words. Kam jankari ho to chhota likho — filler mat daalo.`;
+5. Add FAQs only if source-backed questions remain unanswered elsewhere; omit generic/repetitive FAQs.
+6. Chhota conclusion <p> that points to the verified source when available.
+Target: 700-1200 useful words when the source supports it. Kam jankari ho to chhota likho — filler mat daalo.`;
 
     for (let attempt = 1; attempt <= 2; attempt += 1) {
         try {
@@ -316,7 +342,7 @@ Target: 800-1500 meaningful words. Kam jankari ho to chhota likho — filler mat
                 .replace(/```/g, '')
                 .trim();
             html = html.replace(/<h1(\s[^>]*)?>/gi, '<h2>').replace(/<\/h1>/gi, '</h2>');
-            if (htmlWordCount(html) >= 80) return html;
+            if (htmlWordCount(html) >= 80) return { html, mode: 'ai_generated' };
             logger(`⚠️ Gemini returned an empty/too-short Fast Track article (attempt ${attempt}/2).`);
         } catch (err) {
             logger(`⚠️ Fast Track article generation failed (attempt ${attempt}/2): ${err.message}`);
@@ -326,15 +352,19 @@ Target: 800-1500 meaningful words. Kam jankari ho to chhota likho — filler mat
     }
 
     logger('🧩 Saving a grounded, fact-only fallback article for human review.');
-    return buildFallbackArticleHtml({
-        kind: 'fast_track',
-        title,
-        organization: extracted.org,
-        category,
-        updateDate: extracted.updateDate,
-        summary: extracted.shortInfo,
-        directLink: extracted.directLink,
-    });
+    return {
+        html: buildFallbackArticleHtml({
+            kind: 'fast_track',
+            title,
+            organization: extracted.org,
+            category,
+            updateDate: extracted.updateDate,
+            summary: extracted.shortInfo,
+            officialSourceUrl: extracted.officialSourceUrl,
+            originalLink: extracted.originalLink,
+        }),
+        mode: 'fact_fallback',
+    };
 }
 
 async function extractWithAI(linksText, category, title, apiKey, logger = console.log) {
@@ -428,28 +458,29 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
         return [];
     }
 
-    const RSS_SOURCES = [
-        'https://www.freejobalert.com/feed/',
-        'https://www.sarkariexam.com/feed',
-        'https://feeds.feedburner.com/SarkariExam'
-    ];
-
+    const RSS_SOURCES = buildFastTrackSources(DEFAULT_SOURCES);
+    logger(`🔎 Fast Track discovery sources configured: ${RSS_SOURCES.length}`);
     let allItems = [];
 
-    for (const url of RSS_SOURCES) {
+    for (const source of RSS_SOURCES) {
+        const { name, url } = source;
         try {
-            logger(`📡 Fetching: ${url}`);
+            logger(`📡 Fetching [${name}]: ${url}`);
             const response = await axios.get(url, {
-                headers: { 'User-Agent': 'Mozilla/5.0' },
+                headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StudyGyaanBot/1.0)' },
                 timeout: 15000
             });
             const feed = await parser.parseString(response.data);
             if (feed?.items) {
-                allItems.push(...feed.items);
-                logger(`✅ ${feed.items.length} items from ${url}`);
+                allItems.push(...feed.items.map((item) => ({
+                    ...item,
+                    discoverySource: name,
+                    discoveryFeed: url,
+                })));
+                logger(`✅ ${feed.items.length} items from ${name}`);
             }
         } catch (err) {
-            logger(`⚠️ Source failed [${url}]: ${err.message}`);
+            logger(`⚠️ Source failed [${name}]: ${err.message}`);
         }
     }
 
@@ -592,13 +623,27 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
                 : (extracted.directLink || link);
 
             logger(`🔗 directLink: ${cleanDirectLink}`);
+            const officialSource = await fetchOfficialSourceText(cleanDirectLink, logger);
+            const officialSourceUrl = officialSource.status === 'verified' ? cleanDirectLink : '';
+            const articleSourceText = officialSource.text
+                ? `DISCOVERY SOURCE (${item.discoverySource || 'RSS'}):\n${linksText}\n\nVERIFIED OFFICIAL SOURCE:\n${officialSource.text}`
+                : linksText;
 
-            // ✍️ FULL ARTICLE — fetch ke saath hi ready (Result/Admit Card style)
+            // Item-specific, source-grounded article; fact-only fallback remains a draft for review.
             let articleHtml = '';
+            let articleGenerationMode = 'fact_fallback';
             try {
-                articleHtml = await generateFullFastTrackArticle({ ...extracted, directLink: cleanDirectLink }, linksText, category, finalTitle, apiKey, logger);
+                const generatedArticle = await generateFullFastTrackArticle({
+                    ...extracted,
+                    directLink: officialSourceUrl,
+                    officialSourceUrl,
+                    discoverySource: item.discoverySource || '',
+                    originalLink: link,
+                }, articleSourceText, category, finalTitle, apiKey, logger);
+                articleHtml = generatedArticle.html;
+                articleGenerationMode = generatedArticle.mode;
                 const words = articleHtml.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
-                logger(`📝 Full article: ${words} words`);
+                logger(`📝 Full article (${articleGenerationMode}): ${words} words`);
             } catch (artErr) {
                 logger(`⚠️ Article generation fail (item phir bhi banega): ${artErr.message}`);
             }
@@ -606,7 +651,7 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
             const summary = buildDescription({
                 preferred: extracted.shortInfo,
                 articleHtml,
-                sourceText: linksText,
+                sourceText: articleSourceText,
                 title: finalTitle,
                 organization: extracted.org,
                 category,
@@ -629,6 +674,11 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
                 articleHtml:  articleHtml          || '',
                 category,
                 originalLink: link,
+                discoverySource: item.discoverySource || '',
+                discoveryFeed: item.discoveryFeed || '',
+                officialSourceUrl,
+                sourceVerificationStatus: officialSource.status,
+                articleGenerationMode,
                 sourcePublishedAt: new Date(verifiedPublishedAt).toISOString(),
                 status:       "draft",
                 createdAt:    admin.firestore.FieldValue.serverTimestamp()
