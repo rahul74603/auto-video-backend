@@ -14,8 +14,6 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
 
 const {
   optimizePage,
@@ -560,79 +558,35 @@ describe("Batch failure isolation", () => {
   });
 });
 
-// ─── 15, 20: publish hook — new content auto-enters the pipeline ────
+// ─── Legacy publish hook is disabled; daily BLOG proposals are review-only ───
 
-describe("New content triggers the optimizer (publish hook)", () => {
-  it("runs the optimizer on weak newly published content and improves it", async () => {
+describe("Publish hook safety", () => {
+  it("does not auto-repair JOB content on publish", async () => {
     const db = createMockDb();
     const doc = makeWeakJob({ id: "job-new-publish" });
     await seed(db, [doc]);
-    const result = await triggerOptimizerAfterPublish(db, FieldValue, { ...doc }, "jobs");
-    assert.ok(result, "optimizer must run for weak new content");
-    const saved = db._store.get("jobs/job-new-publish");
-    assert.equal(saved.optimizerProcessed, true, "result must be recorded on the document");
-    assert.ok(/<h2>/i.test(String(saved.articleHtml)), "new content must actually be improved");
-    assert.ok(saved.optimizerFinalScore > saved.optimizerOriginalScore);
-  });
-
-  it("skips strong new content", async () => {
-    const db = createMockDb();
-    const doc = makeStrongJob({ id: "job-strong-publish" });
-    await seed(db, [doc]);
+    db._writeLog.length = 0;
     const result = await triggerOptimizerAfterPublish(db, FieldValue, { ...doc }, "jobs");
     assert.equal(result.skipped, true);
-    assert.equal(result.reason, "already-high-quality");
+    assert.match(result.reason, /daily-blog-proposals-only/);
+    assert.equal(db._writeLog.length, 0, "publish hook must never write public content");
   });
 
-  it("NEVER lets an optimizer crash fail the publish", async () => {
+  it("does not auto-repair newly published BLOG content outside the old-blog daily queue", async () => {
     const db = createMockDb();
-    const poison = makeWeakJob({
-      id: "job-publish-poison",
-      articleHtml: { toString() { throw new Error("optimizer crash"); } }
-    });
-    await seed(db, [poison]);
-    let threw = false;
-    try {
-      const result = await triggerOptimizerAfterPublish(db, FieldValue, { ...poison }, "jobs");
-      assert.equal(result, null, "failure returns null instead of throwing");
-    } catch (error) {
-      threw = true;
-    }
-    assert.equal(threw, false, "publish hook must never throw");
-    const saved = db._store.get("jobs/job-publish-poison");
-    assert.equal(saved.optimizerProcessed, false, "failure is recorded");
-    assert.ok(saved.optimizerError);
+    const doc = makeWeakBlog({ id: "blog-new-publish" });
+    await seed(db, [doc]);
+    db._writeLog.length = 0;
+    const result = await triggerOptimizerAfterPublish(db, FieldValue, { ...doc }, "blogs");
+    assert.equal(result.skipped, true);
+    assert.equal(db._writeLog.length, 0, "only the daily proposal scheduler may handle old blogs");
   });
 
-  it("non-blocking trigger never throws", async () => {
+  it("non-blocking trigger never throws", () => {
     const db = createMockDb();
     const doc = makeWeakJob({ id: "job-nonblocking" });
-    await seed(db, [doc]);
-    assert.doesNotThrow(() => {
-      triggerOptimizerNonBlocking(db, FieldValue, { ...doc }, "jobs");
-    });
+    assert.doesNotThrow(() => triggerOptimizerNonBlocking(db, FieldValue, { ...doc }, "jobs"));
   });
-});
-
-// ─── 16: every publish path is wired ─────────────────────────────────
-
-describe("Publish-path wiring", () => {
-  const BACKEND = path.resolve(__dirname, "..");
-  const wiredPaths = [
-    ["article_pipeline.js", "agents/article_agents/article_pipeline.js"],
-    ["auto_blog.js", "auto_blog.js"],
-    ["fast_track_updates.js", "fast_track_updates.js"],
-    ["auto_mock.js", "auto_mock.js"],
-    ["auto_stories.js", "auto_stories.js"],
-    ["govt_jobs.js (job onCreate trigger)", "govt_jobs.js"],
-    ["index.js (manual blog publish)", "index.js"]
-  ];
-  for (const [label, relPath] of wiredPaths) {
-    it(`${label} triggers the optimizer after publish`, () => {
-      const src = fs.readFileSync(path.join(BACKEND, relPath), "utf8");
-      assert.match(src, /triggerOptimizer(NonBlocking|AfterPublish)/, `${relPath} must call the publish hook`);
-    });
-  }
 });
 
 // ─── 17: dry-run performs no writes ──────────────────────────────────

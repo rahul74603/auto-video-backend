@@ -8,7 +8,7 @@
  *   - compute content gaps / CTR recs / mock-test / youtube suggestions
  *   - persist seo_recommendations (never executed automatically)
  *   - Phase 2: read-only page SEO audits (max 40) persisted separately
- *   - Phase 3: reviewable optimization proposals (never applied)
+ *   - Phase 3: BLOG-only reviewable optimization proposals (never applied)
  *
  * DOES NOT:
  *   - publish or rewrite article HTML
@@ -121,14 +121,139 @@ function mapDoc(doc, collectionName) {
   return mapped;
 }
 
-async function readCollection(db, name, limitCount) {
+async function readCollection(db, name, limitCount, direction = "desc") {
   try {
-    const snap = await db.collection(name).orderBy("createdAt", "desc").limit(limitCount).get();
+    const snap = await db.collection(name).orderBy("createdAt", direction).limit(limitCount).get();
     return (snap.docs || []).map((doc) => mapDoc(doc, name));
   } catch (error) {
     console.warn(`[seo-intelligence] read ${name} failed:`, error.message);
     return [];
   }
+}
+
+function filterBlogOnlyProposals(proposals) {
+  return (Array.isArray(proposals) ? proposals : [])
+    .filter((proposal) => proposal && proposal.contentType === "BLOG");
+}
+
+const BLOG_REPAIR_EXCLUDED_STATUSES = new Set([
+  "draft", "pending", "rejected", "private", "archived", "deleted", "trash"
+]);
+
+/**
+ * Select a rotating, oldest-first daily slice. Cursor data stays in the
+ * admin-only system_settings document; public blog records are never changed.
+ */
+function selectDailyBlogRepairCandidates(pages, cursorId, limit = 5) {
+  const max = Math.max(0, Math.min(5, Number(limit) || 5));
+  const eligible = (Array.isArray(pages) ? pages : []).filter((page) => {
+    const status = String(page.status || "published").toLowerCase();
+    const isBlog = page.collection === "blogs" || page.contentType === "BLOG" || page.type === "BLOG";
+    return isBlog && page.id && !BLOG_REPAIR_EXCLUDED_STATUSES.has(status) && page.noIndex !== true;
+  });
+  if (!eligible.length || !max) return [];
+
+  const cursorIndex = eligible.findIndex((page) => String(page.id) === String(cursorId || ""));
+  const start = cursorIndex < 0 ? 0 : (cursorIndex + 1) % eligible.length;
+  const selected = [];
+  for (let offset = 0; offset < eligible.length && selected.length < max; offset += 1) {
+    selected.push(eligible[(start + offset) % eligible.length]);
+  }
+  return selected;
+}
+
+/**
+ * Daily, BLOG-only repair scan. It produces reviewable SEO proposals only;
+ * it never writes to blogs/{id}, jobs, or fast_track.
+ */
+async function runDailyBlogRepairProposals(db, FieldValue, options = {}) {
+  const startedAt = options.now || new Date();
+  const limit = Math.max(0, Math.min(5, Number(options.limit) || 5));
+  const dryRun = options.dryRun === true;
+  const statusRef = db.collection(SETTINGS).doc(SETTINGS_DOC);
+
+  if (!options.force && db) {
+    const guard = await isAutomationEnabled(db, "seo_intelligence");
+    if (!guard.enabled) {
+      return { ok: true, skipped: true, reason: guard.reason, selected: 0, proposals: 0 };
+    }
+  }
+
+  const [settingsSnap, blogs] = await Promise.all([
+    statusRef.get().catch(() => null),
+    // Oldest first; a generous scan lets us skip unpublished/noindex records.
+    readCollection(db, "blogs", 500, "asc")
+  ]);
+  const settings = settingsSnap && settingsSnap.exists ? (settingsSnap.data() || {}) : {};
+  const previousStatus = settings.blogRepairStatus || {};
+  const pages = selectDailyBlogRepairCandidates(blogs, previousStatus.cursorId, limit);
+  const auditPagesResult = pages.length ? auditPages(pages, {
+    now: startedAt,
+    gscRows: [],
+    catalog: pages
+  }) : [];
+  const proposals = generateProposalsForAudits(auditPagesResult, pages, {
+    now: startedAt,
+    catalog: pages
+  }).filter((proposal) => proposal.contentType === "BLOG");
+
+  const runId = `blog-repair-${startedAt.toISOString().replace(/[:.]/g, "-")}`;
+  let pageAuditWrites = 0;
+  let proposalWrites = 0;
+  if (db && !dryRun) {
+    if (auditPagesResult.length) {
+      try {
+        pageAuditWrites = (await persistPageAudits(db, FieldValue, auditPagesResult, { runId })).written;
+      } catch (error) {
+        console.warn("[blog-repair] page audit persist failed:", error.message);
+      }
+    }
+    try {
+      proposalWrites = (await persistOptimizationProposals(db, FieldValue, proposals, { runId })).written;
+    } catch (error) {
+      console.warn("[blog-repair] proposal persist failed:", error.message);
+    }
+
+    const stamp = FieldValue && FieldValue.serverTimestamp
+      ? FieldValue.serverTimestamp()
+      : startedAt.toISOString();
+    await statusRef.set({
+      blogRepairStatus: {
+        lastRunAt: stamp,
+        generatedAt: startedAt.toISOString(),
+        selectedCount: pages.length,
+        proposalCount: proposals.length,
+        articleHtmlProposalCount: proposals.filter((proposal) => proposal.field === "articleHtml").length,
+        pageAuditWrites,
+        proposalWrites,
+        cursorId: pages.length ? pages[pages.length - 1].id : (previousStatus.cursorId || null),
+        selectedBlogIds: pages.map((page) => page.id),
+        skipped: false,
+        policy: "BLOG proposals only; human review required; public content unchanged"
+      },
+      optimizationApply: false
+    }, { merge: true });
+  }
+
+  return {
+    ok: true,
+    dryRun,
+    skipped: false,
+    selected: pages.length,
+    blogIds: pages.map((page) => page.id),
+    pageAudits: auditPagesResult.length,
+    proposals: proposals.length,
+    articleHtmlProposals: proposals.filter((proposal) => proposal.field === "articleHtml").length,
+    pageAuditWrites,
+    proposalWrites,
+    policy: {
+      contentType: "BLOG",
+      maxPagesPerDay: 5,
+      publicContentWrite: false,
+      humanReviewRequired: true,
+      articleHtmlAutoApply: false
+    }
+  };
 }
 
 async function loadGscSnapshot(db) {
@@ -292,10 +417,12 @@ async function runSeoIntelligence(db, FieldValue, options = {}) {
   });
   const compactPageAudits = pageAudits.map(compactAudit);
   const pageAuditSummary = summarizeAudits(compactPageAudits);
-  const optimizationProposals = generateProposalsForAudits(pageAudits, auditSample, {
-    now,
-    catalog: auditSample
-  });
+  const optimizationProposals = options.disableOptimizationProposals
+    ? []
+    : filterBlogOnlyProposals(generateProposalsForAudits(pageAudits, auditSample, {
+      now,
+      catalog: auditSample
+    }));
   const optimizationProposalSummary = summarizeProposals(optimizationProposals);
   const gscInsights = analyzeGscRows(gsc.rows || []);
 
@@ -385,6 +512,9 @@ async function runSeoIntelligence(db, FieldValue, options = {}) {
 
 module.exports = {
   runSeoIntelligence,
+  runDailyBlogRepairProposals,
+  selectDailyBlogRepairCandidates,
+  filterBlogOnlyProposals,
   mapDoc,
   lifecycleCounts,
   RUNS,

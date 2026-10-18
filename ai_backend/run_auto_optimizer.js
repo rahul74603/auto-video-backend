@@ -5,21 +5,19 @@
  * GitHub Actions Auto-Content-Optimizer runner.
  *
  * Billing-safe: runs inside GitHub Actions only.
- * Reuses the existing auto_optimizer engine.
- * Processes oldest-eligible content in controlled batches.
- * Persists safe progress/results to Firestore.
+ * Legacy compatibility runner for the old auto_optimizer engine.
+ * Enforces BLOG-only, max-five, preview-only behavior regardless of workflow inputs.
+ * The scheduled SEO Intelligence job is responsible for reviewable blog proposals.
  * Never prints or stores credentials/tokens/private keys.
  *
  * Usage:
- *   node run_auto_optimizer.js [--dry-run=true] [--batch-size=5] [--max-batches=2] [--use-ai=false]
+ *   node run_auto_optimizer.js [--dry-run=true] [--batch-size=5]
+ *   (legacy input flags cannot enable live applies, extra batches, or AI)
  *
  * Environment:
  *   SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT — Firebase credentials
- *   OPTIMIZER_DRY_RUN — true/false (default: true)
- *   OPTIMIZER_BATCH_SIZE — 1-20 (default: 5)
- *   OPTIMIZER_MAX_BATCHES — 1-10 (default: 2)
- *   OPTIMIZER_USE_AI — true/false (default: false)
- *   GEMINI_API_KEY — optional, for AI-powered Level B improvements
+ *   OPTIMIZER_DRY_RUN / OPTIMIZER_BATCH_SIZE — compatibility inputs only;
+ *     execution is always dry-run, BLOG-only, max 5 pages, one batch, no AI.
  */
 
 try { require("dotenv").config({ quiet: true }); } catch { /* optional */ }
@@ -195,6 +193,17 @@ async function runAutoOptimizerRunner({ db, FieldValue, args, deps = {} }) {
   const getProgress = deps.getBackfillProgress || getBackfillProgress;
   const getCounts = deps.countProcessedPages || countProcessedPages;
   const getGuard = deps.isAutomationEnabled || isAutomationEnabled;
+  // This legacy runner is retained only as a BLOG-only, no-write preview.
+  // Scheduled repairs create review proposals through SEO Intelligence; no
+  // workflow input may enable a direct public-content apply or target JOB/FT.
+  const safeArgs = {
+    ...args,
+    requestedDryRun: Boolean(args.dryRun),
+    dryRun: true,
+    batchSize: Math.min(5, Math.max(1, Number(args.batchSize) || 5)),
+    maxBatches: 1,
+    useAi: false
+  };
 
   // Automation kill-switch coverage (Phase 0 hygiene): the optimizer honors
   // system_settings/automation → features.seo_optimizer exactly like the other
@@ -202,7 +211,7 @@ async function runAutoOptimizerRunner({ db, FieldValue, args, deps = {} }) {
   const guard = await getGuard(db, "seo_optimizer");
   if (!guard.enabled) {
     await persistOptimizerStatus(db, effectiveFieldValue, "skipped", {
-      dryRun: args.dryRun,
+      dryRun: safeArgs.dryRun,
       skipReason: guard.reason,
       lastError: null
     }, { dryRun: false, actor: args.actor, runId: args.runId, sha: args.sha });
@@ -213,15 +222,15 @@ async function runAutoOptimizerRunner({ db, FieldValue, args, deps = {} }) {
       reason: guard.reason,
       runner: RUNNER_NAME,
       durationMs: Date.now() - started,
-      dryRun: args.dryRun
+      dryRun: safeArgs.dryRun
     };
   }
 
   await persistOptimizerStatus(db, effectiveFieldValue, "running", {
-    dryRun: args.dryRun,
-    batchSize: args.batchSize,
-    maxBatches: args.maxBatches,
-    useAi: args.useAi,
+    dryRun: safeArgs.dryRun,
+    batchSize: safeArgs.batchSize,
+    maxBatches: safeArgs.maxBatches,
+    useAi: safeArgs.useAi,
     lastError: null
   }, { dryRun: false, actor: args.actor, runId: args.runId, sha: args.sha });
 
@@ -234,10 +243,11 @@ async function runAutoOptimizerRunner({ db, FieldValue, args, deps = {} }) {
 
     // Run the optimization
     const report = await run(db, effectiveFieldValue, {
-      dryRun: args.dryRun,
-      batchSize: args.batchSize,
-      maxBatches: args.maxBatches,
-      useAi: args.useAi
+      dryRun: safeArgs.dryRun,
+      batchSize: safeArgs.batchSize,
+      maxBatches: safeArgs.maxBatches,
+      useAi: safeArgs.useAi,
+      collections: ["blogs"]
     });
 
     const durationMs = Date.now() - started;
@@ -255,7 +265,7 @@ async function runAutoOptimizerRunner({ db, FieldValue, args, deps = {} }) {
     const successPatch = {
       lastReport: redactSecrets(report),
       durationMs,
-      dryRun: args.dryRun,
+      dryRun: safeArgs.dryRun,
       totalProcessed: report.totalProcessed,
       totalImproved: report.totalImproved,
       totalSkipped: report.totalSkipped,
@@ -275,7 +285,7 @@ async function runAutoOptimizerRunner({ db, FieldValue, args, deps = {} }) {
     });
 
     const summary = redactSecrets({
-      ok: true, runner: RUNNER_NAME, durationMs, args,
+      ok: true, runner: RUNNER_NAME, durationMs, args: safeArgs,
       report: { ...report, results: undefined },
       pageDetails,
       actions: actionSummary.actions,
@@ -319,9 +329,8 @@ async function main() {
   const db = initializeFirebase();
 
   console.log(
-    `[auto-optimizer] Starting: dryRun=${args.dryRun}` +
-    `${args.dryRun ? " (no writes to public content — scheduled runs always default to dry-run)" : " (LIVE — validated improvements are applied with snapshot + rollback)"}, ` +
-    `batchSize=${args.batchSize}, maxBatches=${args.maxBatches}, useAi=${args.useAi}`
+    `[auto-optimizer] Starting BLOG-only preview: public writes disabled, ` +
+    `max 5 pages, one batch, AI disabled (requested dryRun=${args.dryRun} is informational only).`
   );
 
   const summary = await runAutoOptimizerRunner({
@@ -330,7 +339,7 @@ async function main() {
 
   console.log(JSON.stringify({
     ok: summary.ok,
-    dryRun: args.dryRun,
+    dryRun: summary.args?.dryRun ?? true,
     runner: summary.runner,
     durationMs: summary.durationMs,
     totalProcessed: summary.report?.totalProcessed || 0,

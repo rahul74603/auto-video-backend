@@ -1,32 +1,19 @@
 "use strict";
 
 /**
- * Tests for the publish hook — fire-and-forget optimizer trigger
- * that runs after every content publish.
- *
- * Covers:
- *   - JOB publish triggers optimizer
- *   - BLOG publish triggers optimizer
- *   - FAST_TRACK publish triggers optimizer
- *   - Already-high-quality content is skipped
- *   - Weak new content is actually improved
- *   - Optimizer failure does NOT fail publication
- *   - Duplicate trigger is idempotent
- *   - Tracker persists correctly
- *   - Rollback still works
- *   - Content-type constraints (MOCK_TEST metadata-only)
- *   - Backfill continues after one failure
+ * Tests for the retired publish hook and the retained optimizer safety helpers.
+ * Publishing never triggers public-content repair; scheduled SEO work creates
+ * reviewable proposals for up to five old BLOG pages instead.
  */
 
-const { describe, it, beforeEach } = require("node:test");
+const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
   triggerOptimizerAfterPublish,
   triggerOptimizerNonBlocking,
   resolveContentType,
-  TYPE_CONSTRAINTS,
-  OPTIMIZER_ACTOR
+  TYPE_CONSTRAINTS
 } = require("../agents/seo_intelligence/publish_hook");
 
 const {
@@ -41,17 +28,10 @@ const {
 } = require("../agents/seo_intelligence/auto_optimizer");
 
 const {
-  scorePage,
-  needsImprovement,
-  QUALITY_THRESHOLD
-} = require("../agents/seo_intelligence/content_quality_scorer");
-
-const {
   buildContentFingerprint,
   isAlreadyOptimized,
   buildTrackerRecord,
-  persistTracker,
-  loadTrackers
+  persistTracker
 } = require("../agents/seo_intelligence/backfill_processor");
 
 // ─── Test Helpers ───────────────────────────────────────────────────
@@ -188,73 +168,6 @@ function makeWeakFastTrack(overrides = {}) {
   };
 }
 
-/** Create a realistic MOCK_TEST document */
-function makeMockTest(overrides = {}) {
-  return {
-    id: "mock-test-001",
-    type: "MOCK_TEST",
-    contentType: "MOCK_TEST",
-    status: "published",
-    title: "SSC CGL Math Mock Test",
-    slug: "ssc-cgl-math-mock-test",
-    seoTitle: "SSC CGL Math Mock Test",
-    metaDescription: "Practice SSC CGL math",
-    questions: [
-      { qText: "2+2=?", options: ["3", "4", "5", "6"], correctOption: 1 }
-    ],
-    durationMinutes: 60,
-    totalQuestions: 1,
-    createdAt: new Date("2025-01-01").toISOString(),
-    ...overrides
-  };
-}
-
-/** Create a high-quality JOB document (score >= 75) */
-function makeHighQualityJob(overrides = {}) {
-  const longHtml = '<h2>Overview</h2><p>' +
-    'The Staff Selection Commission SSC has officially released the notification for Combined Graduate Level CGL Examination 2026. This recruitment drive aims to fill over 10000 vacancies across various Group B and Group C posts. '.repeat(5) +
-    '</p>' +
-    '<h2>Important Dates</h2><table><tr><th>Event</th><th>Date</th></tr><tr><td>Notification</td><td>January 2026</td></tr><tr><td>Apply Start</td><td>February 2026</td></tr><tr><td>Last Date</td><td>March 2026</td></tr><tr><td>Exam</td><td>June 2026</td></tr></table>' +
-    '<h2>Eligibility</h2><p>Bachelors degree required. Age 18-32 years with relaxations for reserved categories.</p>' +
-    '<h2>How to Apply</h2><ol><li>Visit ssc.nic.in</li><li>Click Apply</li><li>Fill form</li><li>Pay fee</li><li>Submit</li></ol>' +
-    '<h2>Salary</h2><p>Rs. 25000 to 80000 per month as per 7th Pay Commission.</p>' +
-    '<h2>Exam Pattern</h2><p>Tier 1 CBT, Tier 2 CBT, Tier 3 Descriptive, Tier 4 Skill Test.</p>' +
-    '<h2>FAQ</h2><h3>What is the last date?</h3><p>March 2026.</p><h3>How many vacancies?</h3><p>10000+.</p><h3>What is the qualification?</h3><p>Bachelors degree.</p>';
-  return {
-    id: "job-hq-001",
-    type: "JOB",
-    contentType: "JOB",
-    status: "published",
-    title: "SSC CGL 2026 Complete Recruitment Notification for 10000 Vacancies",
-    slug: "ssc-cgl-2026-complete-recruitment-notification",
-    h1: "SSC CGL 2026 Complete Recruitment Notification for 10000 Vacancies",
-    seoTitle: "SSC CGL 2026 Recruitment 10000 Vacancies Eligibility Apply Online StudyGyaan",
-    metaDescription: "SSC CGL 2026 notification released for 10000 vacancies. Check eligibility salary important dates and apply online. Complete guide with exam pattern and preparation tips.",
-    description: "Staff Selection Commission has released the official notification for Combined Graduate Level Examination 2026.",
-    articleHtml: longHtml,
-    organization: "SSC",
-    lastDate: "2026-03-31",
-    startDate: "2026-02-01",
-    vacancies: "10000",
-    salary: "Rs. 25000 - 80000",
-    qualification: "Graduation",
-    category: "Government Jobs",
-    authorName: "StudyGyaan Team",
-    author: "StudyGyaan Team",
-    wordCount: 450,
-    keywords: ["SSC CGL 2026", "SSC CGL recruitment", "government jobs"],
-    faqs: [
-      { question: "Last date?", answer: "March 2026" },
-      { question: "Vacancies?", answer: "10000" },
-      { question: "Qualification?", answer: "Bachelors" }
-    ],
-    createdAt: new Date().toISOString(),
-    relatedLinks: [{ url: "/job/other-job", title: "Other Job" }, { url: "/blog/tips", title: "Tips" }],
-    ...overrides
-  };
-}
-
-// ─── Tests ──────────────────────────────────────────────────────────
 
 describe("publish_hook", () => {
   describe("resolveContentType", () => {
@@ -304,125 +217,25 @@ describe("publish_hook", () => {
   });
 
   describe("triggerOptimizerAfterPublish", () => {
-    it("skips already-high-quality content", async () => {
-      const db = makeDb();
-      const FieldValue = makeFieldvalue();
-      const doc = makeHighQualityJob();
-
-      // Store the doc so optimizer can read it
-      await db.collection("jobs").doc(doc.id).set(doc);
-
-      // Verify the score is actually above threshold
-      const score = scorePage(doc, { now: new Date() });
-      assert.ok(score.overall >= 75, `expected score >= 75 but got ${score.overall}`);
-
-      const result = await triggerOptimizerAfterPublish(db, FieldValue, doc, "jobs");
-      assert.ok(result);
-      assert.equal(result.skipped, true);
-      assert.equal(result.reason, "already-high-quality");
+    it("does not auto-repair newly published JOB, BLOG, or Fast Track documents", async () => {
+      for (const [collection, doc] of [
+        ["jobs", makeWeakJob()],
+        ["blogs", makeWeakBlog()],
+        ["fast_track", makeWeakFastTrack()]
+      ]) {
+        const db = makeDb();
+        const result = await triggerOptimizerAfterPublish(db, makeFieldvalue(), doc, collection);
+        assert.equal(result.skipped, true);
+        assert.match(result.reason, /daily-blog-proposals-only/);
+        assert.equal(result.contentId, doc.id);
+        assert.equal(db._store[`${collection}/${doc.id}`], undefined, "publish hook must not write public content");
+      }
     });
 
-    it("processes weak JOB content and returns result", async () => {
+    it("returns null for missing doc or collection name", async () => {
       const db = makeDb();
-      const FieldValue = makeFieldvalue();
-      const doc = makeWeakJob();
-
-      await db.collection("jobs").doc(doc.id).set(doc);
-
-      const result = await triggerOptimizerAfterPublish(db, FieldValue, doc, "jobs");
-      // Result should be non-null (either optimized or unchanged)
-      assert.ok(result);
-      assert.ok(result.contentId === "job-test-123");
-    });
-
-    it("processes weak BLOG content", async () => {
-      const db = makeDb();
-      const FieldValue = makeFieldvalue();
-      const doc = makeWeakBlog();
-
-      await db.collection("blogs").doc(doc.id).set(doc);
-
-      const result = await triggerOptimizerAfterPublish(db, FieldValue, doc, "blogs");
-      assert.ok(result);
-      assert.ok(result.contentId === "blog-test-456");
-    });
-
-    it("processes weak FAST_TRACK content", async () => {
-      const db = makeDb();
-      const FieldValue = makeFieldvalue();
-      const doc = makeWeakFastTrack();
-
-      await db.collection("fast_track").doc(doc.id).set(doc);
-
-      const result = await triggerOptimizerAfterPublish(db, FieldValue, doc, "fast_track");
-      assert.ok(result);
-      assert.ok(result.contentId === "ft-test-789");
-    });
-
-    it("returns null for missing doc", async () => {
-      const db = makeDb();
-      const FieldValue = makeFieldvalue();
-      const result = await triggerOptimizerAfterPublish(db, FieldValue, null, "jobs");
-      assert.equal(result, null);
-    });
-
-    it("returns null for missing collection name", async () => {
-      const db = makeDb();
-      const FieldValue = makeFieldvalue();
-      const result = await triggerOptimizerAfterPublish(db, FieldValue, { id: "x" }, "");
-      assert.equal(result, null);
-    });
-
-    it("NEVER throws even when optimizer crashes", async () => {
-      const db = makeDb();
-      const FieldValue = makeFieldvalue();
-      // Pass a broken db that will cause the optimizer to crash
-      const brokenDb = {
-        collection: () => {
-          throw new Error("Firestore is down");
-        }
-      };
-      const doc = makeWeakJob();
-
-      // Should NOT throw
-      const result = await triggerOptimizerAfterPublish(brokenDb, FieldValue, doc, "jobs");
-      assert.equal(result, null);
-    });
-
-    it("records optimizer result on the document", async () => {
-      const db = makeDb();
-      const FieldValue = makeFieldvalue();
-      const doc = makeWeakJob();
-
-      await db.collection("jobs").doc(doc.id).set(doc);
-
-      await triggerOptimizerAfterPublish(db, FieldValue, doc, "jobs");
-
-      // Check that optimizer metadata was written
-      const stored = db._store[`jobs/${doc.id}`];
-      assert.ok(stored);
-      assert.equal(stored.optimizerProcessed, true);
-      assert.ok(typeof stored.optimizerResult === "string");
-      assert.ok(typeof stored.optimizerOriginalScore === "number");
-      assert.ok(typeof stored.optimizerFinalScore === "number");
-    });
-
-    it("records failure on the document when optimizer crashes", async () => {
-      const db = makeDb();
-      const FieldValue = makeFieldvalue();
-      const brokenDb = {
-        _store: {},
-        collection: () => ({
-          doc: () => ({
-            get: async () => { throw new Error("DB down"); },
-            set: async () => { throw new Error("DB down"); }
-          })
-        })
-      };
-      const doc = makeWeakJob();
-
-      const result = await triggerOptimizerAfterPublish(brokenDb, FieldValue, doc, "jobs");
-      assert.equal(result, null);
+      assert.equal(await triggerOptimizerAfterPublish(db, makeFieldvalue(), null, "jobs"), null);
+      assert.equal(await triggerOptimizerAfterPublish(db, makeFieldvalue(), { id: "x" }, ""), null);
     });
   });
 
@@ -638,72 +451,11 @@ describe("publish_hook", () => {
   });
 
   describe("Failure isolation", () => {
-    it("optimizer failure is caught and does not propagate", async () => {
-      const FieldValue = makeFieldvalue();
-
-      // Create a db that always throws on collection access
-      const alwaysFailDb = {
-        _store: {},
-        collection: () => {
-          throw new Error("Simulated Firestore failure");
-        }
-      };
-
-      const doc = makeWeakJob();
-      // Should NOT throw — the error is caught internally
-      const result = await triggerOptimizerAfterPublish(alwaysFailDb, FieldValue, doc, "jobs");
-      assert.equal(result, null);
-    });
-
-    it("optimizer writes failure metadata when result recording fails", async () => {
-      const FieldValue = makeFieldvalue();
-
-      // db works for optimizePage (read/write) but fails on result recording
-      // We simulate this by making set() throw after the first call
-      let setCallCount = 0;
-      const failOnResultSetDb = {
-        _store: {},
-        collection: (name) => ({
-          doc: (id) => ({
-            get: async () => {
-              const key = `${name}/${id}`;
-              const data = failOnResultSetDb._store[key] || null;
-              return { exists: data !== null, data: () => data, id };
-            },
-            set: async (data, opts) => {
-              setCallCount++;
-              const key = `${name}/${id}`;
-              // First few calls are from optimizePage — let them succeed
-              // Later calls are from result recording — let them succeed too
-              if (opts && opts.merge) {
-                failOnResultSetDb._store[key] = { ...(failOnResultSetDb._store[key] || {}), ...data };
-              } else {
-                failOnResultSetDb._store[key] = { ...data };
-              }
-            },
-            update: async (data) => {
-              const key = `${name}/${id}`;
-              failOnResultSetDb._store[key] = { ...(failOnResultSetDb._store[key] || {}), ...data };
-            }
-          }),
-          orderBy: () => ({
-            limit: () => ({
-              get: async () => ({ docs: [] })
-            })
-          }),
-          count: () => ({
-            get: async () => ({ data: () => ({ count: 0 }) })
-          })
-        })
-      };
-
-      const doc = makeWeakJob();
-      await failOnResultSetDb.collection("jobs").doc(doc.id).set(doc);
-
-      const result = await triggerOptimizerAfterPublish(failOnResultSetDb, FieldValue, doc, "jobs");
-      // Should succeed (optimizer processes in-memory)
-      assert.ok(result);
-      assert.ok(typeof result.status === "string");
+    it("legacy publish hook is a no-write skip and cannot fail a publish", async () => {
+      const brokenDb = { collection: () => { throw new Error("Firestore is down"); } };
+      const result = await triggerOptimizerAfterPublish(brokenDb, makeFieldvalue(), makeWeakJob(), "jobs");
+      assert.equal(result.skipped, true);
+      assert.match(result.reason, /daily-blog-proposals-only/);
     });
   });
 

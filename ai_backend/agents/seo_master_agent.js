@@ -232,16 +232,31 @@ async function runSEOMasterAgent(db, FieldValue, options = {}) {
   const seo = await runSEOAudit({ maxUrls: options.maxUrls || 80 });
 
   let intelligence = { skipped: true };
+  let blogRepair = { skipped: true, reason: "daily-run-only" };
+  const { runSeoIntelligence, runDailyBlogRepairProposals } = require("./seo_intelligence/orchestrator");
   try {
-    const { runSeoIntelligence } = require("./seo_intelligence/orchestrator");
     intelligence = await runSeoIntelligence(db, FieldValue, {
       force: Boolean(options.force),
       maxJobs: 80,
-      maxUpdates: 40
+      maxUpdates: 40,
+      // Scheduled SEO Master audits remain broad/read-only. The only scheduled
+      // repair proposal run is the daily oldest-BLOG slice below.
+      disableOptimizationProposals: true
     });
   } catch (error) {
     intelligence = { ok: false, error: error.message };
     console.warn("SEO intelligence failed (non-fatal):", error.message);
+  }
+  if (options.isDaily) {
+    try {
+      blogRepair = await runDailyBlogRepairProposals(db, FieldValue, {
+        force: Boolean(options.force),
+        limit: 5
+      });
+    } catch (error) {
+      blogRepair = { ok: false, error: error.message };
+      console.warn("Daily BLOG repair proposals failed (non-fatal):", error.message);
+    }
   }
 
   const summary = {
@@ -259,6 +274,7 @@ async function runSEOMasterAgent(db, FieldValue, options = {}) {
       lifecycle: intelligence.lifecycle || null,
       error: intelligence.error || null
     },
+    blogRepair,
     durationMs: Date.now() - startTime
   };
 

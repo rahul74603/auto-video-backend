@@ -151,6 +151,25 @@ const AdminSystemStatus = () => {
         detail: seo?.lastRunAt ? 'last report Firestore seo_intelligence me' : undefined,
       });
     }
+    // 4.5) Daily BLOG-only SEO repair (reviewable proposals; never auto-publishes)
+    {
+      const repair = (seo?.blogRepairStatus ?? {}) as Record<string, unknown>;
+      const last = timeAgo(repair.lastRunAt);
+      const minutes = minsOf(repair.lastRunAt);
+      const selected = Number(repair.selectedCount ?? 0);
+      const proposals = Number(repair.proposalCount ?? 0);
+      const articleHtml = Number(repair.articleHtmlProposalCount ?? 0);
+      next.push({
+        key: 'blog-repair',
+        name: '📝 Old Blog SEO Repair (daily · max 5)',
+        kaam: 'Har din purane BLOG pages check karke review proposals banata hai; Jobs aur Fast Track ko target nahi karta, public content khud nahi badalta',
+        state: !repair.lastRunAt ? 'never' : minutes !== null && minutes > 60 * 36 ? 'stale' : 'ok',
+        last: last || undefined,
+        detail: repair.lastRunAt
+          ? `${selected} blogs checked · ${proposals} proposals (${articleHtml} long-article); Admin SEO me human review baaki`
+          : undefined,
+      });
+    }
     // 5) Growth learner
     {
       const last = timeAgo(growth?.analyzedAt);

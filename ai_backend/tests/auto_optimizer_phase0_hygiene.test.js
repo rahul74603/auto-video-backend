@@ -124,23 +124,25 @@ test("run_auto_optimizer: proceeds when the guard is enabled by default (no auto
   automationGuard.invalidateCache();
   const db = createMockDb({});
   let backfillCalled = 0;
+  let effectiveBackfillOptions = null;
 
   const summary = await runAutoOptimizerRunner({
     db,
     FieldValue: null,
     args: {
-      dryRun: true,
-      batchSize: 2,
-      maxBatches: 1,
-      useAi: false,
+      dryRun: false,
+      batchSize: 20,
+      maxBatches: 10,
+      useAi: true,
       actor: "test",
       runId: "t-guard-2",
       sha: "",
       disableSummaryArtifact: true
     },
     deps: {
-      runBackfill: async () => {
+      runBackfill: async (_db, _fieldValue, options) => {
         backfillCalled += 1;
+        effectiveBackfillOptions = options;
         return {
           ok: true, dryRun: true, batches: 1, totalProcessed: 0,
           totalImproved: 0, totalSkipped: 0, totalNeedsReview: 0, totalBlocked: 0,
@@ -156,43 +158,20 @@ test("run_auto_optimizer: proceeds when the guard is enabled by default (no auto
   assert.equal(summary.ok, true);
   assert.notEqual(summary.skipped, true);
   assert.equal(backfillCalled, 1, "backfill must run when the guard is enabled");
+  assert.deepEqual(effectiveBackfillOptions, {
+    dryRun: true,
+    batchSize: 5,
+    maxBatches: 1,
+    useAi: false,
+    collections: ["blogs"]
+  }, "legacy optimizer runner is always BLOG-only, one batch of at most five, and preview-only");
 });
 
-test("publish_hook: kill-switch disables the post-publish optimizer without touching public content", async () => {
-  automationGuard.invalidateCache();
-  const db = createMockDb({
-    "system_settings/automation": {
-      globalEnabled: true,
-      emergencyPause: false,
-      features: { seo_optimizer: false }
-    }
-  });
-
-  const result = await triggerOptimizerAfterPublish(db, null, { ...WEAK_BLOG }, "blogs");
-
-  assert.ok(result, "hook must return a result object");
-  assert.equal(result.skipped, true);
-  assert.match(String(result.reason), /automation-disabled/i);
-  assert.equal(
-    db._writes.length,
-    0,
-    "a disabled optimizer must write nothing at all — not even to the content doc"
-  );
-});
-
-test("publish_hook: still optimizes weak content when the guard is enabled (default)", async () => {
+test("publish_hook: publish-time optimizer is disabled; no public content is written", async () => {
   automationGuard.invalidateCache();
   const db = createMockDb({});
-
   const result = await triggerOptimizerAfterPublish(db, null, { ...WEAK_BLOG }, "blogs");
-
-  assert.ok(result, "hook must return a result object");
-  assert.notEqual(result.skipped, true);
-  assert.equal(result.status, "optimized", `expected the weak page to be improved, got: ${JSON.stringify(result.status)}`);
-  assert.ok(
-    db._writes.includes("blogs/weak-blog-guard"),
-    "the optimized page must actually be written"
-  );
-  const blog = db._store.get("blogs/weak-blog-guard") || {};
-  assert.equal(blog.optimizerProcessed, true, "result must be recorded on the document");
+  assert.ok(result && result.skipped);
+  assert.match(String(result.reason), /daily-blog-proposals-only/);
+  assert.equal(db._writes.some((key) => key.startsWith("blogs/")), false);
 });

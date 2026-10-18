@@ -43,6 +43,7 @@ interface FastTrackFormState {
     org: string;
     updateDate: string;
     shortInfo: string;
+    articleHtml: string;
     directLink: string;
     status: string;
 }
@@ -59,6 +60,7 @@ const INITIAL_FORM: FastTrackFormState = {
     org: '',
     updateDate: '',
     shortInfo: '',
+    articleHtml: '',
     directLink: '',
     status: 'draft'
 };
@@ -556,6 +558,7 @@ const FastTrackManager = () => {
             org: item.org || '',
             updateDate: item.updateDate || '',
             shortInfo: item.shortInfo || '',
+            articleHtml: item.articleHtml || '',
             directLink: item.directLink || '',
             status: item.status || 'draft'
         });
@@ -929,6 +932,24 @@ const FastTrackManager = () => {
                                     placeholder="Brief description..."
                                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-200 resize-none"
                                 />
+                            </div>
+
+                            {/* Published long-form article body */}
+                            <div>
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1 block">
+                                    Full Article / Long Description
+                                </label>
+                                <textarea
+                                    name="articleHtml"
+                                    value={formData.articleHtml}
+                                    onChange={handleChange}
+                                    rows={14}
+                                    placeholder="Published page ka long article content yahan dikhega. Existing HTML ko edit kar sakte hain."
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs leading-relaxed outline-none focus:ring-2 focus:ring-blue-200 resize-y"
+                                />
+                                <p className="text-[10px] text-slate-400 mt-1">
+                                    Ye content published Fast Track page par long article ke roop me dikhaya jata hai. HTML tags ko preserve karke edit karein.
+                                </p>
                             </div>
 
                             {/* Direct Link */}

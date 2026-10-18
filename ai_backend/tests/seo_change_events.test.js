@@ -2,9 +2,10 @@
 
 /**
  * Phase 2 — SEO Change Events Ledger tests.
- * Behavioral tests: applies/rollbacks through the REAL apply_engine and
- * publish_hook produce exactly one immutable event per applied field; CHECK /
- * preview / rejected proposals never produce applied events; retries are
+ * Behavioral tests: applies/rollbacks through the REAL apply_engine produce
+ * exactly one immutable event per applied field; the retired publish hook
+ * creates no automatic events; CHECK / preview / rejected proposals never
+ * produce applied events; retries are
  * idempotent; rollbacks append (never rewrite); lifecycle + GSC join keys are
  * captured for future measurement. No synthetic GSC data is used anywhere.
  */
@@ -16,7 +17,6 @@ const { buildProposal } = require("../agents/seo_intelligence/proposal_model");
 const { previewProposal } = require("../agents/seo_intelligence/proposal_gate");
 const { applyProposal, rollbackProposal } = require("../agents/seo_intelligence/apply_engine");
 const { triggerOptimizerAfterPublish } = require("../agents/seo_intelligence/publish_hook");
-const automationGuard = require("../agents/automation_guard");
 const ledger = require("../agents/seo_intelligence/change_events");
 const { normalizeGscPageUrl } = require("../agents/seo_intelligence/gsc_search_analytics");
 const {
@@ -402,10 +402,9 @@ test("rollback creates a NEW event, references the original, and preserves histo
   assert.equal(rollbackEvent.status, "rolled_back");
 });
 
-// ─── Integration: publish hook (auto-applied changes) ───────────────
+// ─── Publish-hook retirement: no public writes or automatic change events ───
 
-test("publish hook auto-applied changes are recorded as automatic events", async () => {
-  automationGuard.invalidateCache();
+test("publish hook does not auto-apply changes or create change events", async () => {
   const db = makeDb();
   const weakBlog = {
     id: "blog-events-1",
@@ -426,19 +425,8 @@ test("publish hook auto-applied changes are recorded as automatic events", async
   };
 
   const result = await triggerOptimizerAfterPublish(db, null, { ...weakBlog }, "blogs");
-  assert.equal(result.status, "optimized", `fixture must apply changes, got ${result.status}`);
-
-  const events = eventsIn(db);
-  assert.ok(events.length >= 1, "auto-applied changes must be ledgered");
-  for (const event of events) {
-    assert.equal(event.source, "publish-hook");
-    assert.equal(event.autoApplied, true);
-    assert.equal(event.contentId, "blog-events-1");
-    assert.equal(event.contentType, "BLOG");
-    assert.equal(event.lifecycle.status, "NOT_APPLICABLE");
-    assert.equal(event.gscJoinKey, "https://studygyaan.in/blog/ssc-cgl-preparation-tips");
-  }
-  // Distinct fields produce distinct deterministic events
-  const ids = new Set(events.map((event) => event.eventId));
-  assert.equal(ids.size, events.length);
+  assert.equal(result.skipped, true);
+  assert.match(result.reason, /daily-blog-proposals-only/);
+  assert.deepEqual(eventsIn(db), []);
+  assert.equal(db._docs["blogs/blog-events-1"], undefined);
 });
