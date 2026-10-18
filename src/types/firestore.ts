@@ -86,6 +86,10 @@ export interface JobPost {
   officialLinks?: LinkItem[];
   keywords?: string[];
   sourceUrl?: string;
+  officialSourceUrl?: string;
+  sourceVerificationStatus?: string;
+  articleGenerationMode?: string;
+  requiresHumanReview?: boolean;
   shortInfo?: string;
   highlights?: string[];
   importantDates?: { label: string; value: string }[];
@@ -134,6 +138,10 @@ export interface FastTrackItem {
   officialLinks?: LinkItem[];
   keywords?: string[];
   sourceUrl?: string;
+  officialSourceUrl?: string;
+  sourceVerificationStatus?: string;
+  articleGenerationMode?: string;
+  requiresHumanReview?: boolean;
   schemaMarkup?: string;
   uploadedBy?: string;
   createdAt?: TimestampLike;

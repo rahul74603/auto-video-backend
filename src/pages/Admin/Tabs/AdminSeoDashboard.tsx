@@ -650,15 +650,37 @@ const AdminSeoDashboard = () => {
 
   return (
     <div className="space-y-6">
+      <section className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-4 md:p-6" aria-labelledby="traffic-seo-start">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="max-w-3xl">
+            <p className="text-xs font-black uppercase tracking-wide text-blue-700">Traffic & SEO · Start here</p>
+            <h2 id="traffic-seo-start" className="mt-1 text-lg md:text-xl font-black text-slate-900">Google se aane wale visitors ko samajhne ke 3 simple steps</h2>
+            <ol className="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-3">
+              <li className="rounded-xl bg-white/80 p-3"><b>1. Report nikalo:</b> Search Console → Performance → Search results → last 3 months → Export.</li>
+              <li className="rounded-xl bg-white/80 p-3"><b>2. Yahan upload:</b> ZIP/CSV upload button se report import karo.</li>
+              <li className="rounded-xl bg-white/80 p-3"><b>3. Suggestions dekho:</b> recommendations ko pehle review karo. Koi public page apne-aap publish nahi hota.</li>
+            </ol>
+          </div>
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+            <a href="https://search.google.com/search-console/performance/search-analytics?resource_id=sc-domain%3Astudygyaan.in" target="_blank" rel="noreferrer" className="rounded-xl border border-blue-200 bg-white px-4 py-3 text-center text-sm font-bold text-blue-800 hover:bg-blue-50">
+              Search Console kholo ↗
+            </a>
+            <button type="button" onClick={() => document.getElementById('gsc-data-import')?.scrollIntoView({ behavior: 'smooth', block: 'center' })} className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-700">
+              Report upload karo ↓
+            </button>
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-slate-500">Report import ke baad data yahin dikhega. Roz ke scan ko manually chalana zaroori nahi; workflow button sirf zarurat par use karo.</p>
+      </section>
       <NewsDeskWidget />
       <div className="bg-white border rounded-[2rem] p-6 md:p-8 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-black flex items-center gap-2">
-              <Search className="text-blue-600" size={22} /> SEO Intelligence
+              <Search className="text-blue-600" size={22} /> Search Console & SEO
             </h2>
-            <p className="text-sm text-gray-500 font-medium mt-1">
-              Billing-safe mode: dashboard reads Firestore results. Scans run in GitHub Actions, not Cloud Run.
+            <p className="text-sm text-gray-600 mt-1">
+              Google search data, page checks, and reviewable SEO suggestions. Search Console rows show after you import a report.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -667,10 +689,10 @@ const AdminSeoDashboard = () => {
             </button>
             <button
               onClick={handleRunInstructions}
-              className="px-5 py-2 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center gap-2"
+              className="px-4 py-2 rounded-xl bg-white border text-slate-700 font-bold text-xs flex items-center gap-2"
             >
               <Play size={14} />
-              Run Scan via GitHub Actions
+              Advanced: open scan workflow
               <ExternalLink size={13} />
             </button>
           </div>
@@ -1573,17 +1595,15 @@ const AdminSeoDashboard = () => {
         )}
       </div>
 
-      <div className="bg-white border rounded-[2rem] p-6">
-        <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Search Console Data Import</h3>
+      <div id="gsc-data-import" className="scroll-mt-6 bg-white border rounded-[2rem] p-4 md:p-6">
+        <h3 className="font-black text-base md:text-lg text-slate-900 mb-2">Search Console report import</h3>
         {/* 📄 TARIIKA #1 — ZIP/CSV seedha upload (browser → Firestore, admin-only rules) */}
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-4">
-          <p className="text-xs font-black text-blue-800 mb-2">
-            📥 SABSE AASAN TARIKA: GSC ki ZIP yahin upload karo — bas.
+          <p className="text-sm font-black text-blue-900 mb-2">
+            Step 1: Search Console se ZIP/CSV export karo. Step 2: yahan upload karo.
           </p>
-          <p className="text-[11px] text-blue-700 mb-3">
-            Search Console → Performance → Export → Download CSV (ZIP) → wo file yahin drag karo.
-            Data seedha Firestore me save hoga (sirf tumhara admin account likh sakta hai — public kabhi nahi).
-            Scan daily 7:15 AM khud chalta hai; turant chahiye to &quot;Open GitHub Actions&quot; → Run workflow.
+          <p className="text-xs text-blue-800 mb-3">
+            Search Console → Performance → Search results → date range choose karo → Export. Is admin-only import se report SEO dashboard ko milegi; ye kisi public page ko edit ya publish nahi karta. Data update karne ke liye nayi report dobara upload kar sakte ho.
           </p>
           <label className={`inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs cursor-pointer transition-all active:scale-95 ${gscImporting ? 'opacity-60 pointer-events-none' : ''}`}>
             <input
@@ -1597,11 +1617,13 @@ const AdminSeoDashboard = () => {
             {gscImporting ? '⏳ Import ho raha hai...' : '📁 GSC ZIP / CSV Upload — Ek Click Import'}
           </label>
         </div>
-        {/* TARIIKA #2 (fallback) — manual JSON paste → workflow input */}
-        <p className="text-xs text-gray-500 mb-3">
-          Fallback: rows paste karke validate karo, phir prepared JSON ko GitHub Actions workflow input <b>gsc_json</b> me paste karo.
-          Tokens, API keys aur service-account JSON kabhi store nahi hote.
-        </p>
+        <details className="mt-4 rounded-xl border border-gray-200 p-3">
+          <summary className="cursor-pointer text-sm font-bold text-gray-700">Advanced option (manual JSON) — normal upload kaafi hai</summary>
+          <div className="pt-3">
+            <p className="text-xs text-gray-500 mb-3">
+              Sirf tab use karo jab ZIP/CSV upload kaam na kare. Rows paste karke JSON prepare karo; workflow run karna advanced step hai.
+              Tokens, API keys aur service-account JSON kabhi yahan paste mat karo.
+            </p>
         <textarea
           value={gscText}
           onChange={(e) => setGscText(e.target.value)}
@@ -1622,6 +1644,8 @@ const AdminSeoDashboard = () => {
             <textarea readOnly value={preparedGscJson} className="w-full h-32 border rounded-xl p-3 text-xs font-mono bg-white" />
           </div>
         )}
+          </div>
+        </details>
       </div>
     </div>
   );

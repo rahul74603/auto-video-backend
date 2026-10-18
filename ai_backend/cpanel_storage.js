@@ -36,7 +36,7 @@ async function uploadBuffer(buffer, remotePath) {
 
   if (!host || !user || !password) {
     throw new Error(
-      "cPanel FTP config missing — FTP_SERVER / FTP_USERNAME / FTP_PASSWORD env set karo (GitHub secrets already bane hue hain, workflow ke env block me add karo)"
+      "cPanel FTP config missing — set FTP_SERVER, FTP_USERNAME and FTP_PASSWORD in the process environment. GitHub Actions must map repository secrets into the story-generation step; local runs need these values in a local .env or PowerShell session."
     );
   }
 

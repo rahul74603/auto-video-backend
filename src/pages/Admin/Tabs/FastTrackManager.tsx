@@ -18,6 +18,7 @@ import {
 import type { FastTrackItem } from '@/types/firestore';
 import { enrichPublicDocument } from '@/features/seo-intelligence/taxonomy';
 import { buildUpdateSeoTitle, buildUpdateMetaDescription } from '@/utils/updateSeoFields';
+import { buildDraftDescription } from '@/utils/articleSummary';
 
 // =========================================================
 // 🛠️ HELPERS
@@ -394,6 +395,50 @@ const FastTrackManager = () => {
             setSeoFixLoading(false);
         }
     }, [updates, seoFixLoading, showToast]);
+
+    // 🔧 Gap-fill missing descriptions for scraper-created drafts only. Live pages are never changed.
+    const [summaryFixLoading, setSummaryFixLoading] = useState(false);
+    const handleFixBlankSummaries = useCallback(async () => {
+        if (summaryFixLoading) return;
+        setSummaryFixLoading(true);
+        try {
+            const targets = updates.filter((item) => {
+                const isDraft = String(item.status || '').toLowerCase() === 'draft';
+                const missing = !String(item.shortInfo || '').trim() || !String(item.description || '').trim();
+                return isDraft && missing;
+            });
+            if (!targets.length) {
+                showToast('Koi blank Fast Track draft summary nahi mila ✅');
+                return;
+            }
+            let fixed = 0;
+            for (let i = 0; i < targets.length; i += 20) {
+                await Promise.all(targets.slice(i, i + 20).map(async (item) => {
+                    const summary = buildDraftDescription({
+                        kind: 'fast_track',
+                        preferred: item.shortInfo || item.description || item.metaDescription,
+                        articleHtml: item.articleHtml,
+                        title: item.title,
+                        organization: item.org || item.organization,
+                        category: item.category,
+                        updateDate: item.updateDate,
+                    });
+                    if (!summary) return;
+                    const patch: Record<string, string> = {};
+                    if (!String(item.shortInfo || '').trim()) patch.shortInfo = summary;
+                    if (!String(item.description || '').trim()) patch.description = summary;
+                    if (!Object.keys(patch).length) return;
+                    await updateDoc(doc(db, 'fast_track', item.id), patch);
+                    fixed += 1;
+                }));
+            }
+            showToast(`✅ ${fixed} Fast Track drafts ki blank descriptions bhar di (live pages untouched)`);
+        } catch (e) {
+            showToast('Description fix failed: ' + errMsg(e), 'error');
+        } finally {
+            setSummaryFixLoading(false);
+        }
+    }, [updates, summaryFixLoading, showToast]);
 
     // ✨ AI Article: is update ko AI queue me daalo — agli AI Drafts run (GitHub
     // Actions) full article bana ke "Review AI Drafts" (JOBS AI tab) me de degi.
@@ -1027,6 +1072,17 @@ const FastTrackManager = () => {
                                         ? <Loader2 size={12} className="animate-spin" aria-hidden="true" />
                                         : <Wand2 size={12} aria-hidden="true" />}
                                     Fix missing SEO
+                                </button>
+                                <button
+                                    onClick={handleFixBlankSummaries}
+                                    disabled={summaryFixLoading}
+                                    title="Sirf scraper-created drafts me blank description bharega; live pages nahi badlega"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 transition-all disabled:opacity-60"
+                                >
+                                    {summaryFixLoading
+                                        ? <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                                        : <Wand2 size={12} aria-hidden="true" />}
+                                    Fill blank descriptions
                                 </button>
                             </div>
 

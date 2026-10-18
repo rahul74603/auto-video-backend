@@ -19,26 +19,21 @@ const ARTICLE_TYPES = Object.freeze({
   FAST_TRACK: "fast-track"
 });
 
-// Requirement: 1600-2500 meaningful words per article.
-// ===== Word policy (ADMIN ne final ki hai) =====
-// Minimum type ke hisaab se; upar ki taraf koi HARD limit NAHI — grounded
-// content jitna detailed ho, publish ho sakta hai.
-const WORD_TARGET_MIN_JOB = 1600;
-const WORD_TARGET_MIN_FAST_TRACK = 1200;
+// Editorial length is source-dependent. Small notices should stay concise;
+// these low technical floors only reject empty/truncated output, never enforce SEO padding.
+const WORD_TARGET_MIN_JOB = 120;
+const WORD_TARGET_MIN_FAST_TRACK = 80;
 const WORD_TARGET_MIN = WORD_TARGET_MIN_JOB; // legacy alias (JOB references)
-const WORD_TARGET_MAX = 2500; // sirf prompt me guidance-target ke liye (review ISSUE nahi banta)
-const WORD_WARN_HIGH = 4500; // iske upar sirf soft WARNING (publish block nahi)
-const WORD_COMPRESS_TRIGGER = 5500; // runaway/truncation safety valve — practice me kabhi nahi chalta
+const WORD_TARGET_MAX = 2500; // soft compression guidance only
+const WORD_WARN_HIGH = 3000; // long drafts get a soft warning, not a quality bonus
+const WORD_COMPRESS_TRIGGER = 4500; // runaway/truncation safety valve
 
-// ⭐ WRITER SAFETY-MARGIN targets — reviewer ke hard-minimum se UPAR rakhe hain
-// taaki LLM thoda kam bhi likhe to bhi review pass ho jaye (bare-minimum likhne
-// par word-count/FAQ/H2 fail hota tha → "50-60 baar me ek baar sahi" wali problem).
-const WORD_AIM_JOB = 2000;      // reviewer minimum 1600 → aim 2000 (400-word buffer)
-const WORD_AIM_FAST_TRACK = 1500; // reviewer minimum 1200 → aim 1500 (300-word buffer)
-const FAQ_AIM_JOB = 6;          // reviewer minimum 4 → aim 6
-const FAQ_AIM_FAST_TRACK = 5;   // reviewer minimum 4 → aim 5
-const H2_AIM = 8;               // JOB: reviewer minimum 4 → aim 8 (fixed list me 12 sections)
-const H2_AIM_FAST_TRACK = 6;    // FT: reviewer minimum 4 → aim 6 (fixed list me 7 sections)
+const WORD_AIM_JOB = 800;
+const WORD_AIM_FAST_TRACK = 400;
+const FAQ_AIM_JOB = 3;          // optional maximum guidance, not a quota
+const FAQ_AIM_FAST_TRACK = 2;   // optional maximum guidance, not a quota
+const H2_AIM = 4;               // flexible guidance only; sections depend on source facts
+const H2_AIM_FAST_TRACK = 2;
 
 // ⭐ SELF-HEALING AGENT LOOP — review fail hone par writer ko issues feedback
 // dekar automatically dobara likhwata hai (manual REGENERATE ki zaroorat nahi).

@@ -40,6 +40,24 @@ function formatDate(d: TimestampLike): string {
     }
 }
 
+function savedFact(value: unknown): string {
+    const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+    if (!text || /^(?:n\/?a|not available|not specified|active|soon|as per rules|नियमों के अनुसार|अधिक जानकारी के लिए आधिकारिक नोटिफिकेशन देखें।?)$/i.test(text)) {
+        return '';
+    }
+    return text;
+}
+
+function ageLabel(value: unknown): string {
+    const text = savedFact(value);
+    if (!text) return '';
+    return /(?:years?|yrs?|वर्ष)/i.test(text) ? text : `${text} Yrs`;
+}
+
+function feeLabel(value: string): string {
+    return /(?:₹|rs\.?|inr|free|exempted|nil)/i.test(value) ? value : `₹${value}`;
+}
+
 interface GlobalSettings {
     jobUpdates: SiteContentDoc[];
     premiumBoxTitle: string;
@@ -51,14 +69,17 @@ interface GlobalSettings {
 }
 
 function getIsoDate(d: TimestampLike): string {
-    if (!d) return new Date().toISOString();
+    if (!d) return '';
     try {
         const ts = d as { seconds?: number; toDate?: () => Date };
-        if (ts?.seconds) return new Date(ts.seconds * 1000).toISOString();
-        if (ts?.toDate) return ts.toDate().toISOString();
-        return new Date(d as string | number | Date).toISOString();
+        const date = ts?.seconds
+            ? new Date(ts.seconds * 1000)
+            : ts?.toDate
+                ? ts.toDate()
+                : new Date(d as string | number | Date);
+        return Number.isNaN(date.getTime()) ? '' : date.toISOString();
     } catch {
-        return new Date().toISOString();
+        return '';
     }
 }
 
@@ -116,6 +137,42 @@ function normalizeSettings(data: Record<string, unknown> | undefined): GlobalSet
     };
 }
 
+const JOB_TITLE_STOP_WORDS = new Set([
+    'recruitment', 'notification', 'government', 'govt', 'vacancy', 'vacancies',
+    'online', 'apply', 'application', 'job', 'jobs', 'post', 'posts', 'latest',
+    '2026', '2025', '2024', 'for', 'the', 'and', 'of', 'in', 'to'
+]);
+
+const getJobTitleTerms = (value?: string) => new Set(
+    String(value || '').toLowerCase().match(/[a-z0-9]+/g)?.filter((term) =>
+        term.length >= 3 && !JOB_TITLE_STOP_WORDS.has(term)
+    ) || []
+);
+
+const getJobSimilarityScore = (current: JobPost, candidate: JobPost) => {
+    let score = 0;
+    const sameValue = (left?: string, right?: string) =>
+        Boolean(left && right && left.trim().toLowerCase() === right.trim().toLowerCase());
+
+    if (sameValue(current.organization, candidate.organization)) score += 3;
+    if (current.examFamily && current.examFamily !== 'GENERAL' && sameValue(current.examFamily, candidate.examFamily)) score += 3;
+    const genericCategories = new Set(['state', 'central', 'government', 'govt', 'other', 'recruitment']);
+    if (sameValue(current.category, candidate.category) && !genericCategories.has(String(current.category || '').toLowerCase())) score += 2;
+    if (sameValue(current.state || current.location, candidate.state || candidate.location)) score += 2;
+
+    const currentTitleTerms = getJobTitleTerms(current.title);
+    const candidateTitleTerms = getJobTitleTerms(candidate.title);
+    const titleOverlap = [...currentTitleTerms].filter((term) => candidateTitleTerms.has(term)).length;
+    if (titleOverlap >= 2) score += 3;
+
+    const currentQualificationTerms = getJobTitleTerms(current.qualification || current.educationDetails || current.eligibility);
+    const candidateQualificationTerms = getJobTitleTerms(candidate.qualification || candidate.educationDetails || candidate.eligibility);
+    const qualificationOverlap = [...currentQualificationTerms].filter((term) => candidateQualificationTerms.has(term)).length;
+    if (qualificationOverlap >= 2) score += 2;
+
+    return score;
+};
+
 // =========================================================
 // 🚀 MAIN COMPONENT
 // =========================================================
@@ -148,11 +205,13 @@ const JobDetails = () => {
                     other.id !== job.id && other.id !== id && other.slug !== id
                     && (!other.status || String(other.status).toLowerCase() === 'published')
                 );
-                const sameCategory = job.category
-                    ? others.filter(other => other.category === job.category)
-                    : [];
-                const rest = others.filter(other => !sameCategory.includes(other));
-                setRelatedJobs([...sameCategory, ...rest].slice(0, 6));
+                const relevant = others
+                    .map((other) => ({ job: other, score: getJobSimilarityScore(job, other) }))
+                    .filter((entry) => entry.score >= 3)
+                    .sort((a, b) => b.score - a.score)
+                    .slice(0, 6)
+                    .map((entry) => entry.job);
+                setRelatedJobs(relevant);
             })
             .catch(() => setRelatedJobs([]));
     }, [job, id]);
@@ -270,35 +329,54 @@ const JobDetails = () => {
     const parsedLastDate = job.lastDate ? new Date(job.lastDate) : null;
     // 🗓️ Expired? (lastDate nikal chuki) — banner + JobPosting schema skip
     const jobExpired = job.isExpired === true || checkIsExpired(String(job.lastDate || ''));
+    const startDateDisplay = savedFact(job.startDate);
+    const lastDateDisplay = savedFact(job.lastDate);
+    const examDateDisplay = savedFact(job.examDate);
+    const jobLocationDisplay = savedFact(job.location);
+    const applicationFeeDisplay = savedFact(job.applicationFee);
+    const feeRows: Array<[string, string]> = [
+        ['General', savedFact(job.feeGen)] as [string, string],
+        ['OBC', savedFact(job.feeOBC)] as [string, string],
+        ['SC / ST', savedFact(job.feeSCST)] as [string, string],
+        ['Female', savedFact(job.feeFemale)] as [string, string],
+    ].filter(([, value]) => Boolean(value));
+    const minimumAgeDisplay = ageLabel(job.minAge);
+    const maximumAgeDisplay = ageLabel(job.ageLimit);
+    const ageRelaxationDisplay = savedFact(job.ageRelaxation || job.ageLimitRelaxation);
+    const hasAgeDetails = Boolean(minimumAgeDisplay || maximumAgeDisplay || ageRelaxationDisplay);
     // 🎯 FACTUAL schema fields (koi fabrication nahi):
     // addressRegion = sirf EXACT Indian state match pe; baseSalary = sirf
     // salary/payScale field ke STRICT parse se. Fake postalCode ("110001")
     // hataya gaya — Rule: never invent data (galat pin = galat signal).
-    const schemaRegion = deriveAddressRegion(job.location);
+    const schemaRegion = deriveAddressRegion(jobLocationDisplay);
     const schemaBaseSalary = parseBaseSalary((job as { salary?: unknown; payScale?: unknown }).salary ?? (job as { payScale?: unknown }).payScale);
     const jobPostingSchema = {
         "@context": "https://schema.org",
         "@type": "JobPosting",
         title: job.title,
         description: String(job.description || seoDesc).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
-        datePosted: publishedIso,
+        ...(publishedIso ? { datePosted: publishedIso } : {}),
         ...(parsedLastDate && !Number.isNaN(parsedLastDate.getTime())
             ? { validThrough: parsedLastDate.toISOString() }
             : {}),
         ...(job.employmentType ? { employmentType: job.employmentType } : {}),
-        hiringOrganization: {
-            "@type": "Organization",
-            name: job.organization || "Government Organization"
-        },
-        jobLocation: {
-            "@type": "Place",
-            address: {
-                "@type": "PostalAddress",
-                addressLocality: (job.location || "India").split(',')[0].trim().slice(0, 100) || "India",
-                ...(schemaRegion ? { addressRegion: schemaRegion } : {}),
-                addressCountry: "IN"
+        ...(job.organization ? {
+            hiringOrganization: {
+                "@type": "Organization",
+                name: job.organization
             }
-        },
+        } : {}),
+        ...(jobLocationDisplay ? {
+            jobLocation: {
+                "@type": "Place",
+                address: {
+                    "@type": "PostalAddress",
+                    addressLocality: jobLocationDisplay.split(',')[0].trim().slice(0, 100),
+                    ...(schemaRegion ? { addressRegion: schemaRegion } : {}),
+                    addressCountry: "IN"
+                }
+            }
+        } : {}),
         ...(schemaBaseSalary ? { baseSalary: schemaBaseSalary } : {}),
         ...(job.vacancies ? { totalJobOpenings: String(job.vacancies) } : {}),
         url: canonicalUrl,
@@ -356,7 +434,7 @@ const JobDetails = () => {
                   <Breadcrumbs
                     crumbs={buildBreadcrumbPath({
                       title: job.title || 'Job Details',
-                      exam: job.category || job.organization || 'GENERAL',
+                      exam: job.examFamily || 'GENERAL',
                       category: 'JOB' as any,
                     })}
                     className="mb-3 bg-white px-3 py-2 rounded-xl border shadow-sm"
@@ -441,16 +519,20 @@ const JobDetails = () => {
                                     </h1>
 
                                     <div className="flex flex-wrap gap-3 md:gap-6 text-blue-100 font-bold text-[9px] md:text-xs pt-3 border-t border-white/10">
-                                        <span className="flex items-center gap-1.5">
-                                            <Calendar size={14} className="text-yellow-400" aria-hidden="true" />
-                                            <time itemProp="datePosted" dateTime={publishedIso}>
-                                                {formatDate(job.createdAt)}
-                                            </time>
-                                        </span>
-                                        <span className="flex items-center gap-1.5">
-                                            <MapPin size={14} className="text-yellow-400" aria-hidden="true" />
-                                            <span itemProp="jobLocation">{job.location || "All India"}</span>
-                                        </span>
+                                        {publishedIso && (
+                                            <span className="flex items-center gap-1.5">
+                                                <Calendar size={14} className="text-yellow-400" aria-hidden="true" />
+                                                <time itemProp="datePosted" dateTime={publishedIso}>
+                                                    {formatDate(job.createdAt)}
+                                                </time>
+                                            </span>
+                                        )}
+                                        {jobLocationDisplay && (
+                                            <span className="flex items-center gap-1.5">
+                                                <MapPin size={14} className="text-yellow-400" aria-hidden="true" />
+                                                <span itemProp="jobLocation">{jobLocationDisplay}</span>
+                                            </span>
+                                        )}
                                         {job.advtNo && (
                                             <span className="flex items-center gap-1.5">
                                                 <FileText size={14} className="text-yellow-400" aria-hidden="true" />
@@ -476,25 +558,25 @@ const JobDetails = () => {
                                         {
                                             bg: "blue", icon: <Users size={24} aria-hidden="true" />,
                                             label: "Total Vacancies / कुल पद",
-                                            value: job.vacancies || 'Notification के अनुसार',
+                                            value: savedFact(job.vacancies) || 'Not stated in this listing; check the official notice.',
                                             prop: "totalJobOpenings"
                                         },
                                         {
                                             bg: "emerald", icon: <Banknote size={24} aria-hidden="true" />,
                                             label: "Monthly Salary / वेतन",
-                                            value: job.salary || 'नियमों के अनुसार',
+                                            value: savedFact(job.salary || job.payScale) || 'Not stated in this listing; check the official notice.',
                                             prop: "baseSalary"
                                         },
                                         {
                                             bg: "purple", icon: <GraduationCap size={24} aria-hidden="true" />,
                                             label: "Eligibility / पात्रता",
-                                            value: job.qualification || job.eligibility || 'विवरण नीचे देखें',
+                                            value: savedFact(job.qualification || job.eligibility) || 'Not stated in this listing; check the official notice.',
                                             prop: "qualifications"
                                         },
                                         {
                                             bg: "orange", icon: <Trophy size={24} aria-hidden="true" />,
                                             label: "Selection Mode / चयन",
-                                            value: job.selectionProcess || 'लिखित परीक्षा / मेरिट',
+                                            value: savedFact(job.selectionProcess) || 'Not stated in this listing; check the official notice.',
                                             prop: null
                                         }
                                     ].map((item, idx) => (
@@ -528,23 +610,27 @@ const JobDetails = () => {
                                             Important Dates
                                         </h2>
                                         <ul className="space-y-4 text-[11px] md:text-base font-bold text-slate-600">
-                                            <li className="flex justify-between border-b border-slate-50 pb-2">
-                                                <span>Application Begin:</span>
-                                                <span className="text-blue-600">{job.startDate || "Active"}</span>
-                                            </li>
-                                            <li className="flex justify-between p-2 bg-red-50 text-red-600 rounded-xl">
-                                                <span>Last Date Apply:</span>
-                                                <span
-                                                    className="font-black animate-pulse"
-                                                    itemProp="validThrough"
-                                                >
-                                                    {job.lastDate || "Soon"}
-                                                </span>
-                                            </li>
-                                            <li className="flex justify-between opacity-60">
-                                                <span>Exam Date:</span>
-                                                <span>{job.examDate || "नियमों के अनुसार"}</span>
-                                            </li>
+                                            {startDateDisplay && (
+                                                <li className="flex justify-between gap-3 border-b border-slate-50 pb-2">
+                                                    <span>Application Begin:</span>
+                                                    <span className="text-blue-600 text-right">{startDateDisplay}</span>
+                                                </li>
+                                            )}
+                                            {lastDateDisplay && (
+                                                <li className="flex justify-between gap-3 p-2 bg-red-50 text-red-600 rounded-xl">
+                                                    <span>Last Date Apply:</span>
+                                                    <span className="font-black text-right" itemProp="validThrough">{lastDateDisplay}</span>
+                                                </li>
+                                            )}
+                                            {examDateDisplay && (
+                                                <li className="flex justify-between gap-3 opacity-80">
+                                                    <span>Exam Date:</span>
+                                                    <span className="text-right">{examDateDisplay}</span>
+                                                </li>
+                                            )}
+                                            {!startDateDisplay && !lastDateDisplay && !examDateDisplay && (
+                                                <li className="text-slate-500 italic">Date details are not available in this listing. Check the official notice.</li>
+                                            )}
                                         </ul>
                                     </div>
 
@@ -554,54 +640,51 @@ const JobDetails = () => {
                                             Application Fee
                                         </h2>
                                         <div className="text-[11px] md:text-base font-bold">
-                                            {job.feeGen ? (
+                                            {feeRows.length > 0 ? (
                                                 <ul className="space-y-3">
-                                                    <li className="flex justify-between border-b border-slate-50 pb-2">
-                                                        <span>Gen / OBC:</span>
-                                                        <span className="text-emerald-700">₹{job.feeGen}</span>
-                                                    </li>
-                                                    <li className="flex justify-between border-b border-slate-50 pb-2">
-                                                        <span>SC / ST / PH:</span>
-                                                        <span className="text-emerald-700">₹{job.feeSCST || '0'}</span>
-                                                    </li>
-                                                    <li className="flex justify-between">
-                                                        <span>Female All Cat:</span>
-                                                        <span className="text-emerald-700">₹{job.feeFemale || '0'}</span>
-                                                    </li>
+                                                    {feeRows.map(([category, amount]) => (
+                                                        <li key={category} className="flex justify-between gap-3 border-b border-slate-50 pb-2 last:border-0">
+                                                            <span>{category}:</span>
+                                                            <span className="text-emerald-700">{feeLabel(amount)}</span>
+                                                        </li>
+                                                    ))}
                                                 </ul>
                                             ) : (
                                                 <p className="text-slate-500 italic leading-relaxed">
-                                                    {job.applicationFee || "Official Notification देखें"}
+                                                    {applicationFeeDisplay || "Fee details are not available in this listing. Please confirm in the official notification."}
                                                 </p>
                                             )}
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Age Limit */}
-                                <div className="bg-slate-900 rounded-3xl p-6 md:p-10 text-white relative overflow-hidden shadow-xl">
-                                    <h2 className="text-[12px] md:text-xl font-black mb-8 flex items-center gap-3 uppercase tracking-widest border-l-4 border-blue-500 pl-4 italic">
-                                        Age Limit Details
-                                    </h2>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div className="bg-white/10 p-5 rounded-2xl text-center border border-white/5">
-                                            <p className="text-blue-300 text-[10px] font-black uppercase mb-1">Minimum Age</p>
-                                            <p className="text-2xl md:text-4xl font-black">{job.minAge || "18"} Yrs</p>
+                                {/* Age Limit — render only values present in the saved source facts. */}
+                                {hasAgeDetails && (
+                                    <section className="bg-slate-900 rounded-3xl p-6 md:p-10 text-white relative overflow-hidden shadow-xl">
+                                        <h2 className="text-[12px] md:text-xl font-black mb-6 flex items-center gap-3 uppercase tracking-widest border-l-4 border-blue-500 pl-4 italic">
+                                            Age Limit Details
+                                        </h2>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {(minimumAgeDisplay || maximumAgeDisplay) && (
+                                                <div className="bg-white/10 p-5 rounded-2xl text-center border border-white/5">
+                                                    <p className="text-blue-300 text-[10px] font-black uppercase mb-1">Minimum Age</p>
+                                                    <p className="text-xl md:text-3xl font-black">{minimumAgeDisplay || "Not stated"}</p>
+                                                </div>
+                                            )}
+                                            {(minimumAgeDisplay || maximumAgeDisplay) && (
+                                                <div className="bg-white/10 p-5 rounded-2xl text-center border border-white/5">
+                                                    <p className="text-blue-300 text-[10px] font-black uppercase mb-1">Maximum Age</p>
+                                                    <p className="text-xl md:text-3xl font-black">{maximumAgeDisplay || "Not stated"}</p>
+                                                </div>
+                                            )}
+                                            {ageRelaxationDisplay && (
+                                                <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-5 rounded-2xl flex items-center justify-center">
+                                                    <p className="text-xs md:text-sm font-black text-center leading-snug">{ageRelaxationDisplay}</p>
+                                                </div>
+                                            )}
                                         </div>
-                                        <div className="bg-white/10 p-5 rounded-2xl text-center border border-white/5">
-                                            <p className="text-blue-300 text-[10px] font-black uppercase mb-1">Maximum Age</p>
-                                            <p className="text-2xl md:text-4xl font-black"
-                                                itemProp="experienceRequirements">
-                                                {job.ageLimit || "30"} Yrs
-                                            </p>
-                                        </div>
-                                        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-5 rounded-2xl flex items-center justify-center">
-                                            <p className="text-xs md:text-sm font-black text-center leading-snug">
-                                                Age relaxation extra as per Govt rules.
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
+                                    </section>
+                                )}
 
                                 {/* Eligibility & Description */}
                                 <div className="space-y-5">
@@ -644,11 +727,11 @@ const JobDetails = () => {
                                             <div className="flex items-center gap-2 mb-5 border-b border-slate-100 pb-4">
                                                 <ShieldCheck size={18} className="text-emerald-500" aria-hidden="true" />
                                                 <p className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest">
-                                                    Fact-checked by {job.authorName || "StudyGyaan Editorial Team"}
+                                                    Article details{job.authorName ? ` · ${job.authorName}` : ''}
                                                 </p>
                                             </div>
                                             <div
-                                                className="prose prose-sm md:prose-lg max-w-none text-slate-700 ai-article-content [&_.table-responsive]:overflow-x-auto [&_table]:w-full [&_table]:text-sm"
+                                                className="prose prose-base md:prose-lg max-w-none text-slate-700 ai-article-content [&_.table-responsive]:overflow-x-auto [&_table]:w-full [&_table]:text-sm [&_p]:text-left md:[&_p]:text-justify"
                                                 dangerouslySetInnerHTML={{ __html: job.articleHtml }}
                                             />
                                         </div>
@@ -819,7 +902,7 @@ const JobDetails = () => {
                                     <div className="bg-white border border-slate-100 rounded-2xl p-5 md:p-6 shadow-sm mt-6">
                                         <div className="flex items-center justify-between gap-2 mb-4">
                                             <h2 className="text-sm md:text-lg font-black text-slate-800 uppercase tracking-tight flex items-center gap-1.5">
-                                                📌 Isi Jaisi Aur Bhartiyan
+                                                📌 More Relevant Government Jobs
                                             </h2>
                                             <a
                                                 href="/govt-jobs"
@@ -853,14 +936,14 @@ const JobDetails = () => {
 
                                 {/* 🧭 Exam Hub Navigation — fixes orphan pages hub-and-spoke */}
                                 {job && (
-                                  <ExamHubNavigation exam={job.category || job.organization || 'GENERAL'} className="mt-6" />
+                                  <ExamHubNavigation exam={job.examFamily || 'GENERAL'} className="mt-6" />
                                 )}
 
                                 {/* 🔗 Related Content — auto-fixes orphan pages with relevant internal links */}
                                 {job && (
                                   <RelatedContent
                                     currentId={job.id}
-                                    exam={job.category || job.organization}
+                                    exam={job.examFamily}
                                     examFamily={job.examFamily}
                                     contentKind={job.contentKind || 'JOB'}
                                     category={'JOB' as any}
@@ -900,7 +983,7 @@ const JobDetails = () => {
                     </div>
 
                     {/* Sidebar */}
-                    <aside className="w-full lg:w-[30%] space-y-5 sticky top-20">
+                    <aside className="hidden lg:block w-full lg:w-[30%] space-y-5 lg:sticky lg:top-20">
 
                         {/* Toolkit */}
                         <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 rounded-3xl shadow-xl text-white relative overflow-hidden border-b-4 border-indigo-900">
@@ -973,7 +1056,7 @@ const JobDetails = () => {
             </div>
 
             {/* ✅ Bottom Bar */}
-            <div className="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-xl border-t border-slate-200 py-2 px-3 z-[100] shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
+            <div className="hidden md:block fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-xl border-t border-slate-200 py-2 px-3 z-[100] shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
                 <div className="max-w-5xl mx-auto flex justify-between items-center gap-2">
                     <div className="flex flex-col">
                         <span className="text-[10px] font-black text-red-600 flex items-center gap-1 uppercase">

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import jobDraftRepository, { type JobDraftRecord } from '@/features/job-drafts/data/jobDraftRepository';
 import { asText, toDateSafe, type TimestampLike } from '@/types/firestore';
-import { Trash2, Edit3, Sparkles, Clock, RotateCw, Wand2 } from 'lucide-react';
+import { Trash2, Edit3, Sparkles, Clock, RotateCw, Wand2, Loader2 } from 'lucide-react';
+import { buildDraftDescription } from '@/utils/articleSummary';
 import toast from 'react-hot-toast';
 
 // GitHub Actions — job fetcher workflow (purani Cloud Run API delete ho chuki hai)
@@ -11,6 +12,7 @@ const FETCH_WORKFLOW_URL = 'https://github.com/rahul74603/auto-video-backend/act
 const AdminJobDrafts = () => {
   const [drafts, setDrafts] = useState<JobDraftRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [summaryFixing, setSummaryFixing] = useState(false);
   const navigate = useNavigate();
 
   // 1. AI Drafts को Firestore से लोड करना
@@ -45,6 +47,55 @@ const AdminJobDrafts = () => {
       'GitHub Actions khula — "Run workflow" dabao. 2-3 min me naye job drafts yahan aa jayenge (roz 9:30 AM waise bhi auto chalta hai)',
       { duration: 8000 }
     );
+  };
+
+  // One-tap gap-fill for pending job drafts; it only uses saved article/facts and never touches published jobs.
+  const handleFixBlankDescriptions = async () => {
+    if (summaryFixing) return;
+    setSummaryFixing(true);
+    try {
+      const targets = drafts.filter((job) => {
+        const status = asText(job.status).toLowerCase();
+        return !asText(job.description).trim() && !['published', 'approved', 'live'].includes(status);
+      });
+      if (!targets.length) {
+        toast.success('Koi blank job draft description nahi mili ✅');
+        return;
+      }
+      let fixed = 0;
+      for (let i = 0; i < targets.length; i += 20) {
+        await Promise.all(targets.slice(i, i + 20).map(async (job) => {
+          const description = buildDraftDescription({
+            kind: 'job',
+            preferred: job.metaDescription,
+            articleHtml: job.articleHtml,
+            title: job.title,
+            organization: job.organization,
+            vacancies: job.vacancies,
+            lastDate: job.lastDate,
+            qualification: job.qualification,
+          });
+          if (!description) return;
+          await jobDraftRepository.updateDraft(job.id, { description });
+          fixed += 1;
+        }));
+      }
+      setDrafts((current) => current.map((job) => {
+        if (!targets.some((target) => target.id === job.id) || asText(job.description).trim()) return job;
+        const description = buildDraftDescription({
+          kind: 'job', preferred: job.metaDescription, articleHtml: job.articleHtml,
+          title: job.title, organization: job.organization, vacancies: job.vacancies,
+          lastDate: job.lastDate, qualification: job.qualification,
+        });
+        return { ...job, description };
+      }));
+      toast.success(`✅ ${fixed} job drafts ki blank descriptions bhar di`);
+    } catch (error) {
+      console.error('Job draft description repair failed:', error);
+      toast.error('Description fill nahi ho payi — dobara try karo');
+    } finally {
+      setSummaryFixing(false);
+    }
   };
 
 // APPLY/LOGIN form portals (Digialm EForms wagera) — AI inhe source URL ki
@@ -114,13 +165,23 @@ const handleGenerateArticle = async (job: JobDraftRecord) => {
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Total {drafts.length} jobs waiting for review</p>
             </div>
 
-            <button
-                onClick={handleRefreshJobs}
-                className="flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95 bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200"
-            >
-                <RotateCw size={16} />
-                Fetch New Jobs (GitHub)
-            </button>
+            <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+              <button
+                  onClick={handleFixBlankDescriptions}
+                  disabled={summaryFixing}
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl font-bold text-xs transition-all border border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100 disabled:opacity-60"
+              >
+                  {summaryFixing ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
+                  Fill blank descriptions
+              </button>
+              <button
+                  onClick={handleRefreshJobs}
+                  className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95 bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200"
+              >
+                  <RotateCw size={16} />
+                  Fetch new jobs
+              </button>
+            </div>
         </div>
 
         {/* Table Container */}
@@ -143,6 +204,9 @@ const handleGenerateArticle = async (job: JobDraftRecord) => {
                             <span className="bg-blue-50 text-blue-600 text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider border border-blue-100">{asText(job.organization) || 'StudyGyaan AI'}</span>
                             <span className="bg-emerald-50 text-emerald-600 text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider border border-emerald-100">{asText(job.category) || 'Latest Job'}</span>
                         </div>
+                        <p className={`mt-2 text-xs leading-relaxed ${asText(job.description) ? 'text-slate-600' : 'text-amber-700 font-semibold'}`}>
+                          {asText(job.description) || 'Description blank hai — upar “Fill blank descriptions” dabao.'}
+                        </p>
                     </td>
                     <td className="p-6 text-slate-500 text-xs font-bold">
                         <span className="flex items-center gap-2 bg-slate-100 w-fit px-3 py-1.5 rounded-full">

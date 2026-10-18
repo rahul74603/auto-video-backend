@@ -61,7 +61,7 @@ const AdminAutoOptimizer = () => {
 
   const handleOpenWorkflow = () => {
     window.open(AUTO_OPTIMIZER_WORKFLOW_URL, '_blank', 'noopener,noreferrer');
-    toast('GitHub Actions page opened. Choose "Run workflow" to start backfill.');
+    toast('Workflow opened. This runner is forced to preview-only, up to 5 BLOG pages, with AI off. Keep the inputs as shown.');
   };
 
   if (loading && !status && !error) {
@@ -86,12 +86,10 @@ const AdminAutoOptimizer = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-black flex items-center gap-2">
-              <Zap className="text-violet-600" size={22} /> Auto Content Optimizer
+              <Zap className="text-violet-600" size={22} /> Old Blog SEO Preview
             </h2>
-            <p className="text-sm text-gray-500 font-medium mt-1">
-              Automated SEO content optimizer — deterministic, fact-grounded rules (not learned policy).
-              Processes oldest content first, applies safe improvements automatically, and rolls back if
-              the internal quality rubric degrades.
+            <p className="text-sm text-gray-600 mt-1">
+              Read-only preview of up to five older BLOG pages per run. This legacy tool does not edit public pages; use Search Console & SEO for suggestions that need your review.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -103,25 +101,21 @@ const AdminAutoOptimizer = () => {
               className="px-5 py-2 rounded-xl bg-violet-600 text-white font-black text-xs flex items-center gap-2"
             >
               <Play size={14} />
-              Run via GitHub Actions
+              Open preview workflow
               <ExternalLink size={13} />
             </button>
           </div>
         </div>
 
-        {/* Safety badges */}
         <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold">
-          <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 flex items-center gap-1">
-            <ShieldCheck size={12} /> Fact fields locked
+          <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 flex items-center gap-1">
+            <ShieldCheck size={12} /> Preview only
           </span>
-          <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 flex items-center gap-1">
-            <ShieldCheck size={12} /> Level C never auto-applied
+          <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 flex items-center gap-1">
+            <ShieldCheck size={12} /> BLOG only · max 5 pages
           </span>
-          <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 flex items-center gap-1">
-            <ShieldCheck size={12} /> Snapshot before every write
-          </span>
-          <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 flex items-center gap-1">
-            <ShieldCheck size={12} /> Auto-rollback on degradation
+          <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 flex items-center gap-1">
+            <ShieldCheck size={12} /> AI disabled · no public writes
           </span>
           <span className="px-3 py-1 rounded-full bg-violet-50 text-violet-700">
             Version: {status?.autoOptimizerVersion ?? '—'}
