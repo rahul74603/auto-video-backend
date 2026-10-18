@@ -9,6 +9,18 @@ const { google } = require("googleapis");
 const cheerio = require("cheerio");
 const Parser = require('rss-parser');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const {
+    parsePublishedAt,
+    extractPublishedAtFromHtml,
+    isDeadlineExpired,
+} = require("./source_freshness");
+const {
+    MAX_SCRAPER_AGE_DAYS,
+    isWithinScraperWindow,
+    isInterviewNotice,
+    classifyJobSource,
+    isHighQualityPrivateJob,
+} = require("./scraper_policy");
 
 // =========================================================
 // 🔐 FIREBASE INIT
@@ -57,7 +69,7 @@ const SKIP_KEYWORDS = [
 function shouldSkipTitle(title) {
     if (!title) return true;
     const lower = title.toLowerCase();
-    return SKIP_KEYWORDS.some(kw => lower.includes(kw));
+    return isInterviewNotice(title) || SKIP_KEYWORDS.some(kw => lower.includes(kw));
 }
 
 // =========================================================
@@ -419,26 +431,30 @@ const { DEFAULT_SOURCES, getEnabledSources, recordSourceCheck } = require("./sou
 const JOB_SOURCES = DEFAULT_SOURCES;
 
 async function fetchAllJobItems(perSource = 12, limitTotal = 60) {
-    const buckets = [];
+    const allItems = [];
+    const now = Date.now();
     // Registry-enabled sources (Firestore `sources`), warna legacy fallback
     const sources = await getEnabledSources(db, JOB_SOURCES);
     for (const src of sources) {
         try {
             const feed = await parser.parseURL(src.url);
             const items = (feed.items || []).map((it) => ({
-                title:  (it.title || '').trim(),
-                link:   (it.link || it.guid || '').trim(),
+                title: (it.title || '').trim(),
+                link: (it.link || it.guid || '').trim(),
                 source: src.name,
-                publishedAt: it.isoDate || it.pubDate || ""
+                publishedAt: it.isoDate || it.pubDate || ''
             })).filter((it) => it.title && it.link && !it.link.includes('127.0.0.1'))
               .filter((it) => {
-                  if (!it.publishedAt) return true; // page metadata will verify unknown RSS dates
-                  const fresh = isRecentPublication(parsePublishedAt(it.publishedAt), { maxAgeDays: DEFAULT_MAX_AGE_DAYS });
-                  if (!fresh) console.log(`⏭️ Stale feed item (> ${DEFAULT_MAX_AGE_DAYS}d): ${it.title.slice(0, 70)}`);
+                  if (!it.publishedAt) return true; // page metadata must verify it before any save
+                  const publishedAt = parsePublishedAt(it.publishedAt);
+                  const fresh = isWithinScraperWindow(publishedAt, { now });
+                  if (!fresh) console.log(`⏭️ Outside ${MAX_SCRAPER_AGE_DAYS}-day window: ${it.title.slice(0, 70)}`);
                   return fresh;
-              }).slice(0, perSource);
-            buckets.push(items);
-            console.log(`📰 ${src.name}: ${items.length} items`);
+              })
+              .sort((a, b) => parsePublishedAt(b.publishedAt) - parsePublishedAt(a.publishedAt))
+              .slice(0, perSource);
+            allItems.push(...items);
+            console.log(`📰 ${src.name}: ${items.length} fresh items`);
             await recordSourceCheck(db, src.name, { ok: true, itemCount: items.length });
         } catch (e) {
             console.warn(`⚠️ ${src.name} feed fail (skip): ${e.message.slice(0, 80)}`);
@@ -446,19 +462,18 @@ async function fetchAllJobItems(perSource = 12, limitTotal = 60) {
         }
         await sleep(1500);
     }
-    // Round-robin merge: har site se baari-baari 1 item
-    const merged = [];
-    let added = true;
-    for (let i = 0; added && merged.length < limitTotal; i++) {
-        added = false;
-        for (const bucket of buckets) {
-            if (i < bucket.length && merged.length < limitTotal) {
-                merged.push(bucket[i]);
-                added = true;
-            }
-        }
+
+    // Recency is the primary ordering: today first, then progressively older.
+    // Undated RSS entries stay last and are accepted only if page metadata verifies them.
+    const unique = new Map();
+    for (const item of allItems) {
+        const key = item.link.toLowerCase();
+        if (!unique.has(key)) unique.set(key, item);
     }
-    console.log(`📊 Total candidates (all sources): ${merged.length}`);
+    const merged = [...unique.values()]
+        .sort((a, b) => parsePublishedAt(b.publishedAt) - parsePublishedAt(a.publishedAt))
+        .slice(0, limitTotal);
+    console.log(`📊 Total fresh candidates (newest first): ${merged.length}`);
     return merged;
 }
 
@@ -483,14 +498,16 @@ function jobQualityScore(jobData, articleHtml) {
     return { score, words };
 }
 
-const QUALITY_GOOD  = 9; // isse upar = turant save
-const QUALITY_FLOOR = 6; // 6-8 = backup pool (min-2 guarantee ke liye)
-const MIN_JOBS_PER_RUN = 2;
+const QUALITY_GOOD  = 9; // top-quality threshold
+const QUALITY_FLOOR = 6; // government-job backup threshold
 const MAX_EVALUATIONS  = 12; // AI-quota/time budget per run
 
 async function scrapeGovtJobsLogic(maxJobs = 5) {
-    console.log("🚀 Govt Jobs Scraper Started (multi-source)...");
+    const parsedMaxJobs = Number.parseInt(maxJobs, 10);
+    const targetMaxJobs = Math.min(5, Math.max(0, Number.isFinite(parsedMaxJobs) ? parsedMaxJobs : 5));
+    console.log(`🚀 Govt Jobs Scraper Started (max ${targetMaxJobs}, fresh window ${MAX_SCRAPER_AGE_DAYS} days)...`);
 
+    if (targetMaxJobs === 0) return 0;
     const items = await fetchAllJobItems();
 
     // 🛡️ Cross-site duplicate protection: recent titles (published + drafts)
@@ -540,10 +557,12 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
 
     let savedCount = 0;
     let evaluated = 0;
-    const backupPool = []; // score 6-8 wale — min-2 guarantee ke liye
+    const governmentPool = [];
+    const privateFallbackPool = [];
 
     for (const item of items) {
-        if (savedCount >= maxJobs) break;
+        // Govt/public-sector notices are always exhausted before private fallback.
+        if (governmentPool.length >= targetMaxJobs) break;
         if (evaluated >= MAX_EVALUATIONS) {
             console.log(`⏸️ Evaluation budget khatam (${MAX_EVALUATIONS}) — is run me itna hi`);
             break;
@@ -586,8 +605,8 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
             const scrapedContent = await scrapeJobPage(jobLink);
             const pageDate = scrapedContent.match(/^SOURCE_PUBLISHED_AT:\s*([^\n]*)/m)?.[1] || "";
             const verifiedPublishedAt = parsePublishedAt(pageDate, item.publishedAt);
-            if (!isRecentPublication(verifiedPublishedAt, { maxAgeDays: DEFAULT_MAX_AGE_DAYS })) {
-                console.log(`⏭️ Unverified/stale source publication date (${item.source || 'RSS'}): ${titleText}`);
+            if (!isWithinScraperWindow(verifiedPublishedAt)) {
+                console.log(`⏭️ Unverified or outside ${MAX_SCRAPER_AGE_DAYS}-day window (${item.source || 'RSS'}): ${titleText}`);
                 continue;
             }
 
@@ -595,6 +614,10 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
             const jobData = await extractJobDataWithAI(scrapedContent, jobLink);
 
             const finalTitle = jobData.title || titleText;
+            if (isInterviewNotice(finalTitle)) {
+                console.log(`⏭️ Interview-only notice excluded: ${finalTitle}`);
+                continue;
+            }
 
             if (jobData.isExpired === true || isDeadlineExpired(jobData.lastDate)) {
                 console.log(`⏭️ Expired/closed deadline: ${finalTitle} (${jobData.lastDate || "AI expiry check"})`);
@@ -700,16 +723,27 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 processedAt:  admin.firestore.FieldValue.serverTimestamp()
             });
 
-            if (score >= QUALITY_GOOD) {
-                await db.collection("job_drafts").doc(finalSlug).set(cleanPayload);
-                savedCount++;
+            const jobType = classifyJobSource({
+                title: finalTitle,
+                organization: jobData.organization,
+                officialUrl: `${jobData.officialSiteLink || ''} ${jobData.notificationLink || ''}`,
+            });
+            const candidate = { finalSlug, cleanPayload, finalTitle, score, publishedAt: verifiedPublishedAt };
+
+            if (jobType === "government") {
+                if (score >= QUALITY_FLOOR) {
+                    governmentPool.push(candidate);
+                    recentTitles.push(finalTitle);
+                    console.log(`🏛️ Government candidate (${governmentPool.length}) [score ${score}]: ${finalTitle}`);
+                } else {
+                    console.log(`🗑️ Low-quality government job [score ${score}] — skip: ${finalTitle}`);
+                }
+            } else if (isHighQualityPrivateJob(jobData, score, QUALITY_GOOD)) {
+                privateFallbackPool.push(candidate);
                 recentTitles.push(finalTitle);
-                console.log(`✅ Saved (${savedCount}/${maxJobs}) [score ${score}]: ${finalTitle}`);
-            } else if (score >= QUALITY_FLOOR) {
-                backupPool.push({ finalSlug, cleanPayload, finalTitle, score });
-                console.log(`🗂️ Backup pool [score ${score}]: ${finalTitle}`);
+                console.log(`🏢 Qualified private fallback (${privateFallbackPool.length}) [score ${score}]: ${finalTitle}`);
             } else {
-                console.log(`🗑️ Low quality [score ${score}] — skip: ${finalTitle}`);
+                console.log(`⏭️ Private/unclear job rejected: incomplete facts or score below ${QUALITY_GOOD} — ${finalTitle}`);
             }
             await sleep(2000);
 
@@ -718,18 +752,18 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
         }
     }
 
-    // 📉 MIN GUARANTEE: 2 se kam save hue to backup pool ke BEST wale le lo
-    if (savedCount < MIN_JOBS_PER_RUN && backupPool.length) {
-        backupPool.sort((a, b) => b.score - a.score);
-        for (const b of backupPool) {
-            if (savedCount >= MIN_JOBS_PER_RUN) break;
-            await db.collection("job_drafts").doc(b.finalSlug).set(b.cleanPayload);
-            savedCount++;
-            console.log(`✅ Saved from backup (${savedCount}) [score ${b.score}]: ${b.finalTitle}`);
-        }
+    const newestFirst = (a, b) => (b.publishedAt - a.publishedAt) || (b.score - a.score);
+    governmentPool.sort(newestFirst);
+    privateFallbackPool.sort(newestFirst);
+    const selectedCandidates = [...governmentPool, ...privateFallbackPool].slice(0, targetMaxJobs);
+
+    for (const candidate of selectedCandidates) {
+        await db.collection("job_drafts").doc(candidate.finalSlug).set(candidate.cleanPayload);
+        savedCount++;
+        console.log(`✅ Saved (${savedCount}/${targetMaxJobs}) [score ${candidate.score}]: ${candidate.finalTitle}`);
     }
 
-    console.log(`🎯 Complete: ${savedCount} jobs saved`);
+    console.log(`🎯 Complete: ${savedCount} jobs saved (government=${Math.min(savedCount, governmentPool.length)}, private fallback=${Math.max(0, savedCount - governmentPool.length)})`);
     return savedCount;
 }
 
