@@ -31,9 +31,19 @@ test('uses source text or a fact-only title fallback if article HTML is unavaila
     assert.ok(fromFacts.length >= 30);
 });
 
-test('HTML summary strips tags and decodes common entities', () => {
+test('HTML summary strips tags and decodes common entities once', () => {
     const summary = summaryFromHtml('<p>Result &amp; merit list are available on the official website for candidates.</p>');
     assert.equal(summary, 'Result & merit list are available on the official website for candidates.');
+
+    const nestedEntities = summaryFromHtml('<p>Result &amp;lt;script&amp;gt; remains encoded and is not decoded twice for safe display.</p>');
+    assert.match(nestedEntities, /&lt;script&gt;/);
+    assert.doesNotMatch(nestedEntities, /<script>/i);
+});
+
+test('summary strips script/style blocks when closing tags contain spaces', () => {
+    const summary = summaryFromHtml('<script>alert(1)</script > <style>hidden</style > The official result details are available on the board website for candidates today.');
+    assert.match(summary, /official result details are available/i);
+    assert.doesNotMatch(summary, /alert\(1\)|hidden/i);
 });
 
 test('fallback articles render only saved facts and safe links with honest labels', () => {

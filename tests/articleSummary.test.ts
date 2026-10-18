@@ -33,4 +33,24 @@ describe('buildDraftDescription', () => {
     });
     expect(summary).toBe('SSC & board update with application details for candidates.');
   });
+
+  it('decodes entities once rather than recursively unescaping nested entities', () => {
+    const summary = buildDraftDescription({
+      kind: 'job',
+      articleHtml: '<p>Result &amp;lt;script&amp;gt; remains encoded and is safely displayed in this useful summary.</p>',
+    });
+
+    expect(summary).toContain('&lt;script&gt;');
+    expect(summary).not.toMatch(/<script>/i);
+  });
+
+  it('strips script/style blocks with whitespace before closing angle brackets', () => {
+    const summary = buildDraftDescription({
+      kind: 'job',
+      articleHtml: '<script>alert(1)</script > <style>hidden</style > The official result details are available on the board website for candidates today.',
+    });
+
+    expect(summary).toMatch(/official result details are available/i);
+    expect(summary).not.toMatch(/alert\(1\)|hidden/i);
+  });
 });

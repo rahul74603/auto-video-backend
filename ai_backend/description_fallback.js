@@ -1,21 +1,37 @@
 'use strict';
 
+const HTML_ENTITY_MAP = Object.freeze({
+    '&nbsp;': ' ',
+    '&#160;': ' ',
+    '&amp;': '&',
+    '&quot;': '"',
+    '&#39;': "'",
+    '&apos;': "'",
+    '&lt;': '<',
+    '&gt;': '>',
+});
+
 function decodeEntities(value) {
-    return String(value || '')
-        .replace(/&nbsp;|&#160;/gi, ' ')
-        .replace(/&amp;/gi, '&')
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;|&apos;/gi, "'")
-        .replace(/&lt;/gi, '<')
-        .replace(/&gt;/gi, '>')
-        .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-        .replace(/&#x([\da-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
+    return String(value || '').replace(/&(?:nbsp|amp|quot|apos|lt|gt|#(?:\d{1,7}|x[\da-f]{1,6}));/gi, (entity) => {
+        const named = HTML_ENTITY_MAP[entity.toLowerCase()];
+        if (named !== undefined) return named;
+
+        const numeric = /^&#(x[\da-f]+|\d+);$/i.exec(entity);
+        if (!numeric) return entity;
+        const codePoint = numeric[1][0].toLowerCase() === 'x'
+            ? parseInt(numeric[1].slice(1), 16)
+            : parseInt(numeric[1], 10);
+        if (!Number.isInteger(codePoint) || codePoint < 0 || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+            return entity;
+        }
+        return String.fromCodePoint(codePoint);
+    });
 }
 
 function plainText(value) {
     return decodeEntities(String(value || '')
-        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ')
+        .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' ')
         .replace(/<!--([\s\S]*?)-->/g, ' ')
         .replace(/<[^>]*>/g, ' '))
         .replace(/\s+/g, ' ')
@@ -23,7 +39,7 @@ function plainText(value) {
 }
 
 function trimSummary(value, maxLength = 360) {
-    const text = plainText(value);
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
     if (text.length <= maxLength) return text;
     const cutoff = text.lastIndexOf(' ', maxLength - 1);
     return `${text.slice(0, cutoff > 80 ? cutoff : maxLength).trim()}…`;
@@ -35,7 +51,7 @@ function summaryFromHtml(html, maxLength = 360) {
         .filter((paragraph) => paragraph.length >= 25);
     const fromParagraphs = trimSummary(paragraphs.slice(0, 2).join(' '), maxLength);
     if (fromParagraphs) return fromParagraphs;
-    return trimSummary(html, maxLength);
+    return trimSummary(plainText(html), maxLength);
 }
 
 function summaryFromSource(sourceText, maxLength = 360) {
@@ -72,10 +88,10 @@ function fallbackFromFacts({ title, organization, category, updateDate, vacancie
 
 function buildDescription(options = {}) {
     const maxLength = Number(options.maxLength) || 360;
-    const preferred = trimSummary(options.preferred, maxLength);
+    const preferred = trimSummary(plainText(options.preferred), maxLength);
     if (preferred.length >= 30) return preferred;
 
-    const metaDescription = trimSummary(options.metaDescription, maxLength);
+    const metaDescription = trimSummary(plainText(options.metaDescription), maxLength);
     if (metaDescription.length >= 30) return metaDescription;
 
     const articleSummary = summaryFromHtml(options.articleHtml, maxLength);
@@ -116,7 +132,7 @@ function buildFallbackArticleHtml(options = {}) {
     const kind = options.kind === 'fast_track' ? 'fast_track' : 'job';
     const organization = plainText(options.organization || options.org);
     const category = plainText(options.category);
-    const summary = trimSummary(options.summary || options.description || options.shortInfo, 700);
+    const summary = trimSummary(plainText(options.summary || options.description || options.shortInfo), 700);
     const linkEntries = kind === 'job'
         ? [
             ['Organization', organization],

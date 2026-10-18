@@ -11,20 +11,27 @@ export type DraftSummaryInput = {
   kind: 'job' | 'fast_track';
 };
 
+const HTML_ENTITY_MAP: Readonly<Record<string, string>> = Object.freeze({
+  '&nbsp;': ' ',
+  '&#160;': ' ',
+  '&amp;': '&',
+  '&quot;': '"',
+  '&#39;': "'",
+  '&apos;': "'",
+  '&lt;': '<',
+  '&gt;': '>',
+});
+
 function decodeEntities(value: string): string {
-  return value
-    .replace(/&nbsp;|&#160;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>');
+  return value.replace(/&(?:nbsp|amp|quot|apos|lt|gt|#39|#160);/gi, (entity) =>
+    HTML_ENTITY_MAP[entity.toLowerCase()] ?? entity
+  );
 }
 
 function textOnly(value: unknown): string {
   return decodeEntities(String(value ?? '')
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' ')
     .replace(/<[^>]*>/g, ' '))
     .replace(/\s+/g, ' ')
     .trim();
