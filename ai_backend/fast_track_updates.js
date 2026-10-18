@@ -15,6 +15,7 @@ const {
     compareNewestFirst,
     isInterviewNotice,
 } = require("./scraper_policy");
+const { buildDescription, backfillDraftDescriptions } = require("./description_fallback");
 
 // =========================================================
 // 🔐 FIREBASE INIT
@@ -378,6 +379,20 @@ IMPORTANT:
 async function runFastTrackLogic(logger = console.log, apiKey) {
     logger("🚀 Fast-Track Scraper Started...");
 
+    // Existing scraped drafts get a safe gap-fill from their saved article; published pages are never touched.
+    try {
+        await backfillDraftDescriptions({
+            db,
+            collectionName: 'fast_track',
+            allowedStatuses: ['draft'],
+            kind: 'fast_track',
+            maxDocs: 100,
+            logger,
+        });
+    } catch (err) {
+        logger(`⚠️ Draft description backfill skipped: ${err.message}`);
+    }
+
     if (!apiKey) {
         logger("❌ No API key provided!");
         return [];
@@ -558,14 +573,26 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
                 logger(`⚠️ Article generation fail (item phir bhi banega): ${artErr.message}`);
             }
 
+            const summary = buildDescription({
+                preferred: extracted.shortInfo,
+                articleHtml,
+                sourceText: linksText,
+                title: finalTitle,
+                organization: extracted.org,
+                category,
+                updateDate: extracted.updateDate,
+                kind: 'fast_track',
+            });
+            logger(`🗒️ Description ready (${summary.length} chars)`);
+
             await db.collection("fast_track").doc(finalSlug).set({
                 title:        finalTitle,
                 slug:         finalSlug,
                 directLink:   cleanDirectLink,
-                shortInfo:    extracted.shortInfo  || '',
+                shortInfo:    summary,
                 org:          extracted.org        || '',
                 updateDate:   extracted.updateDate || '',
-                description:  extracted.shortInfo  || '',
+                description:  summary,
                 articleHtml:  articleHtml          || '',
                 category,
                 originalLink: link,

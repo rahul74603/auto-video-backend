@@ -22,6 +22,7 @@ const {
     classifyJobSource,
     isHighQualityPrivateJob,
 } = require("./scraper_policy");
+const { buildDescription, backfillDraftDescriptions } = require("./description_fallback");
 
 // =========================================================
 // 🔐 FIREBASE INIT
@@ -509,6 +510,21 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
     console.log(`🚀 Govt Jobs Scraper Started (max ${targetMaxJobs}, fresh window ${MAX_SCRAPER_AGE_DAYS} days)...`);
 
     if (targetMaxJobs === 0) return 0;
+
+    // Gap-fill summaries on scraper-created pending drafts only; never touch published jobs.
+    try {
+        await backfillDraftDescriptions({
+            db,
+            collectionName: 'job_drafts',
+            allowedStatuses: ['pending', 'draft'],
+            kind: 'job',
+            maxDocs: 100,
+            logger: console.log,
+        });
+    } catch (err) {
+        console.warn(`⚠️ Job draft description backfill skipped: ${err.message}`);
+    }
+
     const items = await fetchAllJobItems();
 
     // 🛡️ Cross-site duplicate protection: recent titles (published + drafts)
@@ -676,13 +692,27 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 console.warn(`⚠️ Full article generation fail (draft phir bhi banega): ${artErr.message}`);
             }
 
+            const description = buildDescription({
+                preferred: jobData.description,
+                metaDescription: jobData.metaDescription,
+                articleHtml,
+                sourceText: scrapedContent,
+                title: finalTitle,
+                organization: jobData.organization,
+                vacancies: jobData.vacancies,
+                lastDate: jobData.lastDate,
+                qualification: jobData.qualification,
+                kind: 'job',
+            });
+            console.log(`🗒️ Job description ready (${description.length} chars)`);
+
             const draftPayload = {
                 title:            finalTitle,
                 slug:             finalSlug,
                 type:             "JOB",
                 status:           "pending",
                 metaDescription:  jobData.metaDescription  || '',
-                description:      jobData.description      || '',
+                description,
                 articleHtml:      articleHtml              || '',
                 category:         jobData.category         || 'other',
                 organization:     jobData.organization     || '',
