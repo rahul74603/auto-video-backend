@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../firebase/config';
-import { doc, getDoc, getDocs, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { courseRepository } from '@/features/courses/data/courseRepository';
 import { useCourseAccess } from '../hooks/useCourseAccess';
 import { courseContentRepository } from '@/features/course-content/data/courseContentRepository';
