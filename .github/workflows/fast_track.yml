@@ -12,7 +12,7 @@ name: Fast Track Scraper
 
 on:
   schedule:
-    - cron: '30 20 * * *'  # रात 2:00 बजे IST
+    - cron: '0 0,6,12,18 * * *' # हर 6 घंटे नए Result/Admit/Answer Key/Syllabus RSS scan
   workflow_dispatch:
 
 concurrency:
