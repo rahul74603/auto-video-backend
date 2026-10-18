@@ -30,8 +30,8 @@ function decodeEntities(value) {
 
 function plainText(value) {
     return decodeEntities(String(value || '')
-        .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ')
-        .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' ')
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, ' ')
+        .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, ' ')
         .replace(/<!--([\s\S]*?)-->/g, ' ')
         .replace(/<[^>]*>/g, ' '))
         .replace(/\s+/g, ' ')

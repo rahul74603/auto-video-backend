@@ -47,7 +47,7 @@ describe('buildDraftDescription', () => {
   it('strips script/style blocks with whitespace before closing angle brackets', () => {
     const summary = buildDraftDescription({
       kind: 'job',
-      articleHtml: '<script>alert(1)</script > <style>hidden</style > The official result details are available on the board website for candidates today.',
+      articleHtml: '<script>alert(1)</script \t\n bar> <style>hidden</style \t\n bar> The official result details are available on the board website for candidates today.',
     });
 
     expect(summary).toMatch(/official result details are available/i);

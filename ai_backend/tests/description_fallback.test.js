@@ -41,7 +41,7 @@ test('HTML summary strips tags and decodes common entities once', () => {
 });
 
 test('summary strips script/style blocks when closing tags contain spaces', () => {
-    const summary = summaryFromHtml('<script>alert(1)</script > <style>hidden</style > The official result details are available on the board website for candidates today.');
+    const summary = summaryFromHtml('<script>alert(1)</script \t\n bar> <style>hidden</style \t\n bar> The official result details are available on the board website for candidates today.');
     assert.match(summary, /official result details are available/i);
     assert.doesNotMatch(summary, /alert\(1\)|hidden/i);
 });
