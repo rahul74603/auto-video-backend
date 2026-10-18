@@ -41,6 +41,7 @@ function summaryFromHtml(html, maxLength = 360) {
 function summaryFromSource(sourceText, maxLength = 360) {
     const cleaned = String(sourceText || '')
         .replace(/^SOURCE_PUBLISHED_AT:[^\n]*\n?/im, '')
+        .replace(/\nLINKS:[\s\S]*$/i, '')
         .replace(/^(TABLES|CONTENT):\s*/gim, '')
         .replace(/^---[^\n]*---\s*/gm, ' ');
     const text = plainText(cleaned);
@@ -90,6 +91,84 @@ function isBlankDescription(value) {
     return plainText(value).length === 0;
 }
 
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function htmlWordCount(html) {
+    return plainText(html).split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * Last-resort draft article: use only extracted facts and official URLs already
+ * present on the draft. It deliberately avoids inventing dates, eligibility,
+ * result status, vacancies, or steps when Gemini returns empty/blocked output.
+ */
+function buildFallbackArticleHtml(options = {}) {
+    const title = plainText(options.title);
+    if (!title) return '';
+
+    const kind = options.kind === 'fast_track' ? 'fast_track' : 'job';
+    const organization = plainText(options.organization || options.org);
+    const category = plainText(options.category);
+    const summary = trimSummary(options.summary || options.description || options.shortInfo, 700);
+    const linkEntries = kind === 'job'
+        ? [
+            ['Organization', organization],
+            ['Post / update', title],
+            ['Advertisement number', options.advtNo],
+            ['Vacancies', options.vacancies],
+            ['Application start date', options.startDate],
+            ['Last date', options.lastDate],
+            ['Qualification', options.qualification],
+            ['Age limit', options.ageLimit || options.minAge],
+            ['Salary', options.salary],
+            ['Location', options.location],
+            ['Selection process', options.selectionProcess],
+        ]
+        : [
+            ['Organization', organization],
+            ['Update type', category],
+            ['Update date', options.updateDate],
+        ];
+    const rows = linkEntries
+        .filter(([, value]) => plainText(value))
+        .map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(plainText(value))}</td></tr>`)
+        .join('');
+
+    const officialLinks = [
+        ['Apply / Official link', options.applyLink || options.directLink],
+        ['Notification', options.notificationLink],
+        ['Official website', options.officialSiteLink],
+    ].filter(([, value]) => /^https:\/\//i.test(String(value || '').trim()));
+    const linksHtml = officialLinks.length
+        ? `<ul>${officialLinks.map(([label, url]) => `<li><a href="${escapeHtml(String(url).trim())}">${escapeHtml(label)}</a></li>`).join('')}</ul>`
+        : '<p>Official link is not available in the extracted draft. Open the original source and verify the official notice before acting.</p>';
+
+    const intro = kind === 'job'
+        ? `${escapeHtml(title)} ke liye available extracted details neeche diye gaye hain. Application status, eligibility aur final dates ko apply karne se pehle official notification se verify karein.`
+        : `${escapeHtml(title)} se sambandhit ${escapeHtml(category || 'Fast Track')} update ka draft neeche available extracted information dikhata hai. Exact status aur agle steps official source par verify karein.`;
+    const summaryHtml = summary ? `<p>${escapeHtml(summary)}</p>` : '';
+    const detailsHtml = rows
+        ? `<h2>Available details</h2><table><tbody>${rows}</tbody></table>`
+        : '<p>Is draft me abhi title ke alawa verified details extract nahi hui hain.</p>';
+
+    return [
+        `<p>${intro}</p>`,
+        summaryHtml,
+        detailsHtml,
+        '<h2>What to verify</h2>',
+        '<p>Source notice ko kholkar naam, dates, eligibility aur instructions ko carefully match karein. Missing information ko assume na karein; official notice hi final maana jana chahiye.</p>',
+        '<h2>Official links</h2>',
+        linksHtml,
+    ].filter(Boolean).join('\n');
+}
+
 /** Gap-fill only pending records; published content is deliberately excluded. */
 async function backfillDraftDescriptions({
     db,
@@ -111,12 +190,19 @@ async function backfillDraftDescriptions({
         if (!allowedStatuses.includes(String(data.status || '').toLowerCase())) continue;
         const missingDescription = isBlankDescription(data.description);
         const missingShortInfo = kind === 'fast_track' && isBlankDescription(data.shortInfo);
-        if (!missingDescription && !missingShortInfo) continue;
+        const missingArticle = isBlankDescription(data.articleHtml);
+        if (!missingDescription && !missingShortInfo && !missingArticle) continue;
 
+        const articleHtml = missingArticle ? buildFallbackArticleHtml({
+            ...data,
+            kind,
+            summary: data.description || data.shortInfo,
+            organization: data.organization || data.org,
+        }) : data.articleHtml;
         const description = buildDescription({
             preferred: data.shortInfo || data.description,
             metaDescription: data.metaDescription,
-            articleHtml: data.articleHtml,
+            articleHtml,
             title: data.title,
             organization: data.organization || data.org,
             category: data.category,
@@ -126,20 +212,25 @@ async function backfillDraftDescriptions({
             qualification: data.qualification,
             kind,
         });
-        if (!description) continue;
+        if (!description && !articleHtml) continue;
 
         const patch = {};
-        if (missingDescription) patch.description = description;
-        if (missingShortInfo) patch.shortInfo = description;
+        if (missingDescription && description) patch.description = description;
+        if (missingShortInfo && description) patch.shortInfo = description;
+        if (missingArticle && articleHtml) patch.articleHtml = articleHtml;
+        if (Object.keys(patch).length === 0) continue;
         await doc.ref.update(patch);
         updated += 1;
     }
 
-    if (updated) logger(`📝 Filled missing descriptions in ${updated} pending ${collectionName} draft(s); published content untouched.`);
+    if (updated) logger(`Filled missing description/article content in ${updated} pending ${collectionName} draft(s); published content untouched.`);
     return updated;
 }
 
 module.exports = {
+    escapeHtml,
+    htmlWordCount,
+    buildFallbackArticleHtml,
     plainText,
     trimSummary,
     summaryFromHtml,

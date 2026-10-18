@@ -5,6 +5,8 @@ const assert = require('node:assert/strict');
 const {
     buildDescription,
     summaryFromHtml,
+    buildFallbackArticleHtml,
+    htmlWordCount,
     backfillDraftDescriptions,
 } = require('../description_fallback');
 
@@ -34,11 +36,28 @@ test('HTML summary strips tags and decodes common entities', () => {
     assert.equal(summary, 'Result & merit list are available on the official website for candidates.');
 });
 
+test('fallback articles render only saved facts and safe official URLs', () => {
+    const article = buildFallbackArticleHtml({
+        kind: 'job',
+        title: 'Board Assistant Recruitment',
+        organization: 'State Board',
+        vacancies: '120',
+        lastDate: '30 October 2026',
+        applyLink: 'https://board.gov.in/apply',
+    });
+    assert.match(article, /Board Assistant Recruitment/);
+    assert.match(article, /120/);
+    assert.match(article, /https:\/\/board\.gov\.in\/apply/);
+    assert.ok(htmlWordCount(article) > 40);
+    assert.doesNotMatch(article, /undefined|null/);
+});
+
 test('backfill gap-fills only permitted draft statuses and never changes published documents', async () => {
     const records = [
         { id: 'ft-draft', data: { status: 'draft', title: 'University Result', articleHtml: '<p>The university has published the semester result. Check the official link for marks.</p>' } },
         { id: 'ft-live', data: { status: 'published', title: 'Live Result', articleHtml: '<p>Keep this public content unchanged.</p>' } },
-        { id: 'ft-existing', data: { status: 'draft', description: 'Existing summary is already filled.', shortInfo: 'Existing summary is already filled.' } },
+        { id: 'ft-existing', data: { status: 'draft', description: 'Existing summary is already filled.', shortInfo: 'Existing summary is already filled.', articleHtml: '<p>Existing article content stays intact.</p>' } },
+        { id: 'ft-empty', data: { status: 'draft', title: 'Board Admit Card', category: 'Admit Card' } },
     ];
     const docs = records.map((record) => ({
         id: record.id,
@@ -61,9 +80,12 @@ test('backfill gap-fills only permitted draft statuses and never changes publish
         logger: () => {},
     });
 
-    assert.equal(updated, 1);
+    assert.equal(updated, 2);
     assert.equal(records[0].data.description, records[0].data.shortInfo);
     assert.match(records[0].data.description, /university has published/i);
     assert.equal(records[1].data.description, undefined);
     assert.equal(records[2].data.description, 'Existing summary is already filled.');
+    assert.match(records[3].data.articleHtml, /Board Admit Card/);
+    assert.ok(records[3].data.description);
+    assert.equal(records[3].data.status, 'draft');
 });

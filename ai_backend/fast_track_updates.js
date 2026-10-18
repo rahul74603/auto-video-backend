@@ -15,7 +15,12 @@ const {
     compareNewestFirst,
     isInterviewNotice,
 } = require("./scraper_policy");
-const { buildDescription, backfillDraftDescriptions } = require("./description_fallback");
+const {
+    buildDescription,
+    buildFallbackArticleHtml,
+    htmlWordCount,
+    backfillDraftDescriptions,
+} = require("./description_fallback");
 
 // =========================================================
 // 🔐 FIREBASE INIT
@@ -244,8 +249,13 @@ async function scrapePage(url) {
         }
     });
 
+    $('.comments, .related, .advertisement, .ads, .social-share, .share-buttons').remove();
+    const mainContent = $('.post-body, .entry-content, article, main').filter((_, el) => $(el).text().trim().length > 100).first();
+    const bodyText = (mainContent.length ? mainContent.text() : $('body').text())
+        .replace(/\s+/g, ' ')
+        .trim();
     const sourceDate = pagePublishedAt ? new Date(pagePublishedAt).toISOString() : "";
-    return `SOURCE_PUBLISHED_AT: ${sourceDate}\n${Array.from(links).join("\n")}`.substring(0, 3500);
+    return `SOURCE_PUBLISHED_AT: ${sourceDate}\nCONTENT:\n${bodyText}\nLINKS:\n${Array.from(links).join("\n")}`.substring(0, 12000);
 }
 
 // =========================================================
@@ -257,10 +267,7 @@ async function scrapePage(url) {
 // Result/Admit Card/Answer Key/Syllabus ke liye chhota-focused article.
 // JOB wala 13-section structure yahan force NAHI hota (spec ke hisaab se).
 // =========================================================
-async function generateFullFastTrackArticle(extracted, sourceText, category, title, apiKey) {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
+async function generateFullFastTrackArticle(extracted, sourceText, category, title, apiKey, logger = console.log) {
     const facts = JSON.stringify({
         title,
         org: extracted.org || '',
@@ -299,13 +306,35 @@ Return ONLY clean HTML (no markdown, no \`\`\`). NO <h1>. Structure:
 6. Chhota conclusion <p>
 Target: 800-1500 meaningful words. Kam jankari ho to chhota likho — filler mat daalo.`;
 
-    const result = await model.generateContent(prompt);
-    let html = result.response.text()
-        .replace(/```html/gi, '')
-        .replace(/```/g, '')
-        .trim();
-    html = html.replace(/<h1(\s[^>]*)?>/gi, '<h2>').replace(/<\/h1>/gi, '</h2>');
-    return html;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+            const result = await model.generateContent(prompt);
+            let html = result.response.text()
+                .replace(/```html/gi, '')
+                .replace(/```/g, '')
+                .trim();
+            html = html.replace(/<h1(\s[^>]*)?>/gi, '<h2>').replace(/<\/h1>/gi, '</h2>');
+            if (htmlWordCount(html) >= 80) return html;
+            logger(`⚠️ Gemini returned an empty/too-short Fast Track article (attempt ${attempt}/2).`);
+        } catch (err) {
+            logger(`⚠️ Fast Track article generation failed (attempt ${attempt}/2): ${err.message}`);
+            if (/429|quota|resource exhausted/i.test(err.message || '')) break;
+        }
+        if (attempt < 2) await sleep(2000);
+    }
+
+    logger('🧩 Saving a grounded, fact-only fallback article for human review.');
+    return buildFallbackArticleHtml({
+        kind: 'fast_track',
+        title,
+        organization: extracted.org,
+        category,
+        updateDate: extracted.updateDate,
+        summary: extracted.shortInfo,
+        directLink: extracted.directLink,
+    });
 }
 
 async function extractWithAI(linksText, category, title, apiKey, logger = console.log) {
@@ -314,7 +343,7 @@ async function extractWithAI(linksText, category, title, apiKey, logger = consol
     const prompt = `Extract information for a ${category} update.
 
 Title: "${title}"
-Links found: ${linksText}
+Source page content and links: ${linksText}
 
 Return ONLY valid JSON (no markdown):
 {
@@ -329,6 +358,7 @@ Return ONLY valid JSON (no markdown):
 IMPORTANT:
 - directLink must be exact official govt website URL only
 - freejobalert.com, sarkariexam.com jaise third-party URLs mat do
+- shortInfo KABHI blank mat chhodo: jo facts source me available hain unka 2-3 line cautious summary do; missing detail ko guess mat karo
 - Agar official URL na mile to empty string do ""`;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -566,7 +596,7 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
             // ✍️ FULL ARTICLE — fetch ke saath hi ready (Result/Admit Card style)
             let articleHtml = '';
             try {
-                articleHtml = await generateFullFastTrackArticle(extracted, linksText, category, finalTitle, apiKey);
+                articleHtml = await generateFullFastTrackArticle({ ...extracted, directLink: cleanDirectLink }, linksText, category, finalTitle, apiKey, logger);
                 const words = articleHtml.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
                 logger(`📝 Full article: ${words} words`);
             } catch (artErr) {
@@ -584,6 +614,9 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
                 kind: 'fast_track',
             });
             logger(`🗒️ Description ready (${summary.length} chars)`);
+            if (!summary.trim() || !articleHtml.trim()) {
+                throw new Error('Refusing to save a Fast Track draft without description and article content.');
+            }
 
             await db.collection("fast_track").doc(finalSlug).set({
                 title:        finalTitle,

@@ -22,7 +22,12 @@ const {
     classifyJobSource,
     isHighQualityPrivateJob,
 } = require("./scraper_policy");
-const { buildDescription, backfillDraftDescriptions } = require("./description_fallback");
+const {
+    buildDescription,
+    buildFallbackArticleHtml,
+    htmlWordCount,
+    backfillDraftDescriptions,
+} = require("./description_fallback");
 
 // =========================================================
 // 🔐 FIREBASE INIT
@@ -251,6 +256,7 @@ Follow these mapping rules to fill EVERY field:
 20. officialSiteLink: Official website URL
 21. isExpired: Compare lastDate with today (${todayDate}), true if expired
 22. category: ssc/banking/railway/upsc/defense/teaching/state/engineering/other
+23. description is mandatory: return a non-empty 3-4 line Hinglish summary grounded in the title and source. If details are sparse, keep it cautious and tell readers to verify the official notification; never invent facts and never return an empty description.
 
 SCRAPED DATA:
 ${scrapedContent}
@@ -302,9 +308,6 @@ Return ONLY this JSON (no markdown):
 // ko Review Draft me sab READYMADE mile — bas check karke publish.
 // =========================================================
 async function generateFullJobArticle(jobData, scrapedContent) {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
     const facts = JSON.stringify({
         title: jobData.title, organization: jobData.organization, advtNo: jobData.advtNo,
         startDate: jobData.startDate, lastDate: jobData.lastDate, vacancies: jobData.vacancies,
@@ -352,14 +355,32 @@ ${String(scrapedContent).slice(0, 15000)}
   14. Chhota useful conclusion <p> (official notification check karke deadline se pehle apply karne ki salah)
 - Target: 1500-2200 meaningful words. Agar source me kam jankari hai to chhota likho — filler add MAT karo.`;
 
-    const result = await model.generateContent(prompt);
-    let html = result.response.text()
-        .replace(/```html/gi, '')
-        .replace(/```/g, '')
-        .trim();
-    // Safety: h1 aa gaya ho to h2 bana do (page pe single H1 rahe)
-    html = html.replace(/<h1(\s[^>]*)?>/gi, '<h2>').replace(/<\/h1>/gi, '</h2>');
-    return html;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+            const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+            const result = await model.generateContent(prompt);
+            let html = result.response.text()
+                .replace(/```html/gi, '')
+                .replace(/```/g, '')
+                .trim();
+            // Safety: h1 aa gaya ho to h2 bana do (page pe single H1 rahe)
+            html = html.replace(/<h1(\s[^>]*)?>/gi, '<h2>').replace(/<\/h1>/gi, '</h2>');
+            if (htmlWordCount(html) >= 100) return html;
+            console.warn(`⚠️ Gemini returned an empty/too-short Job article (attempt ${attempt}/2).`);
+        } catch (err) {
+            console.warn(`⚠️ Job article generation failed (attempt ${attempt}/2): ${err.message}`);
+            if (/429|quota|resource exhausted/i.test(err.message || '')) break;
+        }
+        if (attempt < 2) await sleep(2000);
+    }
+
+    console.warn('🧩 Saving a grounded, fact-only fallback Job article for human review.');
+    return buildFallbackArticleHtml({
+        ...jobData,
+        kind: 'job',
+        summary: jobData.description,
+    });
 }
 
 // =========================================================
@@ -685,7 +706,13 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
             // ✍️ FULL ARTICLE — scraper ke saath hi ready (admin ko bas review karna hai)
             let articleHtml = '';
             try {
-                articleHtml = await generateFullJobArticle(jobData, scrapedContent);
+                articleHtml = await generateFullJobArticle({
+                    ...jobData,
+                    title: finalTitle,
+                    applyLink: cleanApplyLink,
+                    notificationLink: cleanNotificationLink,
+                    officialSiteLink: cleanOfficialSiteLink,
+                }, scrapedContent);
                 const words = articleHtml.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
                 console.log(`📝 Full article generated: ${words} words`);
             } catch (artErr) {
@@ -705,6 +732,9 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 kind: 'job',
             });
             console.log(`🗒️ Job description ready (${description.length} chars)`);
+            if (!description.trim() || !articleHtml.trim()) {
+                throw new Error('Refusing to save a Job draft without description and article content.');
+            }
 
             const draftPayload = {
                 title:            finalTitle,
