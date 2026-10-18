@@ -32,7 +32,7 @@ const BlogHomeSection = () => {
           {blogs.map((blog, index) => (
             <div 
               key={blog.id} 
-              onClick={() => navigate(`/blog/${blog.id}`)}
+              onClick={() => navigate(`/blog/${asText(blog.slug) || blog.id}`)}
               className="bg-white p-4 rounded-2xl border border-slate-100 hover:border-blue-400 hover:shadow-lg transition-all cursor-pointer flex items-center gap-4 group"
             >
               {/* छोटी इमेज — 3-level fallback (kabhi khali nahi dikhega) */}

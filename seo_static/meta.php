@@ -109,6 +109,18 @@ if ($file && is_readable($file)) {
     // corrupt/empty JSON → $entry null hi rahega, 5xx nahi aayega
 }
 
+// ---------- Legacy document-ID URL → current slug canonical (301) ----------
+// SEO metadata generation records aliases for active blog/story docs. Validate
+// the target locally so generated JSON can never create an open redirect.
+if (is_array($entry) && !empty($entry['redirect'])) {
+    $target = (string)$entry['redirect'];
+    if (preg_match('~^/(blog|web-stories)/[^/?#\r\n]+$~uD', $target)) {
+        header('Location: ' . $SITE . $target, true, 301);
+        header('Cache-Control: public, max-age=3600');
+        exit;
+    }
+}
+
 // ---------- values ----------
 $title = $entry['t'] ?? $DEFAULT_TITLE;
 $desc = $entry['d'] ?? $DEFAULT_DESC;

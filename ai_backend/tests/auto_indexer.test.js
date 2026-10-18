@@ -38,6 +38,7 @@ test("URL builders: har collection ka canonical path sahi banta hai", () => {
   assert.equal(COLLECTION_URL_BUILDERS.fast_track("ft-hpsc-result-2026", {}), "/update/ft-hpsc-result-2026");
   assert.equal(COLLECTION_URL_BUILDERS.fast_track("ft-id", { slug: "ft-slug-2026" }), "/update/ft-slug-2026");
   assert.equal(COLLECTION_URL_BUILDERS.blogs("A6PZP3aolwUyJUqHla88", {}), "/blog/A6PZP3aolwUyJUqHla88");
+  assert.equal(COLLECTION_URL_BUILDERS.blogs("doc-id", { slug: "canonical-blog-slug" }), "/blog/canonical-blog-slug");
   assert.equal(COLLECTION_URL_BUILDERS.web_stories("doc1", { slug: "railway-story-2026" }), "/web-stories/railway-story-2026");
   assert.equal(COLLECTION_URL_BUILDERS.mock_tests("m77", {}), "/test/m77");
 });

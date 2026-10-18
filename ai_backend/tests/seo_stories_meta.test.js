@@ -72,6 +72,22 @@ test("stories pages-json me duplicate NAHI (dedicated file hi source of truth)",
   assert.ok(stories["/web-stories/solo-story"]);
 });
 
+test("legacy Firestore-ID blog/story URLs become redirects to their current slugs", () => {
+  const files = buildMetaFiles({
+    jobs: [],
+    fast_track: [],
+    mock_tests: [],
+    blogs: [{ id: "blogDoc123", data: { title: "Slugged blog article", slug: "canonical-blog-slug", status: "published" } }],
+    web_stories: [story("storyDoc456", "Slugged web story", { slug: "canonical-story-slug" })],
+  });
+  const pages = JSON.parse(files["seo-meta-pages.json"]);
+  const stories = JSON.parse(files["seo-meta-stories.json"]);
+  assert.deepEqual(pages["/blog/blogDoc123"], { redirect: "/blog/canonical-blog-slug" });
+  assert.ok(pages["/blog/canonical-blog-slug"], "canonical blog entry remains indexable");
+  assert.deepEqual(stories["/web-stories/storyDoc456"], { redirect: "/web-stories/canonical-story-slug" });
+  assert.ok(stories["/web-stories/canonical-story-slug"], "canonical story entry remains indexable");
+});
+
 test("noindex/junk stories skip ho jaati hain", () => {
   const files = buildMetaFiles({
     jobs: [],

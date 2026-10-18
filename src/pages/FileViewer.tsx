@@ -9,7 +9,7 @@ const FileViewer = () => {
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [articleData, setArticleData] = useState<{ content?: string } | null>(null);
-  const [relatedBlogs, setRelatedBlogs] = useState<{ id: string; title?: string }[]>([]); // 🚀 रैंडम ब्लॉग्स के लिए
+  const [relatedBlogs, setRelatedBlogs] = useState<{ id: string; slug?: string; title?: string }[]>([]); // 🚀 रैंडम ब्लॉग्स के लिए
 
   useEffect(() => {
     const fetchAndProcess = async () => {
@@ -144,7 +144,7 @@ const FileViewer = () => {
                             {relatedBlogs.map((blog, idx) => (
                                 <div 
                                     key={idx} 
-                                    onClick={() => navigate(`/blog/${blog.id}`)}
+                                    onClick={() => navigate(`/blog/${blog.slug || blog.id}`)}
                                     className="group cursor-pointer bg-blue-50/50 hover:bg-blue-600 border-2 border-blue-100 hover:border-blue-600 p-4 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-xl hover:-translate-y-1"
                                 >
                                     <div className="bg-white w-10 h-10 rounded-full flex items-center justify-center mb-3 shadow-sm group-hover:scale-110 transition-transform">

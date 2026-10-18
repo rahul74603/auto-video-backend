@@ -433,6 +433,12 @@ function buildMetaFiles(colls, opts = {}) {
       content: body + relatedHtml(slug, String(data.category || "").toLowerCase()),
       ld,
     };
+    // Older app/RSS links used the Firestore document ID while the current
+    // sitemap/canonical uses data.slug. Keep an explicit bot-side 301 alias.
+    if (String(id) !== String(slug)) {
+      const idPath = `/blog/${id}`;
+      if (!pages[idPath]) pages[idPath] = { redirect: path };
+    }
   });
 
   (colls.mock_tests || []).forEach(({ id, data }) => addPage(`/test/${data.slug || id}`, data, "imageUrl", "test"));
@@ -524,6 +530,12 @@ function buildMetaFiles(colls, opts = {}) {
       content: body,
       ld: [articleLd],
     };
+    // Old links can contain the Firestore document ID; canonical story URLs
+    // use the slug. Send crawlers to the canonical URL instead of returning 404.
+    if (String(id) !== String(slug)) {
+      const idPath = `/web-stories/${id}`;
+      if (!stories[idPath]) stories[idPath] = { redirect: path };
+    }
   });
 
   // 🎯 HUB PAGES — bots ko real content list (title/desc + matching active jobs)

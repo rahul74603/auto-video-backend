@@ -92,7 +92,7 @@ const BlogList = () => {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-5">
                 {visibleBlogs.map((blog) => (
-                  <Link to={`/blog/${blog.id}`} key={blog.id} className="group">
+                  <Link to={`/blog/${asText(blog.slug) || blog.id}`} key={blog.id} className="group">
                     <div className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl transition-all flex flex-col h-full">
                       <div className="h-32 md:h-44 overflow-hidden relative bg-slate-100">
                         <SmartImage

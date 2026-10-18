@@ -126,7 +126,7 @@ const AllStories = () => {
                             return (
                                 <div
                                     key={story.id}
-                                    onClick={() => navigate(`/web-stories/${story.id}`)}
+                                    onClick={() => navigate(`/web-stories/${asText(story.slug) || story.id}`)}
                                     className="aspect-[9/16] relative rounded-3xl overflow-hidden cursor-pointer group border-4 border-white shadow-xl hover:shadow-2xl hover:-translate-y-2 transition-all duration-300"
                                 >
                                     <img

@@ -39,7 +39,7 @@ const HomeWebStories = () => {
                 {stories.map((story) => (
                     <div 
                         key={story.id} 
-                        onClick={() => navigate(`/web-stories/${story.id}`)}
+                        onClick={() => navigate(`/web-stories/${asText(story.slug) || story.id}`)}
                         className="min-w-[140px] md:min-w-[180px] aspect-[9/16] relative rounded-2xl overflow-hidden cursor-pointer group border-2 border-transparent hover:border-blue-500 transition-all shadow-lg bg-gray-100"
                     >
                         {/* ✅ SEO & SPEED FIX: Added Alt Tag and Lazy Loading */}

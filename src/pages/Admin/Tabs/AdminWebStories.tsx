@@ -25,6 +25,7 @@ interface StorySourceTest {
 
 interface StorySourceBlog {
     id: string;
+    slug: string;
     title: string;
     category: string;
     author: string;
@@ -33,6 +34,7 @@ interface StorySourceBlog {
 
 interface PublishedStory {
     id: string;
+    slug: string;
     title: string;
     storyType: string;
     coverImage: string;
@@ -80,6 +82,7 @@ const normTest = (t: MockTestRecord): StorySourceTest => ({
 
 const normBlog = (b: BlogRecord): StorySourceBlog => ({
     id: b.id,
+    slug: asText(b['slug']),
     title: asText(b['title']),
     category: asText(b['category']),
     author: asText(b['author']),
@@ -88,6 +91,7 @@ const normBlog = (b: BlogRecord): StorySourceBlog => ({
 
 const normStory = (s: { id: string; [key: string]: unknown }): PublishedStory => ({
     id: s.id,
+    slug: asText(s['slug']),
     title: asText(s['title']),
     storyType: asText(s['storyType']),
     coverImage: asText(s['coverImage'])
@@ -181,7 +185,7 @@ const AdminWebStories = () => {
                 title: item.title || '',
                 category: item.category || 'General',
                 author: item.author || 'StudyGyaan Editorial Team',
-                applyLink: `https://studygyaan.in/blog/${item.id}`,
+                applyLink: `https://studygyaan.in/blog/${item.slug || item.id}`,
                 coverImage: item.imageUrl || 'https://studygyaan.in/og-image.jpg',
                 questions: '', duration: ''
             });
@@ -329,7 +333,7 @@ const AdminWebStories = () => {
                                     <div className="absolute inset-0 p-3 flex flex-col justify-end bg-gradient-to-t from-black via-transparent">
                                         <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded mb-1 w-fit ${story.storyType === 'blog' ? 'bg-emerald-600' : 'bg-blue-600'} text-white`}>{story.storyType}</span>
                                         <h4 className="text-white font-bold text-[10px] leading-tight line-clamp-2">{story.title}</h4>
-                                        <a href={`/web-stories/${story.id}`} target="_blank" rel="noreferrer" className="mt-2 text-[9px] text-white underline font-black">View Live</a>
+                                        <a href={`/web-stories/${story.slug || story.id}`} target="_blank" rel="noreferrer" className="mt-2 text-[9px] text-white underline font-black">View Live</a>
                                     </div>
                                 </div>
                             ))}

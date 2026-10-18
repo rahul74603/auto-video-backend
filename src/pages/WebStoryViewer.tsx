@@ -535,7 +535,7 @@ const WebStoryViewer = () => {
     // 📤 SHARE
     // =========================================================
     const handleShare = useCallback(async () => {
-        const url = `https://studygyaan.in/web-stories/${docId || id}`;
+        const url = `https://studygyaan.in/web-stories/${storyData?.slug || docId || id}`;
         const title = storyData?.title || 'StudyGyaan Web Story';
 
         if (navigator.share) {

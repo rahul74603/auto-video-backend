@@ -454,7 +454,7 @@ ${enhancedIntent.prompt}
 
     if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
         try {
-            const blogUrl = `https://studygyaan.in/blog/${blogRef.id}`;
+            const blogUrl = `https://studygyaan.in/blog/${encodeURIComponent(finalData.slug || blogRef.id)}`;
             const telegramMessage = `🔥 <b>${finalData.title}</b>\n\n${finalData.metaDescription || ""}\n\n📖 <b>पूरा पढ़ें:</b>\n${blogUrl}\n\n🚀 <i>Join @studygyaan_official for more!</i>`;
             
             await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
