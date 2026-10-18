@@ -25,7 +25,7 @@ const INDEXNOW_KEY_LOCATION = `${SITE_URL}/${INDEXNOW_KEY}.txt`;
 const COLLECTION_URL_BUILDERS = {
   jobs: (docId, data) => (data.slug ? `/job/${data.slug}` : `/job/${docId}`),
   fast_track: (docId, data) => `/update/${(data && data.slug) || docId}`,
-  blogs: (docId) => `/blog/${docId}`,
+  blogs: (docId, data) => `/blog/${(data && data.slug) || docId}`,
   web_stories: (docId, data) => `/web-stories/${data.slug || docId}`,
   mock_tests: (docId) => `/test/${docId}`
 };

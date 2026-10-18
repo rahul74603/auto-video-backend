@@ -195,11 +195,12 @@ exports.generateRss = onRequest(async (req, res) => {
         const now = new Date().toUTCString();
         let rss = `<?xml version="1.0" encoding="UTF-8" ?>\n<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">\n<channel>\n<title>StudyGyaan</title>\n<link>${WEBSITE_URL}</link>\n<description>Latest Updates</description>\n<lastBuildDate>${now}</lastBuildDate>\n`;
 
-        const blogsSnap = await db.collection("blogs").orderBy("createdAt", "desc").limit(50).select("title", "createdAt").get();
+        const blogsSnap = await db.collection("blogs").orderBy("createdAt", "desc").limit(50).select("title", "createdAt", "slug").get();
         blogsSnap.forEach(doc => {
             const d = doc.data();
             const pubDate = d.createdAt ? (d.createdAt.toDate ? d.createdAt.toDate().toUTCString() : new Date(d.createdAt).toUTCString()) : now;
-            rss += `  <item>\n    <title><![CDATA[${d.title}]]></title>\n    <link>${WEBSITE_URL}/blog/${doc.id}</link>\n    <pubDate>${pubDate}</pubDate>\n    <guid>${WEBSITE_URL}/blog/${doc.id}</guid>\n  </item>\n`;
+            const blogPath = `/blog/${d.slug || doc.id}`;
+            rss += `  <item>\n    <title><![CDATA[${d.title}]]></title>\n    <link>${WEBSITE_URL}${blogPath}</link>\n    <pubDate>${pubDate}</pubDate>\n    <guid>${WEBSITE_URL}${blogPath}</guid>\n  </item>\n`;
         });
 
         rss += `</channel>\n</rss>`;
