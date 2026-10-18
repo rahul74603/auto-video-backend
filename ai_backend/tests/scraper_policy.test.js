@@ -8,6 +8,7 @@ const {
   isWithinScraperWindow,
   compareNewestFirst,
   isInterviewNotice,
+  isGovernmentJob,
   classifyJobSource,
   isHighQualityPrivateJob,
 } = require("../scraper_policy");
@@ -39,6 +40,7 @@ test("interview and walk-in announcements are excluded", () => {
 });
 
 test("government jobs are prioritized and non-government jobs become fallback", () => {
+  assert.equal(isGovernmentJob({ title: "SSC CGL Recruitment 2026" }), true);
   assert.equal(classifyJobSource({ title: "SSC CGL Recruitment 2026" }), "government");
   assert.equal(classifyJobSource({ organization: "Department of Railways" }), "government");
   assert.equal(classifyJobSource({ title: "Software Engineer Recruitment", organization: "Example Pvt Ltd" }), "private");

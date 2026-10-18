@@ -18,6 +18,7 @@ const {
     MAX_SCRAPER_AGE_DAYS,
     isWithinScraperWindow,
     isInterviewNotice,
+    isGovernmentJob,
     classifyJobSource,
     isHighQualityPrivateJob,
 } = require("./scraper_policy");
@@ -560,7 +561,12 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
     const governmentPool = [];
     const privateFallbackPool = [];
 
-    for (const item of items) {
+    const evaluationOrder = [...items].sort((a, b) => {
+        const governmentPriority = Number(isGovernmentJob({ title: b.title })) - Number(isGovernmentJob({ title: a.title }));
+        return governmentPriority || (parsePublishedAt(b.publishedAt) - parsePublishedAt(a.publishedAt));
+    });
+
+    for (const item of evaluationOrder) {
         // Govt/public-sector notices are always exhausted before private fallback.
         if (governmentPool.length >= targetMaxJobs) break;
         if (evaluated >= MAX_EVALUATIONS) {

@@ -26,16 +26,20 @@ function isInterviewNotice(title) {
 
 const GOVERNMENT_SIGNALS = [
   /\b(government|govt|sarkari|public sector|psu|central government|state government|union government)\b/i,
-  /\b(SSC|UPSC|RRB|RRC|IBPS|RBI|SBI|LIC|ESIC|EPFO|ISRO|DRDO|BARC|ONGC|NTPC|BHEL|IOCL|BSNL|BEL|GAIL|HPCL|BPCL|NHPC|NLC|HAL|AAI|FCI|DVC|NPCIL|SJVN|NVS|KVS)\b/i,
+  /\b(SSC|UPSC|RRB|RRC|IBPS|RBI|SBI|LIC|ESIC|EPFO|ISRO|DRDO|BARC|ONGC|NTPC|BHEL|IOCL|BSNL|BEL|GAIL|HPCL|BPCL|NHPC|NLC|HAL|AAI|FCI|DVC|NPCIL|SJVN|NHM|AIIMS|ICMR|NVS|KVS)\b/i,
   /\b(central bank of india|bank of india|punjab national bank|bank of baroda|canara bank|union bank of india|indian bank|uco bank|bank of maharashtra|punjab and sind bank)\b/i,
   /\.gov\.in\b|\.nic\.in\b/i,
   /\b(railways?|police|armed forces|army|navy|air force|defen[cs]e|ministry|commission|municipal corporation|high court|supreme court|district court)\b/i,
   /\b(department of|government of india|govt\. of india|state public service commission|public service commission)\b/i,
 ];
 
-function classifyJobSource({ title = "", organization = "", sourceText = "", officialUrl = "" } = {}) {
+function isGovernmentJob({ title = "", organization = "", sourceText = "", officialUrl = "" } = {}) {
   const text = [title, organization, sourceText, officialUrl].filter(Boolean).join(" ");
-  return GOVERNMENT_SIGNALS.some((pattern) => pattern.test(text)) ? "government" : "private";
+  return GOVERNMENT_SIGNALS.some((pattern) => pattern.test(text));
+}
+
+function classifyJobSource(details = {}) {
+  return isGovernmentJob(details) ? "government" : "private";
 }
 
 function isHighQualityPrivateJob(job, score, minimumScore = 9) {
@@ -58,6 +62,7 @@ module.exports = {
   isWithinScraperWindow,
   compareNewestFirst,
   isInterviewNotice,
+  isGovernmentJob,
   classifyJobSource,
   isHighQualityPrivateJob,
 };
