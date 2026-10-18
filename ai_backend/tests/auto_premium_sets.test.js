@@ -178,7 +178,7 @@ test("ensureFolder idempotent (same title → same id, naya nahi)", async () => 
 });
 
 // ---------- PHASE-3 v3: exam-default system ----------
-const { combosForRun, DEFAULT_BLUEPRINTS } = require("../auto_premium_sets");
+const { combosForRun, DEFAULT_BLUEPRINTS, pickBlueprintEntry, BLUEPRINT_SLOTS_PER_DAY } = require("../auto_premium_sets");
 const { ensureExamPack, ensureHierarchy } = require("../exam_blueprint");
 
 test("combosForRun alag subjects cover karta hai + deterministic", () => {
@@ -295,20 +295,41 @@ test("withRetries: 2 fail ke baad success → result; 3 fail → throw", async (
 });
 
 // ---------- v3.2: multi-exam rotation ----------
-test("pickBlueprintEntry: 4 din me saare 8 entries cover, slot alag", () => {
+test("pickBlueprintEntry: 4 daily slots cover all configured sections in four days", () => {
   const { pickBlueprintEntry, DEFAULT_BLUEPRINTS } = require("../auto_premium_sets");
   assert.equal(DEFAULT_BLUEPRINTS.length, 16);
   const exams = new Set(DEFAULT_BLUEPRINTS.map((b) => b.exam));
   assert.deepEqual([...exams].sort(), ["Banking", "Railway", "SSC", "Teaching"]);
   const seen = new Set();
-  for (let d = 0; d < 8; d++) {
+  for (let d = 0; d < 4; d++) {
     const day = new Date(2026, 0, 1 + d);
-    seen.add(pickBlueprintEntry(DEFAULT_BLUEPRINTS, 0, day).section);
-    seen.add(pickBlueprintEntry(DEFAULT_BLUEPRINTS, 1, day).section);
+    for (let slot = 0; slot < BLUEPRINT_SLOTS_PER_DAY; slot++) {
+      const entry = pickBlueprintEntry(DEFAULT_BLUEPRINTS, slot, day);
+      seen.add(`${entry.exam}/${entry.section}`);
+    }
   }
   assert.equal(seen.size, 16);
   // same din+slot deterministic
   const d = new Date(2026, 0, 1);
   assert.deepEqual(pickBlueprintEntry(DEFAULT_BLUEPRINTS, 0, d), pickBlueprintEntry(DEFAULT_BLUEPRINTS, 0, d));
   assert.equal(pickBlueprintEntry([], 0, d), null);
+});
+
+
+test("four daily slots cover every default course section in four days without same-day repeats", () => {
+  const start = new Date("2026-10-01T12:00:00Z");
+  const dayEntries = (day) => Array.from({ length: BLUEPRINT_SLOTS_PER_DAY }, (_, slot) =>
+    pickBlueprintEntry(DEFAULT_BLUEPRINTS, slot, new Date(start.getTime() + day * 86400000))
+  );
+  for (let day = 0; day < 4; day++) {
+    const names = dayEntries(day).map((entry) => `${entry.exam}/${entry.section}`);
+    assert.equal(new Set(names).size, names.length);
+  }
+  const covered = new Set(Array.from({ length: 4 }, (_, day) => dayEntries(day))
+    .flat().map((entry) => `${entry.exam}/${entry.section}`));
+  assert.equal(covered.size, DEFAULT_BLUEPRINTS.length);
+  // Slot 0 runs at 21:00 UTC (02:30 IST next day); slots 1-3 run that same IST day.
+  const slot0 = pickBlueprintEntry(DEFAULT_BLUEPRINTS, 0, new Date("2026-10-17T21:00:00Z"));
+  const slot1 = pickBlueprintEntry(DEFAULT_BLUEPRINTS, 1, new Date("2026-10-18T03:00:00Z"));
+  assert.notEqual(`${slot0.exam}/${slot0.section}`, `${slot1.exam}/${slot1.section}`);
 });

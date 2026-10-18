@@ -378,6 +378,7 @@ async function scrapeJobPageOnce(url) {
         timeout: 25000
     });
 
+    const pagePublishedAt = extractPublishedAtFromHtml(html);
     const $ = cheerio.load(html);
     $('script, style, nav, footer, header, .sidebar, #sidebar').remove();
 
@@ -401,7 +402,8 @@ async function scrapeJobPageOnce(url) {
         .replace(/\s\s+/g, ' ')
         .trim();
 
-    return `TABLES:\n${tableContent}\n\nCONTENT:\n${mainBody}`.substring(0, 15000);
+    const sourceDate = pagePublishedAt ? new Date(pagePublishedAt).toISOString() : "";
+    return `SOURCE_PUBLISHED_AT: ${sourceDate}\nTABLES:\n${tableContent}\n\nCONTENT:\n${mainBody}`.substring(0, 15000);
 }
 
 // =========================================================
@@ -423,11 +425,18 @@ async function fetchAllJobItems(perSource = 12, limitTotal = 60) {
     for (const src of sources) {
         try {
             const feed = await parser.parseURL(src.url);
-            const items = (feed.items || []).slice(0, perSource).map((it) => ({
+            const items = (feed.items || []).map((it) => ({
                 title:  (it.title || '').trim(),
                 link:   (it.link || it.guid || '').trim(),
-                source: src.name
-            })).filter((it) => it.title && it.link && !it.link.includes('127.0.0.1'));
+                source: src.name,
+                publishedAt: it.isoDate || it.pubDate || ""
+            })).filter((it) => it.title && it.link && !it.link.includes('127.0.0.1'))
+              .filter((it) => {
+                  if (!it.publishedAt) return true; // page metadata will verify unknown RSS dates
+                  const fresh = isRecentPublication(parsePublishedAt(it.publishedAt), { maxAgeDays: DEFAULT_MAX_AGE_DAYS });
+                  if (!fresh) console.log(`⏭️ Stale feed item (> ${DEFAULT_MAX_AGE_DAYS}d): ${it.title.slice(0, 70)}`);
+                  return fresh;
+              }).slice(0, perSource);
             buckets.push(items);
             console.log(`📰 ${src.name}: ${items.length} items`);
             await recordSourceCheck(db, src.name, { ok: true, itemCount: items.length });
@@ -575,14 +584,20 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
             console.log(`📡 [${evaluated}/${MAX_EVALUATIONS}] Scraping (${item.source || 'RSS'}): ${jobLink}`);
             await sleep(8000); // 🕊️ polite delay — source site 429 na de
             const scrapedContent = await scrapeJobPage(jobLink);
+            const pageDate = scrapedContent.match(/^SOURCE_PUBLISHED_AT:\s*([^\n]*)/m)?.[1] || "";
+            const verifiedPublishedAt = parsePublishedAt(pageDate, item.publishedAt);
+            if (!isRecentPublication(verifiedPublishedAt, { maxAgeDays: DEFAULT_MAX_AGE_DAYS })) {
+                console.log(`⏭️ Unverified/stale source publication date (${item.source || 'RSS'}): ${titleText}`);
+                continue;
+            }
 
             console.log(`🤖 AI Processing: ${titleText}`);
             const jobData = await extractJobDataWithAI(scrapedContent, jobLink);
 
             const finalTitle = jobData.title || titleText;
 
-            if (jobData.isExpired === true) {
-                console.log(`⏭️ Expired: ${finalTitle}`);
+            if (jobData.isExpired === true || isDeadlineExpired(jobData.lastDate)) {
+                console.log(`⏭️ Expired/closed deadline: ${finalTitle} (${jobData.lastDate || "AI expiry check"})`);
                 await db.collection("processed_links").doc(docId).set({
                     link:        jobLink,
                     processedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -663,6 +678,7 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 applyLink:        cleanApplyLink,
                 officialSiteLink: cleanOfficialSiteLink,
                 originalLink:     jobLink,
+                sourcePublishedAt: new Date(verifiedPublishedAt).toISOString(),
                 internalLinks:    internalLinks,
                 createdAt:        admin.firestore.FieldValue.serverTimestamp()
             };

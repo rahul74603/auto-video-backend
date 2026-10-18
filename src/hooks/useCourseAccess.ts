@@ -9,8 +9,23 @@ export const useCourseAccess = (courseId: string) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Auth state change ka intezar karein taki user mil sake
+        let cancelled = false;
+        let unsubscribeUser: (() => void) | null = null;
+        const resetTimer = setTimeout(() => {
+            if (!cancelled) {
+                setLoading(true);
+                setHasAccess(false);
+            }
+        }, 0);
+
         const authUnsubscribe = onAuthStateChanged(auth, (user) => {
+            clearTimeout(resetTimer);
+            // onAuthStateChanged ignores callback return values. Explicitly clean
+            // the previous user listener when the course/auth state changes.
+            unsubscribeUser?.();
+            unsubscribeUser = null;
+            if (cancelled) return;
+
             if (!user) {
                 setHasAccess(false);
                 setLoading(false);
@@ -18,48 +33,49 @@ export const useCourseAccess = (courseId: string) => {
             }
 
             if (!courseId) {
+                setHasAccess(false);
                 setLoading(false);
                 return;
             }
 
-            // 1. अगर आप (Admin) हैं तो हमेशा फुल एक्सेस मिलेगा
-            // अपनी असली एडमिन ईमेल यहाँ डाल सकते हैं या ENV से ले सकते हैं
-            const ADMIN_EMAIL = "rahul74603@gmail.com"; // 👈 अपनी असली ईमेल यहाँ डालें
+            const ADMIN_EMAIL = "rahul74603@gmail.com";
             if (user.email === ADMIN_EMAIL) {
                 setHasAccess(true);
                 setLoading(false);
                 return;
             }
 
-            // 2. 'users' कलेक्शन में यूजर का डॉक्यूमेंट चेक करना
-            // Repository keeps the user document access separate from this access decision.
-            const unsubscribe = userRepository.subscribeUser(user.uid, (userData) => {
-
-            // रियल-टाइम लिसनर: जैसे ही एडमिन Approve करेगा, यहाँ अपने आप ताला खुल जाएगा
+            unsubscribeUser = userRepository.subscribeUser(user.uid, (userData) => {
+                if (cancelled) return;
                 if (!userData) {
                     setHasAccess(false);
                     setLoading(false);
                     return;
                 }
                 entitlementRepository.hasPurchasedCourse(user.uid, courseId).then((hasPurchased) => {
+                    if (cancelled) return;
                     setHasAccess(userData.isPro === true || hasPurchased);
                     setLoading(false);
                 }).catch((error) => {
+                    if (cancelled) return;
                     console.error("Entitlement Check Error:", error);
                     setLoading(false);
                 });
             }, (error) => {
+                if (cancelled) return;
                 console.error("Access Check Error:", error);
                 setLoading(false);
             });
-
-            return () => unsubscribe();
         });
 
-        return () => authUnsubscribe();
+        return () => {
+            cancelled = true;
+            clearTimeout(resetTimer);
+            unsubscribeUser?.();
+            authUnsubscribe();
+        };
     }, [courseId]);
 
-    // पेमेंट पर भेजने वाला फंक्शन
     const buyCourse = (paymentLink: string) => {
         if (!paymentLink) {
             alert("Payment link is missing!");

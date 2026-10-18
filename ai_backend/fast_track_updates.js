@@ -8,6 +8,7 @@ const axios = require("axios");
 const { google } = require("googleapis");
 const cheerio = require("cheerio");
 const Parser = require("rss-parser");
+const { parsePublishedAt, isRecentPublication, extractPublishedAtFromHtml, DEFAULT_MAX_AGE_DAYS } = require("./source_freshness");
 
 // =========================================================
 // 🔐 FIREBASE INIT
@@ -212,6 +213,7 @@ async function scrapePage(url) {
         timeout: 20000
     });
 
+    const pagePublishedAt = extractPublishedAtFromHtml(html);
     const $ = cheerio.load(html);
     $('script, style, nav, footer, header, .sidebar').remove();
 
@@ -235,7 +237,8 @@ async function scrapePage(url) {
         }
     });
 
-    return Array.from(links).join("\n").substring(0, 3500);
+    const sourceDate = pagePublishedAt ? new Date(pagePublishedAt).toISOString() : "";
+    return `SOURCE_PUBLISHED_AT: ${sourceDate}\n${Array.from(links).join("\n")}`.substring(0, 3500);
 }
 
 // =========================================================
@@ -449,8 +452,13 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
 
         const title = (item.title || '').trim();
         const link  = (item.link || item.guid || '').trim();
+        const rssPublishedAt = parsePublishedAt(item.isoDate, item.pubDate);
 
         if (!title || !link || link.includes('127.0.0.1')) continue;
+        if (rssPublishedAt && !isRecentPublication(rssPublishedAt, { maxAgeDays: DEFAULT_MAX_AGE_DAYS })) {
+            logger(`⏭️ Stale feed item (> ${DEFAULT_MAX_AGE_DAYS}d): ${title.slice(0, 70)}`);
+            continue;
+        }
 
         const category = detectCategory(title);
         if (!category) continue;
@@ -470,7 +478,13 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
             logger(`🎯 [${category}] Processing: ${title}`);
 
             const linksText = await scrapePage(link);
-            logger(`📋 Found ${linksText.split('\n').length} links`);
+            const pageDate = linksText.match(/^SOURCE_PUBLISHED_AT:\s*([^\n]*)/m)?.[1] || "";
+            const verifiedPublishedAt = parsePublishedAt(pageDate, rssPublishedAt);
+            if (!isRecentPublication(verifiedPublishedAt, { maxAgeDays: DEFAULT_MAX_AGE_DAYS })) {
+                logger(`⏭️ Unverified/stale source publication date: ${title}`);
+                continue;
+            }
+            logger(`📋 Verified source date: ${new Date(verifiedPublishedAt).toISOString()}`);
 
             // ✅ logger pass karo retry messages ke liye
             const extracted = await extractWithAI(linksText, category, title, apiKey, logger);
@@ -522,6 +536,7 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
                 articleHtml:  articleHtml          || '',
                 category,
                 originalLink: link,
+                sourcePublishedAt: new Date(verifiedPublishedAt).toISOString(),
                 status:       "draft",
                 createdAt:    admin.firestore.FieldValue.serverTimestamp()
             });
