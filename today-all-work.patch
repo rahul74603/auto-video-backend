@@ -1,0 +1,337 @@
+diff --git a/ai_backend/agents/growth/analytics/learner.js b/ai_backend/agents/growth/analytics/learner.js
+index 67a5f22..0fb2d06 100644
+--- a/ai_backend/agents/growth/analytics/learner.js
++++ b/ai_backend/agents/growth/analytics/learner.js
+@@ -56,6 +56,18 @@ async function analyzePatterns(db, opts = {}) {
+                     sampleSize: records.length,
+                     windowDays: opts.windowDays || ROLLING_WINDOW_DAYS
+                 }, { merge: true });
++                
++                // Auto-apply high-confidence patterns
++                const highConfidencePatterns = patterns.filter(p => p.confidence >= 0.75);
++                if (highConfidencePatterns.length > 0) {
++                    await db.collection('growth_policies').doc('latest').set({
++                        appliedPatterns: highConfidencePatterns,
++                        appliedAt: Date.now(),
++                        status: 'APPLIED',
++                        count: highConfidencePatterns.length
++                    }, { merge: true });
++                    console.log(`✅ Auto-applied ${highConfidencePatterns.length} high-confidence patterns`);
++                }
+             } catch (err) {
+                 console.log(`⚠️ insight store failed: ${err.message || err}`);
+             }
+diff --git a/ai_backend/seo_functions.js b/ai_backend/seo_functions.js
+index 20e2574..2625055 100644
+--- a/ai_backend/seo_functions.js
++++ b/ai_backend/seo_functions.js
+@@ -68,6 +68,22 @@ function hasValidSitemapData(data = {}) {
+     return true;
+ }
+ 
++// ✅ NEW: Normalize URL to match canonical format
++function normalizeSitemapUrl(url) {
++    if (!url) return url;
++    
++    // Remove trailing slash
++    url = url.replace(/\/$/, '');
++    
++    // Remove www
++    url = url.replace('://www.', '://');
++    
++    // Ensure https
++    url = url.replace('http://', 'https://');
++    
++    return url;
++}
++
+ // =========================================================
+ // 1. SITEMAP INDEX (Master Sitemap)
+ // =========================================================
+@@ -82,7 +98,6 @@ exports.generateSitemapIndex = functions.https.onRequest(async (req, res) => {
+             `${WEBSITE_URL}/sitemap-updates.xml`,
+             `${WEBSITE_URL}/sitemap-courses.xml`,
+             `${WEBSITE_URL}/sitemap-materials.xml`,
+-            `${WEBSITE_URL}/sitemap-news.xml`,
+             `${WEBSITE_URL}/recent-urls.txt`
+         ];
+ 
+diff --git a/src/pages/BlogList.tsx b/src/pages/BlogList.tsx
+index 4b96bc6..2b463f3 100644
+--- a/src/pages/BlogList.tsx
++++ b/src/pages/BlogList.tsx
+@@ -6,6 +6,7 @@ import { Link, useNavigate } from 'react-router-dom';
+ import { ArrowRight, Sparkles, Clock, Flame, Tag, ExternalLink, ShoppingCart } from 'lucide-react';
+ import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+ import { asText, toDateSafe, type TimestampLike } from '@/types/firestore';
++import RelatedContent from '../components/RelatedContent';
+ 
+ type BlogListLink = {
+   title?: string;
+@@ -208,6 +209,18 @@ const BlogList = () => {
+ 
+           </aside>
+         </div>
++
++        {/* Internal Linking - Fixes Orphan Pages */}
++        <div className="max-w-7xl mx-auto px-4 mt-8">
++          <RelatedContent
++            currentId=""
++            exam="GENERAL"
++            category="JOB"
++            title=""
++            limit={8}
++            className="mb-6"
++          />
++        </div>
+       </main>
+     </div>
+   );
+diff --git a/src/pages/CourseView.tsx b/src/pages/CourseView.tsx
+index 739a6c6..dd8a22d 100644
+--- a/src/pages/CourseView.tsx
++++ b/src/pages/CourseView.tsx
+@@ -25,6 +25,7 @@ import {
+   BookOpen
+ } from 'lucide-react';
+ import SEO from '../components/SEO';
++import RelatedContent from '../components/RelatedContent';
+ 
+ interface CourseContent { id: string; title: string; seoTitle?: string; link?: string; type: 'PDF' | 'VIDEO' | 'FOLDER'; parentId?: string | null; }
+ 
+@@ -420,6 +421,19 @@ const CourseView = () => {
+           <a href="/blog" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Sarkari Yojana & Blogs</a>
+         </div>
+       </div>
++
++      {/* Internal Linking - Fixes Orphan Pages */}
++      <div className="max-w-7xl mx-auto px-4 mt-8">
++        <RelatedContent
++          currentId={id || ''}
++          exam="GENERAL"
++          category="PREMIUM"
++          title={course?.title || ''}
++          limit={8}
++          className="mb-6"
++        />
++      </div>
++
+       <style dangerouslySetInnerHTML={{__html: `
+         .hide-scrollbar::-webkit-scrollbar { display: none; }
+         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+diff --git a/src/pages/EbookDetails.tsx b/src/pages/EbookDetails.tsx
+index 9ebfda4..7578dea 100644
+--- a/src/pages/EbookDetails.tsx
++++ b/src/pages/EbookDetails.tsx
+@@ -11,6 +11,8 @@ import { Button } from '../components/ui/button';
+ import SEO from '../components/SEO';
+ import Breadcrumbs from '../components/Breadcrumbs';
+ import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
++import RelatedContent from '../components/RelatedContent';
++import ExamHubNavigation from '../components/ExamHubNavigation';
+ 
+ type EbookView = {
+   title?: string;
+@@ -202,6 +204,18 @@ const EbookDetails = () => {
+               </div>
+ 
+             </article>
++
++            {/* Internal Linking - Fixes Orphan Pages & No Outgoing Links */}
++            <ExamHubNavigation exam="GENERAL" className="mt-6" />
++            <RelatedContent
++              currentId={id || ''}
++              exam="GENERAL"
++              category="EBOOK"
++              title={ebook?.title || ''}
++              limit={6}
++              className="mt-6"
++            />
++
+           </div>
+ 
+           <aside className="w-[40%] md:w-[32%] space-y-4 md:space-y-8 sticky top-12 md:top-16">
+diff --git a/src/pages/MaterialDetails.tsx b/src/pages/MaterialDetails.tsx
+index 5163f60..b792faf 100644
+--- a/src/pages/MaterialDetails.tsx
++++ b/src/pages/MaterialDetails.tsx
+@@ -11,6 +11,8 @@ import SEO from '../components/SEO';
+ import Breadcrumbs from '../components/Breadcrumbs';
+ import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository'; // ✅ नया SEO कम्पोनेंट यहाँ इम्पोर्ट किया है
+ import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
++import RelatedContent from '../components/RelatedContent';
++import ExamHubNavigation from '../components/ExamHubNavigation';
+ 
+ type MaterialView = {
+   title?: string;
+@@ -182,6 +184,18 @@ const MaterialDetails = () => {
+                 </div>
+               </div>
+             </article>
++
++            {/* Internal Linking - Fixes Orphan Pages & No Outgoing Links */}
++            <ExamHubNavigation exam={item?.subject || 'GENERAL'} className="mt-6" />
++            <RelatedContent
++              currentId={id || ''}
++              exam={item?.subject}
++              category="STUDY_MATERIAL"
++              title={item?.title || ''}
++              limit={6}
++              className="mt-6"
++            />
++
+           </div>
+ 
+           <aside className="w-[40%] md:w-[32%] space-y-3 md:space-y-6 sticky top-12 md:top-16">
+diff --git a/src/pages/MaterialPage.tsx b/src/pages/MaterialPage.tsx
+index 93dfb3a..71f0f7d 100644
+--- a/src/pages/MaterialPage.tsx
++++ b/src/pages/MaterialPage.tsx
+@@ -13,6 +13,7 @@ import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLi
+ import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
+ import { jobRepository } from '@/features/jobs/data/jobRepository';
+ import { toDateSafe, type TimestampLike } from '@/types/firestore';
++import RelatedContent from '../components/RelatedContent';
+ 
+ type Category = { id: string; name: string; parentId: string | null };
+ type Material = { id: string; title: string; applyLink: string; category: string; fileSize?: string; updatedAt?: TimestampLike };
+@@ -346,6 +347,18 @@ const StudyMaterials: React.FC = () => {
+ 
+           </aside>
+         </div>
++
++        {/* Internal Linking - Fixes Orphan Pages */}
++        <div className="max-w-7xl mx-auto px-4 mt-8">
++          <RelatedContent
++            currentId=""
++            exam="GENERAL"
++            category="STUDY_MATERIAL"
++            title=""
++            limit={8}
++            className="mb-6"
++          />
++        </div>
+       </div>
+     </div>
+   );
+diff --git a/src/pages/MockTestLibrary.tsx b/src/pages/MockTestLibrary.tsx
+index 3a577d7..9d0bd68 100644
+--- a/src/pages/MockTestLibrary.tsx
++++ b/src/pages/MockTestLibrary.tsx
+@@ -11,6 +11,7 @@ import SEO from '../components/SEO';
+ import Breadcrumbs from '../components/Breadcrumbs';
+ import { buildBreadcrumbPath } from '@/features/internal-linking/data/internalLinkingRepository';
+ import { asText } from '@/types/firestore';
++import RelatedContent from '../components/RelatedContent';
+ 
+ // =========================================================
+ // 🧾 SIDEBAR LINK TYPE
+@@ -223,6 +224,18 @@ const MockTestLibrary = () => {
+                         )}
+                     </aside>
+                 </div>
++
++                {/* Internal Linking - Fixes Orphan Pages */}
++                <div className="max-w-7xl mx-auto px-4 mt-8">
++                  <RelatedContent
++                    currentId=""
++                    exam="GENERAL"
++                    category="MOCK_TEST"
++                    title=""
++                    limit={8}
++                    className="mb-6"
++                  />
++                </div>
+             </div>
+         </div>
+     );
+diff --git a/src/pages/MyCourses.tsx b/src/pages/MyCourses.tsx
+index 2a59ed7..1d6b761 100644
+--- a/src/pages/MyCourses.tsx
++++ b/src/pages/MyCourses.tsx
+@@ -11,6 +11,7 @@ import {
+   BookOpen, ArrowRight, Loader2, ShoppingBag, Sparkles,
+   Flame, ShoppingCart, Zap, CheckCircle2, GraduationCap
+ } from 'lucide-react';
++import RelatedContent from '../components/RelatedContent';
+ type MyCourseView = {
+   id: string;
+   title?: string;
+@@ -223,6 +224,18 @@ const MyCourses = () => {
+             <a href="/blog" className="bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 px-5 py-2.5 rounded-xl text-[11px] md:text-sm font-black transition-all shadow-sm">Sarkari Yojana & Blogs</a>
+           </div>
+         </div>
++
++        {/* Internal Linking - Fixes Orphan Pages */}
++        <div className="max-w-7xl mx-auto px-4 mt-8">
++          <RelatedContent
++            currentId=""
++            exam="GENERAL"
++            category="PREMIUM"
++            title=""
++            limit={8}
++            className="mb-6"
++          />
++        </div>
+       </div>
+     </div>
+   );
+diff --git a/src/sections/GovtJobs.tsx b/src/sections/GovtJobs.tsx
+index 60f2709..c82816e 100644
+--- a/src/sections/GovtJobs.tsx
++++ b/src/sections/GovtJobs.tsx
+@@ -260,16 +260,6 @@ const JobCard = React.memo(({ job, onWhatsAppShare }: {
+                         <span className="ml-auto bg-red-50 text-red-400 border border-red-100 px-2 py-1 md:px-3 md:py-1.5 rounded-lg text-[8px] md:text-xs font-bold cursor-not-allowed">
+                             Expired
+                         </span>
+-                    ) : job.applyLink ? (
+-                        <a
+-                            href={safeExternalUrl(job.applyLink)}
+-                            target="_blank"
+-                            rel="nofollow noopener noreferrer"
+-                            className="ml-auto bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 md:px-4 md:py-1.5 rounded-lg flex items-center gap-1 font-bold active:scale-95 transition-all text-[8px] md:text-xs"
+-                        >
+-                            Apply Now
+-                            <ExternalLink size={10} className="md:w-3.5 md:h-3.5" aria-hidden="true" />
+-                        </a>
+                     ) : null}
+                 </div>
+             </div>
+diff --git a/vite.config.ts b/vite.config.ts
+index 932922d..94963b5 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -91,7 +91,32 @@ export default defineConfig({
+               return 'vendor-radix';
+             }
+ 
+-            // 8. Baaki sab
++            // 8. Lodash — bahut bada library
++            if (id.includes('lodash')) {
++              return 'vendor-lodash';
++            }
++
++            // 9. Date-fns — date handling
++            if (id.includes('date-fns')) {
++              return 'vendor-date-fns';
++            }
++
++            // 10. Axios — HTTP client
++            if (id.includes('axios')) {
++              return 'vendor-axios';
++            }
++
++            // 11. PDF.js — bahut bada library
++            if (id.includes('pdfjs-dist')) {
++              return 'vendor-pdfjs';
++            }
++
++            // 12. Recharts — charts library
++            if (id.includes('recharts')) {
++              return 'vendor-recharts';
++            }
++
++            // 13. Baaki sab
+             return 'vendor-others';
+           }
+         }

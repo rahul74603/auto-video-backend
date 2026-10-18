@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="hi">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Favicon: public/logo.png (vite.svg tha jo exist hi nahi karta tha → 404) -->
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>StudyGyaan</title>
+    <meta name="robots" content="index, follow" />
+
+    <!-- Default meta description (SPA shell ke liye).
+         Har page ka final description/canonical react-helmet (SEO.tsx) set karta hai.
+         Bots ko .htaccess meta.php pe bhejta hai — wahan per-URL meta hoti hai. -->
+    <meta name="description" content="StudyGyaan पर पाएं Latest Sarkari Naukri, Free PDF Notes, Online Mock Tests, Admit Card, Result और Premium Study Material। SSC, Railway, Bank, Police Exam की सबसे बेहतर तैयारी।" />
+
+    <!-- =====================================================
+         ✅ PRECONNECT — Sirf jo zaruri hai (max 4)
+         Unused preconnects hata diye:
+         www.gstatic.com, www.google.com, news.google.com
+    ====================================================== -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://firestore.googleapis.com" />
+    <!-- Firebase Auth iframe homepage ke first-load chain me hai (PSI: 330ms LCP saving) -->
+    <link rel="preconnect" href="https://studymaterial-406ad.firebaseapp.com" />
+
+    <!-- =====================================================
+         ✅ FONTS — Direct woff2 preload
+         Pehle: index.css mein @import tha — render blocking tha
+         Ab: seedha woff2 preload — 2597ms ka chain toot gaya
+         
+         Note: ye URLs Google Fonts se copy karo apne fonts ke liye
+         Inter (Latin) aur Noto Sans Devanagari ke liye
+    ====================================================== -->
+
+    <!-- Fonts are loaded via Google Fonts CSS with media=print trick — no manual woff2 preload needed (fixes 404 + preload not used warning) -->
+
+    <!-- =====================================================
+         ✅ GOOGLE FONTS CSS — Non-blocking load
+         media="print" trick: pehle print mein load hogi
+         onload se all mein switch hogi — page block nahi hoga
+    ====================================================== -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <!-- JS disabled fallback -->
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap"
+      />
+    </noscript>
+
+    <!-- =====================================================
+         ✅ CRITICAL INLINE CSS
+         Ye sirf hero section ke liye hai
+         Font load hone se pehle bhi heading sahi dikhegi
+         CLS nahi hogi — fallback font metrics match karte hain
+    ====================================================== -->
+    <style>
+      /* Font fallback — Inter load hone tak system font use hoga */
+      /* Size adjust se layout shift nahi hogi */
+      @font-face {
+        font-family: 'Inter';
+        font-style: normal;
+        font-weight: 900;
+        font-display: swap;
+        src: local('Inter');
+        size-adjust: 100%;
+      }
+
+      /* Body reset — FOUC rokna */
+      body {
+        margin: 0;
+        background-color: #ffffff;
+        color: #0f172a;
+        font-family: 'Noto Sans Devanagari', 'Inter', system-ui, -apple-system, sans-serif;
+      }
+
+      /* Hero section — space pehle se reserve */
+      #root {
+        width: 100%;
+        min-height: 100vh;
+      }
+
+      /* Hero section placeholder — page load par jump nahi hoga */
+      #hero-section {
+        min-height: 700px;
+        background-color: #020617;
+        position: relative;
+      }
+
+      /* ❌ Nav placeholder rule DELETED —
+         `nav:first-of-type` galti se HAR pehle <nav> pe lag raha tha:
+         Hero ke 4 cards ke peeche white band + Footer Explore pe grey box.
+         Real navbar apni Tailwind classes khud rakhta hai — ye rule bekar tha. */
+    </style>
+
+    <script type="module" crossorigin src="/assets/index-BGYxveFj.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-react-core-5SWz8Eji.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-others-D6pbyztW.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-firebase-core-D7ileW4K.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-firebase-auth-D1DFqo9c.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-firebase-storage-C7i2lTtv.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-icons-CwIKnd6I.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-QvI5MUVA.css">
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <!-- =====================================================
+         ✅ STALE-INDEX SELF-HEAL
+         Deploy ke baad agar browser ke paas PURANA index.html hai
+         (cache/SW) aur naye chunks 404 de rahe hain, to ek baar
+         auto-reload karke naya index utha leta hai. Infinite loop
+         flag se blocked hai; successful load pe flag clear.
+    ====================================================== -->
+    <script>
+      (function () {
+        var KEY = 'sg_stale_reload';
+        function heal(msg) {
+          try {
+            if (!msg || !/dynamically imported module|Importing a module script|Failed to fetch dynamically/i.test(msg)) return;
+            if (sessionStorage.getItem(KEY)) return;
+            sessionStorage.setItem(KEY, '1');
+            setTimeout(function () { location.reload(); }, 50);
+          } catch (e) { /* ignore */ }
+        }
+        window.addEventListener('unhandledrejection', function (e) {
+          var r = e && e.reason;
+          heal(String((r && (r.message || r)) || ''));
+        });
+        window.addEventListener('error', function (e) {
+          var el = e && e.target;
+          if (el && el.tagName === 'SCRIPT' && el.src && el.src.indexOf('/assets/') !== -1) {
+            heal('Failed to fetch dynamically imported module: ' + el.src);
+          }
+        }, true);
+        window.addEventListener('load', function () {
+          try { sessionStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+        });
+      })();
+    </script>
+
+    <!-- =====================================================
+         ✅ MAIN SCRIPT — Body ke end mein
+         Pehle: <head> mein tha — render blocking tha
+         Ab: body end mein — HTML parse hone ke baad load hoga
+    ====================================================== -->
+
+    <!-- =====================================================
+         ✅ GOOGLE TAG MANAGER — Deferred
+         3 seconds baad ya user interaction par — jo pehle ho
+         GTM 141KB hai — defer karna zaroori tha
+    ====================================================== -->
+    <script>
+      (function () {
+        var gtmLoaded = false;
+
+        function loadGTM() {
+          if (gtmLoaded) return;
+          gtmLoaded = true;
+
+          var script = document.createElement('script');
+          script.src = 'https://www.googletagmanager.com/gtag/js?id=G-16RNLCMG36';
+          script.async = true;
+          document.head.appendChild(script);
+
+          window.dataLayer = window.dataLayer || [];
+          function gtag() { dataLayer.push(arguments); }
+          window.gtag = gtag;
+          gtag('js', new Date());
+          gtag('config', 'G-16RNLCMG36', {
+            page_path: window.location.pathname,
+            anonymize_ip: true
+          });
+        }
+
+        /* 3 seconds baad load karo */
+        var timer = setTimeout(loadGTM, 3000);
+
+        /* Ya jab user pehli baar interact kare — jo pehle ho */
+        ['scroll', 'click', 'keydown', 'touchstart', 'mousemove'].forEach(function (evt) {
+          window.addEventListener(evt, function onInteract() {
+            clearTimeout(timer);
+            loadGTM();
+            /* Ek baar chalane ke baad listener hata do */
+            ['scroll', 'click', 'keydown', 'touchstart', 'mousemove'].forEach(function (e) {
+              window.removeEventListener(e, onInteract);
+            });
+          }, { once: true, passive: true });
+        });
+      })();
+    </script>
+
+    <!-- =====================================================
+         ❌ SUBSCRIBE WITH GOOGLE (SWG) — REMOVED
+         Ye Google script page me apna khud ka light-theme UI
+         inject karti thi (grey/white box) + 79KB bekar load.
+         openaccess mode me iska koi fayda bhi nahi tha.
+    ====================================================== -->
+
+      <!-- OneSignal Push Notifications — category-based segmentation -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.js" async></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(function(OneSignal) {
+        OneSignal.init({
+          appId: "931266b5-659b-43bd-9e54-e2e7faa188e8",
+          notifyButton: {
+            enable: true,
+            position: 'bottom-left',
+            size: 'medium',
+            showCredit: false,
+          },
+          promptOptions: {
+            slidedown: {
+              enabled: true,
+              autoPrompt: true,
+              timeDelay: 10,
+              pageViews: 2,
+              categories: [
+                { tag: 'job_alerts', label: 'Job Alerts' },
+                { tag: 'exam_updates', label: 'Exam Updates' },
+                { tag: 'breaking_news', label: 'Breaking News' }
+              ]
+            }
+          }
+        });
+      });
+    </script>
+    </body>
+</html>
