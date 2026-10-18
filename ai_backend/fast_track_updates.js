@@ -8,7 +8,13 @@ const axios = require("axios");
 const { google } = require("googleapis");
 const cheerio = require("cheerio");
 const Parser = require("rss-parser");
-const { parsePublishedAt, isRecentPublication, extractPublishedAtFromHtml, DEFAULT_MAX_AGE_DAYS } = require("./source_freshness");
+const { parsePublishedAt, extractPublishedAtFromHtml } = require("./source_freshness");
+const {
+    MAX_SCRAPER_AGE_DAYS,
+    isWithinScraperWindow,
+    compareNewestFirst,
+    isInterviewNotice,
+} = require("./scraper_policy");
 
 // =========================================================
 // 🔐 FIREBASE INIT
@@ -402,8 +408,30 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
         }
     }
 
+    const uniqueItems = new Map();
+    const now = Date.now();
+    for (const item of allItems) {
+        const title = (item.title || '').trim();
+        const link = (item.link || item.guid || '').trim();
+        if (!title || !link || link.includes('127.0.0.1')) continue;
+        if (isInterviewNotice(title)) {
+            logger(`⏭️ Interview-only notice excluded: ${title}`);
+            continue;
+        }
+        const publishedAt = parsePublishedAt(item.isoDate, item.pubDate);
+        if (publishedAt && !isWithinScraperWindow(publishedAt, { now })) {
+            logger(`⏭️ Outside ${MAX_SCRAPER_AGE_DAYS}-day window: ${title.slice(0, 70)}`);
+            continue;
+        }
+        if (!uniqueItems.has(link.toLowerCase())) uniqueItems.set(link.toLowerCase(), item);
+    }
+    allItems = [...uniqueItems.values()].sort((a, b) => compareNewestFirst(
+        { publishedAt: parsePublishedAt(a.isoDate, a.pubDate) },
+        { publishedAt: parsePublishedAt(b.isoDate, b.pubDate) }
+    ));
+
     if (allItems.length === 0) {
-        logger("❌ No items found from any source");
+        logger(`❌ No dated, fresh, non-interview items found in the last ${MAX_SCRAPER_AGE_DAYS} days`);
         return [];
     }
 
@@ -455,8 +483,9 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
         const rssPublishedAt = parsePublishedAt(item.isoDate, item.pubDate);
 
         if (!title || !link || link.includes('127.0.0.1')) continue;
-        if (rssPublishedAt && !isRecentPublication(rssPublishedAt, { maxAgeDays: DEFAULT_MAX_AGE_DAYS })) {
-            logger(`⏭️ Stale feed item (> ${DEFAULT_MAX_AGE_DAYS}d): ${title.slice(0, 70)}`);
+        if (isInterviewNotice(title)) continue;
+        if (rssPublishedAt && !isWithinScraperWindow(rssPublishedAt)) {
+            logger(`⏭️ Outside ${MAX_SCRAPER_AGE_DAYS}-day window: ${title.slice(0, 70)}`);
             continue;
         }
 
@@ -480,8 +509,8 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
             const linksText = await scrapePage(link);
             const pageDate = linksText.match(/^SOURCE_PUBLISHED_AT:\s*([^\n]*)/m)?.[1] || "";
             const verifiedPublishedAt = parsePublishedAt(pageDate, rssPublishedAt);
-            if (!isRecentPublication(verifiedPublishedAt, { maxAgeDays: DEFAULT_MAX_AGE_DAYS })) {
-                logger(`⏭️ Unverified/stale source publication date: ${title}`);
+            if (!isWithinScraperWindow(verifiedPublishedAt)) {
+                logger(`⏭️ Unverified or outside ${MAX_SCRAPER_AGE_DAYS}-day window: ${title}`);
                 continue;
             }
             logger(`📋 Verified source date: ${new Date(verifiedPublishedAt).toISOString()}`);
@@ -490,6 +519,10 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
             const extracted = await extractWithAI(linksText, category, title, apiKey, logger);
 
             const finalTitle = extracted.title || title;
+            if (isInterviewNotice(finalTitle)) {
+                logger(`⏭️ Interview-only notice excluded after extraction: ${finalTitle}`);
+                continue;
+            }
             const baseSlug   = extracted.slug  || createSlug(finalTitle);
             const finalSlug  = `${baseSlug}-${dateSuffix}`;
 
