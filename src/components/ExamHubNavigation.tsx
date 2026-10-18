@@ -1,6 +1,6 @@
 /* eslint-disable */
 import { Link } from 'react-router-dom';
-import { Layers, Briefcase, GraduationCap, BookOpen, ClipboardList, Trophy, FileText, Sparkles } from 'lucide-react';
+import { Layers, Briefcase, GraduationCap, BookOpen, ClipboardList, Trophy, FileText, Sparkles, ShieldCheck } from 'lucide-react';
 
 interface ExamHubProps {
   exam: string;
@@ -30,6 +30,16 @@ const examHubMap: Record<string, { icon: any; color: string; links: Array<{ labe
       { label: 'SSC CGL Previous Year', url: '/test?exam=SSC CGL&type=previous', icon: GraduationCap },
     ]
   },
+  'SSC': {
+    icon: Briefcase,
+    color: 'bg-blue-100 text-blue-600',
+    links: [
+      { label: 'SSC Recruitment', url: '/govt-jobs?exam=SSC', icon: Briefcase },
+      { label: 'SSC Mock Tests', url: '/test?exam=SSC', icon: ClipboardList },
+      { label: 'SSC Study Material', url: '/free-study-material?exam=SSC', icon: GraduationCap },
+      { label: 'Latest SSC Updates', url: '/govt-jobs?exam=SSC&type=updates', icon: Sparkles },
+    ]
+  },
   'RAILWAY': {
     icon: Layers,
     color: 'bg-orange-100 text-orange-600',
@@ -38,6 +48,46 @@ const examHubMap: Record<string, { icon: any; color: string; links: Array<{ labe
       { label: 'RRB Group D Syllabus', url: '/govt-jobs?exam=RRB Group D&type=syllabus', icon: BookOpen },
       { label: 'RRB NTPC Mock Tests', url: '/test?exam=RRB NTPC', icon: ClipboardList },
       { label: 'Railway Study Material', url: '/free-study-material?exam=Railway', icon: GraduationCap },
+    ]
+  },
+  'BANKING': {
+    icon: Briefcase,
+    color: 'bg-emerald-100 text-emerald-700',
+    links: [
+      { label: 'Banking Jobs', url: '/govt-jobs?exam=Banking', icon: Briefcase },
+      { label: 'Banking Mock Tests', url: '/test?exam=Banking', icon: ClipboardList },
+      { label: 'Banking Study Material', url: '/free-study-material?exam=Banking', icon: GraduationCap },
+      { label: 'Latest Banking Updates', url: '/govt-jobs?exam=Banking&type=updates', icon: Sparkles },
+    ]
+  },
+  'POLICE': {
+    icon: ShieldCheck,
+    color: 'bg-rose-100 text-rose-700',
+    links: [
+      { label: 'Police Jobs', url: '/govt-jobs?exam=Police', icon: Briefcase },
+      { label: 'Police Mock Tests', url: '/test?exam=Police', icon: ClipboardList },
+      { label: 'Police Study Material', url: '/free-study-material?exam=Police', icon: GraduationCap },
+      { label: 'Latest Police Updates', url: '/govt-jobs?exam=Police&type=updates', icon: Sparkles },
+    ]
+  },
+  'UPSC': {
+    icon: GraduationCap,
+    color: 'bg-indigo-100 text-indigo-700',
+    links: [
+      { label: 'UPSC Jobs', url: '/govt-jobs?exam=UPSC', icon: Briefcase },
+      { label: 'UPSC Mock Tests', url: '/test?exam=UPSC', icon: ClipboardList },
+      { label: 'UPSC Study Material', url: '/free-study-material?exam=UPSC', icon: BookOpen },
+      { label: 'Latest UPSC Updates', url: '/govt-jobs?exam=UPSC&type=updates', icon: Sparkles },
+    ]
+  },
+  'TEACHING': {
+    icon: BookOpen,
+    color: 'bg-amber-100 text-amber-700',
+    links: [
+      { label: 'Teaching Jobs', url: '/govt-jobs?exam=Teaching', icon: Briefcase },
+      { label: 'Teaching Mock Tests', url: '/test?exam=Teaching', icon: ClipboardList },
+      { label: 'Teaching Study Material', url: '/free-study-material?exam=Teaching', icon: GraduationCap },
+      { label: 'Latest Teaching Updates', url: '/govt-jobs?exam=Teaching&type=updates', icon: Sparkles },
     ]
   }
 };
@@ -53,41 +103,27 @@ const defaultHub = {
   ]
 };
 
-const ExamHubNavigation = ({ exam, className = '' }: ExamHubProps) => {
-  const normalizedExam = (exam || '').toUpperCase();
-  let hub = defaultHub;
-  let matchedExam = 'General';
+export function resolveExamHub(exam: unknown) {
+  const normalizedExam = String(exam || '').trim().toUpperCase();
 
-  // Find best matching hub
+  // Match specific exams before broader families (e.g. SSC CGL before SSC).
   for (const [key, value] of Object.entries(examHubMap)) {
-    if (normalizedExam.includes(key) || key.includes(normalizedExam)) {
-      hub = value;
-      matchedExam = key;
-      break;
+    if (normalizedExam && normalizedExam.includes(key)) {
+      return { hub: value, matchedExam: key };
     }
   }
 
-  // If SSC in exam but not specific, use SSC GD as fallback for SSC
-  if (hub === defaultHub && normalizedExam.includes('SSC')) {
-    hub = examHubMap['SSC'] || examHubMap['SSC GD'];
-    matchedExam = 'SSC';
-  }
-  if (hub === defaultHub && /BANK|IBPS|SBI/.test(normalizedExam)) {
-    hub = examHubMap.BANKING;
-    matchedExam = 'BANKING';
-  }
-  if (hub === defaultHub && /POLICE/.test(normalizedExam)) {
-    hub = examHubMap.POLICE;
-    matchedExam = 'POLICE';
-  }
-  if (hub === defaultHub && /UPSC|NDA|CDS/.test(normalizedExam)) {
-    hub = examHubMap.UPSC;
-    matchedExam = 'UPSC';
-  }
-  if (hub === defaultHub && /TEACH|CTET|NET|KVS/.test(normalizedExam)) {
-    hub = examHubMap.TEACHING;
-    matchedExam = 'TEACHING';
-  }
+  if (/BANK|IBPS|SBI/.test(normalizedExam)) return { hub: examHubMap.BANKING, matchedExam: 'BANKING' };
+  if (/POLICE/.test(normalizedExam)) return { hub: examHubMap.POLICE, matchedExam: 'POLICE' };
+  if (/UPSC|NDA|CDS/.test(normalizedExam)) return { hub: examHubMap.UPSC, matchedExam: 'UPSC' };
+  if (/TEACH|CTET|NET|KVS/.test(normalizedExam)) return { hub: examHubMap.TEACHING, matchedExam: 'TEACHING' };
+
+  // Unknown/missing exam families should render the generic hub, never crash the page.
+  return { hub: defaultHub, matchedExam: 'General' };
+}
+
+const ExamHubNavigation = ({ exam, className = '' }: ExamHubProps) => {
+  const { hub = defaultHub, matchedExam = 'General' } = resolveExamHub(exam);
 
   return (
     <div className={`bg-white border rounded-2xl p-5 ${className}`}>
