@@ -9,7 +9,13 @@ const { google } = require("googleapis");
 const cheerio = require("cheerio");
 const Parser = require("rss-parser");
 const { DEFAULT_SOURCES } = require("./source_registry");
-const { buildFastTrackSources, isOfficialSourceUrl, chooseEditorialAngle } = require("./fast_track_sources");
+const {
+    buildFastTrackSources,
+    resolveOfficialSourceUrl,
+    extractOfficialSourceCandidates,
+    isOfficialSourceRelevant,
+    chooseEditorialAngle,
+} = require("./fast_track_sources");
 const { parsePublishedAt, extractPublishedAtFromHtml } = require("./source_freshness");
 const {
     MAX_SCRAPER_AGE_DAYS,
@@ -261,21 +267,47 @@ async function scrapePage(url) {
     return `SOURCE_PUBLISHED_AT: ${sourceDate}\nCONTENT:\n${bodyText}\nLINKS:\n${Array.from(links).join("\n")}`.substring(0, 12000);
 }
 
-async function fetchOfficialSourceText(url, logger = console.log) {
-    if (!isOfficialSourceUrl(url)) return { text: '', status: 'official_link_unavailable' };
-    try {
-        const text = await scrapePage(url);
-        const content = text.match(/CONTENT:\n([\s\S]*?)(?:\nLINKS:\n|$)/)?.[1] || '';
-        if (plainText(content).length < 100) {
-            logger(`⚠️ Official source page had too little readable text: ${url}`);
-            return { text: '', status: 'official_page_thin' };
+async function fetchOfficialSourceText(candidates, logger = console.log, identity = {}) {
+    const input = Array.isArray(candidates) ? candidates : [candidates];
+    const urls = [...new Set(input.map(resolveOfficialSourceUrl).filter(Boolean))].slice(0, 5);
+    if (!urls.length) return { text: '', status: 'official_link_unavailable', url: '' };
+
+    let lastStatus = 'official_fetch_failed';
+    for (const url of urls) {
+        try {
+            let sourceText;
+            if (/\.pdf(?:$|[?#])/i.test(url)) {
+                const { fetchAndExtractSource } = require('./agents/article_agents/source_fetcher');
+                const { assertSourceArticleWorthy } = require('./agents/article_agents/source_adequacy_gate');
+                const source = await fetchAndExtractSource(url);
+                assertSourceArticleWorthy({ ...source, url, via: 'pdf' });
+                sourceText = `CONTENT:\n${source.text || ''}\nTABLES:\n${JSON.stringify(source.tables || [])}`;
+            } else {
+                sourceText = await scrapePage(url);
+            }
+            const content = sourceText.match(/CONTENT:\n([\s\S]*?)(?:\n(?:LINKS|TABLES):\n|$)/)?.[1] || sourceText;
+            if (!/\.pdf(?:$|[?#])/i.test(url)) {
+                const { assertSourceArticleWorthy } = require('./agents/article_agents/source_adequacy_gate');
+                assertSourceArticleWorthy({ url, text: content, tables: [] });
+            }
+            if (plainText(content).length < 100) {
+                logger(`⚠️ Official source page had too little readable text: ${url}`);
+                lastStatus = 'official_page_thin';
+                continue;
+            }
+            if (!isOfficialSourceRelevant({ sourceText, ...identity })) {
+                logger(`⚠️ Official source does not clearly match the discovered notice: ${url}`);
+                lastStatus = 'official_source_mismatch';
+                continue;
+            }
+            logger(`✅ Official source page verified: ${url}`);
+            return { text: sourceText, status: 'verified', url };
+        } catch (err) {
+            logger(`⚠️ Official source fetch failed [${url}]: ${err.message}`);
+            lastStatus = 'official_fetch_failed';
         }
-        logger(`✅ Official source page verified: ${url}`);
-        return { text, status: 'verified' };
-    } catch (err) {
-        logger(`⚠️ Official source fetch failed [${url}]: ${err.message}`);
-        return { text: '', status: 'official_fetch_failed' };
     }
+    return { text: '', status: lastStatus, url: '' };
 }
 
 // =========================================================
@@ -312,25 +344,26 @@ Build the article structure around this angle; do not force the same section seq
 ${String(sourceText).slice(0, 12000)}
 
 === STRICT RULES ===
-1. Names, dates, numbers, status and URLs ko authoritative source se EXACT rakho; conflicting/missing fact ko guess, change, ya invent mat karo.
-2. Missing info par likho: "अधिक जानकारी के लिए आधिकारिक वेबसाइट देखें।" — guess kabhi nahi.
-3. Sirf synonym badal kar source ko spin mat karo. Apna useful explanation, item-specific structure, and reader ke liye next-check guidance do; source ki original wording copy bhi mat karo.
-4. Koi filler/keyword-stuffing nahi. Ye ${category} update hai — job-recruitment wale sections (fee/age/vacancy) FORCE mat karo, sirf relevant sections likho.
-5. Official source text agar supplied ho tabhi use verified official source bolo. Warna source ko verified claim mat karo aur readers ko official notice cross-check karne ko bolo.
+1. Names, dates, numbers, status and URLs ko verified official source se EXACT rakho; missing/conflicting facts ko guess ya invent mat karo.
+2. Missing information ko omit karo ya clearly bolo ki notice mein specify nahi hai; generic rules ko official instruction ki tarah mat likho.
+3. Paraphrase ke liye synonym-swapping mat karo. Sirf genuinely useful context, source-specific explanation, aur reader ke next step add karo.
+4. Repetition, keyword stuffing, fabricated FAQs, generic exam-day advice aur unrelated job sections mana hain. Top summary card mein already dikh rahe facts ko article mein dobara mat bharna.
+5. Sirf fetched official source ko verified bolo. Article ko kabhi "fact-checked" claim mat do; human fact-check metadata alag hai.
+6. How-to steps, ID/print/captcha requirements, dates, application ya login details tabhi likho jab source explicitly support kare.
 
 === OUTPUT ===
-Return ONLY clean HTML (no markdown, no \`\`\`). NO <h1>. Structure:
-1. 2-3 intro <p> (kya update aaya, kiske liye, kya karna hai)
-2. <h2>मुख्य जानकारी (Overview)</h2> + chhota <table> (Organization | Update | Date | Official Link)
-3. Category ke hisaab se relevant <h2> sections:
-   - Result → kaise check करें (<ol> steps), आगे क्या (DV/next stage agar source me ho)
-   - Admit Card → kaise download करें (<ol>), exam day instructions
-   - Answer Key → kaise download/objection process (agar source me ho)
-   - Syllabus/Admission → key details, important points <ul>
-4. <h2>महत्वपूर्ण लिंक</h2> + <table> (sirf official links <a href> ke saath)
-5. Add FAQs only if source-backed questions remain unanswered elsewhere; omit generic/repetitive FAQs.
-6. Chhota conclusion <p> that points to the verified source when available.
-Target: 700-1200 useful words when the source supports it. Kam jankari ho to chhota likho — filler mat daalo.`;
+Return ONLY clean, semantic HTML (no markdown). NO <h1>; page already has its title.
+1. One concise intro paragraph: exact update, audience, and useful action.
+2. 2-4 category-relevant <h2> sections, only where the official source has information:
+   - Result: direct result access and a confirmed next stage, if any.
+   - Admit Card: official portal and only notice-backed download/exam instructions.
+   - Answer Key: objection window/fees only if stated.
+   - Syllabus/Admission: the published syllabus or confirmed admission details.
+3. Use a small responsive table only when it organizes facts better than the page summary card.
+4. Add direct official links with clear labels; do not expose a publisher redirect as an official URL.
+5. FAQs are optional (0-3), only for useful source-backed questions not already answered.
+6. End with one short next-step sentence; no generic wishes or editorial self-praise.
+Typical length: 300-700 useful words when the verified source supports it. Write less when the notice is short; never pad to hit a word count.`;
 
     for (let attempt = 1; attempt <= 2; attempt += 1) {
         try {
@@ -623,27 +656,50 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
                 : (extracted.directLink || link);
 
             logger(`🔗 directLink: ${cleanDirectLink}`);
-            const officialSource = await fetchOfficialSourceText(cleanDirectLink, logger);
-            const officialSourceUrl = officialSource.status === 'verified' ? cleanDirectLink : '';
+            const officialPortalUrl = resolveOfficialSourceUrl(cleanDirectLink);
+            const officialCandidates = [
+                officialPortalUrl || cleanDirectLink,
+                ...extractOfficialSourceCandidates(linksText),
+            ];
+            const officialSource = await fetchOfficialSourceText(officialCandidates, logger, {
+                title: finalTitle,
+                organization: extracted.org,
+            });
+            const officialSourceUrl = officialSource.status === 'verified' ? officialSource.url : '';
+            const directOfficialLink = officialSourceUrl;
             const articleSourceText = officialSource.text
                 ? `DISCOVERY SOURCE (${item.discoverySource || 'RSS'}):\n${linksText}\n\nVERIFIED OFFICIAL SOURCE:\n${officialSource.text}`
                 : linksText;
 
-            // Item-specific, source-grounded article; fact-only fallback remains a draft for review.
+            // Only write a long AI article when a readable official source was fetched.
+            // Otherwise leave a concise, fact-only draft for human review; never pad from an aggregator.
             let articleHtml = '';
             let articleGenerationMode = 'fact_fallback';
             try {
-                const generatedArticle = await generateFullFastTrackArticle({
-                    ...extracted,
-                    directLink: officialSourceUrl,
-                    officialSourceUrl,
-                    discoverySource: item.discoverySource || '',
-                    originalLink: link,
-                }, articleSourceText, category, finalTitle, apiKey, logger);
-                articleHtml = generatedArticle.html;
-                articleGenerationMode = generatedArticle.mode;
+                if (officialSourceUrl) {
+                    const generatedArticle = await generateFullFastTrackArticle({
+                        ...extracted,
+                        directLink: officialSourceUrl,
+                        officialSourceUrl,
+                        discoverySource: item.discoverySource || '',
+                        originalLink: link,
+                    }, articleSourceText, category, finalTitle, apiKey, logger);
+                    articleHtml = generatedArticle.html;
+                    articleGenerationMode = generatedArticle.mode;
+                } else {
+                    logger('🧩 Official source not verified; keeping this as a concise fact-only review draft.');
+                    articleHtml = buildFallbackArticleHtml({
+                        kind: 'fast_track',
+                        title: finalTitle,
+                        organization: extracted.org,
+                        category,
+                        updateDate: extracted.updateDate,
+                        summary: extracted.shortInfo,
+                        originalLink: link,
+                    });
+                }
                 const words = articleHtml.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
-                logger(`📝 Full article (${articleGenerationMode}): ${words} words`);
+                logger(`📝 Article (${articleGenerationMode}; source ${officialSource.status}): ${words} words`);
             } catch (artErr) {
                 logger(`⚠️ Article generation fail (item phir bhi banega): ${artErr.message}`);
             }
@@ -666,7 +722,7 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
             await db.collection("fast_track").doc(finalSlug).set({
                 title:        finalTitle,
                 slug:         finalSlug,
-                directLink:   cleanDirectLink,
+                directLink:   directOfficialLink,
                 shortInfo:    summary,
                 org:          extracted.org        || '',
                 updateDate:   extracted.updateDate || '',

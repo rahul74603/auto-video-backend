@@ -13,8 +13,8 @@
  *                   flagged for HALLUCINATION and publish is blocked.
  *   DUPLICATES    — compares slug/title/content snippet with already-known
  *                   records (jobs, fast_track, other drafts).
- *   QUALITY       — word count (1600-2500), exactly one H1, H2/H3 structure,
- *                   responsive tables, FAQs, SEO title/meta, author label,
+ *   QUALITY       — no-padding technical word floor, semantic headings,
+ *                   responsive tables, optional FAQs, SEO title/meta,
  *                   keyword stuffing and blocked-domain links.
  *
  * Output: { verdict: 'pass'|'fail', score, issues[], warnings[], metrics }
@@ -191,9 +191,7 @@ function checkStructure({ type, article, source, issues, warnings, metrics }) {
   const responsiveWrapped =
     tables === 0 || /table-responsive/.test(html);
 
-  // Word policy: sirf MINIMUM enforce hota hai (type ke hisaab se — JOB 1600,
-  // FAST_TRACK 1200). Upar ki taraf hard limit nahi (admin rule): bahut lambi
-  // ho to sirf warning, publish kabhi block nahi.
+  // Only a low technical floor rejects empty/truncated output; article length is not a ranking target.
   // NOTE: yahan type ARTICLE ka type hai ("JOB"/"FAST_TRACK"), routing ka
   // lowercase nahi — casing pe mat tikna.
   const isFastTrack = String(type || "").toLowerCase().replace(/_/g, "-") === ARTICLE_TYPES.FAST_TRACK;
@@ -206,9 +204,10 @@ function checkStructure({ type, article, source, issues, warnings, metrics }) {
 
   if (metrics.h1Count === 0) issues.push("structure:missing-h1");
   if (metrics.h1Count > 1) issues.push(`structure:multiple-h1:${metrics.h1Count}`);
-  if (metrics.h2Count < 4) issues.push(`structure:too-few-h2:${metrics.h2Count}`);
+  const minH2 = isFastTrack ? 1 : 2;
+  if (metrics.h2Count < minH2) issues.push(`structure:too-few-h2:${metrics.h2Count}`);
   if (!responsiveWrapped) issues.push("structure:table-not-responsive");
-  if (metrics.faqCount < 4) issues.push(`structure:too-few-faqs:${metrics.faqCount}`);
+  // FAQs are optional: only useful, source-grounded questions belong in the article.
 
   const seoTitle = String(article.seoTitle || "").trim();
   if (!seoTitle) issues.push("seo:missing-title");
@@ -233,26 +232,34 @@ function checkStructure({ type, article, source, issues, warnings, metrics }) {
   if (badHref) warnings.push(`links:non-absolute:${badHref}`);
 }
 
-const REQUIRED_JOB_SECTIONS = [
-  { re: /(तिथि|तारीख|dates?)/i, label: "important-dates" },
-  { re: /(शुल्क|फीस|fee)/i, label: "application-fee" },
-  { re: /(पात्रता|योग्यता|eligib|qualification)/i, label: "eligibility" },
-  { re: /(वेतन|सैलरी|salary|pay)/i, label: "salary" },
-  { re: /(चयन\s*प्रक्रिया|selection)/i, label: "selection-process" },
-  { re: /(आवेदन\s*कैसे|आवेदन\s*करें|apply\s*(online|now)?|how\s*to\s*apply)/i, label: "apply-steps" },
-  { re: /(दस्तावेज़|दस्तावेज|documents?)/i, label: "documents" }
+const JOB_FACT_SECTION_RULES = [
+  { fields: ['startDate', 'lastDate'], re: /(तिथि|तारीख|dates?)/i, label: 'important-dates' },
+  { fields: ['feeGen', 'feeSCST', 'feeFemale', 'feeOBC', 'applicationFee'], re: /(शुल्क|फीस|fee)/i, label: 'application-fee' },
+  { fields: ['qualification', 'eligibility'], re: /(पात्रता|योग्यता|eligib|qualification)/i, label: 'eligibility' },
+  { fields: ['salary'], re: /(वेतन|सैलरी|salary|pay)/i, label: 'salary' },
+  { fields: ['selectionProcess'], re: /(चयन\s*प्रक्रिया|selection)/i, label: 'selection-process' },
+  { fields: ['applyLink', 'notificationLink'], re: /(आवेदन\s*कैसे|आवेदन\s*करें|apply\s*(online|now)?|how\s*to\s*apply)/i, label: 'apply-steps' }
 ];
 
-const REQUIRED_FT_SECTIONS = [
-  { re: /(कैसे\s*(चेक|देखें|डाउनलोड)|download|step)/i, label: "how-to-check" },
-  { re: /(important\s*links?|महत्वपूर्ण\s*लिंक|official)/i, label: "important-links" }
-];
+const FT_ACTION_CATEGORIES = new Set(['result', 'admit card', 'answer key']);
 
 function checkRequiredSections({ type, article, issues }) {
-  const html = (article.contentHtml || "").toLowerCase();
-  const required = type === "JOB" ? REQUIRED_JOB_SECTIONS : REQUIRED_FT_SECTIONS;
-  for (const section of required) {
-    if (!section.re.test(html)) issues.push(`section:missing:${section.label}`);
+  const html = (article.contentHtml || '').toLowerCase();
+  const facts = article.facts || {};
+  if (String(type || '').toUpperCase() === 'JOB') {
+    for (const section of JOB_FACT_SECTION_RULES) {
+      const hasSourceFact = section.fields.some((field) => String(facts[field] || '').trim());
+      if (hasSourceFact && !section.re.test(html)) issues.push(`section:missing:${section.label}`);
+    }
+    return;
+  }
+
+  const category = String(facts.category || '').toLowerCase();
+  if (FT_ACTION_CATEGORIES.has(category) && facts.directLink && !/(कैसे|download|check|देखें|चेक)/i.test(html)) {
+    issues.push('section:missing:how-to-check');
+  }
+  if ((facts.directLink || (article.officialLinks || []).length) && !/(important\s*links?|महत्वपूर्ण\s*लिंक|official)/i.test(html)) {
+    issues.push('section:missing:important-links');
   }
 }
 
@@ -631,19 +638,11 @@ module.exports = {
 const ISSUE_GUIDANCE = [
   {
     re: /^word-count-low:(\d+)/,
-    fix: (m) =>
-      `Article sirf ${m[1]} words ki bani — minimum se kam hai. Har <h2> section me 2-4 EXTRA ` +
-      "grounded sentences jodo (source ki dates/fee/eligibility/selection/details apne shabdon me), " +
-      "har table ke upar-neeche 1-2 context lines likho, FAQ answers thode vistrit karo. " +
-      "KOI naya fact/number invent kiye bina length badhao — target ~2000 words."
+    fix: () => "Article output bahut chhota/adhura hai: source-backed core answer, practical next step, aur relevant official link add karo. Word count badhane ke liye filler ya repeated facts mat jodo."
   },
   {
     re: /^structure:too-few-h2/,
-    fix: () => "Kam se kam 8 <h2> sections likho — di gayi fixed section-order list ke saare sections."
-  },
-  {
-    re: /^structure:too-few-faqs/,
-    fix: () => "EXACTLY 6 FAQs likho (h3 question + grounded answer) — 4 se kam FAIL hai."
+    fix: () => "Sirf zaroori, source-supported headings add karo; fixed section list ya word-count padding mat karo."
   },
   {
     re: /^structure:missing-h1/,

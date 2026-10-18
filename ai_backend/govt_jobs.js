@@ -28,6 +28,14 @@ const {
     htmlWordCount,
     backfillDraftDescriptions,
 } = require("./description_fallback");
+const {
+    isOfficialSourceUrl,
+    resolveOfficialSourceUrl,
+    extractOfficialSourceCandidates,
+    isOfficialSourceRelevant,
+} = require("./fast_track_sources");
+const { fetchAndExtractSource } = require("./agents/article_agents/source_fetcher");
+const { assertSourceArticleWorthy } = require("./agents/article_agents/source_adequacy_gate");
 
 // =========================================================
 // 🔐 FIREBASE INIT
@@ -77,31 +85,6 @@ function shouldSkipTitle(title) {
     if (!title) return true;
     const lower = title.toLowerCase();
     return isInterviewNotice(title) || SKIP_KEYWORDS.some(kw => lower.includes(kw));
-}
-
-// =========================================================
-// 🚫 BLOCKED DOMAINS
-// Sirf applyLink, notificationLink, officialSiteLink
-// mein ye domains nahi aane chahiye
-// RSS fetch aur scraping pe koi asar nahi
-// =========================================================
-const BLOCKED_DOMAINS = [
-    'freejobalert.com',
-    'sarkariresult.com',
-    'rojgarresult.com',
-    'naukri.com',
-    'shine.com',
-    'monster.com'
-];
-
-function isBlockedLink(url) {
-    if (!url || url === '#' || url.trim() === '') return false;
-    try {
-        const hostname = new URL(url).hostname.toLowerCase();
-        return BLOCKED_DOMAINS.some(domain => hostname.includes(domain));
-    } catch {
-        return false;
-    }
 }
 
 // =========================================================
@@ -252,7 +235,7 @@ Follow these mapping rules to fill EVERY field:
 16. feeOBC: OBC/EWS fee amount
 17. applicationFee: Payment mode description
 18. notificationLink: URL from brackets like (URL: https://...) - ONLY official govt/org URLs
-19. applyLink: Official apply URL only, default "${jobLink}"
+19. applyLink: Official apply URL only; if the source does not include one, return an empty string (never use the RSS/aggregator URL).
 20. officialSiteLink: Official website URL
 21. isExpired: Compare lastDate with today (${todayDate}), true if expired
 22. category: ssc/banking/railway/upsc/defense/teaching/state/engineering/other
@@ -285,7 +268,7 @@ Return ONLY this JSON (no markdown):
   "feeOBC": "",
   "applicationFee": "",
   "notificationLink": "",
-  "applyLink": "${jobLink}",
+  "applyLink": "",
   "officialSiteLink": "",
   "description": "3-4 line Hinglish summary",
   "isExpired": false
@@ -300,6 +283,54 @@ Return ONLY this JSON (no markdown):
     let data = JSON.parse(text);
     if (Array.isArray(data)) data = data[0];
     return data;
+}
+
+async function fetchOfficialJobSource(scrapedContent, jobData, logger = console.log) {
+    const rawCandidates = [
+        jobData?.notificationLink,
+        ...extractOfficialSourceCandidates(scrapedContent),
+        jobData?.officialSiteLink,
+        jobData?.applyLink,
+    ];
+    const candidates = [...new Set(rawCandidates.map(resolveOfficialSourceUrl).filter(Boolean))]
+        .sort((a, b) => Number(/\.pdf(?:$|[?#])/i.test(b)) - Number(/\.pdf(?:$|[?#])/i.test(a)))
+        .slice(0, 5);
+    if (!candidates.length) return { status: 'official_link_unavailable', url: '', text: '' };
+
+    let lastStatus = 'official_fetch_failed';
+    for (const url of candidates) {
+        try {
+            const source = await fetchAndExtractSource(url, { timeoutMs: 35000 });
+            assertSourceArticleWorthy({ ...source, url });
+            const sourceText = [
+                `OFFICIAL SOURCE URL: ${url}`,
+                `PAGE TITLE: ${source.pageTitle || ''}`,
+                source.text || '',
+                ...(source.tables || []).map((rows, index) => `TABLE ${index + 1}:\n${rows.map((row) => row.join(' | ')).join('\n')}`),
+                ...(source.links || []).map((link) => `LINK: ${link.text || ''} -> ${link.url || ''}`),
+            ].filter(Boolean).join('\n\n').slice(0, 24000);
+            if (sourceText.replace(/\s+/g, ' ').trim().length < 400) {
+                lastStatus = 'official_page_thin';
+                logger(`⚠️ Official job source was too thin to ground an article: ${url}`);
+                continue;
+            }
+            if (!isOfficialSourceRelevant({
+                sourceText,
+                title: jobData?.title,
+                organization: jobData?.organization,
+            })) {
+                lastStatus = 'official_source_mismatch';
+                logger(`⚠️ Official source does not clearly match this job: ${url}`);
+                continue;
+            }
+            logger(`✅ Official job source fetched: ${url}`);
+            return { status: 'verified', url, text: sourceText, source };
+        } catch (err) {
+            lastStatus = 'official_fetch_failed';
+            logger(`⚠️ Official job source fetch failed [${url}]: ${err.message}`);
+        }
+    }
+    return { status: lastStatus, url: '', text: '' };
 }
 
 // =========================================================
@@ -320,40 +351,34 @@ async function generateFullJobArticle(jobData, scrapedContent) {
         officialSiteLink: jobData.officialSiteLink
     });
 
-    const prompt = `Act as StudyGyaan's senior editorial writer for Indian government-job aspirants.
-Write a COMPLETE, ORIGINAL, source-grounded job article in easy Hinglish (Hindi-English mix, Devanagari for Hindi words).
+    const prompt = `Act as StudyGyaan's careful editorial writer for Indian government-job applicants.
+Write a useful, source-grounded job article in clear Hinglish (Hindi in Devanagari, standard English terms where clearer).
 
-=== VERIFIED FACTS (in JSON — inhi facts ko use karo) ===
+=== EXTRACTED FACTS ===
 ${facts}
 
-=== OFFICIAL SOURCE TEXT (ground truth) ===
-${String(scrapedContent).slice(0, 15000)}
+=== OFFICIAL SOURCE TEXT (primary source; authoritative) ===
+${String(scrapedContent).slice(0, 18000)}
 
-=== STRICT RULES ===
-1. Facts (dates/fees/vacancies/qualification/links) SIRF upar se lo. Koi fact INVENT mat karo.
-2. Agar koi fact missing hai to us section me likho: "अधिक जानकारी के लिए आधिकारिक नोटिफिकेशन देखें।" — guess kabhi nahi.
-3. Source ke sentences WORD-BY-WORD copy MAT karo — apni original editorial wording likho (facts same rahenge).
-4. Koi keyword stuffing nahi, koi filler repetition nahi, koi generic AI padding nahi. Har paragraph useful ho.
-5. Sirf OFFICIAL links use karo (jo facts me diye hain). Koi third-party job portal nahi.
+=== STRICT EDITORIAL RULES ===
+1. Use exact dates, amounts, vacancy counts, category/reservation, qualifications, age cut-off, address, selection steps and URLs from the official source only. Do not infer or fill gaps from common recruitment patterns.
+2. Do not add an experience requirement, age-relaxation rule, document list, application instruction, exam date, fee, or eligibility condition unless the official source explicitly says it.
+3. Missing fields should be omitted or described as "नोटिफिकेशन में स्पष्ट नहीं"; never turn missing data into a guess or a generic government rule.
+4. Do not spin the source by swapping synonyms. Explain the practical implications of the actual notice in original wording.
+5. Remove filler, repeated facts, keyword stuffing, generic advice and FAQs that merely restate the overview. Do not repeat all facts already shown in the page summary cards.
+6. Never claim "fact-checked" or imply a human review. The content is an editorial draft until a human verifies it.
+7. Use only direct official links supplied in the extracted facts. Never label a publisher/aggregator redirect as an official application link.
 
-=== OUTPUT FORMAT ===
-- Return ONLY clean HTML (no markdown, no \`\`\`, no <html>/<head>/<body> tags).
-- NO <h1> (page title already H1 hai). Structure:
-  1. 2-3 intro <p> (kya bharti hai, kaun apply kar sakta hai, deadline)
-  2. <h2>संक्षिप्त जानकारी (Overview)</h2> + <table> (Organization | Post | Advt No | Vacancies | Mode | Last Date | Official Website)
-  3. <h2>महत्वपूर्ण तिथियाँ (Important Dates)</h2> + <table> (sirf available dates)
-  4. <h2>पद एवं रिक्तियों का विवरण (Vacancy Details)</h2>
-  5. <h2>शैक्षणिक योग्यता (Educational Qualification)</h2>
-  6. <h2>आयु सीमा (Age Limit)</h2>
-  7. <h2>वेतन (Salary / Pay Scale)</h2>
-  8. <h2>आवेदन शुल्क (Application Fee)</h2> + <table> (sirf available categories)
-  9. <h2>चयन प्रक्रिया (Selection Process)</h2>
-  10. <h2>आवेदन कैसे करें (How to Apply)</h2> + <ol> numbered steps
-  11. <h2>महत्वपूर्ण निर्देश (Important Instructions)</h2> + <ul>
-  12. <h2>महत्वपूर्ण लिंक (Important Links)</h2> + <table> (Apply Online / Notification PDF / Official Website — sirf diye hue official links, <a href> ke saath)
-  13. <h2>अक्सर पूछे जाने वाले प्रश्न (FAQs)</h2> + 5-7 <h3>Question</h3><p>Answer</p> pairs (source-grounded answers)
-  14. Chhota useful conclusion <p> (official notification check karke deadline se pehle apply karne ki salah)
-- Target: 1500-2200 meaningful words. Agar source me kam jankari hai to chhota likho — filler add MAT karo.`;
+=== OUTPUT ===
+Return only clean semantic HTML, no markdown, <html>/<head>/<body>, or <h1> (the page already has its H1).
+- Begin with one short paragraph explaining the role, who can apply (only if confirmed), the application mode, and deadline.
+- Add a compact Overview table only if it helps scan facts; do not repeat the same table again later.
+- Add only relevant sections whose facts exist: dates; vacancy/contract details; eligibility; age/cut-off; salary; fee; selection; how to apply; official links.
+- Application steps must reflect the actual mode and exact source instructions. Include address, documents, delivery method and cut-off time only when printed in the notice.
+- Age and fee sections must not invent defaults. State when the notice/listing does not provide a value.
+- FAQs are optional (0-4). Include only useful questions not already answered in the article, with source-backed answers.
+- Use responsive tables for compact facts. No generic wishes or self-promotional conclusion.
+Typical length: 500-1000 useful words when the official notice supports it. Write less for a short notice; there is no word-count quota.`;
 
     for (let attempt = 1; attempt <= 2; attempt += 1) {
         try {
@@ -501,8 +526,8 @@ async function fetchAllJobItems(perSource = 12, limitTotal = 60) {
 }
 
 // =========================================================
-// ⭐ JOB QUALITY SCORE — best quality jobs hi save honge
-// Facts completeness + article length (max ~14 points)
+// ⭐ JOB QUALITY SCORE — factual completeness and official-source provenance
+// Article length never adds quality points.
 // =========================================================
 function jobQualityScore(jobData, articleHtml) {
     let score = 0;
@@ -514,10 +539,9 @@ function jobQualityScore(jobData, articleHtml) {
     if (jobData.organization)  score += 1;
     if (jobData.feeGen || jobData.applicationFee) score += 1;
     if (jobData.notificationLink || jobData.applyLink) score += 1;
+    if (jobData.sourceVerificationStatus === 'verified' && jobData.officialSourceUrl) score += 2;
     const words = String(articleHtml || '').replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
-    if (words >= 1500)      score += 3;
-    else if (words >= 1000) score += 2;
-    else if (words >= 600)  score += 1;
+    // Do not award quality points for length; score factual completeness and source provenance.
     return { score, words };
 }
 
@@ -654,7 +678,34 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
             }
 
             console.log(`🤖 AI Processing: ${titleText}`);
-            const jobData = await extractJobDataWithAI(scrapedContent, jobLink);
+            const discoveryData = await extractJobDataWithAI(scrapedContent, jobLink);
+            const officialSource = await fetchOfficialJobSource(scrapedContent, {
+                ...discoveryData,
+                title: discoveryData.title || titleText,
+            });
+            let jobData = discoveryData;
+            if (officialSource.status === 'verified') {
+                const officialData = await extractJobDataWithAI(officialSource.text, officialSource.url);
+                jobData = {
+                    ...officialData,
+                    title: officialData.title || discoveryData.title || titleText,
+                    slug: discoveryData.slug || officialData.slug || '',
+                    category: officialData.category || discoveryData.category || 'other',
+                    organization: officialData.organization || discoveryData.organization || '',
+                    notificationLink: officialSource.url,
+                    applyLink: officialData.applyLink || discoveryData.applyLink || '',
+                    officialSiteLink: officialData.officialSiteLink || discoveryData.officialSiteLink || '',
+                    sourceVerificationStatus: 'verified',
+                    officialSourceUrl: officialSource.url,
+                };
+            } else {
+                jobData = {
+                    ...discoveryData,
+                    sourceVerificationStatus: officialSource.status,
+                    officialSourceUrl: '',
+                };
+                console.log(`⚠️ Official job source not verified (${officialSource.status}); generated article will stay fact-only and require review.`);
+            }
 
             const finalTitle = jobData.title || titleText;
             if (isInterviewNotice(finalTitle)) {
@@ -683,40 +734,47 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 continue;
             }
 
-            // =========================================================
-            // ✅ SIRF LINKS CLEAN KARO - RSS fetch pe koi asar nahi
-            // applyLink blocked → original jobLink use karo
-            // notificationLink blocked → empty string
-            // officialSiteLink blocked → empty string
-            // =========================================================
-            const cleanApplyLink = isBlockedLink(jobData.applyLink)
-                ? jobLink
-                : (jobData.applyLink || jobLink);
-
-            const cleanNotificationLink = isBlockedLink(jobData.notificationLink)
-                ? ''
-                : (jobData.notificationLink || '');
-
-            const cleanOfficialSiteLink = isBlockedLink(jobData.officialSiteLink)
-                ? ''
-                : (jobData.officialSiteLink || '');
+            // Keep CTA/source links on HTTPS official institution domains only.
+            // An RSS aggregator URL must never be relabeled as the official apply link.
+            const cleanApplyLink = officialSource.status === 'verified'
+                ? resolveOfficialSourceUrl(jobData.applyLink)
+                    || resolveOfficialSourceUrl(isOfficialSourceUrl(jobLink) ? jobLink : '')
+                : '';
+            const cleanNotificationLink = officialSource.status === 'verified' ? officialSource.url : '';
+            const cleanOfficialSiteLink = officialSource.status === 'verified'
+                ? resolveOfficialSourceUrl(jobData.officialSiteLink)
+                : '';
 
             console.log(`🔗 applyLink: ${cleanApplyLink}`);
 
-            // ✍️ FULL ARTICLE — scraper ke saath hi ready (admin ko bas review karna hai)
+            // Long AI articles require readable official-source text. If unavailable,
+            // preserve a concise fact-only draft for human review instead of inventing filler.
             let articleHtml = '';
+            let articleGenerationMode = 'fact_fallback';
             try {
-                articleHtml = await generateFullJobArticle({
-                    ...jobData,
-                    title: finalTitle,
-                    applyLink: cleanApplyLink,
-                    notificationLink: cleanNotificationLink,
-                    officialSiteLink: cleanOfficialSiteLink,
-                }, scrapedContent);
+                if (officialSource.status === 'verified') {
+                    articleHtml = await generateFullJobArticle({
+                        ...jobData,
+                        title: finalTitle,
+                        applyLink: cleanApplyLink,
+                        notificationLink: cleanNotificationLink,
+                        officialSiteLink: cleanOfficialSiteLink,
+                    }, officialSource.text);
+                    articleGenerationMode = 'ai_generated';
+                } else {
+                    articleHtml = buildFallbackArticleHtml({
+                        ...jobData,
+                        kind: 'job',
+                        title: finalTitle,
+                        originalLink: jobLink,
+                        officialSourceUrl: '',
+                        summary: jobData.description,
+                    });
+                }
                 const words = articleHtml.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
-                console.log(`📝 Full article generated: ${words} words`);
+                console.log(`📝 Article (${articleGenerationMode}; source ${officialSource.status}): ${words} words`);
             } catch (artErr) {
-                console.warn(`⚠️ Full article generation fail (draft phir bhi banega): ${artErr.message}`);
+                console.warn(`⚠️ Job article generation failed (draft remains review-only): ${artErr.message}`);
             }
 
             const description = buildDescription({
@@ -768,6 +826,10 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 officialSiteLink: cleanOfficialSiteLink,
                 originalLink:     jobLink,
                 sourcePublishedAt: new Date(verifiedPublishedAt).toISOString(),
+                sourceVerificationStatus: officialSource.status,
+                officialSourceUrl: officialSource.status === 'verified' ? officialSource.url : '',
+                articleGenerationMode,
+                requiresHumanReview: true,
                 internalLinks:    internalLinks,
                 createdAt:        admin.firestore.FieldValue.serverTimestamp()
             };

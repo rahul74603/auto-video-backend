@@ -297,8 +297,8 @@ test("source fetcher fails when page has too little text", async () => {
 test("job writer prompt is source-grounded and demands the required structure", () => {
   const prompt = buildJobWriterPrompt({ source: makeJobSource(), instructions: "focus on dates" });
   assert.match(prompt, /NEVER invent or guess dates/);
-  assert.match(prompt, /ABSOLUTE MINIMUM 1600/); // word policy: min-only, upar ki hard limit nahi
-  assert.match(prompt, /AIM 2000 meaningful words/); // safety-margin aim (review min se upar)
+  assert.match(prompt, /No hard word-count quota/);
+  assert.doesNotMatch(prompt, /ABSOLUTE MINIMUM|AIM 2000/);
   assert.match(prompt, /VERIFIED FACT SHEET/); // strict number/date allowlist
   assert.match(prompt, /table-responsive/);
   assert.match(prompt, new RegExp(EDITORIAL_AUTHOR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -524,7 +524,7 @@ test("reviewer blocks structural problems and wrong author", () => {
 
   const noFaq = { ...article, faqs: [] };
   const faqReview = reviewArticle({ type: "JOB", article: noFaq, source, existing: {} });
-  assert.ok(faqReview.issues.some((i) => i.startsWith("structure:too-few-faqs")));
+  assert.ok(!faqReview.issues.some((i) => i.startsWith("structure:too-few-faqs")), "FAQs are optional");
 
   const badAuthor = { ...article, authorName: "Rahul Kumar" };
   const authorReview = reviewArticle({ type: "JOB", article: badAuthor, source, existing: {} });
@@ -1515,32 +1515,24 @@ test("word policy: JOB me 3000 words pe koi 'high' issue NAHI (upar ki koi hard 
   assert.deepEqual(wordIssues, [], `unexpected: ${wordIssues.join("|")}`);
 });
 
-test("word policy: JOB me 1500 words → low issue (<1600 min)", () => {
-  const review = reviewArticle({
-    type: "JOB",
-    article: tinyArticle("JOB", 1500),
-    source: { url: "https://example.com/x.pdf", text: "x".repeat(500), tables: [], links: [] },
-    existing: { titles: [], urls: [] }
-  });
-  assert.ok(review.issues.some((i) => i.startsWith("word-count-low")));
-});
-
-test("word policy: FAST_TRACK min 1200 — 1300 pe koi low issue nahi, 1000 pe aata hai", () => {
+test("word policy: source-fit articles have no SEO word quota; only empty/truncated output fails", () => {
   const src = { url: "https://example.com/r.pdf", text: "r".repeat(500), tables: [], links: [] };
-  const ok1300 = reviewArticle({
+  for (const [type, words] of [["JOB", 350], ["FAST_TRACK", 180]]) {
+    const review = reviewArticle({
+      type,
+      article: tinyArticle(type, words),
+      source: src,
+      existing: { titles: [], urls: [] }
+    });
+    assert.ok(!(review.issues || []).some((i) => i.startsWith("word-count-low")), `${type} ${words} words should not be penalized`);
+  }
+  const tooShort = reviewArticle({
     type: "FAST_TRACK",
-    article: tinyArticle("FAST_TRACK", 1300),
+    article: tinyArticle("FAST_TRACK", 20),
     source: src,
     existing: { titles: [], urls: [] }
   });
-  assert.ok(!(ok1300.issues || []).some((i) => i.startsWith("word-count-low")), "1300 words FT pe block nahi hona chahiye");
-  const low1000 = reviewArticle({
-    type: "FAST_TRACK",
-    article: tinyArticle("FAST_TRACK", 1000),
-    source: src,
-    existing: { titles: [], urls: [] }
-  });
-  assert.ok(low1000.issues.some((i) => i.startsWith("word-count-low")));
+  assert.ok(tooShort.issues.some((i) => i.startsWith("word-count-low")));
 });
 
 /* ================================================================== */

@@ -40,6 +40,9 @@ const OFFICIAL_HOSTS = new Set([
     'cbse.gov.in',
     'ssc.gov.in',
     'upsc.gov.in',
+    // Institution / exam portals that are official but do not use .gov.in.
+    'uiic.co.in',
+    'ibpsreg.ibps.in',
 ]);
 
 function isOfficialSourceUrl(value) {
@@ -52,6 +55,91 @@ function isOfficialSourceUrl(value) {
     } catch {
         return false;
     }
+}
+
+/**
+ * Resolve a direct official HTTPS URL from a publisher redirect only when the
+ * decoded destination passes the same institution-host allowlist. Never fetch
+ * an arbitrary URL just because it appeared in a redirect parameter.
+ */
+function resolveOfficialSourceUrl(value) {
+    let candidate = String(value || '').trim();
+    const redirectKeys = ['url', 'target', 'destination', 'dest', 'redirect', 'redirect_url', 'u', 'link'];
+
+    for (let depth = 0; depth < 4 && candidate; depth += 1) {
+        let parsed;
+        try {
+            parsed = new URL(candidate);
+        } catch {
+            return '';
+        }
+        if (isOfficialSourceUrl(parsed.toString())) return parsed.toString();
+        if (parsed.protocol !== 'https:') return '';
+
+        let next = '';
+        for (const key of redirectKeys) {
+            const value = parsed.searchParams.get(key);
+            if (!value) continue;
+            try {
+                next = decodeURIComponent(value);
+            } catch {
+                next = value;
+            }
+            if (next && next !== candidate) break;
+        }
+        if (!next || next === candidate) return '';
+        candidate = next;
+    }
+    return '';
+}
+
+function extractOfficialSourceCandidates(text) {
+    const candidates = [];
+    const seen = new Set();
+    const pattern = /(?:URL:\s*|href=["'])(https?:\/\/[^\s)"'<>]+)/gi;
+    for (const match of String(text || '').matchAll(pattern)) {
+        const url = resolveOfficialSourceUrl(match[1].replace(/&amp;/g, '&'));
+        if (!url || seen.has(url)) continue;
+        seen.add(url);
+        candidates.push(url);
+    }
+    return candidates;
+}
+
+const SOURCE_MATCH_STOP_WORDS = new Set([
+    'the', 'and', 'for', 'from', 'with', 'under', 'notice', 'notification', 'recruitment',
+    'vacancy', 'vacancies', 'result', 'admit', 'card', 'answer', 'key', 'syllabus', 'update',
+    'application', 'apply', 'online', 'official', '2024', '2025', '2026', '2027',
+]);
+
+function sourceTerms(value) {
+    return new Set(String(value || '').toLowerCase().match(/[a-z0-9]+/g)?.filter((term) =>
+        term.length >= 3 && !SOURCE_MATCH_STOP_WORDS.has(term) && !/^20\d{2}$/.test(term)
+    ) || []);
+}
+
+/** Conservative identity check: official hosts alone do not prove the source
+ * belongs to the discovered notice. Require distinctive title and, when known,
+ * organization evidence before using extracted text as a verified source. */
+function isOfficialSourceRelevant({ sourceText, title, organization } = {}) {
+    const source = String(sourceText || '').toLowerCase();
+    const sourceTokenSet = sourceTerms(source);
+    const titleTerms = sourceTerms(title);
+    const organizationTerms = sourceTerms(organization);
+    if (!source || titleTerms.size === 0) return false;
+
+    const titleHits = [...titleTerms].filter((term) => sourceTokenSet.has(term)).length;
+    const organizationHits = [...organizationTerms].filter((term) => sourceTokenSet.has(term)).length;
+    const organizationAcronyms = String(organization || '').match(/\b[A-Z]{2,}\b/g) || [];
+    const acronymMatch = organizationAcronyms.some((acronym) =>
+        new RegExp(`\\b${acronym.toLowerCase()}\\b`).test(source)
+    );
+    const organizationMatch = organizationTerms.size === 0
+        || organizationHits >= Math.min(2, organizationTerms.size)
+        || acronymMatch;
+
+    if (!organizationMatch) return false;
+    return titleHits >= Math.min(2, titleTerms.size);
 }
 
 function chooseEditorialAngle(title, category) {
@@ -92,5 +180,8 @@ module.exports = {
     FAST_TRACK_DISCOVERY_SOURCES,
     buildFastTrackSources,
     isOfficialSourceUrl,
+    resolveOfficialSourceUrl,
+    extractOfficialSourceCandidates,
+    isOfficialSourceRelevant,
     chooseEditorialAngle,
 };

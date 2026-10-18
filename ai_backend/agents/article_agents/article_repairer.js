@@ -11,11 +11,10 @@
  *   2. facts info-box cleaning  — jisme aisa number/date hai jo SOURCE me
  *      hai hi nahi, wo field CLEAR (galat data site ke box me kabhi nahi)
  *   3. facts dates harvest      — body me likhi dates khaali info-box me bharo
- *   4. ungrounded FAQs DROP     — jisme source-me-na-mila number ho (tabhi
- *      jab 4+ FAQs bachti hon aur word-floor na toote)
+ *   4. ungrounded FAQs DROP     — jisme source-me-na-mila number ho; FAQs are optional.
  *
- *  Jo cheezein deterministically theek nahi ho sakti (word-count kam,
- *  sections missing, body-prose me ungrounded claims...) unke liye
+ *  Jo cheezein deterministically theek nahi ho sakti (core content missing,
+ *  source sections absent, body-prose me ungrounded claims...) unke liye
  *  article_pipeline ka AUTO-REPAIR LOOP writer ko review-feedback dekar
  *  dobara likhwata hai.
  *
@@ -32,11 +31,7 @@ const {
 } = require("./fact_quality_reviewer");
 const { harvestFactsDates } = require("./facts_date_harvester");
 const { harvestSmartFacts } = require("./smart_facts_harvester");
-const {
-  ARTICLE_TYPES,
-  WORD_TARGET_MIN_JOB,
-  WORD_TARGET_MIN_FAST_TRACK
-} = require("./constants");
+const { ARTICLE_TYPES } = require("./constants");
 const { countWords } = require("./article_html_utils");
 
 /**
@@ -68,11 +63,6 @@ function normalizedType(articleType) {
   return String(articleType || "").toLowerCase().replace(/_/g, "-");
 }
 
-function minWordsFor(articleType) {
-  return normalizedType(articleType) === ARTICLE_TYPES.FAST_TRACK
-    ? WORD_TARGET_MIN_FAST_TRACK
-    : WORD_TARGET_MIN_JOB;
-}
 
 /**
  * Source extract se verified numbers/dates/amounts ki allowlist.
@@ -191,29 +181,17 @@ function repairArticleDeterministically(article, source, { applyMode = false } =
     for (const field of smartFilled) repairs.push(`facts:${field}:source-harvested`);
   }
 
-  // 6. Ungrounded FAQs DROP — sirf jab 4+ FAQs bachti hon (reviewer min 4)
-  //    aur word-floor na toot'ta ho (reviewer word-count bhi check karta hai).
-  if (index && !applyMode && Array.isArray(article.faqs) && article.faqs.length > 4) {
-    const badIdx = [];
-    article.faqs.forEach((faq, i) => {
+  // Drop every ungrounded FAQ; FAQs are optional and no word-count floor may force padding.
+  if (index && !applyMode && Array.isArray(article.faqs) && article.faqs.length) {
+    const kept = article.faqs.filter((faq) => {
       const text = `${faq?.question || ""} ${faq?.answer || ""}`;
       const claims = extractClaims(text);
-      if (claims.some((c) => !isClaimGrounded(c, index.haystackNorm, index.sourceNumbers))) {
-        badIdx.push(i);
-      }
+      return !claims.some((claim) => !isClaimGrounded(claim, index.haystackNorm, index.sourceNumbers));
     });
-    if (badIdx.length) {
-      const kept = article.faqs.filter((_, i) => !badIdx.includes(i));
-      const droppedText = article.faqs
-        .filter((_, i) => badIdx.includes(i))
-        .map((f) => `${f.question} ${f.answer}`)
-        .join(" ");
-      const wordFloor = minWordsFor(article.type);
-      const projectedWords = (article.wordCount || 0) - countWords(droppedText);
-      if (kept.length >= 4 && projectedWords >= wordFloor) {
-        article.faqs = kept;
-        repairs.push(`faqs:dropped-ungrounded:${badIdx.length}`);
-      }
+    const dropped = article.faqs.length - kept.length;
+    if (dropped) {
+      article.faqs = kept;
+      repairs.push(`faqs:dropped-ungrounded:${dropped}`);
     }
   }
 

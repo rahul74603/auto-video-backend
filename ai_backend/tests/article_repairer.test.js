@@ -203,7 +203,7 @@ test("repairer: ungrounded facts clear, source-known values recover, SEO trims",
   assert.ok(repairs.some((r) => r.startsWith("seo:title-trimmed")));
 });
 
-test("repairer: ungrounded FAQ drop hoti hai jab 4+ bachti hon aur word-floor na toote", () => {
+test("repairer: ungrounded FAQ is dropped without a minimum FAQ count", () => {
   const source = makeSource();
   const badFaq = { question: "कितनी भर्ती निकली?", answer: "कुल 777777 पदों पर भर्ती निकली है।" };
   const article = {
@@ -221,7 +221,7 @@ test("repairer: ungrounded FAQ drop hoti hai jab 4+ bachti hon aur word-floor na
   assert.ok(repairs.some((r) => r.startsWith("faqs:dropped-ungrounded")));
 });
 
-test("repairer: FAQs 4 se kam na bachein to drop NAHI hoti", () => {
+test("repairer: ungrounded FAQs are removed even if fewer remain (no FAQ quota)", () => {
   const source = makeSource();
   const badFaq = { question: "कितनी भर्ती?", answer: "कुल 777777 पद।" };
   const article = {
@@ -233,8 +233,9 @@ test("repairer: FAQs 4 se kam na bachein to drop NAHI hoti", () => {
     wordCount: 2200,
     contentHtml: "<h1>t</h1>"
   };
-  repairArticleDeterministically(article, source);
-  assert.equal(article.faqs.length, 4, "4 FAQs barkarar — reviewer minimum se kam nahi kar sakte");
+  const repairs = repairArticleDeterministically(article, source);
+  assert.equal(article.faqs.length, 3, "the unsupported FAQ is dropped; fewer FAQs is acceptable");
+  assert.ok(repairs.some((r) => r.startsWith("faqs:dropped-ungrounded")));
 });
 
 test("repairer: applyMode me admin-bhari facts clear NAHI hoti", () => {
@@ -289,7 +290,8 @@ test("job + fast-track writer prompts me VERIFIED FACT SHEET allowlist hoti hai"
   assert.match(jobPrompt, /VERIFIED FACT SHEET/);
   assert.match(jobPrompt, /8000/); // source number allowlist me
   assert.match(jobPrompt, /FINAL SELF-CHECK/);
-  assert.match(jobPrompt, /ABSOLUTE MINIMUM 1600/);
+  assert.match(jobPrompt, /No hard word-count quota/);
+  assert.doesNotMatch(jobPrompt, /ABSOLUTE MINIMUM/);
 
   const ftPrompt = buildFastTrackWriterPrompt({ source, instructions: "" });
   assert.match(ftPrompt, /VERIFIED FACT SHEET/);
@@ -318,7 +320,7 @@ test("pipeline: pehla attempt FAIL → feedback ke saath doosra attempt PASS (se
   assert.equal(draft.repairAttempts, 2);
   assert.equal(draft.repairPassedOnAttempt, 2);
   assert.match(calls[1], /PICHLE REVIEW KI FEEDBACK/, "doosre attempt me pichli failings ka feedback gaya");
-  assert.match(calls[1], /word-count-low/);
+  assert.doesNotMatch(calls[1], /word-count-low/);
 });
 
 test("pipeline: pehla hi attempt PASS ho to doosra attempt NAHI hota (no wasted calls)", async () => {
@@ -553,14 +555,15 @@ const { formatReviewFeedbackPrompt } = require("../agents/article_agents/fact_qu
 
 test("feedback: har issue ke saath concrete FIX guidance jata hai", () => {
   const prompt = formatReviewFeedbackPrompt([
-    "word-count-low:1350 (<1600)",
-    "structure:too-few-faqs:2",
+    "word-count-low:20 (<80)",
+    "structure:too-few-h2:0",
     "hallucination:money:\"₹1,40,000\"",
     "dates:box-missing — article me dates hain par facts me nahi"
   ]);
   assert.match(prompt, /PICHLE REVIEW KI FEEDBACK/);
-  assert.match(prompt, /FIX: Article sirf 1350 words/);   // exact count guidance me
-  assert.match(prompt, /EXACTLY 6 FAQs/);
+  assert.match(prompt, /source-backed core answer/);
+  assert.match(prompt, /Sirf zaroori, source-supported headings/);
+  assert.doesNotMatch(prompt, /EXACTLY 6 FAQs/);
   assert.match(prompt, /VERIFIED FACT SHEET me maujood/);
   assert.match(prompt, /facts\.startDate\/lastDate\/examDate/);
 });

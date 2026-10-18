@@ -32,7 +32,7 @@ function scoreDiscoverReadiness({ title, hasImage, wordCount, original = true, u
   }
   if (hasImage) score += 15;
   else warnings.push("discover:missing-image");
-  if (Number(wordCount) >= 400) score += 10;
+  // Article length alone is not a quality signal; source-grounded usefulness is reviewed elsewhere.
   if (original) score += 10;
   else issues.push("discover:not-original");
 

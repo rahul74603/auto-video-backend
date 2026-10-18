@@ -300,7 +300,7 @@ const FastTrackDetails = () => {
             <Breadcrumbs
               crumbs={buildBreadcrumbPath({
                 title: data?.title || 'Update Details',
-                exam: (data?.category as string) || 'GENERAL',
+                exam: data?.examFamily || 'GENERAL',
                 category: ((data?.category === 'Admit Card' ? 'ADMIT_CARD' : data?.category === 'Result' ? 'RESULT' : data?.category === 'Syllabus' ? 'SYLLABUS' : 'UPDATE') as any),
               })}
               className="mb-4 bg-white px-3 py-2 rounded-xl border shadow-sm"
@@ -424,7 +424,7 @@ const FastTrackDetails = () => {
                                         className={`flex items-center justify-center w-full py-3.5 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.98] ${colors.bg}`}
                                     >
                                         <Download className="mr-2" size={16} aria-hidden="true" />
-                                        Official {data.category} Link
+                                        {data.sourceVerificationStatus === 'verified' ? `Official ${data.category} Link` : `${data.category} Link`}
                                     </a>
                                 )}
 
@@ -464,10 +464,10 @@ const FastTrackDetails = () => {
                             <div className="bg-white border border-slate-100 rounded-2xl p-5 md:p-8 shadow-sm mt-4">
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-1.5">
                                     <FileText size={13} className="text-emerald-500" aria-hidden="true" />
-                                    Fact-checked by {data.authorName || "StudyGyaan Editorial Team"}
+                                    Article details{data.authorName ? ` · ${data.authorName}` : ''}
                                 </p>
                                 <div
-                                    className="prose prose-sm md:prose max-w-none text-slate-700 ai-article-content [&_.table-responsive]:overflow-x-auto [&_table]:w-full [&_table]:text-sm"
+                                    className="prose prose-base md:prose-lg max-w-none text-slate-700 ai-article-content [&_.table-responsive]:overflow-x-auto [&_table]:w-full [&_table]:text-sm [&_p]:text-left md:[&_p]:text-justify"
                                     dangerouslySetInnerHTML={{ __html: data.articleHtml }}
                                 />
                             </div>
@@ -521,7 +521,7 @@ const FastTrackDetails = () => {
                     <ExamHubNavigation exam={(data?.examFamily as string) || (data?.category as string) || 'GENERAL'} className="mt-6" />
                     <RelatedContent
                       currentId={data?.id || ''}
-                      exam={data?.category}
+                      exam={data?.examFamily}
                       examFamily={data?.examFamily}
                       contentKind={data?.contentKind}
                       category={((data?.category === 'Admit Card' ? 'ADMIT_CARD' : data?.category === 'Result' ? 'RESULT' : 'UPDATE') as any)}
@@ -557,7 +557,7 @@ const FastTrackDetails = () => {
                 </div>
 
                 {/* 🧭 SLIM SIDEBAR — chhote clickable cards, hamesha side me chipke */}
-                <aside className="lg:col-span-4 lg:sticky lg:top-6 h-fit space-y-4 order-2">
+                <aside className="hidden lg:block lg:col-span-4 lg:sticky lg:top-6 h-fit space-y-4 order-2">
                     {updatesList.length === 0 ? (
                         <div className="text-center text-slate-400 font-bold p-10 bg-white rounded-3xl border border-slate-100">
                             <Loader2 size={24} className="animate-spin mx-auto mb-3 text-blue-400" />
