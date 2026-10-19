@@ -205,6 +205,78 @@ async function loadVideoRecords(epoch?: Date | null): Promise<VideoRecord[]> {
   return allVideos;
 }
 
+interface PendingWithoutVideo {
+  id: string;
+  type: ContentType;
+  title: string;
+  ageHours: number | null;
+  hint: string;
+  collection: string;
+}
+
+/** Queue me kabhi aaye hi nahi — aise recent docs (dispatcher inhe next poll me lega). */
+async function loadPendingWithoutVideo(): Promise<PendingWithoutVideo[]> {
+  const out: PendingWithoutVideo[] = [];
+  const now = Date.now();
+
+  const scan = async (
+    collectionName: string,
+    type: ContentType,
+    maxDocs: number,
+  ): Promise<void> => {
+    let docs: Array<{ id: string; data: () => Record<string, unknown> }> = [];
+    try {
+      const snap = await getDocs(query(collection(db, collectionName), orderBy('createdAt', 'desc'), limit(maxDocs)));
+      docs = snap.docs.map((d) => ({ id: d.id, data: () => fieldsFromDoc(d) }));
+    } catch {
+      try {
+        const snap = await getDocs(query(collection(db, collectionName), limit(maxDocs)));
+        docs = snap.docs.map((d) => ({ id: d.id, data: () => fieldsFromDoc(d) }));
+      } catch {
+        return;
+      }
+    }
+    for (const entry of docs) {
+      const data = entry.data();
+      // Queue me aa chuka / video ban chuka → yahan nahi dikhana
+      if (data.videoTriggeredAt || data.videoStatus || data.mockVideoMade || data.videoYouTubeId || data.youtubeVideoId) continue;
+      if (data.videoExcluded === true || data.skipVideo === true || data.noVideo === true) continue;
+      // Draft/unpublished jobs/fast-track video ke liye eligible nahi
+      const status = String(data.status || '').toLowerCase();
+      if (type !== 'MOCK_TEST' && status && status !== 'published') continue;
+      if (type === 'MOCK_TEST' && ['draft', 'archived', 'deleted'].includes(status)) continue;
+      if (!asText(data.title) && !asText(data.subject)) continue;
+
+      const createdMs = timestampMillis(asTimestamp(data.publishedAt)) || timestampMillis(asTimestamp(data.createdAt));
+      const ageHours = createdMs ? Math.round((now - createdMs) / 3600000) : null;
+      const questions = Array.isArray(data.questions) ? data.questions.length : 0;
+
+      let hint = 'Dispatcher next 5-min poll me lega';
+      if (type === 'MOCK_TEST' && questions === 0) hint = '⛔ Questions nahi hain — video kabhi nahi banega';
+      else if (ageHours !== null && ageHours > 7 * 24) hint = '⏳ 7-day freshness window ke bahar — workflow se manual Run (doc id) karo';
+      else if (ageHours === null) hint = '⏳ Publish date missing — dispatcher ise purana maan kar skip karega';
+      out.push({
+        id: entry.id,
+        type,
+        title: asText(data.title) || asText(data.subject) || 'Untitled',
+        ageHours,
+        hint,
+        collection: collectionName,
+      });
+    }
+  };
+
+  await Promise.all([
+    scan('mock_tests', 'MOCK_TEST', 25),
+    scan('jobs', 'JOB', 25),
+    scan('fast_track', 'FAST_TRACK', 25),
+  ]);
+  return out.slice(0, 30);
+}
+
+const VIDEO_DISPATCHER_WORKFLOW_URL = 'https://github.com/rahul74603/auto-video-backend/actions/workflows/video_dispatcher.yml';
+const MOCK_VIDEO_WORKFLOW_URL = 'https://github.com/rahul74603/auto-video-backend/actions/workflows/mock_test_maker.yml';
+
 // ============================================================
 // 🧹 FRESH-COUNT EPOCH — "ab se" counting ka marker
 // system_settings/video_queue_meta. epochStartedAt ke baad ke
@@ -283,6 +355,8 @@ const VideoControlCenter = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedVideo, setSelectedVideo] = useState<VideoRecord | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [pendingFresh, setPendingFresh] = useState<PendingWithoutVideo[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(true);
 
   const fetchVideos = async () => {
     setLoading(true);
@@ -294,6 +368,26 @@ const VideoControlCenter = () => {
       setLoading(false);
     }
   };
+
+  const fetchPendingFresh = async () => {
+    setPendingLoading(true);
+    try {
+      setPendingFresh(await loadPendingWithoutVideo());
+    } catch (error) {
+      console.error('Error fetching pending-without-video:', error);
+    } finally {
+      setPendingLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    loadPendingWithoutVideo()
+      .then((rows) => { if (!cancelled) setPendingFresh(rows); })
+      .catch((error) => { console.error('Error fetching pending-without-video:', error); })
+      .finally(() => { if (!cancelled) setPendingLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   // Epoch meta load (fresh-count marker)
   useEffect(() => {
@@ -444,9 +538,12 @@ const VideoControlCenter = () => {
   const isTypeFilter = (value: string): value is ContentType | 'all' =>
     value === 'all' || value === 'JOB' || value === 'FAST_TRACK' || value === 'MOCK_TEST';
 
-  // Retry handler
+  // Retry handler — 3x fail ke baad attempts bhi reset (warna dispatcher "needs manual reset" bolkar skip karta rehta hai)
   const handleRetry = async (video: VideoRecord) => {
-    if (!confirm(`Retry this video?\nAttempt ${video.videoAttempts + 1} of 3 will be used.`)) {
+    const exhausted = video.videoAttempts >= 3;
+    if (!confirm(exhausted
+      ? `Ye video 3 baar fail ho chuka hai (permanently failed).\nAttempts RESET karke wapas queue me dalna hai?\n\nPehle error wajah check karo — wajah fix kiye bina dobara fail hoga.`
+      : `Retry this video?\nAttempt ${video.videoAttempts + 1} of 3 will be used.`)) {
       return;
     }
 
@@ -458,9 +555,10 @@ const VideoControlCenter = () => {
         videoStatus: 'queued',
         videoError: '',
         videoLockId: null,
+        ...(exhausted ? { videoAttempts: 0 } : {}),
         updatedAt: new Date()
       });
-      alert('Video added back to queue.');
+      alert(exhausted ? 'Attempts reset + video wapas queue me. Dispatcher next poll me lega.' : 'Video added back to queue.');
       await fetchVideos();
     } catch (error) {
       console.error('Retry error:', error);
@@ -504,7 +602,7 @@ const VideoControlCenter = () => {
               {resetting ? 'Resetting...' : 'Start Fresh'}
             </button>
             <button
-              onClick={() => { void fetchVideos(); }}
+              onClick={() => { void fetchVideos(); void fetchPendingFresh(); }}
               className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
             >
               <RefreshCw size={16} />
@@ -608,6 +706,54 @@ const VideoControlCenter = () => {
               </div>
             );
           })}
+        </div>
+
+        {/* Naye docs jinka video abhi queue me bhi nahi aaya */}
+        <div className="border-2 border-dashed border-indigo-200 bg-indigo-50/40 rounded-lg p-4 mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h3 className="font-bold text-gray-900">
+              🆕 Queue se bahar — naye docs bina video {pendingLoading ? '(loading...)' : `(${pendingFresh.length})`}
+            </h3>
+            <div className="flex gap-2">
+              <a href={VIDEO_DISPATCHER_WORKFLOW_URL} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-bold">
+                Dispatcher workflow ↗
+              </a>
+              <a href={MOCK_VIDEO_WORKFLOW_URL} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-white border rounded-lg text-xs font-bold">
+                Mock video workflow ↗
+              </a>
+            </div>
+          </div>
+          <p className="text-xs text-gray-600 mb-3">
+            Ye docs abhi video queue me aaye hi nahi (upar wali table me isliye nahi dikhte). Fresh docs dispatcher ke next 5-min poll me khud uth jayenge — kuch karne ki zaroorat nahi. Purane/atke docs ke liye hint padho.
+          </p>
+          {pendingFresh.length === 0 && !pendingLoading ? (
+            <p className="text-sm text-gray-500">✅ Sab recent docs queue me hain — kuch pending nahi.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm bg-white rounded-lg">
+                <thead>
+                  <tr className="border-b bg-gray-50 text-xs">
+                    <th className="text-left p-2 font-semibold">Type</th>
+                    <th className="text-left p-2 font-semibold">Title</th>
+                    <th className="text-left p-2 font-semibold">Age</th>
+                    <th className="text-left p-2 font-semibold">Kya hoga / kya karo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingFresh.slice(0, 15).map((row) => (
+                    <tr key={`${row.collection}/${row.id}`} className="border-b last:border-0">
+                      <td className="p-2"><span className="px-2 py-0.5 bg-gray-100 rounded text-xs font-medium">{row.type}</span></td>
+                      <td className="p-2 font-medium text-gray-900 max-w-xs truncate" title={row.title}>{row.title}</td>
+                      <td className="p-2 text-gray-600 text-xs whitespace-nowrap">
+                        {row.ageHours === null ? 'unknown' : row.ageHours < 1 ? 'abhi-abhi' : row.ageHours < 24 ? `${row.ageHours}h` : `${Math.round(row.ageHours / 24)}d`}
+                      </td>
+                      <td className="p-2 text-xs text-gray-700">{row.hint}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* Filters */}
@@ -739,12 +885,12 @@ const VideoControlCenter = () => {
                       >
                         <Eye size={16} />
                       </button>
-                      {(video.status === 'failed' || video.status === 'upload_failed') && video.videoAttempts < 3 && (
+                      {(video.status === 'failed' || video.status === 'upload_failed') && (
                         <button
                           onClick={() => { void handleRetry(video); }}
                           disabled={retryingId === video.id}
                           className="p-1 hover:bg-blue-100 rounded text-blue-600 disabled:opacity-50"
-                          title="Retry"
+                          title={video.videoAttempts >= 3 ? 'Reset attempts + retry' : 'Retry'}
                         >
                           <RotateCcw size={16} className={retryingId === video.id ? 'animate-spin' : ''} />
                         </button>
@@ -908,7 +1054,7 @@ const VideoControlCenter = () => {
                   >
                     Close
                   </button>
-                  {(selectedVideo.status === 'failed' || selectedVideo.status === 'upload_failed') && selectedVideo.videoAttempts < 3 && (
+                  {(selectedVideo.status === 'failed' || selectedVideo.status === 'upload_failed') && (
                     <button
                       onClick={() => {
                         void handleRetry(selectedVideo);
@@ -917,7 +1063,7 @@ const VideoControlCenter = () => {
                       className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center justify-center gap-2"
                     >
                       <RotateCcw size={16} />
-                      Retry Video
+                      {selectedVideo.videoAttempts >= 3 ? 'Reset + Retry Video' : 'Retry Video'}
                     </button>
                   )}
                 </div>

@@ -24,15 +24,18 @@ async function main() {
   const admin = require('firebase-admin');
   
   if (!admin.apps.length) {
-    // Try to init from env
-    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    // Try to init from env — SERVICE_ACCOUNT_JSON first (yehi secret sab
+    // workflows me set hai; pehle sirf FIREBASE_SERVICE_ACCOUNT padha jata tha
+    // jisse guard hamesha fail-open rehta tha aur paused features bhi chalte the).
+    const raw = process.env.SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (raw) {
       try {
-        const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        const sa = JSON.parse(raw);
         admin.initializeApp({
           credential: admin.credential.cert(sa)
         });
       } catch (e) {
-        console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT:', e.message);
+        console.error('Failed to parse service account JSON:', e.message);
         admin.initializeApp();
       }
     } else {

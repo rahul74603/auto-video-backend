@@ -22,6 +22,7 @@ import {
   fetchProposalArticleHtml,
   previewOptimizationProposal,
   rollbackOptimizationProposal,
+  seoWriteErrorMessage,
   setOptimizationProposalStatus,
   summarizeApplyPreview,
   type GscSearchAnalyticsOverview,
@@ -448,10 +449,13 @@ const AdminSeoDashboard = () => {
     try {
       const next = await setOptimizationProposalStatus(proposal.id, status);
       syncProposals(next);
-      toast.success(`Proposal ${status}. This does not apply or publish anything.`);
+      toast.success(
+        status === 'approved'
+          ? '✓ Approved (status only). Public page abhi change NAHI hua — Apply alag step hai.'
+          : 'Proposal rejected.',
+      );
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      toast.error(`Proposal status: ${msg}`);
+      toast.error(seoWriteErrorMessage(error, status === 'approved' ? 'Approve' : 'Reject'), { duration: 6000 });
     } finally {
       setStatusBusy('');
     }
@@ -503,10 +507,14 @@ const AdminSeoDashboard = () => {
       syncProposals(proposals);
       setApprovePreview(null);
       setApproveResult({ results, scope: approvePreview.scope });
-      toast.success(`Approved ${results.filter((item) => item.outcome === 'approved').length}. Public content was not changed.`);
+      const done = results.filter((item) => item.outcome === 'approved').length;
+      const skipped = results.filter((item) => item.outcome !== 'approved').length;
+      toast.success(
+        `✓ ${done} approved (status only — public pages unchanged)${skipped ? ` · ${skipped} skipped (neeche wajah dekho)` : ''}`,
+        { duration: 6000 },
+      );
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      toast.error(`Approve safe: ${msg}`);
+      toast.error(seoWriteErrorMessage(error, 'Bulk approve'), { duration: 7000 });
     } finally {
       setStatusBusy('');
     }
@@ -542,8 +550,7 @@ const AdminSeoDashboard = () => {
       setApplyResult({ results, scope: applyPreview.scope });
       toast.success(`Applied ${results.filter((item) => item.outcome === 'applied').length} after snapshots. Failures did not abort the rest.`);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      toast.error(`Apply: ${msg}`);
+      toast.error(seoWriteErrorMessage(error, 'Apply'), { duration: 7000 });
     } finally {
       setStatusBusy('');
     }
@@ -878,7 +885,7 @@ const AdminSeoDashboard = () => {
       <div className="bg-white border rounded-[2rem] p-6">
         <h3 className="font-black text-sm uppercase tracking-widest text-gray-500 mb-2">Optimization Proposals</h3>
         <p className="text-xs text-gray-500 mb-4">
-          CHECK inspects only. APPROVE changes status only. APPLY writes allowlisted fields after a snapshot. ROLLBACK restores that snapshot.
+          CHECK inspects only. APPROVE changes status only (Level A + B, kabhi public write nahi). APPLY writes allowlisted fields after a snapshot (bulk me sirf Level A; Level B one-by-one). ROLLBACK restores that snapshot.
           Level C and fact fields never apply. Auto-apply stays OFF. articleHtml is never bulk-applied.
         </p>
 
@@ -964,8 +971,8 @@ const AdminSeoDashboard = () => {
 
           {approvePreview && (
             <div className="border rounded-2xl p-4 bg-emerald-50 space-y-3">
-              <p className="font-black text-sm">Approve all safe proposals in current scope?</p>
-              <p className="text-xs">Scope: {approvePreview.scope}. Total: {approvePreview.items.length}. Safe: {approveSafeCount}. Will be skipped: {approvePreview.items.length - approveSafeCount}. Approval does NOT write public content.</p>
+              <p className="font-black text-sm">Approve safe proposals in current scope?</p>
+              <p className="text-xs">Scope: {approvePreview.scope}. Total: {approvePreview.items.length}. Safe: {approveSafeCount}. Will be skipped: {approvePreview.items.length - approveSafeCount}. Approval is status-only — koi public page change NAHI hoga. Level B rows bhi approve ho sakte hain; unka Apply phir bhi one-by-one hota hai.</p>
               <ul className="text-xs space-y-1 max-h-48 overflow-auto">
                 {approvePreview.items.map((item) => (
                   <li key={item.proposalId}>{item.approvable ? '✓' : '–'} {item.proposalId} · {item.field} · {item.approvable ? 'will approve' : item.approveReason}</li>
@@ -1238,27 +1245,68 @@ const AdminSeoDashboard = () => {
                       )}
                     </td>
                     <td className="py-3">
-                      <div className="flex flex-col gap-1">
-                        <button
-                          type="button"
-                          className="px-3 py-1 rounded-lg border bg-white font-black text-[10px] uppercase tracking-widest"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            if (proposal.id) runCheck([proposal.id], 'INDIVIDUAL');
-                          }}
-                        >
-                          Check
-                        </button>
-                        <button
-                          type="button"
-                          className="px-3 py-1 rounded-lg border bg-white font-black text-[10px] uppercase tracking-widest"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            selectProposal(proposal);
-                          }}
-                        >
-                          View details
-                        </button>
+                      <div className="flex flex-col gap-1 min-w-[104px]">
+                        {proposal.status === 'pending' && (
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              disabled={Boolean(statusBusy) || !proposal.id}
+                              className="flex-1 px-2 py-1.5 rounded-lg bg-emerald-600 text-white font-black text-[10px] uppercase tracking-widest disabled:opacity-50"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleProposalStatus(proposal, 'approved');
+                              }}
+                            >
+                              ✓ Approve
+                            </button>
+                            <button
+                              type="button"
+                              disabled={Boolean(statusBusy) || !proposal.id}
+                              className="flex-1 px-2 py-1.5 rounded-lg border bg-white font-black text-[10px] uppercase tracking-widest disabled:opacity-50"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleProposalStatus(proposal, 'rejected');
+                              }}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                        {proposal.status === 'approved' && (
+                          <button
+                            type="button"
+                            disabled={Boolean(statusBusy) || !proposal.id}
+                            className="px-2 py-1.5 rounded-lg bg-blue-600 text-white font-black text-[10px] uppercase tracking-widest disabled:opacity-50"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleApply(proposal);
+                            }}
+                          >
+                            Apply ▸
+                          </button>
+                        )}
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            className="flex-1 px-2 py-1 rounded-lg border bg-white font-black text-[10px] uppercase tracking-widest"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (proposal.id) runCheck([proposal.id], 'INDIVIDUAL');
+                            }}
+                          >
+                            Check
+                          </button>
+                          <button
+                            type="button"
+                            className="flex-1 px-2 py-1 rounded-lg border bg-white font-black text-[10px] uppercase tracking-widest"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              selectProposal(proposal);
+                            }}
+                          >
+                            Details
+                          </button>
+                        </div>
                       </div>
                     </td>
                   </tr>

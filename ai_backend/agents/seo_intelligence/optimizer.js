@@ -23,6 +23,7 @@ const {
   compactProposal,
   summarizeProposals,
   mergeProposalStatuses,
+  unionProposalLists,
   setProposalStatus,
   sortFindings,
   isFactField,
@@ -617,7 +618,10 @@ async function persistOptimizationProposals(db, FieldValue, proposals, options =
       previous = [];
     }
   }
-  const compact = mergeProposalStatuses(previous, (proposals || []).map(compactProposal)).slice(0, MAX_PROPOSALS);
+  // UNION (not replace): yesterday's approvals/pending work survive today's scan.
+  // unionProposalLists also priority-caps to MAX_PROPOSALS so the settings doc
+  // never approaches the 1MB Firestore write limit.
+  const compact = unionProposalLists(previous, (proposals || []).map(compactProposal), MAX_PROPOSALS);
   for (const item of compact) {
     if (!item || item.field !== "articleHtml") continue;
     const html = extractArticleHtml(item.proposedValue);

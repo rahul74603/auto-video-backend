@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ChangeEvent } from 'react';
-import { storage } from '../../../firebase/config';
-import { serverTimestamp } from 'firebase/firestore';
+import { db, storage } from '../../../firebase/config';
+import { addDoc, collection, getDocs, limit, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import { mockTestRepository } from '@/features/mock-tests/data/mockTestRepository';
-import { ARTICLE_API_BASE } from '@/features/ai-articles/data/aiArticleRepository';
 import { triggerOptimizerAfterPublish } from '@/features/seo-intelligence/data/seoIntelligenceRepository';
 import type { MockTestRecord } from '@/features/mock-tests/data/mockTestRepository';
 import type { MockQuestion } from '@/types/firestore';
@@ -53,13 +52,40 @@ const normTest = (t: MockTestRecord): AdminTestItem => ({
     questions: Array.isArray(t['questions']) ? (t['questions'] as MockQuestion[]) : []
 });
 
+const MOCK_WORKFLOW_URL = 'https://github.com/rahul74603/auto-video-backend/actions/workflows/auto-mocktest-generator.yml';
+
+interface MockRequestItem {
+    id: string;
+    exam: string;
+    category: string;
+    topic: string;
+    totalQuestions: number;
+    status: string;
+    testSlug: string;
+    error: string;
+}
+
+const mapMockRequestDoc = (d: { id: string; data: () => unknown }): MockRequestItem => {
+    const data = d.data() as Record<string, unknown>;
+    return {
+        id: d.id,
+        exam: String(data.exam || ''),
+        category: String(data.category || ''),
+        topic: String(data.topic || ''),
+        totalQuestions: Number(data.totalQuestions || 0),
+        status: String(data.status || 'pending'),
+        testSlug: String(data.testSlug || ''),
+        error: String(data.error || ''),
+    };
+};
+
 const AdminMockTest = () => {
 
-    const API_BASE_URL = ARTICLE_API_BASE;
     // ================= STATES =================
 
     const [loading, setLoading] = useState(false);
     const [aiLoading, setAiLoading] = useState(false);
+    const [mockRequests, setMockRequests] = useState<MockRequestItem[]>([]);
     const [imgUploading, setImgUploading] = useState(false);
     const [logicImgUploading, setLogicImgUploading] = useState(false);
     const [tests, setTests] = useState<AdminTestItem[]>([]);
@@ -121,36 +147,51 @@ const AdminMockTest = () => {
         return () => { cancelled = true; };
     }, []);
 
-    // ================= AI GENERATE =================
+    // ================= AI GENERATE (request queue → GitHub Actions) =================
+    // Purana /generate Cloud Run endpoint ab exist nahi karta (isliye button
+    // hamesha "AI Generation Failed" deta tha). Ab request Firestore queue me
+    // jati hai; Auto Mock Test Generator workflow next run me usi topic par
+    // test banata hai (auto 5×/day, ya workflow page se turant Run).
+
+    const fetchMockRequests = useCallback(async () => {
+        try {
+            const snap = await getDocs(query(collection(db, 'mock_test_requests'), orderBy('createdAt', 'desc'), limit(5)));
+            setMockRequests(snap.docs.map(mapMockRequestDoc));
+        } catch {
+            setMockRequests([]);
+        }
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        getDocs(query(collection(db, 'mock_test_requests'), orderBy('createdAt', 'desc'), limit(5)))
+            .then((snap) => { if (!cancelled) setMockRequests(snap.docs.map(mapMockRequestDoc)); })
+            .catch(() => { if (!cancelled) setMockRequests([]); });
+        return () => { cancelled = true; };
+    }, []);
 
     const handleAIGenerate = async () => {
 
         setAiLoading(true);
-        toast.info("AI Competitive Level Mock Generate kar raha hai...");
+        toast.info("AI request queue me dal raha hai...");
 
         try {
-
-            const response = await fetch(`${API_BASE_URL}/generate`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    topic: `${category} - ${exam}`,
-                    totalQuestions: totalQuestions
-                })
+            await addDoc(collection(db, 'mock_test_requests'), {
+                category,
+                exam,
+                topic: `${category} - ${exam}`,
+                totalQuestions,
+                status: 'pending',
+                requestedBy: auth.currentUser?.email || 'admin',
+                createdAt: serverTimestamp(),
             });
-
-            const data = await response.json();
-
-            if (!data.success) {
-                throw new Error(data.error || "Generation failed");
-            }
-
-            toast.success("🔥 Mock Test Successfully Generated!");
+            toast.success("📥 Request queued! GitHub Actions → Auto Mock Test Generator → Run workflow dabao (ya next auto-run 9AM/12/3/6/9 ka wait karo).", { duration: 8000 });
+            await fetchMockRequests();
             setTimeout(fetchTests, 3000);
 
         } catch (error) {
             console.error("AI Error:", error);
-            toast.error("AI Generation Failed.");
+            toast.error("Request save nahi hui — admin login + Firestore rules check karo.");
         } finally {
             setAiLoading(false);
         }
@@ -312,10 +353,10 @@ const addQuestion = () => {
                         <Loader2 className="animate-spin text-blue-500" size={100} strokeWidth={3} />
                         <Zap className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-yellow-400 animate-pulse" size={40} />
                     </div>
-                    <h2 className="text-4xl font-black mb-4 uppercase tracking-tighter italic">AI Magic is Working...</h2>
+                    <h2 className="text-4xl font-black mb-4 uppercase tracking-tighter italic">Request Queued...</h2>
                     <p className="text-slate-400 font-bold max-w-lg text-lg leading-relaxed">
-                        Gemini AI आपके लिए 100 कठिन सवाल और डिटेल्ड लॉजिक तैयार कर रहा है। <br/>
-                        <span className="text-blue-400 animate-pulse">कृपया 45 सेकंड तक इंतज़ार करें...</span>
+                        आपकी AI request queue में डाली जा रही है। <br/>
+                        <span className="text-blue-400 animate-pulse">फिर workflow से Run दबाओ — Gemini test banayega...</span>
                     </p>
                 </div>
             )}
@@ -384,6 +425,33 @@ const addQuestion = () => {
         </select>
 
     </div>
+    <div className="mt-4 flex flex-wrap items-center gap-3">
+        <a href={MOCK_WORKFLOW_URL} target="_blank" rel="noreferrer" className="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-black text-xs hover:bg-slate-700">
+            ⚙️ Open Generator Workflow (turant Run)
+        </a>
+        <button onClick={() => { void fetchMockRequests(); void fetchTests(); }} className="bg-white border px-5 py-2.5 rounded-xl font-black text-xs hover:bg-slate-50">
+            🔄 Refresh Status
+        </button>
+        <p className="text-[11px] text-slate-500 font-bold">AI MAGIC dabane ke baad request queue me jayegi — upar workflow se turant Run karo ya auto-run (9AM/12/3/6/9) ka wait karo.</p>
+    </div>
+    {mockRequests.length > 0 && (
+        <div className="mt-4 space-y-2 max-w-4xl">
+            {mockRequests.map((req) => (
+                <div key={req.id} className="bg-white border rounded-xl px-4 py-2.5 flex flex-wrap items-center gap-2 text-xs font-bold">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${req.status === 'completed' ? 'bg-green-100 text-green-700' : req.status === 'failed' ? 'bg-red-100 text-red-700' : req.status === 'processing' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {req.status}
+                    </span>
+                    <span className="text-slate-700">{req.topic || `${req.category} - ${req.exam}`} × {req.totalQuestions}Q</span>
+                    {req.status === 'completed' && req.testSlug && (
+                        <a href={`/test/${req.testSlug}`} target="_blank" rel="noreferrer" className="text-blue-600 underline">View test →</a>
+                    )}
+                    {req.status === 'failed' && req.error && (
+                        <span className="text-red-600 font-medium">Wajah: {req.error.slice(0, 120)}</span>
+                    )}
+                </div>
+            ))}
+        </div>
+    )}
 </div>
                     <div className="p-6 md:p-10 grid grid-cols-1 lg:grid-cols-12 gap-10">
                         {/* LEFT: FORM SECTION */}

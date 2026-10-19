@@ -7,14 +7,27 @@ on:
     # सुबह 9:00, दोपहर 12:00, 3:00, शाम 6:00, और रात 9:00
     - cron: '30 3,6,9,12,15 * * *'
   workflow_dispatch: # बटन दबाकर मैन्युअली रन करने के लिए
+    inputs:
+      topic:
+        description: 'Optional: is topic par test banao (blank = admin request queue / random)'
+        required: false
+        default: ''
 
 jobs:
   generate-mock-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ai_backend/package-lock.json
 
       - name: 🛑 Check Automation Switch (mock_test)
         id: automation_check
@@ -23,7 +36,8 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         working-directory: ai_backend
         run: |
-          npm install --ignore-scripts --legacy-peer-deps axios firebase-admin 2>&1 | tail -n 5 || true
+          npm install --no-save --ignore-scripts --legacy-peer-deps axios firebase-admin 2>&1 | tail -n 5 || true
+          STATUS=0
           node check_automation.js mock_test || STATUS=$?
           if [ "$STATUS" = "78" ]; then
             echo "enabled=false" >> $GITHUB_OUTPUT
@@ -32,19 +46,13 @@ jobs:
             echo "enabled=true" >> $GITHUB_OUTPUT
           fi
 
-
-      - name: Setup Node.js
+      # npm ci (lockfile) — pehle ad-hoc `npm install <4 pkgs>` hota tha jisme
+      # googleapis MISSING tha, jisse auto_mock.js MODULE_NOT_FOUND crash hota
+      # tha aur ek bhi mock test nahi banta tha.
+      - name: Install Packages (npm ci — lockfile preserved)
         if: steps.automation_check.outputs.enabled == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Packages
-        if: steps.automation_check.outputs.enabled == 'true'
-        # अगर आपके फोल्डर का नाम ai_backend है, तो इसे ऐसा ही रहने दें
-        run: |
-          cd ai_backend
-          npm install firebase-admin @google/generative-ai axios dotenv
+        working-directory: ai_backend
+        run: npm ci --ignore-scripts
 
       - name: Run Auto Mock Generator
         if: steps.automation_check.outputs.enabled == 'true'
@@ -53,6 +61,10 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
-        run: |
-          cd ai_backend
-          node auto_mock.js
+          MOCK_MANUAL_TOPIC: ${{ github.event.inputs.topic }}
+        working-directory: ai_backend
+        run: node auto_mock.js
+
+      - name: ❌ Failure notice
+        if: failure()
+        run: echo "💥 Mock generator run failed — logs me Auto-Mock Error dekho (GEMINI_API_KEY / JSON parse / Firestore)."

@@ -281,6 +281,54 @@ function mergeProposalStatuses(previous, next) {
   });
 }
 
+/**
+ * UNION merge for scan persists (approve-plumbing fix, Oct 2026).
+ *
+ * Problem: every daily scan REPLACED the whole optimizationProposals array
+ * with only the current run's proposals (~5 blogs). Admin approvals for
+ * other pages silently vanished overnight — "approve nahi hota".
+ *
+ * Fix: keep previous reviewed/work-in-progress proposals and append genuinely
+ * new ones (dedupe by id), then priority-cap to MAX_PROPOSALS so the settings
+ * doc never approaches the 1MB Firestore limit (which used to make every
+ * approve/apply write fail).
+ *
+ * Priority (highest kept first): approved > pending > applied (rollback needs
+ * the snapshot link) > rejected/failed/rolled_back. Newest createdAt first
+ * inside each bucket.
+ */
+function unionProposalLists(previous, next, max = MAX_PROPOSALS) {
+  const list = Array.isArray(next) ? next : [];
+  const prev = Array.isArray(previous) ? previous : [];
+  const seen = new Set();
+  const merged = [];
+  const pushUnique = (item) => {
+    if (!item || !item.id || seen.has(item.id)) return;
+    seen.add(item.id);
+    merged.push(item);
+  };
+  // Fresh scan output first (with preserved review statuses), then everything
+  // the admin already touched that this scan did not regenerate.
+  for (const item of mergeProposalStatuses(prev, list)) pushUnique(item);
+  for (const item of prev) pushUnique(item);
+
+  const rank = (status) => {
+    switch (String(status || "pending")) {
+      case "approved": return 0;
+      case "pending": return 1;
+      case "applied": return 2;
+      default: return 3; // rejected / failed / rolled_back
+    }
+  };
+  const timeOf = (item) => {
+    const parsed = Date.parse(item && (item.createdAt || item.reviewedAt || item.appliedAt) || "");
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  merged.sort((a, b) => (rank(a.status) - rank(b.status)) || (timeOf(b) - timeOf(a)));
+  const limit = Math.max(1, Math.min(Number(max) || MAX_PROPOSALS, MAX_PROPOSALS));
+  return merged.slice(0, limit);
+}
+
 function setProposalStatus(proposals, id, status, { now } = {}) {
   const nextStatus = String(status || "");
   if (!["approved", "rejected"].includes(nextStatus)) {
@@ -342,6 +390,7 @@ module.exports = {
   compactProposal,
   summarizeProposals,
   mergeProposalStatuses,
+  unionProposalLists,
   setProposalStatus,
   sortFindings
 };

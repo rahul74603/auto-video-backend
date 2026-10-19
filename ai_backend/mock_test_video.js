@@ -5,8 +5,17 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { google } = require('googleapis');
 const admin = require("firebase-admin");
-const { createCanvas, registerFont } = require('canvas');
-const textToSpeech = require('@google-cloud/text-to-speech');
+// canvas optionalDependency hai — agar runner par native build fail ho to poora
+// module crash hone ke bajaye साफ error do (video FAILED mark hoga, reason ke saath).
+let createCanvas;
+let registerFont;
+try {
+    ({ createCanvas, registerFont } = require('canvas'));
+} catch (err) {
+    console.error("❌ canvas module load nahi hua (system libs chahiye: libcairo2, pango).", err.message);
+    createCanvas = () => { throw new Error("canvas missing — workflow me System Dependencies step check karo"); };
+    registerFont = () => {};
+}
 const ffmpegPath = require('ffmpeg-static');
 const FormData = require('form-data');
 const V = require('./video_state');
@@ -58,11 +67,16 @@ async function setupHindiFont() {
 // =========================================================
 async function getYouTubeClient() {
     const credentialsVar = process.env.GMAIL_CREDENTIALS;
-    const tokenVar = process.env.YOUTUBE_TOKEN_SELF_TEST; // ✅ CHANGED
+    // SELF_TEST token prefer karo (mock videos test channel par), lekin agar wo
+    // secret set nahi hai to MAIN channel token use karo — pehle is missing
+    // secret ki wajah se saare mock videos fail ho jate the ("token nahi mila").
+    const tokenVar = process.env.YOUTUBE_TOKEN_SELF_TEST || process.env.YOUTUBE_TOKEN;
+    const tokenSource = process.env.YOUTUBE_TOKEN_SELF_TEST ? "SELF_TEST" : "MAIN";
 
     if (!credentialsVar || !tokenVar) {
-        throw new Error("❌ GMAIL_CREDENTIALS या YOUTUBE_TOKEN_SELF_TEST नहीं मिला!");
+        throw new Error("❌ GMAIL_CREDENTIALS या YOUTUBE_TOKEN_SELF_TEST/YOUTUBE_TOKEN नहीं मिला! GitHub Secrets check karo.");
     }
+    console.log(`📺 Mock video YouTube token: ${tokenSource} channel`);
 
     const creds = JSON.parse(credentialsVar);
     const token = JSON.parse(tokenVar);

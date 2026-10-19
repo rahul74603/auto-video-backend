@@ -53,11 +53,11 @@ describe('Auto-Optimizer — proposal safety classification', () => {
     expect(check.category).toBe('needs_approval');
   });
 
-  it('Level B proposals require review', () => {
+  it('Level B proposals require review but ARE approvable (approval is status-only; apply stays gated)', () => {
     const check = checkOptimizationProposal(base({
       id: 'level-b', field: 'metaDescription', status: 'pending', level: 'B', requiresReview: true,
     }));
-    expect(check.approvable).toBe(false);
+    expect(check.approvable).toBe(true);
     expect(check.category).toBe('needs_review');
   });
 

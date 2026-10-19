@@ -1,7 +1,9 @@
 const admin = require("firebase-admin");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const axios = require("axios");
-const { google } = require("googleapis");
+// ⚠️ googleapis ko top-level require MAT karo — auto-mocktest workflow me ye
+// package kabhi install hi nahi hota tha, jisse MODULE_NOT_FOUND crash hota tha
+// aur EK BHI mock test nahi banta tha. Lazy require + graceful skip (neeche).
 require("dotenv").config();
 
 // =========================================================
@@ -39,6 +41,13 @@ function createSlug(title) {
 }
 
 async function notifyGoogle(url) {
+    let google;
+    try {
+        google = require("googleapis").google;
+    } catch {
+        console.log("ℹ️ googleapis package nahi hai — Google Indexing ping skip (test ban gaya hai).");
+        return;
+    }
     try {
         const serviceAccountVar = process.env.SERVICE_ACCOUNT_JSON;
         if (!serviceAccountVar) return;
@@ -96,33 +105,137 @@ const TOPICS_POOL = [
 ];
 
 // =========================================================
-// 🚀 4. MAIN ENGINE
+// 🛠️ 3b. GENERATION HELPERS (reliability fixes, Oct 2026)
 // =========================================================
 
-const generateDailyMocks = async () => {
-    // तारीख निकालना ताकि यूनिक टाइटल बने
-    const now = new Date();
-    const monthYear = now.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
-    
-    const randomTopic = TOPICS_POOL[Math.floor(Math.random() * TOPICS_POOL.length)];
-    console.log(`🔥 SEO Generation Started: ${randomTopic}`);
-
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash-lite",
-            generationConfig: { maxOutputTokens: 8000, temperature: 0.4, responseMimeType: "application/json" },
+// Admin panel (Mock Test tab → AI Generate) se aaye on-demand requests.
+// Admin request likhta hai → Firestore mock_test_requests me pending row →
+// ye workflow next run me sabse pehle usi topic par test banata hai.
+async function takePendingMockRequest() {
+    try {
+        // NOTE: orderBy जानबूझकर nahi — where+orderBy combo ko composite index
+        // chahiye hota, bina index query fail hogi aur request kabhi pick nahi
+        // hogi. Single-field where me koi index nahi chahiye; oldest khud chuno.
+        const snap = await db.collection("mock_test_requests")
+            .where("status", "==", "pending")
+            .limit(10)
+            .get();
+        if (snap.empty) return null;
+        const toMs = (v) => {
+            if (!v) return Number.MAX_SAFE_INTEGER;
+            if (typeof v.toMillis === "function") { try { return v.toMillis(); } catch { return Number.MAX_SAFE_INTEGER; } }
+            if (typeof v.seconds === "number") return v.seconds * 1000;
+            const parsed = Date.parse(v);
+            return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
+        };
+        const ordered = (snap.docs || []).slice().sort((a, b) => {
+            const da = a.data() || {};
+            const db2 = b.data() || {};
+            return toMs(da.createdAt) - toMs(db2.createdAt);
         });
+        const docSnap = ordered[0];
+        const data = docSnap.data() || {};
+        await docSnap.ref.update({
+            status: "processing",
+            pickedAt: admin.firestore.FieldValue.serverTimestamp(),
+            pickedBy: process.env.GITHUB_RUN_ID ? `gh-${process.env.GITHUB_RUN_ID}` : "local",
+        });
+        return { id: docSnap.id, ref: docSnap.ref, ...data };
+    } catch (err) {
+        // Collection/index missing → normal random-topic path (kabhi fail nahi).
+        console.log("ℹ️ mock_test_requests check skip:", err.message);
+        return null;
+    }
+}
 
-        const prompt = `
-Act as a Senior SEO Expert. Create a unique Mock Test for: "${randomTopic}".
+async function markMockRequest(ref, patch) {
+    try {
+        await ref.update({ ...patch, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    } catch (err) {
+        console.warn("⚠️ mock request status update skip:", err.message);
+    }
+}
+
+// Slug collision guard: same-month same-title dobara aaye to overwrite NAHI,
+// -2/-3 suffix lagao (pehle purana test silently replace ho jata tha).
+async function uniqueMockSlug(baseSlug) {
+    let slug = baseSlug;
+    for (let attempt = 2; attempt <= 8; attempt += 1) {
+        const snap = await db.collection("mock_tests").doc(slug).get();
+        if (!snap.exists) return slug;
+        slug = `${baseSlug}-${attempt}`;
+    }
+    return `${baseSlug}-${Date.now().toString(36)}`;
+}
+
+// Gemini response se JSON nikalo: seedha parse → {…} extract → repair.
+function parseMockJson(rawText) {
+    const text = String(rawText || "");
+    const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim()
+        .replace(/\\(?![\"\\/bfnrtu])/g, " / "); // अवैध बैकस्लैश फिक्स
+    const attempts = [cleaned];
+    const first = cleaned.indexOf("{");
+    const last = cleaned.lastIndexOf("}");
+    if (first >= 0 && last > first) attempts.push(cleaned.slice(first, last + 1));
+    let lastError = null;
+    for (const candidate of attempts) {
+        try {
+            return { ok: true, json: JSON.parse(candidate) };
+        } catch (err) {
+            lastError = err;
+        }
+    }
+    return { ok: false, error: lastError, preview: cleaned.slice(0, 300) };
+}
+
+// Har question validate + normalize karo (video renderer + frontend dono ke liye).
+// correctOption: 0-3 int, "A"-"D" letter, ya "Option B" text — sab accept.
+function normalizeMockQuestions(raw) {
+    const list = Array.isArray(raw) ? raw : [];
+    const out = [];
+    for (const item of list) {
+        if (!item || typeof item !== "object") continue;
+        const qText = String(item.qText || item.questionText || "").trim();
+        let options = Array.isArray(item.options) ? item.options.map((o) => String(o ?? "").trim()) : [];
+        options = options.filter((o) => o.length > 0);
+        if (!qText || options.length < 2) continue;
+        while (options.length < 4) options.push("—");
+        options = options.slice(0, 4);
+
+        let correct = 0;
+        const rawCorrect = item.correctOption;
+        if (typeof rawCorrect === "number" && Number.isFinite(rawCorrect)) {
+            correct = Math.max(0, Math.min(3, Math.floor(rawCorrect)));
+        } else {
+            const s = String(rawCorrect ?? "").toUpperCase().replace("OPTION", "").trim();
+            if (["A", "B", "C", "D"].includes(s)) correct = s.charCodeAt(0) - 65;
+            else if (["0", "1", "2", "3"].includes(s)) correct = Number(s);
+            else {
+                const idx = options.findIndex((o) => o.toUpperCase() === s);
+                correct = idx >= 0 ? idx : 0;
+            }
+        }
+        out.push({
+            qText,
+            options,
+            correctOption: correct,
+            qLogic: String(item.qLogic || item.explanation || ""),
+        });
+    }
+    return out;
+}
+
+function buildMockPrompt(topic, totalQuestions) {
+    return `
+Act as a Senior SEO Expert. Create a unique Mock Test for: "${topic}".
 MANDATORY: Return ONLY JSON compliance schema.
 {
   "seoTitle": "Engaging Title (Use Keywords like 'Important', 'Top Questions', 'Practice Set')",
-  "metaDescription": "160 char SEO snippet about ${randomTopic}",
+  "metaDescription": "160 char SEO snippet about ${topic}",
   "tags": ["exam", "mock test", "prep"],
   "questions": [
     {
-      "qText": "Write the complete English question here\\nWrite the complete Hindi translation here",
+      "qText": "Write the complete English question here\\\\nWrite the complete Hindi translation here",
       "options": ["Option A Text", "Option B Text", "Option C Text", "Option D Text"],
       "correctOption": 2,
       "qLogic": "Detailed explanation in Hindi & English"
@@ -130,44 +243,128 @@ MANDATORY: Return ONLY JSON compliance schema.
   ]
 }
 CRITICAL RULES FOR GENERATION:
-1. In "qText", you MUST provide the English question first, followed by a literal newline (\\n), followed by the Hindi translation. Do NOT include literal placeholder words like 'Hindi' or 'English' inside the text. Write actual exam questions.
-2. "correctOption" MUST be an integer (0 for A, 1 for B, 2 for C, 3 for D). You MUST dynamically shuffle and randomly distribute correct options across all 25 questions so that they are NOT all 0 (A). Ensure a completely organic and even distribution of A, B, C, and D answers across the entire set.
-Generate exactly 25 high-quality, completely bilingual questions.
+1. In "qText", you MUST provide the English question first, followed by a literal newline (\\\\n), followed by the Hindi translation. Do NOT include literal placeholder words like 'Hindi' or 'English' inside the text. Write actual exam questions.
+2. "correctOption" MUST be an integer (0 for A, 1 for B, 2 for C, 3 for D). You MUST dynamically shuffle and randomly distribute correct options across all ${totalQuestions} questions so that they are NOT all 0 (A). Ensure a completely organic and even distribution of A, B, C, and D answers across the entire set.
+Generate exactly ${totalQuestions} high-quality, completely bilingual questions.
 `;
+}
+
+// Model fallback chain: 2.5-flash-lite missing/dead ho to 2.0-flash try karo.
+// Pehle single model 404 deta to poora run fail ho jata tha.
+const MOCK_MODEL_CHAIN = ["gemini-2.5-flash-lite", "gemini-2.0-flash"];
+
+async function generateMockContent(genAI, prompt) {
+    let lastError = null;
+    for (const modelName of MOCK_MODEL_CHAIN) {
+        try {
+            const model = genAI.getGenerativeModel({
+                model: modelName,
+                generationConfig: { maxOutputTokens: 8000, temperature: 0.4, responseMimeType: "application/json" },
+            });
+            const resp = await model.generateContent(prompt);
+            const text = resp.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text || !text.trim()) throw new Error("empty Gemini response");
+            console.log(`🤖 Model OK: ${modelName}`);
+            return text;
+        } catch (err) {
+            lastError = err;
+            console.warn(`⚠️ Model ${modelName} fail (${err.message}) — next try...`);
+        }
+    }
+    throw lastError || new Error("All Gemini models failed");
+}
+
+// =========================================================
+// 🚀 4. MAIN ENGINE
+// =========================================================
+
+const generateDailyMocks = async () => {
+    // तारीख निकालना ताकि यूनिक टाइटल बने
+    const now = new Date();
+    const monthYear = now.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+    const dayStamp = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }).replace(/\s+/g, '');
+
+    // 1️⃣ Pehle admin ka on-demand request (agar koi pending hai).
+    // Manual workflow_dispatch `topic` input sabse upar (turant test chahiye to).
+    const manualTopic = String(process.env.MOCK_MANUAL_TOPIC || "").trim();
+    const request = manualTopic ? null : await takePendingMockRequest();
+    let randomTopic;
+    let totalQuestions = 25;
+    let requestCategory = "";
+    if (manualTopic) {
+        randomTopic = manualTopic.slice(0, 150);
+        console.log(`⌨️ Manual workflow topic: ${randomTopic}`);
+    } else if (request) {
+        const exam = String(request.exam || "").trim();
+        const category = String(request.category || "").trim();
+        const custom = String(request.topic || "").trim();
+        randomTopic = custom || [category, exam].filter(Boolean).join(" - ") || "General Knowledge";
+        totalQuestions = Math.max(5, Math.min(50, Number(request.totalQuestions) || 25));
+        requestCategory = category;
+        console.log(`📥 Admin request mila (${request.id}): ${randomTopic} × ${totalQuestions}Q`);
+    } else {
+        randomTopic = TOPICS_POOL[Math.floor(Math.random() * TOPICS_POOL.length)];
+    }
+    console.log(`🔥 SEO Generation Started: ${randomTopic}`);
+
+    if (!process.env.GEMINI_API_KEY) {
+        const msg = "GEMINI_API_KEY secret missing — mock test nahi ban sakta";
+        console.error("❌", msg);
+        if (request) await markMockRequest(request.ref, { status: "failed", error: msg });
+        return false;
+    }
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const prompt = buildMockPrompt(randomTopic, totalQuestions);
+
 
     try {
-        const resp = await model.generateContent(prompt);
-        const text = resp.response?.candidates?.[0]?.content?.parts?.[0]?.text;
-        let cleanedText = text.replace(/```json/g, "").replace(/```/g, "").trim();
-        cleanedText = cleanedText.replace(/\\(?!["\\\/bfnrtu])/g, ' / '); // 🔥 अवैध बैकस्लैश को सही स्लैश में बदलने का फिक्स
-        const json = JSON.parse(cleanedText);
-        if (json.questions && Array.isArray(json.questions)) {
-            
-            // ✅ UNIQUE TITLE & SLUG LOGIC (Canonical समस्या का समाधान)
-            const baseTitle = json.seoTitle || randomTopic;
-            const finalTitle = `${baseTitle} - ${monthYear} Special Set`; // Example: SSC GK - May 2026 Special Set
-            const slug = createSlug(finalTitle);
-            const testUrl = `https://studygyaan.in/test/${slug}`;
+        const text = await generateMockContent(genAI, prompt);
+        const parsed = parseMockJson(text);
+        if (!parsed.ok) {
+            throw new Error(`Gemini JSON parse fail: ${parsed.error?.message || "unknown"} | preview: ${parsed.preview}`);
+        }
+        const json = parsed.json;
+        const questions = normalizeMockQuestions(json.questions);
+        if (!questions.length) {
+            throw new Error("Gemini ne 0 valid questions diye — next run me dobara try hoga");
+        }
+        if (questions.length < totalQuestions) {
+            console.log(`ℹ️ ${questions.length}/${totalQuestions} valid questions mile — inhi se test ban raha hai`);
+        }
 
-            const relatedLinks = await getInternalLinks();
+        // ✅ UNIQUE TITLE & SLUG LOGIC (Canonical समस्या का समाधान)
+        const baseTitle = json.seoTitle || randomTopic;
+        const finalTitle = `${baseTitle} - ${monthYear} Special Set`; // Example: SSC GK - May 2026 Special Set
+        const slug = await uniqueMockSlug(`${createSlug(finalTitle)}-${dayStamp.toLowerCase()}`);
+        const testUrl = `https://studygyaan.in/test/${slug}`;
 
-            // 💾 Firestore Update (Slug as Document ID prevents duplicates)
-            await db.collection("mock_tests").doc(slug).set({
-                title: finalTitle,
-                slug: slug,
-                metaDescription: json.metaDescription || `Free Practice Set for ${randomTopic}.`,
-                tags: json.tags || ["mock test", "studygyaan"],
-                questions: json.questions,
-                totalQuestions: json.questions.length,
-                durationMinutes: json.questions.length,
-                negativeMarking: 0.25,
-                requestedTopic: randomTopic,
-                type: "auto_generated",
-                internalLinks: relatedLinks,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
+        const relatedLinks = await getInternalLinks();
+        const metaDescription = json.metaDescription || `Free Practice Set for ${randomTopic}.`;
 
-            console.log("✅ Mock Saved with Unique Slug:", slug);
+        // 💾 Firestore Update (unique slug as Document ID — overwrite kabhi nahi)
+        await db.collection("mock_tests").doc(slug).set({
+            title: finalTitle,
+            slug: slug,
+            metaDescription,
+            tags: json.tags || ["mock test", "studygyaan"],
+            questions: questions,
+            totalQuestions: questions.length,
+            durationMinutes: Math.max(10, questions.length),
+            negativeMarking: 0.25,
+            requestedTopic: randomTopic,
+            requestedBy: request ? "admin-request" : "auto-schedule",
+            requestId: request ? request.id : null,
+            subject: requestCategory || "General Knowledge",
+            type: "auto_generated",
+            internalLinks: relatedLinks,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        console.log("✅ Mock Saved with Unique Slug:", slug);
+        if (request) {
+            await markMockRequest(request.ref, { status: "completed", testSlug: slug, questionCount: questions.length });
+            console.log(`📥 Request ${request.id} completed → /test/${slug}`);
+        }
 
             // ⭐ Auto-optimizer: fire-and-forget quality pass after publish.
             // MOCK_TEST is metadata-only by design; optimizer failure NEVER
@@ -176,8 +373,8 @@ Generate exactly 25 high-quality, completely bilingual questions.
                 const { triggerOptimizerNonBlocking } = require("./agents/seo_intelligence/publish_hook");
                 triggerOptimizerNonBlocking(db, admin.firestore.FieldValue, {
                     id: slug, slug, title: finalTitle, type: "MOCK_TEST",
-                    metaDescription: json.metaDescription || "",
-                    questions: json.questions, totalQuestions: json.questions.length,
+                    metaDescription,
+                    questions, totalQuestions: questions.length,
                     internalLinks: relatedLinks,
                     createdAt: new Date().toISOString()
                 }, "mock_tests");
@@ -193,18 +390,27 @@ Generate exactly 25 high-quality, completely bilingual questions.
             const chatId = process.env.TELEGRAM_CHAT_ID;
 
             if (botToken && chatId) {
-                const msg = `🚀 <b>New Live Mock Test (${monthYear})</b>\n\n📝 <b>Topic:</b> ${finalTitle}\n📊 <b>Q:</b> 25 High Level\n\n🔗 <b>Start Test Now:</b>\n<a href="${testUrl}">${testUrl}</a>\n\n📚 <b>Related Content:</b> ${relatedLinks}`;
+                const msg = `🚀 <b>New Live Mock Test (${monthYear})</b>\n\n📝 <b>Topic:</b> ${finalTitle}\n📊 <b>Q:</b> ${questions.length} High Level\n\n🔗 <b>Start Test Now:</b>\n<a href="${testUrl}">${testUrl}</a>\n\n📚 <b>Related Content:</b> ${relatedLinks}`;
                 await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
                     chat_id: chatId, text: msg, parse_mode: 'HTML'
                 });
                 console.log("📢 Telegram Notification Sent!");
             }
             return true;
-        }
     } catch (err) {
         console.error("❌ Auto-Mock Error:", err.message);
+        if (request) await markMockRequest(request.ref, { status: "failed", error: String(err.message || err).slice(0, 500) });
         return false;
     }
+};
+
+module.exports = {
+    generateDailyMocks,
+    normalizeMockQuestions,
+    parseMockJson,
+    buildMockPrompt,
+    createSlug,
+    MOCK_MODEL_CHAIN,
 };
 
 if (require.main === module) {

@@ -3,12 +3,17 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function isAdmin() {
-      return request.auth != null && request.auth.token.email == "rahulkumar74603@gmail.com";
+      return request.auth != null && (
+        request.auth.token.email == "rahulkumar74603@gmail.com" ||
+        request.auth.token.admin == true
+      );
     }
 
     function isSeoInternalPath(collectionId, documentId) {
       return (collectionId == "system_settings" &&
-          (documentId == "seo_intelligence" || documentId == "seo_search_console")) ||
+          (documentId == "seo_intelligence" || documentId == "seo_search_console" ||
+           documentId == "automation" || documentId == "video_dispatcher_status" ||
+           documentId == "video_queue_meta" || documentId == "video_quota")) ||
         collectionId == "seo_recommendations" ||
         collectionId == "seo_intelligence_runs" ||
         collectionId == "seo_apply_snapshots" ||
@@ -18,6 +23,7 @@ service cloud.firestore {
         collectionId == "seo_change_events" ||
         collectionId == "seo_change_outcomes" ||
         collectionId == "gsc_search_analytics_daily" ||
+        collectionId == "mock_test_requests" ||
         // 2026-10-10: radar/trend strategy data internal hai — public read band
         collectionId == "content_opportunities";
     }
@@ -48,6 +54,26 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /system_settings/automation {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /system_settings/video_dispatcher_status {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /system_settings/video_queue_meta {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /system_settings/video_quota {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
     match /seo_recommendations/{recId} {
       allow read: if isAdmin();
       allow write: if isAdmin();
@@ -74,6 +100,40 @@ service cloud.firestore {
     }
 
     match /seo_backfill_tracker/{trackerId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // FIX (Oct 2026): ye collections pehle catch-all se ADMIN ke liye bhi
+    // read-denied the — dashboard ka Change History / Outcomes / GSC Analytics
+    // section hamesha "no data" dikhata tha.
+    match /seo_change_events/{eventId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /seo_change_outcomes/{outcomeId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /gsc_search_analytics_daily/{dayId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /gsc_search_analytics_daily/{dayId}/rows/{rowId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /content_opportunities/{docId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Admin panel → GitHub Actions on-demand mock test requests
+    match /mock_test_requests/{reqId} {
       allow read: if isAdmin();
       allow write: if isAdmin();
     }

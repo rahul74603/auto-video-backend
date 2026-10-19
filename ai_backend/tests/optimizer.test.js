@@ -17,6 +17,8 @@ const {
 const {
   assertAllowedProposalWrite,
   buildProposal,
+  unionProposalLists,
+  MAX_PROPOSALS,
   PUBLIC_CONTENT_COLLECTIONS
 } = require("../agents/seo_intelligence/proposal_model");
 const { runSeoIntelligence } = require("../agents/seo_intelligence/orchestrator");
@@ -508,4 +510,46 @@ test("19 AI that invents numbers is discarded", async () => {
   const html = enriched.find((item) => item.field === "articleHtml");
   assert.ok(html);
   assert.equal(/54000|1234 vacancies/i.test(String(html.proposedValue.articleHtml || "")), false);
+});
+
+test("20 scan persist unions previous proposals — approvals survive the next daily scan", () => {
+  const previous = [
+    buildProposal({ id: "old-approved", field: "metaDescription", level: "A", contentType: "BLOG", contentId: "b1", status: "approved" }),
+    buildProposal({ id: "old-pending", field: "h1", level: "B", contentType: "BLOG", contentId: "b2", status: "pending" })
+  ];
+  const fresh = [
+    buildProposal({ id: "new-pending", field: "seoTitle", level: "A", contentType: "BLOG", contentId: "b3", status: "pending" })
+  ];
+  const merged = unionProposalLists(previous, fresh);
+  const byId = new Map(merged.map((item) => [item.id, item]));
+  assert.equal(byId.get("old-approved").status, "approved");
+  assert.equal(byId.get("old-approved").applied, false);
+  assert.equal(byId.get("old-pending").status, "pending");
+  assert.equal(byId.get("new-pending").status, "pending");
+  // approved-first priority inside the cap
+  assert.equal(merged[0].id, "old-approved");
+});
+
+test("21 union caps at MAX_PROPOSALS and sheds oldest terminal rows first", () => {
+  const previous = [];
+  for (let i = 0; i < MAX_PROPOSALS + 40; i += 1) {
+    previous.push(buildProposal({
+      id: `rej-${i}`,
+      field: "metaDescription",
+      level: "A",
+      contentType: "BLOG",
+      contentId: `b-${i}`,
+      status: "rejected",
+      createdAt: "2025-01-01T00:00:00.000Z"
+    }));
+  }
+  previous.push(buildProposal({
+    id: "keep-approved", field: "h1", level: "A",
+    contentType: "BLOG", contentId: "keep", status: "approved",
+    createdAt: "2026-10-19T00:00:00.000Z"
+  }));
+  const merged = unionProposalLists(previous, []);
+  assert.equal(merged.length, MAX_PROPOSALS);
+  assert.equal(merged[0].id, "keep-approved");
+  assert.equal(new Set(merged.map((item) => item.id)).size, merged.length);
 });

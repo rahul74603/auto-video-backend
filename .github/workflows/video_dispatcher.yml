@@ -172,7 +172,8 @@ jobs:
           # while billing is disabled (avoids one failed API call per render).
           TTS_ENGINE:            ${{ vars.TTS_ENGINE }}
           # Optional: freshness window (days) for auto-rendering content.
-          # Defaults to 0.5 (12 hours) — only freshly published content is auto-rendered.
+          # Blank/unset = 7 days (DEFAULT_MAX_AGE_DAYS in video_state.js).
+          # Only content published inside the window is auto-rendered.
           # Set 0 to disable the guard for a run.
           VIDEO_MAX_AGE_DAYS:    ${{ vars.VIDEO_MAX_AGE_DAYS }}
           # --- Growth Engine (AI visuals, layouts, motion) ---

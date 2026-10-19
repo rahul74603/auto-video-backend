@@ -30,7 +30,9 @@ import {
   approveOptimizationProposals,
   checkOptimizationProposal,
   checkOptimizationProposals,
+  compactProposalsForWrite,
   previewOptimizationProposal,
+  seoWriteErrorMessage,
   type SeoOptimizationProposal,
 } from '@/features/seo-intelligence/data/seoIntelligenceRepository';
 
@@ -61,6 +63,8 @@ describe('SEO proposal CHECK / bulk approve / bulk apply', () => {
     expect(pendingSafe.approvable).toBe(true);
     expect(pendingSafe.category).toBe('needs_approval');
 
+    // Approval is status-only, so review-required Level B rows ARE approvable
+    // in bulk (the admin reviews each row in the preview). Apply stays gated.
     const needsReview = checkOptimizationProposal(base({
       id: 'b1',
       field: 'metaDescription',
@@ -68,7 +72,7 @@ describe('SEO proposal CHECK / bulk approve / bulk apply', () => {
       level: 'B',
       requiresReview: true,
     }));
-    expect(needsReview.approvable).toBe(false);
+    expect(needsReview.approvable).toBe(true);
     expect(needsReview.category).toBe('needs_review');
 
     const fact = checkOptimizationProposal(base({
@@ -116,7 +120,7 @@ describe('SEO proposal CHECK / bulk approve / bulk apply', () => {
     expect(report.summary.levelC).toBe(1);
   });
 
-  it('bulk safe-approve writes status only and skips Level C / review / facts', async () => {
+  it('bulk safe-approve writes status only and skips Level C / facts (Level B review-required IS approvable)', async () => {
     const current = [
       base({ id: 'a1', field: 'metaDescription', status: 'pending', level: 'A', requiresReview: false }),
       base({ id: 'b1', field: 'metaDescription', status: 'pending', level: 'B', requiresReview: true }),
@@ -130,11 +134,12 @@ describe('SEO proposal CHECK / bulk approve / bulk apply', () => {
 
     const { proposals, results } = await approveOptimizationProposals(['a1', 'b1', 'c1']);
     expect(results.find((item) => item.id === 'a1')?.outcome).toBe('approved');
-    expect(results.find((item) => item.id === 'b1')?.outcome).toBe('skipped');
+    expect(results.find((item) => item.id === 'b1')?.outcome).toBe('approved');
     expect(results.find((item) => item.id === 'c1')?.outcome).toBe('skipped');
     expect(proposals.find((item) => item.id === 'a1')?.status).toBe('approved');
     expect(proposals.find((item) => item.id === 'a1')?.applied).toBe(false);
-    expect(proposals.find((item) => item.id === 'b1')?.status).toBe('pending');
+    expect(proposals.find((item) => item.id === 'b1')?.status).toBe('approved');
+    expect(proposals.find((item) => item.id === 'b1')?.applied).toBe(false);
     expect(mockSetDoc).toHaveBeenCalledTimes(1);
     const payload = mockSetDoc.mock.calls[0][1];
     expect(payload.optimizationApply).toBe(false);
@@ -356,5 +361,74 @@ describe('SEO proposal CHECK / bulk approve / bulk apply', () => {
       expect(snapIdx).toBeGreaterThan(-1);
       expect(pageIdx).toBeGreaterThan(snapIdx);
     }
+  });
+});
+
+describe('SEO proposal write compaction (approve/apply never fail on doc size)', () => {
+  it('dedupes by id, trims verbose values, and caps at 80 with approved-first priority', () => {
+    const many: SeoOptimizationProposal[] = [];
+    for (let i = 0; i < 100; i += 1) {
+      many.push(base({
+        id: `old-rejected-${i}`,
+        field: 'metaDescription',
+        status: 'rejected',
+        level: 'A',
+        requiresReview: false,
+        createdAt: '2025-01-01T00:00:00.000Z',
+        oldValue: 'x'.repeat(5000),
+      }));
+    }
+    many.push(base({
+      id: 'approved-keep',
+      field: 'metaDescription',
+      status: 'approved',
+      level: 'B',
+      requiresReview: true,
+      createdAt: '2026-10-19T00:00:00.000Z',
+    }));
+    // duplicate id — second copy must be dropped
+    many.push(base({ id: 'approved-keep', field: 'h1', status: 'pending', level: 'A', requiresReview: false }));
+
+    const compacted = compactProposalsForWrite(many);
+    expect(compacted.length).toBe(80);
+    expect(compacted[0].id).toBe('approved-keep');
+    expect(compacted.filter((item) => item.id === 'approved-keep').length).toBe(1);
+    expect(String(compacted.find((item) => item.id === 'old-rejected-0')?.oldValue).length).toBeLessThanOrEqual(280);
+  });
+
+  it('trims articleHtml bodies to a preview (full HTML stays in seo_proposal_bodies)', () => {
+    const compacted = compactProposalsForWrite([
+      base({
+        id: 'html-1',
+        field: 'articleHtml',
+        status: 'pending',
+        level: 'B',
+        requiresReview: true,
+        proposedValue: { articleHtml: `<p>${'y'.repeat(10000)}</p>`, htmlRef: 'html-1' },
+      }),
+    ]);
+    const stored = compacted[0].proposedValue as { articleHtml: string; htmlRef: string };
+    expect(stored.htmlRef).toBe('html-1');
+    expect(stored.articleHtml.length).toBeLessThanOrEqual(1500);
+  });
+
+  it('htmlRef-backed articleHtml proposals are approvable (status-only) but never bulk-applied', () => {
+    const refBacked = base({
+      id: 'html-ref',
+      field: 'articleHtml',
+      status: 'pending',
+      level: 'B',
+      requiresReview: true,
+      proposedValue: { articleHtml: '<p>preview…</p>', htmlRef: 'html-ref', previewText: 'preview' },
+    });
+    expect(checkOptimizationProposal(refBacked).approvable).toBe(true);
+  });
+
+  it('translates Firestore errors into actionable messages', () => {
+    expect(seoWriteErrorMessage(new Error('Missing or insufficient permissions.'), 'Approve'))
+      .toMatch(/permission denied/i);
+    expect(seoWriteErrorMessage(new Error('3 INVALID_ARGUMENT: document too large'), 'Approve'))
+      .toMatch(/bahut bada/i);
+    expect(seoWriteErrorMessage(new Error('unavailable'), 'Apply')).toMatch(/network/i);
   });
 });

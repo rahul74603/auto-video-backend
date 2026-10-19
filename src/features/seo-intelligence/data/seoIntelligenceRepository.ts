@@ -1342,8 +1342,9 @@ export async function setOptimizationProposalStatus(
     if (item.status !== 'pending') return item;
     return { ...item, status, applied: false, reviewedAt: new Date().toISOString() };
   });
-  await setDoc(ref, { optimizationProposals: next, optimizationApply: false }, { merge: true });
-  return next;
+  const compacted = compactProposalsForWrite(next);
+  await setDoc(ref, { optimizationProposals: compacted, optimizationApply: false }, { merge: true });
+  return compacted;
 }
 
 const CONTENT_COLLECTION_MAP: Record<string, string> = {
@@ -1498,6 +1499,88 @@ function uniqueIds(ids: string[]): string[] {
   return out;
 }
 
+/**
+ * Compaction before EVERY settings-doc write (approve/apply/rollback).
+ *
+ * Legacy scans sometimes left 200+ verbose proposals in
+ * system_settings/seo_intelligence, pushing the doc near Firestore's 1MB
+ * limit — at which point every approve/apply setDoc failed and the dashboard
+ * appeared "dead" (approve click → error toast → nothing changed).
+ *
+ * This keeps the write small and safe: dedupe by id, trim verbose string
+ * values, and priority-cap to MAX_PERSISTED_PROPOSALS (approved work is never
+ * dropped; oldest terminal rejected/failed/rolled_back rows are shed first).
+ */
+const MAX_PERSISTED_PROPOSALS = 80;
+
+function trimProposalText(value: unknown, maxChars: number): unknown {
+  if (typeof value === 'string' && value.length > maxChars) return value.slice(0, maxChars);
+  if (Array.isArray(value)) return value.map((item) => trimProposalText(item, maxChars));
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      // articleHtml bodies live in seo_proposal_bodies via htmlRef — never
+      // inline more than a preview here.
+      if (key === 'articleHtml' && typeof entry === 'string' && entry.length > 1500) {
+        out[key] = entry.slice(0, 1500);
+      } else {
+        out[key] = trimProposalText(entry, maxChars);
+      }
+    }
+    return out;
+  }
+  return value;
+}
+
+export function compactProposalsForWrite(
+  proposals: SeoOptimizationProposal[],
+  max: number = MAX_PERSISTED_PROPOSALS,
+): SeoOptimizationProposal[] {
+  const seen = new Set<string>();
+  const deduped: SeoOptimizationProposal[] = [];
+  for (const item of Array.isArray(proposals) ? proposals : []) {
+    const id = String(item?.id || '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const isHtml = String(item.field || '') === 'articleHtml';
+    deduped.push({
+      ...item,
+      oldValue: trimProposalText(item.oldValue, isHtml ? 2000 : 280) as SeoOptimizationProposal['oldValue'],
+      proposedValue: trimProposalText(item.proposedValue, isHtml ? 1500 : 2000) as SeoOptimizationProposal['proposedValue'],
+      reason: typeof item.reason === 'string' ? item.reason.slice(0, 800) : item.reason,
+    });
+  }
+  const rank = (status?: string): number => {
+    switch (String(status || 'pending')) {
+      case 'approved': return 0;
+      case 'pending': return 1;
+      case 'applied': return 2;
+      default: return 3;
+    }
+  };
+  const timeOf = (item: SeoOptimizationProposal): number => {
+    const parsed = Date.parse(item.createdAt || (item as { reviewedAt?: string }).reviewedAt || item.appliedAt || '');
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  deduped.sort((a, b) => rank(a.status) - rank(b.status) || timeOf(b) - timeOf(a));
+  return deduped.slice(0, Math.max(1, Math.min(max || MAX_PERSISTED_PROPOSALS, MAX_PERSISTED_PROPOSALS)));
+}
+
+/** Firestore write errors → short actionable Hindi/Hinglish message for toasts. */
+export function seoWriteErrorMessage(error: unknown, action: string): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  if (/permission-denied|insufficient permissions|Missing or insufficient permissions/i.test(raw)) {
+    return `${action} failed: Firestore permission denied. Admin email se login karo aur firestore.rules deploy karo.`;
+  }
+  if (/resource-exhausted|quota|maximum.*size|larger than|1048487|document too large/i.test(raw)) {
+    return `${action} failed: data bahut bada ho gaya hai. Naya SEO scan chalao (purana compact ho jayega), phir retry karo.`;
+  }
+  if (/unavailable|network|offline|failed to get document/i.test(raw)) {
+    return `${action} failed: network issue. Internet check karke Refresh dabao.`;
+  }
+  return `${action}: ${raw}`;
+}
+
 export function isSeoFactField(field?: string | null): boolean {
   return FACT_FIELDS.has(String(field || ''));
 }
@@ -1505,6 +1588,14 @@ export function isSeoFactField(field?: string | null): boolean {
 export function hasPublicDocumentMapping(proposal: SeoOptimizationProposal): boolean {
   const collectionName = CONTENT_COLLECTION_MAP[String(proposal.contentType || '').toUpperCase()];
   return Boolean(collectionName && proposal.contentId);
+}
+
+function isHtmlRefBacked(proposal: SeoOptimizationProposal): boolean {
+  const value = proposal.proposedValue;
+  const ref = value && typeof value === 'object'
+    ? String((value as { htmlRef?: string }).htmlRef || proposal.htmlRef || '')
+    : String(proposal.htmlRef || '');
+  return Boolean(ref.trim());
 }
 
 function inspectArticleHtml(proposal: SeoOptimizationProposal): { ok: boolean; reason: string } | null {
@@ -1551,6 +1642,11 @@ export function checkOptimizationProposal(proposal: SeoOptimizationProposal): Se
   const applyReason = applyable
     ? preview.reason
     : (blockedReason || preview.reason);
+  // Approval is STATUS-ONLY (never writes public content), so review-required
+  // Level B proposals and htmlRef-backed articleHtml proposals ARE approvable
+  // here — the admin reviews each row in the on-screen preview before
+  // confirming. The strict gates (safety, inline HTML, Level A-only batching)
+  // still apply at APPLY time, which is the only step that touches pages.
   let approveReason = 'Not pending.';
   let approvable = false;
   if (status !== 'pending') {
@@ -1565,15 +1661,15 @@ export function checkOptimizationProposal(proposal: SeoOptimizationProposal): Se
     approveReason = 'Proposal is missing a public document mapping.';
   } else if (!APPLYABLE_FIELDS.has(field) && field !== 'schemaMarkup') {
     approveReason = safety.reason;
-  } else if (html && !html.ok) {
+  } else if (field === 'articleHtml' && html && !html.ok && !isHtmlRefBacked(proposal)) {
     approveReason = html.reason;
-  } else if (!safety.ok) {
+  } else if (field !== 'articleHtml' && !safety.ok) {
     approveReason = safety.reason;
-  } else if (proposal.requiresReview) {
-    approveReason = 'Requires review — use individual Approve (status only). Bulk safe-approve skips review-required proposals.';
   } else {
     approvable = true;
-    approveReason = 'Safe to approve. Approval does not write public content.';
+    approveReason = proposal.requiresReview
+      ? 'Safe to approve after your review. Approval does not write public content; Level B still applies one-by-one.'
+      : 'Safe to approve. Approval does not write public content.';
   }
 
   let category: SeoProposalCheck['category'] = 'blocked';
@@ -1771,7 +1867,8 @@ export async function applyOptimizationProposal(proposalId: string): Promise<Seo
     ? { ...item, status: 'applied', applied: true, snapshotId, appliedAt: at, lastError: null }
     : item);
   const history = [{ proposalId: id, status: 'applied', snapshotId, at, field: proposal.field }, ...(Array.isArray(settings.applyHistory) ? settings.applyHistory as SeoApplyHistoryItem[] : [])].slice(0, 20);
-  await setDoc(settingsRef, { optimizationProposals: next, applyHistory: history, optimizationApply: false }, { merge: true });
+  const proposalsToPersist = compactProposalsForWrite(next);
+  await setDoc(settingsRef, { optimizationProposals: proposalsToPersist, applyHistory: history, optimizationApply: false }, { merge: true });
 
   // Phase 2 measurement hook — append the change event AFTER the public write
   // and proposal bookkeeping. Never blocks the apply (best-effort).
@@ -1793,7 +1890,7 @@ export async function applyOptimizationProposal(proposalId: string): Promise<Seo
       at,
     }), `apply:${field}`);
   }
-  return next;
+  return proposalsToPersist;
 }
 
 export async function rollbackOptimizationProposal(proposalId: string): Promise<SeoOptimizationProposal[]> {
@@ -1818,7 +1915,8 @@ export async function rollbackOptimizationProposal(proposalId: string): Promise<
     ? { ...item, status: 'rolled_back', applied: false, rolledBackAt: at }
     : item);
   const history = [{ proposalId: id, status: 'rolled_back', snapshotId: proposal.snapshotId, at, field: proposal.field }, ...(Array.isArray(settings.applyHistory) ? settings.applyHistory as SeoApplyHistoryItem[] : [])].slice(0, 20);
-  await setDoc(settingsRef, { optimizationProposals: next, applyHistory: history, optimizationApply: false }, { merge: true });
+  const compacted = compactProposalsForWrite(next);
+  await setDoc(settingsRef, { optimizationProposals: compacted, applyHistory: history, optimizationApply: false }, { merge: true });
 
   // Phase 2 measurement hook — a rollback is its OWN event; the original
   // applied event is referenced and preserved (history never rewritten).
@@ -1862,7 +1960,7 @@ export async function rollbackOptimizationProposal(proposalId: string): Promise<
       rolledBackFrom,
     }), `rollback:${field}`);
   }
-  return next;
+  return compacted;
 }
 
 export async function fetchSeoApplySnapshot(snapshotId: string): Promise<SeoApplySnapshot> {
@@ -1918,8 +2016,9 @@ export async function approveOptimizationProposals(proposalIds: string[]): Promi
     if (!item.id || !approved.has(item.id) || item.status !== 'pending') return item;
     return { ...item, status: 'approved', applied: false, reviewedAt: at };
   });
-  await setDoc(ref, { optimizationProposals: next, optimizationApply: false }, { merge: true });
-  return { proposals: next, results };
+  const compacted = compactProposalsForWrite(next);
+  await setDoc(ref, { optimizationProposals: compacted, optimizationApply: false }, { merge: true });
+  return { proposals: compacted, results };
 }
 
 /**

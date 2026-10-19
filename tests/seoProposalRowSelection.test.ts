@@ -28,12 +28,12 @@ describe('Admin SEO Optimization Proposal row selection', () => {
     expect(dashboardSource).toContain('selectProposal(proposal)');
   });
 
-  it('opens existing details above the table via row click and View details', () => {
+  it('opens existing details above the table via row click and Details', () => {
     const sectionIndex = dashboardSource.indexOf('Optimization Proposals');
     const section = dashboardSource.slice(sectionIndex);
     const detailsIndex = section.indexOf('id="seo-proposal-details"');
     const tableIndex = section.indexOf('<table className="w-full text-left text-sm">');
-    const viewIndex = section.lastIndexOf('View details');
+    const viewIndex = section.lastIndexOf('Details');
     const rowClickIndex = section.indexOf('onClick={() => selectProposal(proposal)}');
 
     expect(sectionIndex).toBeGreaterThan(-1);
@@ -41,6 +41,9 @@ describe('Admin SEO Optimization Proposal row selection', () => {
     expect(tableIndex).toBeGreaterThan(detailsIndex);
     expect(viewIndex).toBeGreaterThan(tableIndex);
     expect(rowClickIndex).toBeGreaterThan(-1);
+    // Per-row quick actions (approve/reject/apply without opening details)
+    expect(section).toContain('✓ Approve');
+    expect(section).toContain('Apply ▸');
     expect(dashboardSource).toContain('Proposal details');
     expect(dashboardSource).toContain('Old value:');
     expect(dashboardSource).toContain('Proposed value:');
