@@ -297,8 +297,12 @@ test("source fetcher fails when page has too little text", async () => {
 test("job writer prompt is source-grounded and demands the required structure", () => {
   const prompt = buildJobWriterPrompt({ source: makeJobSource(), instructions: "focus on dates" });
   assert.match(prompt, /NEVER invent or guess dates/);
-  assert.match(prompt, /No hard word-count quota/);
-  assert.doesNotMatch(prompt, /ABSOLUTE MINIMUM|AIM 2000/);
+  // LONG-FORM SEO policy: 1500-2200 words, rich section structure, 8-12 FAQs
+  assert.match(prompt, /LONG-FORM/);
+  assert.match(prompt, /1500-2200 words/);
+  assert.match(prompt, /8-12/);
+  assert.match(prompt, /How to Apply/);
+  assert.match(prompt, /Conclusion/);
   assert.match(prompt, /VERIFIED FACT SHEET/); // strict number/date allowlist
   assert.match(prompt, /table-responsive/);
   assert.match(prompt, new RegExp(EDITORIAL_AUTHOR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -1515,17 +1519,32 @@ test("word policy: JOB me 3000 words pe koi 'high' issue NAHI (upar ki koi hard 
   assert.deepEqual(wordIssues, [], `unexpected: ${wordIssues.join("|")}`);
 });
 
-test("word policy: source-fit articles have no SEO word quota; only empty/truncated output fails", () => {
+test("word policy: LONG-FORM SEO — JOB needs 600+ words, FAST_TRACK keeps a low floor", () => {
   const src = { url: "https://example.com/r.pdf", text: "r".repeat(500), tables: [], links: [] };
-  for (const [type, words] of [["JOB", 350], ["FAST_TRACK", 180]]) {
-    const review = reviewArticle({
-      type,
-      article: tinyArticle(type, words),
-      source: src,
-      existing: { titles: [], urls: [] }
-    });
-    assert.ok(!(review.issues || []).some((i) => i.startsWith("word-count-low")), `${type} ${words} words should not be penalized`);
-  }
+  // JOB: 350 words ab ADHURA hai (floor 600) — self-heal loop dobara likhega
+  const thinJob = reviewArticle({
+    type: "JOB",
+    article: tinyArticle("JOB", 350),
+    source: src,
+    existing: { titles: [], urls: [] }
+  });
+  assert.ok(thinJob.issues.some((i) => i.startsWith("word-count-low")), "JOB 350 words should fail the 600-word floor");
+  // JOB: 700 words pass (target 1500-2200, floor 600)
+  const goodJob = reviewArticle({
+    type: "JOB",
+    article: tinyArticle("JOB", 700),
+    source: src,
+    existing: { titles: [], urls: [] }
+  });
+  assert.ok(!(goodJob.issues || []).some((i) => i.startsWith("word-count-low")), "JOB 700 words should pass");
+  // FAST_TRACK: chhote updates ab bhi allowed (floor 80)
+  const shortFt = reviewArticle({
+    type: "FAST_TRACK",
+    article: tinyArticle("FAST_TRACK", 180),
+    source: src,
+    existing: { titles: [], urls: [] }
+  });
+  assert.ok(!(shortFt.issues || []).some((i) => i.startsWith("word-count-low")), "FAST_TRACK 180 words should not be penalized");
   const tooShort = reviewArticle({
     type: "FAST_TRACK",
     article: tinyArticle("FAST_TRACK", 20),

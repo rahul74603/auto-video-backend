@@ -108,14 +108,29 @@ function buildJobWriterPrompt({ source, instructions, feedbackIssues, strategyGu
     "5. Do not name any individual person as author. Author is always:",
     `   "${EDITORIAL_AUTHOR}".`,
     "",
-    "================ ARTICLE REQUIREMENTS (quality over length) ================",
-    "- No hard word-count quota. Usually 500-1000 useful words when the official notice supports it; short or single-post notices may need less.",
-    "- Exactly one <h1>; use only relevant sections supported by the source. There is no fixed section count or mandatory order.",
-    "- Keep a compact overview, then explain only the useful details: dates, vacancy, eligibility, age cut-off, salary, fee, selection, application route and official links when stated.",
-    "- Omit unavailable sections instead of filling them with 'check notification' boilerplate. Do not repeat the page summary cards or state the same fact in multiple FAQs.",
-    "- Application steps, address, documents, delivery mode, experience, age relaxation and exam date must be explicitly supported by the official notice.",
-    "- FAQs are optional (0-4), unique and source-backed. No FAQ quota, no generic advice, no editorial self-praise, and never claim human fact-checking unless metadata confirms it.",
-    "- Use tables only where they improve scanning; wrap every table in <div class=\"table-responsive\"> for horizontal mobile scrolling, and prefer a short list when a table adds no value. Use direct official HTTPS links from source links, never aggregator redirects.",
+    "================ ARTICLE REQUIREMENTS (LONG-FORM, DETAILED, SEO-RICH) ================",
+    "TARGET: 1500-2200 words (minimum ~1000). Sarkari-result style ka COMPLETE coverage chahiye —",
+    "chhota summary bilkul nahi. Har section me facts ke saath unka matlab/implication bhi samjhao",
+    "(jaise last date nazdeek ho to jaldi apply karne ki salah). Lambaai detail aur structure se aani",
+    "chahiye — naya fact invent karke kabhi nahi.",
+    "- Exactly one <h1> (post name + organization + year, keyword-rich).",
+    "- MANDATORY section structure (H2 headings, keyword-rich, available facts ke saath):",
+    "  1) Overview/intro paragraph — role, org, vacancies, mode, deadline (primary keywords first 100 words me).",
+    "  2) Overview table — saare key facts ek nazar me (post, org, advt no, vacancies, dates, qualification, age, salary, location).",
+    "  3) Important Dates table + 2-3 line explanation (kab se kab tak, kya miss na karein).",
+    "  4) Vacancy Details — post-wise/category-wise break-up jo source me ho; table preferred.",
+    "  5) Eligibility / Qualification — har post ke liye kaun apply kar sakta hai, detail me.",
+    "  6) Age Limit — min/max, cut-off date, relaxation sirf tab jab notice me likhi ho.",
+    "  7) Salary / Pay Scale — pay matrix/grade pay sahit jo source me ho.",
+    "  8) Application Fee table (Gen/OBC/EWS/SC/ST/Female) + payment mode.",
+    "  9) Selection Process — stages detail me, har stage ka matlab samjhate hue.",
+    "  10) How to Apply — numbered steps, ACTUAL mode ke hisaab se (online/offline); address/documents/delivery sirf tab jab notice me ho.",
+    "  11) Important Links section — Apply Online / Notification PDF / Official Website (direct official HTTPS only).",
+    "  12) FAQs — 8-12 unique source-backed questions (last date? fees? qualification? age? salary? selection? kaise apply karein?).",
+    "  13) Conclusion — 3-4 lines: key highlights + official notification verify karne ki salah.",
+    "- Missing fact = section chhota karo ya 'नोटिफिकेशन में स्पष्ट नहीं' likho; guess/adha-satya kabhi nahi.",
+    "- Tables: dates, fees, vacancy, eligibility ke liye tables PREFERRED; har table <div class=\"table-responsive\"> me wrap. Use direct official HTTPS links from source links, never aggregator redirects.",
+    "- No editorial self-praise; never claim human fact-checking unless metadata confirms it.",
     "",
     "================ SEO REQUIREMENTS ================",
     "- seoTitle: max 70 chars, primary keyword first, natural.",
@@ -128,7 +143,7 @@ function buildJobWriterPrompt({ source, instructions, feedbackIssues, strategyGu
     '  "metaDescription": "string",',
     '  "slug": "string",',
     '  "h1": "string (same meaning as article H1)",',
-    '  "shortDescription": "2-3 line Hinglish summary",',
+    '  "shortDescription": "detailed 5-8 line Hinglish SEO summary (post + org + vacancies + qualification + fees + last date + apply guidance)",',
     '  "contentHtml": "full article HTML (tables wrapped, single h1, no h1 count >1)",',
     '  "faqs": [{"question": "string", "answer": "string"}],',
     '  "facts": {',
@@ -174,10 +189,10 @@ function buildJobWriterPrompt({ source, instructions, feedbackIssues, strategyGu
     `<admin_instructions>${text(instructions, 1500) || "none"}</admin_instructions>`,
     formatReviewFeedbackPrompt(feedbackIssues), // regenerate/self-heal loop: pichli failings writer ko batana ("" ho to harmless)
     "================ FINAL SELF-CHECK (answer se pehle khud verify karo — warna FAIL) ================",
-    "1) Exactly one <h1>; include only useful source-backed sections and avoid repeating summary-card facts.",
+    "1) Exactly one <h1>; poora 13-section structure maujood hai (overview, dates, vacancy, eligibility, age, salary, fee, selection, apply steps, links, 8-12 FAQs, conclusion); article 1000+ words hai.",
     "2) Har number/date/amount/percentage jo likha hai wo upar VERIFIED FACT SHEET me maujood hai.",
     "3) facts.startDate/lastDate/examDate me wahi EXACT dates hain jo article body me likhi hain (ya \"\").",
-    "4) FAQs are optional; if present, each must answer a distinct useful question from the source.",
+    "4) 8-12 unique FAQs, har ek ka jawab source-backed aur alag sawal ka.",
     "5) Output SIRF ek valid JSON object — koi markdown fence/explanation nahi."
   ].join("\n");
 }
@@ -314,19 +329,19 @@ function normalizeJobArticle(raw, { source }) {
 }
 
 /**
- * Ek baar me model lamba likh de to deterministic compress pass — SAME facts,
- * tables, sections rakhte hue prose ~2000 words tak chhota karwata hai.
- * (Max ek extra call; phir se normalize hota hai.)
+ * Ek baar me model bahut lamba likh de (4500+ words) to deterministic compress
+ * pass — SAME facts, tables, sections rakhte hue prose 1500-2500 words par
+ * lata hai. (Max 2 attempts; phir se normalize hota hai.)
  */
 function buildCompressPrompt(article) {
   return [
-    "Neeche diya gaya job article unnecessarily long ho gaya hai. Ise concise, accurate aur useful banao.",
-    "No target word count and no minimum. Preserve source-backed facts while removing repetition and generic padding.",
+    "Neeche diya gaya job article unnecessarily long (4500+ words) ho gaya hai. Ise tight aur useful banao —",
+    "lekin DETAILED hi rakho: 1500-2500 words ke beech lao, isse chhota mat karo.",
     "",
     "STRICT RULES:",
     "- Dates, amounts, eligibility, vacancies, age cut-off, links and official instructions ko exactly preserve karo.",
-    "- Keep only sections supported by facts; remove duplicated summary-card details and boilerplate.",
-    "- FAQs optional hain; remove repetitive or ungrounded questions. Koi naya fact/link add mat karo.",
+    "- Poora section structure (overview, dates, vacancy, eligibility, age, salary, fee, selection, apply steps, links, FAQs, conclusion) banae rakho; sirf repetition/duplicate lines hatao.",
+    "- 8-12 unique FAQs rakho; sirf repetitive ya ungrounded questions hatao. Koi naya fact/link add mat karo.",
     '',
     'Return STRICT JSON: {"contentHtml": "shortened full HTML", "faqs": [{"question":"","answer":""}]}',
     "",

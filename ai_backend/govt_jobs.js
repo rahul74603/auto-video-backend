@@ -239,7 +239,7 @@ Follow these mapping rules to fill EVERY field:
 20. officialSiteLink: Official website URL
 21. isExpired: Compare lastDate with today (${todayDate}), true if expired
 22. category: ssc/banking/railway/upsc/defense/teaching/state/engineering/other
-23. description is mandatory: return a non-empty 3-4 line Hinglish summary grounded in the title and source. If details are sparse, keep it cautious and tell readers to verify the official notification; never invent facts and never return an empty description.
+23. description is mandatory: return a DETAILED 6-8 line SEO-rich Hinglish summary — post name, organization, total vacancies, qualification, age limit, fees, start/last dates aur apply mode sab cover karo (jo source me ho). Pehle 2 lines me primary keywords (post + org + year) zaroor aane chahiye. If details are sparse, keep it cautious and tell readers to verify the official notification; never invent facts and never return an empty description.
 
 SCRAPED DATA:
 ${scrapedContent}
@@ -270,7 +270,7 @@ Return ONLY this JSON (no markdown):
   "notificationLink": "",
   "applyLink": "",
   "officialSiteLink": "",
-  "description": "3-4 line Hinglish summary",
+  "description": "detailed 6-8 line SEO-rich Hinglish summary (post+org+vacancies+qualification+fees+dates)",
   "isExpired": false
 }`;
 
@@ -365,34 +365,52 @@ ${String(scrapedContent).slice(0, 18000)}
 2. Do not add an experience requirement, age-relaxation rule, document list, application instruction, exam date, fee, or eligibility condition unless the official source explicitly says it.
 3. Missing fields should be omitted or described as "नोटिफिकेशन में स्पष्ट नहीं"; never turn missing data into a guess or a generic government rule.
 4. Do not spin the source by swapping synonyms. Explain the practical implications of the actual notice in original wording.
-5. Remove filler, repeated facts, keyword stuffing, generic advice and FAQs that merely restate the overview. Do not repeat all facts already shown in the page summary cards.
+5. No keyword stuffing (same phrase baar-baar mat ghusao), no self-praise, no generic wishes. Lekin article DETAILED aur COMPLETE hona chahiye — facts ke saath unka matlab bhi samjhao (jaise last date nazdeek ho to jaldi apply ki salah). Lambaai detail se aani chahiye, repetition se nahi.
 6. Never claim "fact-checked" or imply a human review. The content is an editorial draft until a human verifies it.
 7. Use only direct official links supplied in the extracted facts. Never label a publisher/aggregator redirect as an official application link.
 
-=== OUTPUT ===
+=== OUTPUT: LONG-FORM, DETAILED, SEO-RICH ARTICLE ===
+TARGET: 1500-2200 words (minimum ~1000). Sarkari-result style ka COMPLETE coverage — chhota summary bilkul nahi.
 Return only clean semantic HTML, no markdown, <html>/<head>/<body>, or <h1> (the page already has its H1).
-- Begin with one short paragraph explaining the role, who can apply (only if confirmed), the application mode, and deadline.
-- Add a compact Overview table only if it helps scan facts; do not repeat the same table again later.
-- Add only relevant sections whose facts exist: dates; vacancy/contract details; eligibility; age/cut-off; salary; fee; selection; how to apply; official links.
-- Application steps must reflect the actual mode and exact source instructions. Include address, documents, delivery method and cut-off time only when printed in the notice.
-- Age and fee sections must not invent defaults. State when the notice/listing does not provide a value.
-- FAQs are optional (0-4). Include only useful questions not already answered in the article, with source-backed answers.
-- Use responsive tables for compact facts. No generic wishes or self-promotional conclusion.
-Typical length: 500-1000 useful words when the official notice supports it. Write less for a short notice; there is no word-count quota.`;
+MANDATORY structure (H2 headings keyword-rich — post name + organization + year istemal karo):
+1) Intro paragraph — role, organization, vacancies, application mode, deadline (primary keywords pehle 100 words me).
+2) Overview table — saare key facts ek nazar me (post, org, advt no, vacancies, dates, qualification, age, salary, location).
+3) Important Dates — table + 2-3 line explanation (kab se kab tak, kya miss na karein).
+4) Vacancy Details — post-wise/category-wise break-up jo source me ho; table preferred.
+5) Eligibility / Qualification — har post ke liye kaun apply kar sakta hai, detail me.
+6) Age Limit — min/max, cut-off date, relaxation sirf tab jab notice me likhi ho.
+7) Salary / Pay Scale — pay matrix/grade pay sahit jo source me ho.
+8) Application Fee — table (Gen/OBC/EWS/SC/ST/Female) + payment mode; notice me na ho to "स्पष्ट नहीं" likho, guess mat karo.
+9) Selection Process — stages detail me, har stage ka matlab samjhate hue.
+10) How to Apply — numbered steps, ACTUAL mode ke hisaab se (online/offline); address/documents/delivery sirf tab jab notice me ho.
+11) Important Links — Apply Online / Notification PDF / Official Website (direct official HTTPS only).
+12) FAQs — 8-12 unique source-backed questions (last date? fees? qualification? age? salary? selection? kaise apply karein?).
+13) Conclusion — 3-4 lines: key highlights + official notification verify karne ki salah.
+Missing fact = section chhota karo ya "नोटिफिकेशन में स्पष्ट नहीं" likho; guess/adha-satya kabhi nahi.`;
 
+    let bestHtml = '';
+    let bestWords = 0;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
         try {
             const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
             const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-            const result = await model.generateContent(prompt);
+            // Attempt 2 = EXPAND pass: pehla output chhota aaya to model ko wahi
+            // article detail me badhane ko kaho (facts same, sections poore karo).
+            const attemptPrompt = attempt === 1 ? prompt
+                : `${prompt}\n\n=== EXPAND INSTRUCTION (previous output was too short) ===\nPichhli baar article bahut chhota aaya tha. ISI notice par DOBARA likho — poora section structure (overview, dates, vacancy, eligibility, age, salary, fee, selection, apply steps, links, 8-12 FAQs, conclusion) aur MINIMUM 1000 words. Koi naya fact invent mat karo; maujooda facts ko detail me samjhao.`;
+            const result = await model.generateContent(attemptPrompt);
             let html = result.response.text()
                 .replace(/```html/gi, '')
                 .replace(/```/g, '')
                 .trim();
             // Safety: h1 aa gaya ho to h2 bana do (page pe single H1 rahe)
             html = html.replace(/<h1(\s[^>]*)?>/gi, '<h2>').replace(/<\/h1>/gi, '</h2>');
-            if (htmlWordCount(html) >= 100) return html;
-            console.warn(`⚠️ Gemini returned an empty/too-short Job article (attempt ${attempt}/2).`);
+            const words = htmlWordCount(html);
+            if (words > bestWords) { bestWords = words; bestHtml = html; }
+            // LONG-FORM gate: 700+ words chahiye (target 1500-2200). Chhota aaya
+            // to attempt 2 me EXPAND instruction ke saath retry hoga.
+            if (words >= 700) return html;
+            console.warn(`⚠️ Job article too short (${words} words, attempt ${attempt}/2, need 700+).`);
         } catch (err) {
             console.warn(`⚠️ Job article generation failed (attempt ${attempt}/2): ${err.message}`);
             if (/429|quota|resource exhausted/i.test(err.message || '')) break;
@@ -400,6 +418,12 @@ Typical length: 500-1000 useful words when the official notice supports it. Writ
         if (attempt < 2) await sleep(2000);
     }
 
+    // Dono attempts chhote aaye: agar AI output 250+ words ka hai to wahi rakho
+    // (fallback se behtar), warna fact-only fallback do.
+    if (bestWords >= 250) {
+        console.warn(`⚠️ Job article stayed short after 2 attempts — keeping best AI output (${bestWords} words) for human review.`);
+        return bestHtml;
+    }
     console.warn('🧩 Saving a grounded, fact-only fallback Job article for human review.');
     return buildFallbackArticleHtml({
         ...jobData,
@@ -840,7 +864,7 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
 
             // ⭐ QUALITY GATE — sirf ache article wale jobs save honge
             const { score, words } = jobQualityScore(jobData, articleHtml);
-            console.log(`⭐ Quality: ${score}/14 (${words} words) — ${finalTitle.slice(0, 50)}`);
+            console.log(`⭐ Quality: ${score}/13 (${words} words) — ${finalTitle.slice(0, 50)}`);
 
             // Processed mark turant (dobara AI-quota waste na ho)
             await db.collection("processed_links").doc(docId).set({

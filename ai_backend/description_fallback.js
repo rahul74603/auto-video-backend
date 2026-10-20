@@ -87,7 +87,10 @@ function fallbackFromFacts({ title, organization, category, updateDate, vacancie
 }
 
 function buildDescription(options = {}) {
-    const maxLength = Number(options.maxLength) || 360;
+    // LONG-FORM policy: descriptions detailed aur SEO-rich (post+org+vacancies+
+    // qualification+fees+dates). Meta tag frontend par 160 chars par trim hota
+    // hai, isliye yahan lamba description SEO-safe hai.
+    const maxLength = Number(options.maxLength) || 600;
     const preferred = trimSummary(plainText(options.preferred), maxLength);
     if (preferred.length >= 30) return preferred;
 
@@ -180,12 +183,80 @@ function buildFallbackArticleHtml(options = {}) {
         ? `<h2>Available details</h2><table><tbody>${rows}</tbody></table>`
         : '<p>Is draft me abhi title ke alawa verified details extract nahi hui hain.</p>';
 
+    // Fact-driven detail sections — sirf maujood facts se (koi invention nahi).
+    // Isse fallback drafts bhi khaali-khaali nahi lagte aur reviewer ko context milta hai.
+    const fact = (key) => plainText(options[key]);
+    const detailSections = [];
+    if (kind === 'job') {
+        const startDate = fact('startDate');
+        const lastDate = fact('lastDate');
+        if (startDate || lastDate) {
+            detailSections.push(
+                '<h2>Important dates</h2>',
+                `<p>${[
+                    startDate ? `Application start: <strong>${escapeHtml(startDate)}</strong>` : '',
+                    lastDate ? `Last date: <strong>${escapeHtml(lastDate)}</strong>` : '',
+                ].filter(Boolean).join(' · ')}. Last date se pehle form bhar lein; aakhri din server slow ho sakta hai.</p>`
+            );
+        }
+        const feeParts = [
+            ['General / OBC / EWS', fact('feeGen') || fact('feeOBC')],
+            ['SC / ST / Female', fact('feeSCST') || fact('feeFemale')],
+        ].filter(([, value]) => value);
+        if (feeParts.length || fact('applicationFee')) {
+            detailSections.push(
+                '<h2>Application fee</h2>',
+                `<p>${feeParts.map(([label, value]) => `${escapeHtml(label)}: <strong>${escapeHtml(value)}</strong>`).join(' · ')}${fact('applicationFee') ? `. ${escapeHtml(fact('applicationFee'))}` : ''}</p>`
+            );
+        }
+        const qualification = fact('qualification');
+        const ageLimit = fact('ageLimit') || fact('minAge');
+        if (qualification || ageLimit) {
+            detailSections.push(
+                '<h2>Eligibility and age limit</h2>',
+                `<p>${[
+                    qualification ? `Qualification: <strong>${escapeHtml(qualification)}</strong>` : '',
+                    ageLimit ? `Age limit: <strong>${escapeHtml(ageLimit)}</strong>` : '',
+                ].filter(Boolean).join(' · ')}. Category-wise relaxation aur exact cut-off date official notification me dekhein.</p>`
+            );
+        }
+        const vacancies = fact('vacancies');
+        const salary = fact('salary');
+        const selectionProcess = fact('selectionProcess');
+        if (vacancies || salary || selectionProcess) {
+            detailSections.push(
+                '<h2>Vacancy, salary and selection</h2>',
+                `<p>${[
+                    vacancies ? `Total vacancies: <strong>${escapeHtml(vacancies)}</strong>` : '',
+                    salary ? `Salary: <strong>${escapeHtml(salary)}</strong>` : '',
+                    selectionProcess ? `Selection: <strong>${escapeHtml(selectionProcess)}</strong>` : '',
+                ].filter(Boolean).join(' · ')}</p>`
+            );
+        }
+        // Fact-only mini FAQ — har sawal ka jawab upar wale extracted facts me hai.
+        const faqPairs = [
+            lastDate ? [`${title} ki last date kya hai?`, `Official details ke anusaar aavedan ki antim tithi ${lastDate} hai.`] : null,
+            feeParts.length ? ['Application fee kitni hai?', feeParts.map(([label, value]) => `${label} ke liye ${value}`).join(', ') + '.'] : null,
+            qualification ? ['Kaun apply kar sakta hai?', `Eligibility: ${qualification}. Poori shartein notification me dekhein.`] : null,
+            ageLimit ? ['Age limit kya hai?', `Age limit ${ageLimit} hai; cut-off date notification me verify karein.`] : null,
+            vacancies ? ['Kitne pad hain?', `Kul ${vacancies} pad bhare jane hain.`] : null,
+            salary ? ['Salary kitni milegi?', `Salary ${salary} hai.`] : null,
+        ].filter(Boolean).slice(0, 6);
+        if (faqPairs.length) {
+            detailSections.push(
+                '<h2>FAQs</h2>',
+                faqPairs.map(([q, a]) => `<p><strong>${escapeHtml(q)}</strong><br>${escapeHtml(a)}</p>`).join('\n')
+            );
+        }
+    }
+
     return [
         `<p>${intro}</p>`,
         summaryHtml,
         detailsHtml,
+        ...detailSections,
         '<h2>What to verify</h2>',
-        '<p>Source notice ko kholkar naam, dates, eligibility aur instructions ko carefully match karein. Missing information ko assume na karein; official notice hi final maana jana chahiye.</p>',
+        '<ul><li>Post ka naam, advt number aur organization official notice se match karein.</li><li>Start date, last date aur fees notice me confirm karein.</li><li>Eligibility, age cut-off aur selection stages notice me padhein.</li><li>Missing information ko assume na karein; official notice hi final maana jana chahiye.</li></ul>',
         '<h2>Official links</h2>',
         linksHtml,
     ].filter(Boolean).join('\n');

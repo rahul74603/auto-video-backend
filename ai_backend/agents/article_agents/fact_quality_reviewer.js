@@ -191,7 +191,8 @@ function checkStructure({ type, article, source, issues, warnings, metrics }) {
   const responsiveWrapped =
     tables === 0 || /table-responsive/.test(html);
 
-  // Only a low technical floor rejects empty/truncated output; article length is not a ranking target.
+  // LONG-FORM policy: JOB articles ke liye 600-word floor — isse chhota article
+  // adhura maana jata hai aur self-heal loop me dobara likha jata hai.
   // NOTE: yahan type ARTICLE ka type hai ("JOB"/"FAST_TRACK"), routing ka
   // lowercase nahi — casing pe mat tikna.
   const isFastTrack = String(type || "").toLowerCase().replace(/_/g, "-") === ARTICLE_TYPES.FAST_TRACK;
@@ -638,7 +639,7 @@ module.exports = {
 const ISSUE_GUIDANCE = [
   {
     re: /^word-count-low:(\d+)/,
-    fix: () => "Article output bahut chhota/adhura hai: source-backed core answer, practical next step, aur relevant official link add karo. Word count badhane ke liye filler ya repeated facts mat jodo."
+    fix: () => "Article bahut CHHOTA hai (JOB me 600+ words chahiye, target 1500-2200): poora section structure likho — overview table, dates, vacancy, eligibility, age, salary, fee, selection, apply steps, links, 8-12 FAQs, conclusion. Har section me facts ka MATLAB bhi samjhao. Filler/repetition mat jodo, DETAIL jodo."
   },
   {
     re: /^structure:too-few-h2/,

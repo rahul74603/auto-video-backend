@@ -290,7 +290,8 @@ test("job + fast-track writer prompts me VERIFIED FACT SHEET allowlist hoti hai"
   assert.match(jobPrompt, /VERIFIED FACT SHEET/);
   assert.match(jobPrompt, /8000/); // source number allowlist me
   assert.match(jobPrompt, /FINAL SELF-CHECK/);
-  assert.match(jobPrompt, /No hard word-count quota/);
+  assert.match(jobPrompt, /LONG-FORM/);
+  assert.match(jobPrompt, /1500-2200 words/);
   assert.doesNotMatch(jobPrompt, /ABSOLUTE MINIMUM/);
 
   const ftPrompt = buildFastTrackWriterPrompt({ source, instructions: "" });
@@ -320,7 +321,10 @@ test("pipeline: pehla attempt FAIL → feedback ke saath doosra attempt PASS (se
   assert.equal(draft.repairAttempts, 2);
   assert.equal(draft.repairPassedOnAttempt, 2);
   assert.match(calls[1], /PICHLE REVIEW KI FEEDBACK/, "doosre attempt me pichli failings ka feedback gaya");
-  assert.doesNotMatch(calls[1], /word-count-low/);
+  // LONG-FORM policy: chhota article ab word-count-low issue deta hai aur
+  // self-heal feedback me EXPAND guidance jati hai (600+ words, poora structure)
+  assert.match(calls[1], /word-count-low/);
+  assert.match(calls[1], /8-12 FAQs/);
 });
 
 test("pipeline: pehla hi attempt PASS ho to doosra attempt NAHI hota (no wasted calls)", async () => {
@@ -561,7 +565,8 @@ test("feedback: har issue ke saath concrete FIX guidance jata hai", () => {
     "dates:box-missing — article me dates hain par facts me nahi"
   ]);
   assert.match(prompt, /PICHLE REVIEW KI FEEDBACK/);
-  assert.match(prompt, /source-backed core answer/);
+  assert.match(prompt, /600\+ words chahiye/);
+  assert.match(prompt, /8-12 FAQs/);
   assert.match(prompt, /Sirf zaroori, source-supported headings/);
   assert.doesNotMatch(prompt, /EXACTLY 6 FAQs/);
   assert.match(prompt, /VERIFIED FACT SHEET me maujood/);

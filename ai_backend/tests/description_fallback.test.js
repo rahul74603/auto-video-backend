@@ -20,7 +20,14 @@ test('falls back to the first useful article paragraphs when the model summary i
     const summary = buildDescription({ preferred: '', articleHtml: html, title: 'Board Admit Card' });
     assert.match(summary, /board has released the admit card/i);
     assert.ok(summary.length >= 30);
-    assert.ok(summary.length <= 360);
+    assert.ok(summary.length <= 600);
+});
+
+test('LONG-FORM policy: detailed descriptions survive up to 600 chars (meta trims to 160 on frontend)', () => {
+    const longPreferred = 'SSC CGL 2026 notification out for 5432 Group B and Group C posts across ministries. Graduates aged 18 to 32 years can apply online from 1 July 2026 through ssc.gov.in. Application fee is Rs 100 for General, OBC and EWS candidates while SC, ST, women and PwD candidates pay nothing. Last date to submit the form is 31 July 2026. Selection happens through Tier 1 CBT and Tier 2 exams plus document verification.';
+    assert.ok(longPreferred.length > 360 && longPreferred.length <= 600, `length=${longPreferred.length}`);
+    const summary = buildDescription({ preferred: longPreferred, title: 'SSC CGL 2026', kind: 'job' });
+    assert.equal(summary, longPreferred);
 });
 
 test('uses source text or a fact-only title fallback if article HTML is unavailable', () => {

@@ -19,20 +19,23 @@ const ARTICLE_TYPES = Object.freeze({
   FAST_TRACK: "fast-track"
 });
 
-// Editorial length is source-dependent. Small notices should stay concise;
-// these low technical floors only reject empty/truncated output, never enforce SEO padding.
-const WORD_TARGET_MIN_JOB = 120;
+// LONG-FORM SEO POLICY (Oct 2026): job articles DETAILED aur SEO-rich hone
+// chahiye — sarkariresult/freejobalert style lambaa coverage. Ye floors thin/
+// truncated output ko reject karte hain; prompts me 1500-2200 words ka target
+// hai. Facts ab bhi sirf source se — lambaai structure + explanation se aayegi,
+// invented data se kabhi nahi.
+const WORD_TARGET_MIN_JOB = 600;
 const WORD_TARGET_MIN_FAST_TRACK = 80;
 const WORD_TARGET_MIN = WORD_TARGET_MIN_JOB; // legacy alias (JOB references)
 const WORD_TARGET_MAX = 2500; // soft compression guidance only
 const WORD_WARN_HIGH = 3000; // long drafts get a soft warning, not a quality bonus
 const WORD_COMPRESS_TRIGGER = 4500; // runaway/truncation safety valve
 
-const WORD_AIM_JOB = 800;
+const WORD_AIM_JOB = 1800;
 const WORD_AIM_FAST_TRACK = 400;
-const FAQ_AIM_JOB = 3;          // optional maximum guidance, not a quota
+const FAQ_AIM_JOB = 10;         // 8-12 FAQs ka guidance (source-backed, unique)
 const FAQ_AIM_FAST_TRACK = 2;   // optional maximum guidance, not a quota
-const H2_AIM = 4;               // flexible guidance only; sections depend on source facts
+const H2_AIM = 10;              // rich section structure: dates/vacancy/eligibility/age/salary/fee/selection/apply/links/faq
 const H2_AIM_FAST_TRACK = 2;
 
 // ⭐ SELF-HEALING AGENT LOOP — review fail hone par writer ko issues feedback
