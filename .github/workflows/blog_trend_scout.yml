@@ -1,0 +1,55 @@
+# =====================================================================
+# 📡 BLOG TREND SCOUT — self trend-search agent (blogs ke liye)
+# Google Trends India + Google News se LIVE niche trends (study/jobs/
+# current-affairs) khud dhundhta hai → top 3 picks queue karta hai →
+# auto_blog v4 unhi pe grounded blogs likhta hai.
+# Blog runs se ~1h pehle chalta hai (7:30 AM + 5:30 PM IST).
+# Secrets: sirf SERVICE_ACCOUNT_JSON. Koi AI key nahi (100% free).
+# =====================================================================
+name: Blog Trend Scout (self trend-search)
+
+on:
+  schedule:
+    - cron: '0 2 * * *'    # 02:00 UTC = 7:30 AM IST
+    - cron: '0 12 * * *'   # 12:00 UTC = 5:30 PM IST
+  workflow_dispatch:
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: ai_backend
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🛑 Check Automation Switch (blog_trend_scout)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+        run: |
+          npm install --ignore-scripts --legacy-peer-deps firebase-admin 2>&1 | tail -n 3 || true
+          node check_automation.js blog_trend_scout || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ blog_trend_scout paused — skipping workflow"
+            exit 0
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: ⚙️ Setup Node.js
+        if: steps.automation_check.outputs.enabled == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 📡 Run Blog Trend Scout
+        if: steps.automation_check.outputs.enabled == 'true'
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+        run: node blog_trend_scout.js

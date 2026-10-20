@@ -5,6 +5,13 @@ const { google } = require("googleapis");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const crypto = require("crypto");
 const sharp = require("sharp"); // ✅ WebP conversion ke liye
+// 🌟 v4 DISCOVER-FIRST: trend scout queue + Discover-safe titles + grounding
+const {
+    cleanDiscoverTitle,
+    stripWords,
+    buildKeywordSlug,
+    scoreDiscoverReadiness
+} = require("./blog_discover");
 
 // =========================================================
 // 🔐 1. FIREBASE & AUTH INITIALIZATION
@@ -100,18 +107,9 @@ const MASTER_POOL = {
 // 🎨 3. DYNAMIC CONTENT VARIATION SYSTEM
 // =========================================================
 
-// 50+ Power Words for Maximum Variation
-const POWER_WORDS = [
-    "🔥 Breaking", "🚨 Latest Update", "⚡ Exclusive", "📊 Complete Guide",
-    "🎯 Target 2026", "📖 Special Report", "💡 Must Read", "🌟 Trending Now",
-    "📢 Important Alert", "🎓 Expert Guide", "✨ New Update", "🔔 Big Alert",
-    "📝 Detailed Analysis", "🏆 Top Secrets", "💼 Career Special",
-    "🔑 Key Insights", "📌 Ultimate Guide", "🚀 Fast Track",
-    "💪 Power Guide", "🌈 Complete Package", "🔍 Deep Dive",
-    "⭐ Star Guide", "🎪 Special Edition", "🌊 Mega Guide",
-    "🦁 Bold Strategy", "🎭 Unique Approach", "🔮 Future Ready",
-    "🎯 Bullseye Tips", "🌺 Fresh Perspective", "💎 Premium Guide"
-];
+// v4 NOTE: POWER_WORDS clickbait prefixes hata diye — Discover policy ke
+// khilaf the ("Breaking/Exclusive/Top Secrets" titles demote hote hain).
+// Titles ab cleanDiscoverTitle() se Discover-safe bante hain.
 
 // 15+ Writing Styles
 const WRITING_STYLES = [
@@ -299,7 +297,7 @@ const COLOR_SCHEMES = [
     "sunset orange gradient", "midnight blue and silver"
 ];
 
-function generateDynamicImagePrompt(category, topic, writingStyle) {
+function generateDynamicImagePrompt(category, topic, writingStyle, extraKeywords = "") {
     const randomStyle = IMAGE_STYLES[Math.floor(Math.random() * IMAGE_STYLES.length)];
     const randomColors = COLOR_SCHEMES[Math.floor(Math.random() * COLOR_SCHEMES.length)];
     const randomSeed = Math.floor(Math.random() * 99999);
@@ -315,8 +313,9 @@ function generateDynamicImagePrompt(category, topic, writingStyle) {
     };
 
     const visual = categoryVisuals[category] || `educational content, learning environment`;
+    const topical = extraKeywords ? `, about: ${extraKeywords}` : "";
 
-    return `${randomStyle}, ${visual}, ${randomColors} color scheme, topic: ${topic}, high quality 16:9 aspect ratio, no text overlay, seed:${randomSeed}`;
+    return `${randomStyle}, ${visual}${topical}, ${randomColors} color scheme, topic: ${topic}, high quality 16:9 aspect ratio, no text overlay, no watermark, seed:${randomSeed}`;
 }
 
 async function generateAndUploadWebPImage(imagePrompt, blogId, retryCount = 0) {
@@ -721,27 +720,8 @@ function createInternalLinksHTML(smartLinks, template) {
 // 🛠️ 8. UTILITY FUNCTIONS
 // =========================================================
 
-function generateUniqueHash(content) {
-    return crypto.createHash('sha256')
-        .update(content + Date.now() + Math.random())
-        .digest('hex')
-        .substring(0, 12);
-}
-
-function createDynamicSlug(title, category) {
-    const baseSlug = title
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .replace(/-+/g, '-')
-        .substring(0, 60);
-
-    const uniqueId = generateUniqueHash(title);
-    const timestamp = Date.now().toString(36);
-
-    return `${baseSlug}-${timestamp}-${uniqueId}`;
-}
+// v4 NOTE: timestamp-hash slugs hata diye — ab buildKeywordSlug() se clean
+// keyword URLs (collision pe -2, -3...). Ugly URLs CTR kharab karte hain.
 
 function generateAdvancedMetaTags(data) {
     const title = data.title.length > 60 ? data.title.substring(0, 57) + "..." : data.title;
@@ -927,23 +907,69 @@ async function notifyGoogle(url, retryCount = 0) {
 }
 
 // =========================================================
-// 🤖 9. AI CONTENT GENERATOR - MAX UNIQUENESS
+// 🌐 8B. TREND GROUNDING — source URLs se asli material lao
+// (AI ko andhere me likhne ke bajaye grounded facts do)
 // =========================================================
 
-async function generateAdvancedBlogContent(category, topic, writingStyle, structure, retryCount = 0) {
+async function fetchGroundingSources(sources, maxSources = 3) {
+    const out = [];
+    const list = (sources || []).slice(0, maxSources);
+    if (!list.length) return out;
+    let cheerio = null;
     try {
-        const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash-lite",
-            generationConfig: {
-                temperature: 0.9,
-                topP: 0.95,
-                topK: 64,
-                maxOutputTokens: 8192
+        cheerio = require("cheerio");
+    } catch {
+        console.log("⚠️ cheerio missing — grounding skip");
+        return out;
+    }
+    for (const s of list) {
+        const url = s?.url;
+        if (!url || !/^https?:\/\//i.test(url)) continue;
+        try {
+            const res = await axios.get(url, {
+                timeout: 15000,
+                maxRedirects: 5,
+                maxContentLength: 800 * 1024,
+                headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Accept": "text/html"
+                }
+            });
+            const $ = cheerio.load(String(res.data || ""));
+            $("script, style, nav, header, footer, aside, .sidebar, #sidebar, form").remove();
+            const pageTitle = ($("title").first().text() || "").replace(/\s+/g, " ").trim().slice(0, 200);
+            const paras = [];
+            $("article p, .post-body p, .entry-content p, main p, p").each((i, el) => {
+                if (paras.join(" ").length > 5000) return false;
+                const t = $(el).text().replace(/\s+/g, " ").trim();
+                if (t.length > 60) paras.push(t);
+            });
+            const text = paras.join("\n").slice(0, 5000);
+            if (text.replace(/\s+/g, " ").trim().length < 300) {
+                console.log(`⚠️ Grounding thin, skip: ${url.slice(0, 60)}`);
+                continue;
             }
-        });
+            out.push({ title: s.title || pageTitle, url, source: s.source || "", text });
+            console.log(`✅ Grounded: ${(s.source || "source")} (${text.length} chars)`);
+        } catch (e) {
+            console.log(`⚠️ Grounding fetch fail (${url.slice(0, 60)}): ${e.message.slice(0, 80)}`);
+        }
+    }
+    return out;
+}
 
+// =========================================================
+// 🤖 9. AI CONTENT GENERATOR - DISCOVER-FIRST (v4)
+// =========================================================
+
+// Best model pehle, quota/429 pe lite fallback — quality kabhi compromise nahi
+const BLOG_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+
+async function generateAdvancedBlogContent(category, topic, writingStyle, structure, trendContext = null, retryCount = 0) {
+    try {
         const now = new Date();
         const currentDate = now.toLocaleDateString('hi-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+        const currentYear = now.getFullYear();
 
         // Random unique elements
         const randomEmoji = ["🎯", "🚀", "💡", "🔥", "⚡", "🌟", "📊", "🏆"][Math.floor(Math.random() * 8)];
@@ -958,66 +984,104 @@ async function generateAdvancedBlogContent(category, topic, writingStyle, struct
             "यह जानकारी आपकी life बदल सकती है"
         ][Math.floor(Math.random() * 8)];
 
-        const prompt = `You are an EXPERT Hindi-Hinglish Content Writer for StudyGyaan.in. Write a COMPLETELY UNIQUE blog post.
+        // 🌱 Grounding material (trend scout ke sources) — facts SIRF yahi se
+        const grounding = Array.isArray(trendContext?.grounding) ? trendContext.grounding : [];
+        const groundingBlock = grounding.length
+            ? grounding.map((g, i) => `--- SOURCE ${i + 1}: ${g.title || ""} (${g.source || "news"}) ---\nURL: ${g.url}\n${g.text}`).join("\n\n").slice(0, 14000)
+            : "(no source material — general evergreen topic; phir bhi koi fake date/statistic/notice mat banao)";
+        const trendLine = trendContext?.trendEvidence
+            ? `WHY NOW (trend proof): ${trendContext.trendEvidence}\nBLOG ANGLE: ${trendContext.angle || "complete explainer"}\nFOCUS KEYWORDS: ${(trendContext.keywords || []).join(", ")}`
+            : `BLOG ANGLE: timeless evergreen guide (fresh ${currentYear} perspective)`;
+
+        const prompt = `You are an EXPERT Hindi-Hinglish Content Writer for StudyGyaan.in (education portal: govt jobs, exams, current affairs). Write a COMPLETE, HONEST, genuinely useful blog post optimized for Google Discover.
 
 TOPIC: "${topic}"
 CATEGORY: "${category}"
 WRITING STYLE: ${writingStyle}
 STRUCTURE: ${structure.template}
 DATE: ${currentDate}
+${trendLine}
 UNIQUE OPENER: "${randomOpener}"
-EMOJI THEME: ${randomEmoji}
+EMOJI THEME: ${randomEmoji} (body me halka istemal OK, TITLE me emoji BILKUL MANA)
 
-STRICT REQUIREMENTS:
-1. Start with "${randomOpener}" - make it compelling
-2. Length: 2000-2500 words
-3. Language: Natural Hindi-Hinglish mix (60% Hindi, 40% English terms)
-4. HTML format: h2, h3, p, ul, ol, table, strong, em tags
-5. Include at least: 2 comparison tables, 3 real examples, 1 step-by-step guide
-6. FAQ Section: 6-8 questions (include "?" in questions for schema detection)
-7. Every section must be genuinely unique and informative
-8. No generic filler content - only real, useful information
-9. Conversational tone - write like explaining to a friend
-10. Include current 2025-2026 relevant data
+=== SOURCE MATERIAL (grounding — facts SIRF yahi se lena) ===
+${groundingBlock}
 
-CONTENT MUST INCLUDE:
-- Strong hook opening paragraph
-- At least 6 H2 headings
-- At least 4 H3 subheadings  
-- 2 data tables with real information
-- Numbered list with at least 7 items
-- Bullet points with actionable tips
-- Real examples with context
-- FAQ section with 6-8 Q&A pairs
-- Strong conclusion with clear CTA
+=== STRICT FACT RULES (todna mana — galat info se bharosa toot-ta hai) ===
+1. Dates, fees, vacancy numbers, cut-offs, eligibility, official links SIRF source material se. Source me na mile to "आधिकारिक सूचना में देखें" likho — guess/adha-satya kabhi nahi.
+2. Koi invented statistics, surveys, percentages mat banao ("70% students..." jaisa kuch nahi jab tak source me na ho).
+3. Sarkari notices/policies ke baare me source ke bahar daave mat karo.
+4. Clickbait/misleading lines MANA: "100% selection", "secret trick", "shocking truth", "guaranteed" — ye shabd content me kahin nahi aane chahiye.
+
+=== TITLE RULES (Google Discover policy — sabse zaroori) ===
+- "aiTitle": 55-70 characters, Hindi-Hinglish, descriptive + honest.
+- NO emoji, NO "Breaking/Exclusive/Shocking/Secret/Top/Latest Update/Alert" jaisa prefix, NO date bracket.
+- Year (${currentYear}) sirf tab jab topic timely ho.
+- GOOD example: "SSC CGL ${currentYear} Notification: Dates, Fees Aur Eligibility"
+- BAD example: "Breaking: SSC CGL Top Secrets (October)"
+
+=== CONTENT RULES ===
+1. Length: 1800-2400 words REAL text (HTML tags gin ke nahi).
+2. Language: Natural Hindi-Hinglish (Hindi Devanagari + common English terms).
+3. "${randomOpener}" se shuru karo, phir "मुख्य बातें (Key Takeaways)" box — 4-5 bullets taaki Discover readers turant samjhen.
+4. At least 6 H2 headings (descriptive, keyword-rich, honest) + 4 H3 subheadings.
+5. 2 data tables (dates/fees/comparison — source-backed), 1 numbered step-by-step guide (7+ steps), actionable bullet tips.
+6. FAQ Section: 5-6 questions, har question me "?" zaroor (schema ke liye).
+7. "आधिकारिक स्रोत" H2 section: diye gaye source URLs ko link karo + official website ka zikr.
+8. Original analysis zaroor: "iska matlab kya hai / aage kya karein" apne shabdon me — news copy-paste mat karo.
+9. No generic filler, no repeated paragraphs, no fake stories ("Ramesh from Jaipur" jaisi kahaniyan mat banao).
+10. Strong conclusion + CTA (related mock test / job updates padhne ki salah).
+- HTML format: h2, h3, p, ul, ol, table, strong, em. No <h1>, no markdown.
 
 IMPORTANT: Return ONLY valid JSON without markdown.
 
 JSON FORMAT:
 {
-  "aiTitle": "Unique compelling title 50-65 characters without date",
+  "aiTitle": "Clean descriptive title 55-70 chars, no emoji/prefix/date",
   "metaDescription": "Engaging 150-160 char description with primary keyword naturally placed",
   "keywords": ["primary keyword", "secondary keyword", "lsi keyword 1", "lsi keyword 2", "lsi keyword 3", "lsi keyword 4", "lsi keyword 5"],
   "imagePrompt": "Detailed visual description for AI image generation",
-  "content": "Complete HTML content 2000+ words",
+  "content": "Complete HTML content (h2, h3, p, ul, ol, table, strong, em — NO h1, NO markdown)",
   "excerpt": "150 char engaging summary",
   "targetAudience": "Who this article is for",
-  "uniqueAngle": "What makes this article unique"
+  "uniqueAngle": "What makes this article unique",
+  "sourcesCited": ["source URL 1", "source URL 2"]
 }`;
 
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
-
-        console.log("🔍 Parsing AI response...");
-        const blogData = cleanJsonResponse(responseText);
-
-        if (!blogData || !blogData.content || blogData.content.length < 1500) {
-            if (retryCount < 2) {
-                console.log(`⚠️ Insufficient content, retrying... (${retryCount + 1}/2)`);
-                await new Promise(r => setTimeout(r, 3000));
-                return generateAdvancedBlogContent(category, topic, writingStyle, structure, retryCount + 1);
+        // Best model pehle, fail pe lite fallback — har model pe content validate
+        let blogData = null;
+        let lastErr = null;
+        for (const modelName of BLOG_MODELS) {
+            try {
+                const model = genAI.getGenerativeModel({
+                    model: modelName,
+                    generationConfig: { temperature: 0.85, topP: 0.95, topK: 64, maxOutputTokens: 12000 }
+                });
+                console.log(`🤖 Generating with ${modelName}...`);
+                const result = await model.generateContent(prompt);
+                const responseText = result.response.text();
+                console.log("🔍 Parsing AI response...");
+                blogData = cleanJsonResponse(responseText);
+                const words = blogData ? stripWords(blogData.content) : 0;
+                if (!blogData || !blogData.content || words < 900) {
+                    throw new Error(`insufficient content (${words} words)`);
+                }
+                console.log(`✅ ${modelName}: ${words} real words`);
+                break;
+            } catch (e) {
+                lastErr = e;
+                blogData = null;
+                console.log(`⚠️ ${modelName} fail: ${String(e.message).slice(0, 120)} — next model...`);
             }
-            throw new Error("AI generated insufficient content");
+        }
+
+        if (!blogData) {
+            if (retryCount < 2) {
+                console.log(`⚠️ All models failed, retrying... (${retryCount + 1}/2)`);
+                await new Promise(r => setTimeout(r, 5000));
+                return generateAdvancedBlogContent(category, topic, writingStyle, structure, trendContext, retryCount + 1);
+            }
+            throw new Error("AI generated insufficient content: " + (lastErr ? lastErr.message : "unknown"));
         }
 
         blogData.keywords = blogData.keywords || [topic, category, "exam preparation", "government jobs", "study tips"];
@@ -1029,7 +1093,7 @@ JSON FORMAT:
         console.error("❌ Content generation error:", error.message);
         if (retryCount < 2) {
             await new Promise(r => setTimeout(r, 4000));
-            return generateAdvancedBlogContent(category, topic, writingStyle, structure, retryCount + 1);
+            return generateAdvancedBlogContent(category, topic, writingStyle, structure, trendContext, retryCount + 1);
         }
         throw error;
     }
@@ -1039,35 +1103,86 @@ JSON FORMAT:
 // 🚀 10. MAIN BLOG GENERATION ENGINE
 // =========================================================
 
-async function generateDailyBlog() {
+// Din me MAX 2 blogs — quality over quantity (Discover-first policy)
+const BLOG_DAILY_CAP = Math.max(1, Number(process.env.BLOG_DAILY_CAP || 2));
+
+async function countTodayBlogs() {
+    // IST day-start (UTC ms): aaj 00:00 IST ke baad wale blogs gino
+    const istOffsetMs = 5.5 * 3600 * 1000;
+    const dayStartUtc = Math.floor((Date.now() + istOffsetMs) / 86400000) * 86400000 - istOffsetMs;
+    const snap = await db.collection("blogs")
+        .where("date", ">=", new Date(dayStartUtc))
+        .limit(BLOG_DAILY_CAP + 1)
+        .get();
+    return snap.size;
+}
+
+async function generateDailyBlog(attempt = 0) {
     try {
-        console.log("🚀 Starting ADVANCED Auto-Blogger Engine v3.0...");
+        console.log("🚀 Starting DISCOVER-FIRST Auto-Blogger Engine v4.0...");
         console.log("⏰ Time:", new Date().toLocaleString('hi-IN'));
 
         const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
         const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-        // 🎲 STEP 1: Random Category
-        const categories = Object.keys(MASTER_POOL);
-        const randomCat = categories[Math.floor(Math.random() * categories.length)];
-        console.log(`🎯 Category: ${randomCat}`);
+        // 🛑 STEP 0: Daily cap (2/day) — cap full to skip, dobara quota waste nahi
+        try {
+            const todayCount = await countTodayBlogs();
+            console.log(`📅 Aaj ke blogs: ${todayCount}/${BLOG_DAILY_CAP}`);
+            if (todayCount >= BLOG_DAILY_CAP) {
+                console.log("✅ Daily cap full — best-2 already published, skipping.");
+                return true;
+            }
+        } catch (capErr) {
+            console.log("⚠️ Daily-cap check fail (continue):", capErr.message);
+        }
 
-        // 🎲 STEP 2: Topic — 📡 TRENDING RADAR queue pehle, warna random pool
+        // 🎲 STEP 1: Random Category (trend pick apni category la sakta hai)
+        const categories = Object.keys(MASTER_POOL);
+        let randomCat = categories[Math.floor(Math.random() * categories.length)];
+
+        // 📡 STEP 2: Topic — ① BLOG TREND SCOUT queue → ② RADAR queue → ③ random pool
         const availableTopics = MASTER_POOL[randomCat];
         let rawTopic = availableTopics[Math.floor(Math.random() * availableTopics.length)];
         let topicFrom = 'random-pool';
+        let trendContext = null;
         try {
-            const radarSnap = await db.collection('system_configs').doc('trending_radar').get();
-            const queue = radarSnap.exists && Array.isArray(radarSnap.data().blogQueue) ? radarSnap.data().blogQueue : [];
-            if (queue.length && queue[0]?.topic) {
-                rawTopic = String(queue[0].topic);
-                topicFrom = `TRENDING RADAR (score ${queue[0].score ?? '?'})`;
-                await db.collection('system_configs').doc('trending_radar').update({ blogQueue: queue.slice(1) });
+            const trendSnap = await db.collection('system_configs').doc('blog_trend_queue').get();
+            const tQueue = trendSnap.exists && Array.isArray(trendSnap.data().queue) ? trendSnap.data().queue : [];
+            const pick = tQueue.find((q) => q && q.topic);
+            if (pick) {
+                rawTopic = String(pick.topic);
+                trendContext = pick;
+                if (pick.category && MASTER_POOL[pick.category]) randomCat = pick.category;
+                topicFrom = `TREND SCOUT (score ${pick.score ?? '?'})`;
+                await db.collection('system_configs').doc('blog_trend_queue')
+                    .update({ queue: tQueue.filter((q) => q !== pick) });
             }
-        } catch (radarErr) {
-            console.log('⚠️ Radar queue read fail — random topic continue:', radarErr.message);
+        } catch (scoutErr) {
+            console.log('⚠️ Trend queue read fail:', scoutErr.message);
         }
+        if (!trendContext) {
+            try {
+                const radarSnap = await db.collection('system_configs').doc('trending_radar').get();
+                const queue = radarSnap.exists && Array.isArray(radarSnap.data().blogQueue) ? radarSnap.data().blogQueue : [];
+                if (queue.length && queue[0]?.topic) {
+                    rawTopic = String(queue[0].topic);
+                    topicFrom = `TRENDING RADAR (score ${queue[0].score ?? '?'})`;
+                    await db.collection('system_configs').doc('trending_radar').update({ blogQueue: queue.slice(1) });
+                }
+            } catch (radarErr) {
+                console.log('⚠️ Radar queue read fail — random topic continue:', radarErr.message);
+            }
+        }
+        console.log(`🎯 Category: ${randomCat}`);
         console.log(`📝 Topic: ${rawTopic} [${topicFrom}]`);
+        if (trendContext?.trendEvidence) console.log(`📈 Trend proof: ${trendContext.trendEvidence}`);
+
+        // 🌱 STEP 2B: Grounding — trend sources se asli material (max 3 pages)
+        if (trendContext && Array.isArray(trendContext.sources) && trendContext.sources.length) {
+            trendContext.grounding = await fetchGroundingSources(trendContext.sources, 3);
+            console.log(`🌱 Grounded sources: ${trendContext.grounding.length}/${trendContext.sources.length}`);
+        }
 
         // 🎲 STEP 3: Random Writing Style
         const writingStyle = WRITING_STYLES[Math.floor(Math.random() * WRITING_STYLES.length)];
@@ -1081,18 +1196,23 @@ async function generateDailyBlog() {
         const blogTemplate = getRandomTemplate();
         console.log(`🎨 Template: ${blogTemplate.name}`);
 
-        // 🤖 STEP 6: Generate Content
+        // 🤖 STEP 6: Generate Content (grounded + Discover-first prompt)
         console.log("🤖 Generating content with Gemini...");
-        const blogData = await generateAdvancedBlogContent(randomCat, rawTopic, writingStyle, contentStructure);
+        const blogData = await generateAdvancedBlogContent(randomCat, rawTopic, writingStyle, contentStructure, trendContext);
         console.log(`✅ Content: ${blogData.content.length} characters`);
 
-        // 🔍 STEP 7: Quality Check
+        // 🔍 STEP 7: Quality Check — REAL words (tags nahi) + Discover readiness
         const quality = checkContentQuality(blogData.content);
-        console.log(`📊 Quality: ${quality.score}/100, Words: ${quality.wordCount}`);
+        const realWords = stripWords(blogData.content);
+        console.log(`📊 Quality: ${quality.score}/100, Real words: ${realWords}`);
 
-        if (!quality.hasEnoughContent) {
-            console.log("⚠️ Below quality threshold, regenerating...");
-            return generateDailyBlog();
+        if (realWords < 1200) {
+            if (attempt < 1) {
+                console.log(`⚠️ Thin content (${realWords} words < 1200), regenerating once...`);
+                return generateDailyBlog(attempt + 1);
+            }
+            console.log("❌ Thin content twice — publish NAHI hoga (Discover me thin pages nuksan karte hain).");
+            return false;
         }
 
         // 🛡️ STEP 8: Anti-Duplicate Check
@@ -1100,34 +1220,32 @@ async function generateDailyBlog() {
         const duplicateCheck = await checkDuplicateContent(blogData.aiTitle, blogData.content);
 
         if (duplicateCheck.isDuplicate) {
-            console.log(`⚠️ Duplicate detected (${duplicateCheck.reason}), regenerating with different approach...`);
-            // Change topic slightly and regenerate
-            const newTopic = `${rawTopic} - Advanced Guide ${Date.now().toString(36)}`;
-            const newBlogData = await generateAdvancedBlogContent(randomCat, newTopic, writingStyle, contentStructure);
+            console.log(`⚠️ Duplicate detected (${duplicateCheck.reason}), regenerating with different style...`);
+            // Alag style+structure se dobara likho (hash-suffix wala fake-unique topic nahi)
+            const altStyle = WRITING_STYLES[Math.floor(Math.random() * WRITING_STYLES.length)];
+            const altStruct = CONTENT_STRUCTURES[Math.floor(Math.random() * CONTENT_STRUCTURES.length)];
+            const newBlogData = await generateAdvancedBlogContent(randomCat, rawTopic, altStyle, altStruct, trendContext);
             Object.assign(blogData, newBlogData);
         }
 
-        // 📅 STEP 9: Create Unique Title
-        const now = new Date();
-        const dateVariants = [
-            now.toLocaleString('hi-IN', { month: 'long', year: 'numeric' }),
-            `${now.getFullYear()}`,
-            now.toLocaleString('hi-IN', { month: 'short', year: 'numeric' }),
-            now.toLocaleString('hi-IN', { day: 'numeric', month: 'long' })
-        ];
-        const selectedDate = dateVariants[Math.floor(Math.random() * dateVariants.length)];
-        const powerPrefix = POWER_WORDS[Math.floor(Math.random() * POWER_WORDS.length)];
-        const finalTitle = `${powerPrefix}: ${blogData.aiTitle} (${selectedDate})`;
+        // 📅 STEP 9: Discover-safe Title — NO emoji, NO clickbait prefix, NO date bracket
+        const finalTitle = cleanDiscoverTitle(blogData.aiTitle, rawTopic);
         console.log(`📌 Title: ${finalTitle}`);
 
-        // 🔗 STEP 10: Unique Slug
-        const slug = createDynamicSlug(finalTitle, randomCat);
+        // 🔗 STEP 10: Clean keyword slug (collision pe -2, -3...)
+        let slug = buildKeywordSlug(finalTitle);
+        if ((await db.collection("blogs").doc(slug).get()).exists) {
+            let n = 2;
+            while (n <= 9 && (await db.collection("blogs").doc(`${slug}-${n}`).get()).exists) n++;
+            slug = n <= 9 ? `${slug}-${n}` : `${slug}-${Date.now().toString(36)}`;
+        }
         const blogUrl = `https://studygyaan.in/blog/${slug}`;
         console.log(`🔗 URL: ${blogUrl}`);
 
-        // 🎨 STEP 11: Generate WebP Image
+        // 🎨 STEP 11: Generate WebP Image (topical — trend keywords sahit)
         console.log("🎨 Generating WebP image...");
-        const imagePrompt = generateDynamicImagePrompt(randomCat, rawTopic, writingStyle);
+        const imgKeywords = trendContext && Array.isArray(trendContext.keywords) ? trendContext.keywords.join(", ") : "";
+        const imagePrompt = generateDynamicImagePrompt(randomCat, rawTopic, writingStyle, imgKeywords);
         const imageUrl = await generateAndUploadWebPImage(imagePrompt, slug);
 
         // 🔗 STEP 12: Smart Internal Links (Real DB)
@@ -1136,8 +1254,26 @@ async function generateDailyBlog() {
         const linkHTML = createInternalLinksHTML(smartLinks, blogTemplate);
         console.log(`✅ Real links added: ${smartLinks.length}`);
 
+        // 🌟 STEP 12B: Discover readiness GATE — fail to publish NAHI hoga
+        const readiness = scoreDiscoverReadiness({
+            title: finalTitle,
+            html: blogData.content,
+            imageUrl,
+            excerpt: blogData.excerpt || blogData.metaDescription,
+            isTrend: Boolean(trendContext)
+        });
+        console.log(`🌟 Discover readiness: ${readiness.score}/100${readiness.ready ? "" : " (NOT ready!)"}`);
+        for (const issue of readiness.issues) {
+            console.log(`   ${issue.level === "fail" ? "❌" : "⚠️"} ${issue.msg}`);
+        }
+        if (!readiness.ready) {
+            console.log("❌ Discover gate FAIL — publish NAHI hoga (title/content/image issues upar dekho).");
+            return false;
+        }
+
         // 📋 STEP 13: Generate Schemas
         const finalQuality = checkContentQuality(blogData.content);
+        const finalRealWords = stripWords(blogData.content);
         const schemas = generateAllSchemas({
             title: finalTitle,
             metaDescription: blogData.metaDescription,
@@ -1145,8 +1281,8 @@ async function generateDailyBlog() {
             author: "StudyGyaan Team",
             url: blogUrl,
             category: randomCat,
-            wordCount: finalQuality.wordCount,
-            readingTime: finalQuality.readingTime,
+            wordCount: finalRealWords,
+            readingTime: Math.ceil(finalRealWords / 200),
             content: blogData.content
         });
 
@@ -1202,10 +1338,22 @@ async function generateDailyBlog() {
 
             // Attribution
             author: "StudyGyaan Team",
-            type: "auto-blog-v3.0",
+            type: "auto-blog-v4.0",
 
-            // Timestamps
+            // 🌟 v4: trend provenance + Discover score
+            topicFrom,
+            trendScore: trendContext?.score ?? null,
+            trendEvidence: trendContext?.trendEvidence || "",
+            trendAngle: trendContext?.angle || "",
+            groundedSources: trendContext?.grounding ? trendContext.grounding.length : 0,
+            sourcesCited: blogData.sourcesCited || [],
+            discoverScore: readiness.score,
+            realWordCount: finalRealWords,
+
+            // Timestamps (createdAt/updatedAt zaroori — sitemap lastmod inhi se)
             date: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             publishedDate: admin.firestore.Timestamp.now(),
             lastModified: admin.firestore.Timestamp.now(),
 
@@ -1213,10 +1361,10 @@ async function generateDailyBlog() {
             url: blogUrl,
             canonicalUrl: blogUrl,
 
-            // Analytics
+            // Analytics (real words — tags gin ke nahi)
             qualityScore: finalQuality.score,
-            wordCount: finalQuality.wordCount,
-            readingTime: finalQuality.readingTime,
+            wordCount: finalRealWords,
+            readingTime: Math.ceil(finalRealWords / 200),
 
             // Variation Metadata
             writingStyle,
@@ -1260,12 +1408,12 @@ async function generateDailyBlog() {
 
 📂 Category: ${randomCat.replace(/_/g, ' ')}
 🎨 Template: ${blogTemplate.name}
+📡 Topic: ${topicFrom}
+🌟 Discover: ${readiness.score}/100
 📊 Quality: ${finalQuality.score}/100
-📝 Words: ${finalQuality.wordCount}
-⏱️ Reading: ${finalQuality.readingTime} min
+📝 Words: ${finalRealWords}
 🔗 Links: ${smartLinks.length} (Real DB)
 🖼️ Format: WebP (Optimized)
-✍️ Style: ${writingStyle.substring(0, 30)}
 
 🔗 <b>Read:</b> ${blogUrl}
 
@@ -1290,7 +1438,9 @@ async function generateDailyBlog() {
         console.log(`🔗 URL:       ${blogUrl}`);
         console.log(`🎨 Template:  ${blogTemplate.name}`);
         console.log(`📊 Quality:   ${finalQuality.score}/100`);
-        console.log(`📝 Words:     ${finalQuality.wordCount}`);
+        console.log(`📝 Words:     ${finalRealWords}`);
+        console.log(`🌟 Discover:  ${readiness.score}/100`);
+        console.log(`📡 Topic:     ${topicFrom}`);
         console.log(`🖼️ Image:     WebP (Optimized)`);
         console.log(`🔗 Links:     ${smartLinks.length} (Real URLs)`);
         console.log(`🛡️ Duplicate: PASSED`);

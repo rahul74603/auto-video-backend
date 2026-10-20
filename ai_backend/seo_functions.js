@@ -160,7 +160,9 @@ exports.generateSitemapBlogs = functions.https.onRequest(async (req, res) => {
             if (!hasValidSitemapData(data)) return;
             const slugOrId = data.slug || doc.id;
             const safeSlug = safeXml(slugOrId);
-            const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
+            // FIX: purane blogs me createdAt/updatedAt nahi hai (sirf date/publishedDate)
+            // — bina fallback lastmod hamesha "abhi" dikhta tha (Google distrust).
+            const updateTime = getIsoDate(data.updatedAt || data.createdAt || data.date || data.publishedDate || data.lastModified, now);
             const imageUrl = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
             const imageTitle = safeXml(data.title || "StudyGyaan Blog");
             const imageCaption = safeXml(data.category || "Education");

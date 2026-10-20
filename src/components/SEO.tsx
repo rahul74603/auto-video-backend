@@ -421,7 +421,7 @@ const SEO = ({
             <meta property="og:image:secure_url" content={finalImage} />
             <meta property="og:image:width" content="1200" />
             <meta property="og:image:height" content="630" />
-            <meta property="og:image:type" content="image/jpeg" />
+            <meta property="og:image:type" content={finalImage.toLowerCase().endsWith('.png') ? 'image/png' : finalImage.toLowerCase().endsWith('.webp') ? 'image/webp' : 'image/jpeg'} />
             <meta property="og:image:alt" content={finalTitle} />
 
             {/* ===== ARTICLE META (Blog/Job pages) ===== */}

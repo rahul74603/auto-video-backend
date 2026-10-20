@@ -1,13 +1,17 @@
-name: StudyGyaan Auto Blogger 🚀
+name: StudyGyaan Auto Blogger v4 (Discover-First) 🌟
 
+# 🌟 v4 POLICY: din me SIRF 2 blogs (subah 8:30 + shaam 6:30 IST) — best
+# quality, trend-grounded, Discover-optimized. Quantity nahi, quality.
 on:
   schedule:
-    - cron: '30 2,5,8,11,14 * * *'
+    - cron: '30 3 * * *'    # 03:30 UTC = 8:30 AM IST
+    - cron: '30 13 * * *'   # 13:30 UTC = 6:30 PM IST
   workflow_dispatch:
 
 jobs:
   build_and_publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     defaults:
       run:
@@ -41,25 +45,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ai_backend/package-lock.json
 
-      # 🔍 Debug (confirm version)
-      - name: 🔎 Check Node Version
-        if: steps.automation_check.outputs.enabled == 'true'
-        run: node -v
-
-      # 🧹 Clean install (important)
-      - name: 🧹 Clean node_modules
-        if: steps.automation_check.outputs.enabled == 'true'
-        run: |
-          rm -rf node_modules
-          rm -rf package-lock.json
-
-      # 📦 Install dependencies
+      # 📦 Install dependencies (lockfile se — deterministic, tez)
       - name: 📦 Install Dependencies
         if: steps.automation_check.outputs.enabled == 'true'
-        run: npm install
+        run: npm ci --legacy-peer-deps
 
-      # 🚀 Run Auto Blogger
+      # 🚀 Run Auto Blogger v4
       - name: 🤖 Run Auto Blogger Script
         if: steps.automation_check.outputs.enabled == 'true'
         env:
@@ -67,4 +61,5 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BLOG_DAILY_CAP: '2'
         run: node auto_blog.js
