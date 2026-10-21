@@ -22,6 +22,16 @@ test("freshness verifier accepts recent dates and rejects old, future, or unknow
   assert.equal(DEFAULT_MAX_AGE_DAYS, 90);
 });
 
+test("10-day scraper window: same-date-old-year is stale, 9-day-old is fresh", () => {
+  const opts = { now, maxAgeDays: 10 };
+  assert.equal(isRecentPublication("2026-10-09T12:00:00Z", opts), true);   // 9 din purana — fresh
+  assert.equal(isRecentPublication("2026-10-07T12:00:00Z", opts), false);  // 11 din purana — stale
+  assert.equal(isRecentPublication("2025-10-18T00:00:00Z", opts), false);  // same date, 1 saal purana — stale
+  assert.equal(isRecentPublication("2024-10-18T00:00:00Z", opts), false);  // same date, 2 saal purana — stale
+  assert.equal(isRecentFeedItem({ isoDate: "2026-10-08T12:00:00Z" }, opts), true);
+  assert.equal(isRecentFeedItem({ pubDate: "Wed, 18 Oct 2023 10:00:00 GMT" }, opts), false);
+});
+
 test("RSS freshness recognizes pubDate and isoDate, while missing dates fail verification", () => {
   assert.equal(isRecentFeedItem({ isoDate: "2026-10-10T12:00:00Z" }, { now }), true);
   assert.equal(isRecentFeedItem({ pubDate: "Wed, 01 Jan 2025 10:00:00 GMT" }, { now }), false);

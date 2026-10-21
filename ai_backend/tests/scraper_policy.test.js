@@ -33,15 +33,22 @@ test("candidate ordering is newest first and undated entries come last", () => {
   assert.deepEqual(items.sort(compareNewestFirst).map((item) => item.title), ["today", "old", "unknown"]);
 });
 
-test("interview and walk-in announcements are excluded", () => {
+test("interview-ONLY notices blocked, genuine exam+interview jobs allowed", () => {
+  // BLOCK — no-application walk-ins + interview event notices
   assert.equal(isInterviewNotice("Railway Interview Schedule 2026"), true);
-  assert.equal(isInterviewNotice("Private Walk-in Recruitment"), true);
   assert.equal(isInterviewNotice("NIT Raipur Project Assistant Walkin 2026"), true);
-  assert.equal(isInterviewNotice("Direct Interviews for 50 Posts"), true);
-  assert.equal(isInterviewNotice("BMC साक्षात्कार भर्ती 2026"), true);
+  assert.equal(isInterviewNotice("Private Walk-in Recruitment"), true);
   assert.equal(isInterviewNotice("IBPS walk_in drive"), true);
+  assert.equal(isInterviewNotice("Direct Interviews for 50 Posts"), true);
+  assert.equal(isInterviewNotice("UPSC Interview Call Letter 2026"), true);
+  assert.equal(isInterviewNotice("BMC साक्षात्कार सूची 2026"), true);
+  assert.equal(isInterviewNotice("Project Assistant", "https://example.in/walk-in-drive"), true);
+  // ALLOW — genuine vacancies (selection me interview ho to bhi safe)
   assert.equal(isInterviewNotice("SSC CGL Result 2026"), false);
   assert.equal(isInterviewNotice("SSC CGL Online Form 2026"), false);
+  assert.equal(isInterviewNotice("SSC MTS Recruitment 2026 through Exam and Interview"), false);
+  assert.equal(isInterviewNotice("BMC साक्षात्कार भर्ती 2026"), false);
+  assert.equal(isInterviewNotice("IBPS PO Recruitment", "https://example.in/ibps-po-interview"), false);
 });
 
 test("government jobs are prioritized and non-government jobs become fallback", () => {

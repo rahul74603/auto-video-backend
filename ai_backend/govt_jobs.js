@@ -51,9 +51,7 @@ function sleep(ms) {
 const SKIP_KEYWORDS = [
     'admit card', 'result', 'answer key', 'cut off', 'cutoff',
     'merit list', 'interview schedule', 'exam date', 'syllabus',
-    'hall ticket', 'call letter',
-    // 🚫 INTERVIEW BLOCK — interview/walk-in notices kabhi scrape nahi honge
-    'interview', 'walk-in', 'walk in', 'walkin', 'साक्षात्कार'
+    'hall ticket', 'call letter'
 ];
 
 function shouldSkipTitle(title) {
@@ -428,8 +426,18 @@ async function fetchAllJobItems(perSource = 12, limitTotal = 60) {
             const items = (feed.items || []).slice(0, perSource).map((it) => ({
                 title:  (it.title || '').trim(),
                 link:   (it.link || it.guid || '').trim(),
-                source: src.name
-            })).filter((it) => it.title && it.link && !it.link.includes('127.0.0.1'));
+                source: src.name,
+                publishedAt: parsePublishedAt(it.isoDate, it.pubDate, it.publishedAt)
+            })).filter((it) => {
+                if (!it.title || !it.link || it.link.includes('127.0.0.1')) return false;
+                // 🗓️ FRESHNESS — 10 din se purana post kabhi nahi (poora year compare
+                // hota hai, isliye "same date purana year" wala bug ab impossible hai)
+                if (it.publishedAt > 0 && !isRecentPublication(it.publishedAt, { maxAgeDays: MAX_SCRAPE_AGE_DAYS })) {
+                    console.log(`⏭️ Old (>10d): ${it.title.slice(0, 70)}`);
+                    return false;
+                }
+                return true;
+            });
             buckets.push(items);
             console.log(`📰 ${src.name}: ${items.length} items`);
             await recordSourceCheck(db, src.name, { ok: true, itemCount: items.length });
@@ -451,6 +459,8 @@ async function fetchAllJobItems(perSource = 12, limitTotal = 60) {
             }
         }
     }
+    // Newest-first: verified-fresh pehle, undated aakhir me (budget fresh pe lagega)
+    merged.sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0));
     console.log(`📊 Total candidates (all sources): ${merged.length}`);
     return merged;
 }

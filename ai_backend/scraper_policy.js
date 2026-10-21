@@ -20,9 +20,21 @@ function compareNewestFirst(a, b, getPublishedAt = (item) => item && item.publis
   return toTimestamp(getPublishedAt(b)) - toTimestamp(getPublishedAt(a));
 }
 
-function isInterviewNotice(title) {
-  // Substring match: interview/interviews/interview-based + walk-in variants + Hindi
-  return /interview|walk[\s_-]*in|साक्षात्कार/i.test(String(title || ""));
+// 🚫 INTERVIEW-ONLY detection — walk-in / direct-interview / interview-EVENT
+// notices block hote hain, par genuine vacancy (exam+interview wali) KABHI
+// skip nahi hoti. link bhi check hota hai (title me chhupa ho tab bhi).
+function isInterviewNotice(title, link = "") {
+  const text = `${title || ""} ${link || ""}`.toLowerCase();
+  if (/walk[\s_\-]*in/.test(text)) return true;               // walk-in / walkin / walk_in
+  if (/direct[\s_\-]*interview/.test(text)) return true;      // direct interview
+  if (/साक्षात्कार/.test(text) && !/भर्ती|भर्ती|पद|रिक्त|vacan|recruit/.test(text)) return true;
+  if (!/interview/.test(text)) return false;
+  // "interview" shabd hai — genuine vacancy signals hon to ALLOW (exam+interview jobs safe)
+  if (/recruit|vacan|online[\s_\-]*form|apply|advertis|bharti|भर्ती|भर्ती|\bposts?\b/.test(text)) {
+    // ...par interview-EVENT wali (schedule/notice/list/result/call-letter) phir bhi block
+    return /schedul|notice|notifica|list|result|call|admit|venue|round|letter|card|slot/.test(text);
+  }
+  return true; // bare interview, no vacancy signal = notice
 }
 
 const GOVERNMENT_SIGNALS = [

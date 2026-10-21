@@ -38,6 +38,9 @@ const db     = admin.firestore();
 const { overlapsAny } = require("./agents/article_agents/title_utils");
 const parser = new Parser();
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { parsePublishedAt, isRecentPublication } = require("./source_freshness");
+const { isInterviewNotice } = require("./scraper_policy");
+const MAX_SCRAPE_AGE_DAYS = 10; // sirf pichhle 10 din ke updates — isse purana kabhi nahi
 
 // =========================================================
 // 🛠️ HELPERS
@@ -451,6 +454,18 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
         const link  = (item.link || item.guid || '').trim();
 
         if (!title || !link || link.includes('127.0.0.1')) continue;
+
+        // 🗓️ FRESHNESS — 10 din se purana update kabhi nahi (year समेत full verify)
+        const itemTs = parsePublishedAt(item.isoDate, item.pubDate, item.publishedAt);
+        if (itemTs > 0 && !isRecentPublication(itemTs, { maxAgeDays: MAX_SCRAPE_AGE_DAYS })) {
+            logger(`⏭️ Old (>10d): ${title.slice(0, 70)}`);
+            continue;
+        }
+        // 🚫 INTERVIEW-ONLY BLOCK — genuine vacancy kabhi skip nahi hoti
+        if (isInterviewNotice(title, link)) {
+            logger(`⏭️ Interview-only skipped: ${title}`);
+            continue;
+        }
 
         const category = detectCategory(title);
         if (!category) continue;
