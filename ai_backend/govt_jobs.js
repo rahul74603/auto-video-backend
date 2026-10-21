@@ -338,7 +338,101 @@ async function fetchOfficialJobSource(scrapedContent, jobData, logger = console.
 // Draft me hi poora SEO article (articleHtml) bhar deta hai taaki admin
 // ko Review Draft me sab READYMADE mile — bas check karke publish.
 // =========================================================
-async function generateFullJobArticle(jobData, scrapedContent) {
+// =========================================================
+// ✍️ ARTICLE LENGTH POLICY (Oct 2026) — Google thin-content fix
+// Pehle scraper se 1200-2000 words ke articles bante the; strict grounding
+// ke baad model patli official text par 400-500 words likhne laga (rules ne
+// uske haath baandh diye, lambaai ka rasta hi nahi bacha). Nayi policy:
+//   - Grounding bundle = OFFICIAL (authoritative) + AGGREGATOR (secondary hints)
+//   - Notice facts: official > aggregator; notice-specific naya fact kabhi invent nahi
+//   - Lambaai = facts ki explanation + LABELED general guidance sections
+//     (documents checklist, common mistakes, taiyari tips) → hamesha 1200-2000 words
+// =========================================================
+const JOB_ARTICLE_WORD_MIN = 900;        // isse chhota output = expand retry
+const JOB_ARTICLE_MAX_ATTEMPTS = 3;      // 1 normal + 2 escalating expand passes
+const JOB_ARTICLE_KEEP_BEST_MIN = 250;   // isse upar ka AI output fallback se behtar
+const JOB_ARTICLE_MAX_OUTPUT_TOKENS = 16384; // Hindi ~1200-2000 words ke liye safe headroom
+const JOB_ARTICLE_TEMPERATURE = 0.7;     // rich detail, phir bhi controlled
+const AGGREGATOR_CONTEXT_CHAR_BUDGET = 12000;
+
+/**
+ * Official + aggregator text ko priority labels ke saath jodta hai.
+ * Aggregator sirf tab kaam aata hai jab official me wo detail na ho —
+ * conflict me official hamesha final. (Pure function — unit-tested.)
+ */
+function buildArticleSourceContext({ officialText = '', aggregatorText = '' } = {}) {
+    const official = String(officialText || '').slice(0, 24000);
+    const agg = String(aggregatorText || '').slice(0, AGGREGATOR_CONTEXT_CHAR_BUDGET);
+    const parts = [];
+    if (official.trim()) {
+        parts.push(`=== OFFICIAL SOURCE TEXT (verified, authoritative — HIGHEST priority) ===\n${official}`);
+    }
+    if (agg.trim()) {
+        parts.push(`=== AGGREGATOR CONTEXT (secondary — sirf structure/detail hints; dates/numbers/fees/vacancy me OFFICIAL hi final; conflict ho to official likho) ===\n${agg}`);
+    }
+    return parts.join('\n\n');
+}
+
+/**
+ * Scraper article prompt — expandLevel 0 = normal, 1-2 = escalating expand
+ * (pichhla output chhota aaya tha). Pure function — unit-tested.
+ */
+function buildJobArticlePrompt({ factsJson, sourceContext, expandLevel = 0 }) {
+    const base = `Act as StudyGyaan's careful editorial writer for Indian government-job applicants.
+Write a useful, source-grounded job article in clear Hinglish (Hindi in Devanagari, standard English terms where clearer).
+
+=== EXTRACTED FACTS ===
+${factsJson}
+
+${sourceContext}
+
+=== STRICT EDITORIAL RULES ===
+1. FACT PRIORITY: official source > aggregator context > extracted facts. Conflict ho to OFFICIAL wali value likho.
+2. Aggregator context se structure/detail le sakte ho (fee tables, vacancy break-up, selection stages, apply mode) JAB official me wo detail na ho — par uske dates/numbers ko official se match karo; match na ho to wo line chhod do.
+3. Notice-specific naya fact KABHI invent mat karo: dates, fees, vacancy counts, age, qualification, salary, address, documents, exam date — jo dono sources me na ho use "नोटिफिकेशन में स्पष्ट नहीं" likho.
+4. Do not spin the source by swapping synonyms. Har fact ka practical matlab original shabdon me samjhao (jaise last date nazdeek ho to jaldi apply ki salah, fees category-wise kaun kitna dega, kaun eligible hai / kaun NAHI hai example ke saath).
+5. No keyword stuffing (same phrase baar-baar mat ghusao), no self-praise, no generic wishes. Lambaai DETAIL + EXPLANATION + GENERAL GUIDANCE se aani chahiye, repetition se nahi.
+6. GENERAL GUIDANCE sections (neeche 12-14) me notice facts ki zaroorat NAHI — ye timeless samanya salah hai; har guidance section ki pehli line me "(सामान्य जानकारी)" likho taaki notice facts se confuse na ho.
+7. Never claim "fact-checked" or imply a human review. The content is an editorial draft until a human verifies it.
+8. Use only direct official links supplied in the extracted facts. Never label a publisher/aggregator redirect as an official application link.
+
+=== OUTPUT: LONG-FORM, DETAILED, SEO-RICH ARTICLE ===
+TARGET: 1200-2000 words (MINIMUM 900 — isse chhota article FAIL hai).
+Sarkari-result style ka COMPLETE coverage — chhota summary bilkul nahi.
+Return only clean semantic HTML, no markdown, <html>/<head>/<body>, or <h1> (the page already has its H1).
+MANDATORY structure (H2 headings keyword-rich — post name + organization + year istemal karo):
+1) Intro paragraph — role, organization, vacancies, application mode, deadline (primary keywords pehle 100 words me).
+2) Overview table — saare key facts ek nazar me (post, org, advt no, vacancies, dates, qualification, age, salary, location).
+3) Important Dates — table + 3-4 line explanation (kab se kab tak, fees kab tak, kya miss na karein, delay ke nuksaan).
+4) Vacancy Details — post-wise/category-wise break-up jo source me ho; table preferred + har category ka matlab.
+5) Eligibility / Qualification — har post ke liye kaun apply kar sakta hai, kaun NAHI kar sakta, detail me + example ke saath.
+6) Age Limit — min/max, cut-off date, relaxation sirf tab jab notice me likhi ho + cut-off ka matlab samjhao.
+7) Salary / Pay Scale — pay matrix/grade pay sahit jo source me ho + allowances ka zikr (general, labeled).
+8) Application Fee — table (Gen/OBC/EWS/SC/ST/Female) + payment mode; notice me na ho to "स्पष्ट नहीं" likho, guess mat karo.
+9) Selection Process — stages detail me, har stage ka matlab + uski taiyari ka 2-line pointer.
+10) How to Apply — numbered steps (8-12 steps), ACTUAL mode ke hisaab se (online/offline); address/documents/delivery sirf tab jab notice me ho.
+11) Important Links — Apply Online / Notification PDF / Official Website (direct official HTTPS only).
+12) आवेदन से पहले तैयार रखें — सामान्य दस्तावेज़ चेकलिस्ट (GENERAL GUIDANCE): photo, signature, certificates, caste/EWS, domicile, ID proof — timeless salah.
+13) फॉर्म भरते समय होने वाली सामान्य गलतियाँ (GENERAL GUIDANCE): naam/DOB mismatch, galat category, blurry uploads, last-day rush, payment-fail par kya karein.
+14) चयन प्रक्रिया की तैयारी कैसे करें (GENERAL GUIDANCE): written + skill/PET + DV ke liye stage-wise practical tips.
+15) FAQs — 8-12 unique questions: notice-specific (last date? fees? qualification? age? salary? selection? kaise apply karein?) + 3-4 general (fees payment fail? correction? admit card kab?).
+16) Conclusion — 4-5 lines: key highlights + official notification verify karne ki salah.
+Missing notice fact = section chhota karo ya "नोटिफिकेशन में स्पष्ट नहीं" likho; guess/adha-satya kabhi nahi. Lambaai guidance + explanation se poori karo.`;
+    if (expandLevel <= 0) return base;
+    if (expandLevel === 1) {
+        return `${base}\n\n=== EXPAND INSTRUCTION (previous output was TOO SHORT — FAIL) ===\nPichhli baar article bahut chhota aaya tha. ISI notice par DOBARA likho — poora 16-section structure (overview, dates, vacancy, eligibility, age, salary, fee, selection, apply steps, links, TEENON general-guidance sections, 8-12 FAQs, conclusion) aur MINIMUM 900 words. Naya notice-fact invent mat karo; maujooda facts ko detail me samjhao + guidance sections poore likho.`;
+    }
+    return `${base}\n\n=== FINAL EXPAND (LAST CHANCE — 1200+ words COMPULSORY) ===\nDo baar chhota output aaya. Ab 1200+ words LAZMI hain: har notice section me 4-6 lines explanation, teenon GENERAL GUIDANCE sections (documents checklist, common mistakes, taiyari tips) poore detail me, 10-12 FAQs, lamba conclusion. Facts wahi jo sources me hain; lambaai explanation + guidance se lao. Chhota article accept NAHI hoga.`;
+}
+
+// =========================================================
+// ✍️ FULL ARTICLE GENERATOR (scraper ke saath hi — alag step nahi)
+// Draft me hi poora SEO article (articleHtml) bhar deta hai taaki admin
+// ko Review Draft me sab READYMADE mile — bas check karke publish.
+// officialText = verified official source; aggregatorText = RSS-page scrape
+// (secondary hints). deps.generateOnce se tests me Gemini stub hota hai.
+// =========================================================
+async function generateFullJobArticle(jobData, officialText, aggregatorText = '', deps = {}) {
     const facts = JSON.stringify({
         title: jobData.title, organization: jobData.organization, advtNo: jobData.advtNo,
         startDate: jobData.startDate, lastDate: jobData.lastDate, vacancies: jobData.vacancies,
@@ -350,56 +444,28 @@ async function generateFullJobArticle(jobData, scrapedContent) {
         applyLink: jobData.applyLink, notificationLink: jobData.notificationLink,
         officialSiteLink: jobData.officialSiteLink
     });
+    const sourceContext = buildArticleSourceContext({ officialText, aggregatorText });
 
-    const prompt = `Act as StudyGyaan's careful editorial writer for Indian government-job applicants.
-Write a useful, source-grounded job article in clear Hinglish (Hindi in Devanagari, standard English terms where clearer).
-
-=== EXTRACTED FACTS ===
-${facts}
-
-=== OFFICIAL SOURCE TEXT (primary source; authoritative) ===
-${String(scrapedContent).slice(0, 18000)}
-
-=== STRICT EDITORIAL RULES ===
-1. Use exact dates, amounts, vacancy counts, category/reservation, qualifications, age cut-off, address, selection steps and URLs from the official source only. Do not infer or fill gaps from common recruitment patterns.
-2. Do not add an experience requirement, age-relaxation rule, document list, application instruction, exam date, fee, or eligibility condition unless the official source explicitly says it.
-3. Missing fields should be omitted or described as "नोटिफिकेशन में स्पष्ट नहीं"; never turn missing data into a guess or a generic government rule.
-4. Do not spin the source by swapping synonyms. Explain the practical implications of the actual notice in original wording.
-5. No keyword stuffing (same phrase baar-baar mat ghusao), no self-praise, no generic wishes. Lekin article DETAILED aur COMPLETE hona chahiye — facts ke saath unka matlab bhi samjhao (jaise last date nazdeek ho to jaldi apply ki salah). Lambaai detail se aani chahiye, repetition se nahi.
-6. Never claim "fact-checked" or imply a human review. The content is an editorial draft until a human verifies it.
-7. Use only direct official links supplied in the extracted facts. Never label a publisher/aggregator redirect as an official application link.
-
-=== OUTPUT: LONG-FORM, DETAILED, SEO-RICH ARTICLE ===
-TARGET: 1500-2200 words (minimum ~1000). Sarkari-result style ka COMPLETE coverage — chhota summary bilkul nahi.
-Return only clean semantic HTML, no markdown, <html>/<head>/<body>, or <h1> (the page already has its H1).
-MANDATORY structure (H2 headings keyword-rich — post name + organization + year istemal karo):
-1) Intro paragraph — role, organization, vacancies, application mode, deadline (primary keywords pehle 100 words me).
-2) Overview table — saare key facts ek nazar me (post, org, advt no, vacancies, dates, qualification, age, salary, location).
-3) Important Dates — table + 2-3 line explanation (kab se kab tak, kya miss na karein).
-4) Vacancy Details — post-wise/category-wise break-up jo source me ho; table preferred.
-5) Eligibility / Qualification — har post ke liye kaun apply kar sakta hai, detail me.
-6) Age Limit — min/max, cut-off date, relaxation sirf tab jab notice me likhi ho.
-7) Salary / Pay Scale — pay matrix/grade pay sahit jo source me ho.
-8) Application Fee — table (Gen/OBC/EWS/SC/ST/Female) + payment mode; notice me na ho to "स्पष्ट नहीं" likho, guess mat karo.
-9) Selection Process — stages detail me, har stage ka matlab samjhate hue.
-10) How to Apply — numbered steps, ACTUAL mode ke hisaab se (online/offline); address/documents/delivery sirf tab jab notice me ho.
-11) Important Links — Apply Online / Notification PDF / Official Website (direct official HTTPS only).
-12) FAQs — 8-12 unique source-backed questions (last date? fees? qualification? age? salary? selection? kaise apply karein?).
-13) Conclusion — 3-4 lines: key highlights + official notification verify karne ki salah.
-Missing fact = section chhota karo ya "नोटिफिकेशन में स्पष्ट नहीं" likho; guess/adha-satya kabhi nahi.`;
+    const generateOnce = deps.generateOnce || (async (prompt) => {
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({
+            model: 'gemini-2.5-flash',
+            generationConfig: {
+                temperature: JOB_ARTICLE_TEMPERATURE,
+                maxOutputTokens: JOB_ARTICLE_MAX_OUTPUT_TOKENS,
+            },
+        });
+        const result = await model.generateContent(prompt);
+        return result.response.text();
+    });
 
     let bestHtml = '';
     let bestWords = 0;
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
+    for (let attempt = 1; attempt <= JOB_ARTICLE_MAX_ATTEMPTS; attempt += 1) {
         try {
-            const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-            // Attempt 2 = EXPAND pass: pehla output chhota aaya to model ko wahi
-            // article detail me badhane ko kaho (facts same, sections poore karo).
-            const attemptPrompt = attempt === 1 ? prompt
-                : `${prompt}\n\n=== EXPAND INSTRUCTION (previous output was too short) ===\nPichhli baar article bahut chhota aaya tha. ISI notice par DOBARA likho — poora section structure (overview, dates, vacancy, eligibility, age, salary, fee, selection, apply steps, links, 8-12 FAQs, conclusion) aur MINIMUM 1000 words. Koi naya fact invent mat karo; maujooda facts ko detail me samjhao.`;
-            const result = await model.generateContent(attemptPrompt);
-            let html = result.response.text()
+            const prompt = buildJobArticlePrompt({ factsJson: facts, sourceContext, expandLevel: attempt - 1 });
+            let html = await generateOnce(prompt);
+            html = String(html || '')
                 .replace(/```html/gi, '')
                 .replace(/```/g, '')
                 .trim();
@@ -407,21 +473,21 @@ Missing fact = section chhota karo ya "नोटिफिकेशन में 
             html = html.replace(/<h1(\s[^>]*)?>/gi, '<h2>').replace(/<\/h1>/gi, '</h2>');
             const words = htmlWordCount(html);
             if (words > bestWords) { bestWords = words; bestHtml = html; }
-            // LONG-FORM gate: 700+ words chahiye (target 1500-2200). Chhota aaya
-            // to attempt 2 me EXPAND instruction ke saath retry hoga.
-            if (words >= 700) return html;
-            console.warn(`⚠️ Job article too short (${words} words, attempt ${attempt}/2, need 700+).`);
+            // LONG-FORM gate: 900+ words chahiye (target 1200-2000). Chhota aaya
+            // to agle attempt me EXPAND instruction ke saath retry hoga.
+            if (words >= JOB_ARTICLE_WORD_MIN) return html;
+            console.warn(`⚠️ Job article too short (${words} words, attempt ${attempt}/${JOB_ARTICLE_MAX_ATTEMPTS}, need ${JOB_ARTICLE_WORD_MIN}+).`);
         } catch (err) {
-            console.warn(`⚠️ Job article generation failed (attempt ${attempt}/2): ${err.message}`);
+            console.warn(`⚠️ Job article generation failed (attempt ${attempt}/${JOB_ARTICLE_MAX_ATTEMPTS}): ${err.message}`);
             if (/429|quota|resource exhausted/i.test(err.message || '')) break;
         }
-        if (attempt < 2) await sleep(2000);
+        if (attempt < JOB_ARTICLE_MAX_ATTEMPTS) await sleep(2000);
     }
 
-    // Dono attempts chhote aaye: agar AI output 250+ words ka hai to wahi rakho
+    // Sab attempts chhote aaye: agar AI output 250+ words ka hai to wahi rakho
     // (fallback se behtar), warna fact-only fallback do.
-    if (bestWords >= 250) {
-        console.warn(`⚠️ Job article stayed short after 2 attempts — keeping best AI output (${bestWords} words) for human review.`);
+    if (bestWords >= JOB_ARTICLE_KEEP_BEST_MIN) {
+        console.warn(`⚠️ Job article stayed short after ${JOB_ARTICLE_MAX_ATTEMPTS} attempts — keeping best AI output (${bestWords} words) for human review.`);
         return bestHtml;
     }
     console.warn('🧩 Saving a grounded, fact-only fallback Job article for human review.');
@@ -783,7 +849,7 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                         applyLink: cleanApplyLink,
                         notificationLink: cleanNotificationLink,
                         officialSiteLink: cleanOfficialSiteLink,
-                    }, officialSource.text);
+                    }, officialSource.text, scrapedContent);
                     articleGenerationMode = 'ai_generated';
                 } else {
                     articleHtml = buildFallbackArticleHtml({
@@ -1257,3 +1323,9 @@ if (require.main === module) {
         });
 }
 
+// Unit-testable article helpers (additive — upar wale exports.* Cloud Functions untouched)
+module.exports.buildArticleSourceContext = buildArticleSourceContext;
+module.exports.buildJobArticlePrompt = buildJobArticlePrompt;
+module.exports.generateFullJobArticle = generateFullJobArticle;
+module.exports.JOB_ARTICLE_WORD_MIN = JOB_ARTICLE_WORD_MIN;
+module.exports.JOB_ARTICLE_MAX_ATTEMPTS = JOB_ARTICLE_MAX_ATTEMPTS;

@@ -248,6 +248,22 @@ function buildFallbackArticleHtml(options = {}) {
                 faqPairs.map(([q, a]) => `<p><strong>${escapeHtml(q)}</strong><br>${escapeHtml(a)}</p>`).join('\n')
             );
         }
+        // LONG-FORM guidance sections — timeless samanya salah (koi notice fact
+        // nahi, isliye invention ka risk zero). Inse fallback drafts bhi 700+
+        // words ke hote hain aur Google thin-content nahi maanta.
+        detailSections.push(
+            '<h2>Aavedan se pehle taiyaar rakhein — samanya checklist</h2>',
+            '<p>(\u0938\u093e\u092e\u093e\u0928\u094d\u092f \u091c\u093e\u0928\u0915\u093e\u0930\u0940) Form bharne se pehle ye documents aur details haath me rakhein: haal ki passport-size photo aur signature ka scanned copy (notice me diye size/format me), 10th/12th/Graduation ke certificates aur marksheets, caste/EWS certificate (yadi aarakshan ka labh chahiye), domicile/nivas praman patra, Aadhaar ya koi valid photo ID, active mobile number aur email ID, aur online fees ke liye UPI/net-banking/debit card. Photo aur signature dhundhle hue to form reject ho sakta hai — saaf scan hi upload karein.</p>',
+            '<h2>Form bharte samay hone wali samanya galtiyan</h2>',
+            '<p>(\u0938\u093e\u092e\u093e\u0928\u094d\u092f \u091c\u093e\u0928\u0915\u093e\u0930\u0940) Aksar candidates ye galtiyan karte hain: naam ya janm-tithi certificate se alag likh dena, galat category (Gen/OBC/SC/ST) chun lena, photo/signature ka galat size upload karna, fees katne ke baad ghabra kar dobara payment kar dena, aur aakhri din server slow hone par form adhura chhod dena. Fees kat jaye par receipt na aaye to 24-48 ghante wait karein — aksar payment status khud update ho jata hai; phir bhi na ho to official helpline par sampark karein. Submit karne se pehle preview me har field dobara padhein.</p>',
+            '<h2>Chayan prakriya ki taiyari kaise karein</h2>',
+            '<p>(\u0938\u093e\u092e\u093e\u0928\u094d\u092f \u091c\u093e\u0928\u0915\u093e\u0930\u0940) Likhit pariksha ke liye notice ka syllabus aur exam pattern sabse pehle samjhein, phir previous year papers se taiyari shuru karein. Rozana current affairs aur mock tests se speed aur accuracy badhayein. Yadi Physical (PET/PST) ya skill test hai to uske maapdand (height, chest, race timing, typing speed) notice se note karke roz practice karein. Document verification ke liye originals + photocopies ka set pehle se taiyaar rakhein. Taiyari hamesha official syllabus par based honi chahiye.</p>',
+            '<h2>Samanya FAQs</h2>',
+            '<p><strong>Fees payment fail ho jaye to kya karein?</strong><br>24-48 ghante wait karein; aksar payment status khud update ho jata hai. Phir bhi pending rahe to official helpline ya grievance portal par transaction ID ke saath sampark karein.</p>',
+            '<p><strong>Kya form me sudhaar (correction) ho sakta hai?</strong><br>Ye har bharti me alag hota hai — kuch me correction window milti hai, kuch me nahi. Notice me correction se judi line zaroor padhein; window mile to taariq se pehle sudhaar kar lein.</p>',
+            '<p><strong>Admit card kab aata hai?</strong><br>Aam taur par pariksha se 7-15 din pehle official website par jari hota hai. Registration number aur DOB se download karein aur exam centre/reporting time pehle se note kar lein.</p>',
+            '<p><strong>Farzi websites se kaise bachein?</strong><br>Hamesha .gov.in / .nic.in ya organization ki official website se hi apply karein. Jo site paise maange ya "guaranteed selection" ka daava kare, wo dhokha hai — uski report cyber crime portal par karein.</p>'
+        );
     }
 
     return [

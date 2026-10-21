@@ -78,6 +78,30 @@ test('fallback articles render only saved facts and safe links with honest label
     assert.doesNotMatch(fastTrack, /Verified official source/);
 });
 
+test('LONG-FORM fallback: job fallback with facts is 600+ words with guidance sections', () => {
+    const article = buildFallbackArticleHtml({
+        kind: 'job',
+        title: 'SSC GD Constable Recruitment 2026',
+        organization: 'SSC',
+        vacancies: '39481',
+        lastDate: '14 February 2026',
+        startDate: '15 January 2026',
+        qualification: '10th pass',
+        ageLimit: '18-23 years',
+        salary: 'Rs 21700-69100',
+        feeGen: 'Rs 100',
+        selectionProcess: 'CBT, PET, PST, Medical',
+        applyLink: 'https://ssc.gov.in/apply',
+        summary: 'SSC GD 2026 bumper vacancy for constable posts.',
+    });
+    assert.ok(htmlWordCount(article) >= 600, `words=${htmlWordCount(article)}`);
+    assert.match(article, /samanya checklist/);
+    assert.match(article, /samanya galtiyan/);
+    assert.match(article, /taiyari kaise karein/);
+    assert.match(article, /Samanya FAQs/);
+    assert.doesNotMatch(article, /undefined|null/);
+});
+
 test('backfill gap-fills only permitted draft statuses and never changes published documents', async () => {
     const records = [
         { id: 'ft-draft', data: { status: 'draft', title: 'University Result', articleHtml: '<p>The university has published the semester result. Check the official link for marks.</p>' } },
