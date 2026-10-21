@@ -21,7 +21,8 @@ function compareNewestFirst(a, b, getPublishedAt = (item) => item && item.publis
 }
 
 function isInterviewNotice(title) {
-  return /\binterview\b|\bwalk[\s-]*in\b/i.test(String(title || ""));
+  // Substring match: interview/interviews/interview-based + walk-in variants + Hindi
+  return /interview|walk[\s_-]*in|साक्षात्कार/i.test(String(title || ""));
 }
 
 const GOVERNMENT_SIGNALS = [

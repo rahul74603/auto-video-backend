@@ -51,7 +51,9 @@ function sleep(ms) {
 const SKIP_KEYWORDS = [
     'admit card', 'result', 'answer key', 'cut off', 'cutoff',
     'merit list', 'interview schedule', 'exam date', 'syllabus',
-    'hall ticket', 'call letter'
+    'hall ticket', 'call letter',
+    // 🚫 INTERVIEW BLOCK — interview/walk-in notices kabhi scrape nahi honge
+    'interview', 'walk-in', 'walk in', 'walkin', 'साक्षात्कार'
 ];
 
 function shouldSkipTitle(title) {
@@ -557,6 +559,12 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
         // ✅ RSS link as-is fetch karo - block nahi karo
         const jobLink = (item.link || item.guid || '').trim();
         if (!jobLink || jobLink.includes('127.0.0.1')) continue;
+
+        // 🚫 INTERVIEW BLOCK — link me interview/walk-in ho to bhi skip (title me na ho tab bhi)
+        if (/interview|walk[\s_-]*in|साक्षात्कार/i.test(jobLink)) {
+            console.log(`⏭️ Interview link skipped: ${titleText}`);
+            continue;
+        }
 
         const docId = Buffer.from(jobLink)
             .toString('base64')

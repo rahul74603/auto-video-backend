@@ -36,7 +36,12 @@ test("candidate ordering is newest first and undated entries come last", () => {
 test("interview and walk-in announcements are excluded", () => {
   assert.equal(isInterviewNotice("Railway Interview Schedule 2026"), true);
   assert.equal(isInterviewNotice("Private Walk-in Recruitment"), true);
+  assert.equal(isInterviewNotice("NIT Raipur Project Assistant Walkin 2026"), true);
+  assert.equal(isInterviewNotice("Direct Interviews for 50 Posts"), true);
+  assert.equal(isInterviewNotice("BMC साक्षात्कार भर्ती 2026"), true);
+  assert.equal(isInterviewNotice("IBPS walk_in drive"), true);
   assert.equal(isInterviewNotice("SSC CGL Result 2026"), false);
+  assert.equal(isInterviewNotice("SSC CGL Online Form 2026"), false);
 });
 
 test("government jobs are prioritized and non-government jobs become fallback", () => {
