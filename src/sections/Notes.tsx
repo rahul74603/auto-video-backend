@@ -7,7 +7,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import { useNavigate } from 'react-router-dom';
-import SEO from '../components/SEO';
+
 import DynamicSidebar from '../components/DynamicSidebar'; 
 
 interface AffiliateItem {
@@ -125,12 +125,9 @@ const Notes: React.FC = () => {
   return (
     <div id="notes-page" className="py-6 md:py-20 bg-slate-50 min-h-screen font-hindi antialiased">
       
-      <SEO 
-        customTitle="Best E-Books & Handwritten Notes 2026 | StudyGyaan"
-        customDescription="Download the best handwritten notes and exam-oriented E-books. Handpicked resources to boost your exam preparation."
-        customUrl="https://studygyaan.in/e-books"
-        customImage="https://studygyaan.in/og-image.jpg"
-      />
+      {/* P0-1: section-level <SEO> hataya — Home me embed hokar ye homepage
+          <title> ko "Best E-Books..." se hijack karta tha (live bug).
+          Route/global SEO (App <SEO/> + PAGE_SEO_MAP) hi single source. */}
 
       {/* 🔥 Schema Injections 🔥 */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />

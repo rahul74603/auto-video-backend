@@ -12,7 +12,7 @@ import { JOB_HUBS } from '@/config/jobHubs';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '@/context/useLanguage';
 import { jobRepository } from '@/features/jobs/data/jobRepository';
-import SEO from '../components/SEO';
+
 import { siteSettingsRepository } from '@/features/site-settings/data/siteSettingsRepository';
 import type { TimestampLike } from '@/types/firestore';
 
@@ -440,11 +440,8 @@ const GovtJobs = () => {
     return (
         <section id="govt-jobs" className="py-4 md:py-16 bg-gray-50 font-hindi">
 
-            <SEO
-                customTitle="Latest Govt Jobs 2026 - सरकारी नौकरी Alert | StudyGyaan"
-                customDescription="SSC, Railway, Banking, Police और State Exams की Latest Government Jobs। Daily updates, direct apply links और free preparation material।"
-                customKeywords="govt jobs 2026, sarkari naukri, SSC jobs, railway jobs, bank jobs, police bharti, latest vacancy"
-            />
+            {/* P0-1: section-level <SEO> hataya — ye Home me embed hokar homepage
+                <title> hijack karta tha. Route/global SEO (App <SEO/> + PAGE_SEO_MAP) hi single source. */}
 
             <div className="max-w-7xl mx-auto px-2 md:px-8">
 

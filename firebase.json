@@ -265,6 +265,10 @@
         "function": "serverSideMetaTags"
       },
       {
+        "source": "/exam-calendar",
+        "function": "serverSideMetaTags"
+      },
+      {
         "source": "/admit-card",
         "function": "serverSideMetaTags"
       },

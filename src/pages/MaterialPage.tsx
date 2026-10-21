@@ -7,7 +7,7 @@ import { Folder, FileText, Download, ArrowLeft, ChevronRight, Home, Search, Load
 import { Button } from '@/components/ui/button';
 import ShareButtons from '../components/ShareButtons';
 import { useNavigate } from 'react-router-dom';
-import SEO from '../components/SEO';
+
 import Breadcrumbs from '../components/Breadcrumbs';
 import DynamicSidebar from '../components/DynamicSidebar';
 import RelatedContent from '../components/RelatedContent';
@@ -158,12 +158,9 @@ const StudyMaterials: React.FC = () => {
   return (
     <div id="materials-page" className="bg-[#F8FAFC] min-h-screen font-hindi antialiased">
       
-      <SEO 
-        customTitle={`${currentFolderName} - Free Study Materials 2026 | StudyGyaan`}
-        customDescription={`Download free high-quality study materials, handwritten notes and previous year papers for ${currentFolderName} on StudyGyaan Portal.`}
-        customUrl="https://studygyaan.in/free-study-material"
-        customImage="https://studygyaan.in/og-image.jpg"
-      />
+      {/* P0-1: page-level <SEO customTitle> hataya — Home me embed hokar ye
+          homepage <title>/canonical hijack karta tha. Route/global SEO
+          (App <SEO/> + PAGE_SEO_MAP) hi single source. */}
 
       {/* 🔥 Schema Injections */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />

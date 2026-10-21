@@ -36,9 +36,24 @@ function getUtcDate(timeSource, fallback) {
     return new Date(timeSource).toUTCString();
 }
 
+// P0-3: DB me kabhi-kabhi Windows-style relative image paths hote hain
+// ("uploads\\repaired\\blogs\\_x.jpg") — image:loc me RAW jaane se image
+// index toot-ta hai. Absolute https URL banao (seo_static/generate.cjs twin).
+function safeImageUrl(value) {
+    if (!value) return "";
+    let u = String(value).trim().replace(/\\/g, "/");
+    u = u.replace(/([^:])\/{2,}/g, "$1/");        // dup slashes (:// bachao)
+    if (/^https?:\/\//i.test(u)) return u;
+    if (u.startsWith("//")) return `https:${u}`;
+    if (!u.startsWith("/")) u = `/${u}`;
+    return `${WEBSITE_URL}${u}`;
+}
+
 const STATIC_PAGES = [
     { path: "", priority: "1.0", freq: "daily" },
     { path: "/govt-jobs", priority: "0.9", freq: "daily" },
+    { path: "/exam-calendar", priority: "0.9", freq: "daily" },
+    { path: "/tools", priority: "0.8", freq: "weekly" },
     { path: "/blog", priority: "0.9", freq: "daily" },
     { path: "/test", priority: "0.9", freq: "daily" },
     { path: "/web-stories", priority: "0.9", freq: "daily" },
@@ -50,6 +65,15 @@ const STATIC_PAGES = [
     { path: "/privacy-policy", priority: "0.5", freq: "monthly" },
     { path: "/terms-conditions", priority: "0.5", freq: "monthly" }
 ];
+
+// P0-2 twin-sync: hub slugs (seo_static/hubs.cjs + src/config/jobHubs.ts ke
+// SAME — Functions deploy me ai_backend ke bahar require nahi ho sakta,
+// isliye slug list yahan embedded; sitemap-main me /jobs/<slug> entries).
+const JOB_HUB_SLUGS = Object.freeze([
+    "10th-pass", "12th-pass", "graduate", "iti", "diploma", "railway",
+    "banking", "ssc", "defence", "police", "teaching", "engineering",
+    "upsc", "up", "mp", "bihar", "rajasthan", "maharashtra"
+]);
 
 function isIndexableDocument(data = {}) {
     if (data.noIndex === true || data.deleted === true || data.isDeleted === true) return false;
@@ -163,7 +187,7 @@ exports.generateSitemapBlogs = functions.https.onRequest(async (req, res) => {
             // FIX: purane blogs me createdAt/updatedAt nahi hai (sirf date/publishedDate)
             // — bina fallback lastmod hamesha "abhi" dikhta tha (Google distrust).
             const updateTime = getIsoDate(data.updatedAt || data.createdAt || data.date || data.publishedDate || data.lastModified, now);
-            const imageUrl = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
+            const imageUrl = safeXml(safeImageUrl(data.imageUrl) || `${WEBSITE_URL}/og-image.jpg`); // P0-3
             const imageTitle = safeXml(data.title || "StudyGyaan Blog");
             const imageCaption = safeXml(data.category || "Education");
 
@@ -216,7 +240,7 @@ exports.generateSitemapJobs = functions.https.onRequest(async (req, res) => {
             const slugOrId = data.slug || doc.id;
             const safeSlug = safeXml(slugOrId);
             const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
-            const imageUrl = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
+            const imageUrl = safeXml(safeImageUrl(data.imageUrl) || `${WEBSITE_URL}/og-image.jpg`); // P0-3
             const imageTitle = safeXml(data.title || "StudyGyaan Job Update");
 
             xml += `  <url>\n`;
@@ -551,7 +575,7 @@ exports.generateRss = functions.https.onRequest(async (req, res) => {
             const desc = d.description
                 ? d.description.substring(0, 500)
                 : "Read more on StudyGyaan.in";
-            const imageUrl = d.imageUrl || `${WEBSITE_URL}/og-image.jpg`;
+            const imageUrl = safeImageUrl(d.imageUrl) || `${WEBSITE_URL}/og-image.jpg`; // P0-3
             const authorName = d.author || "Rahul Sir";
             const categoryName = d.category || "Education";
 
@@ -619,7 +643,7 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
                 if (!hasValidSitemapData(data)) return;
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
-                const imageUrl = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
+                const imageUrl = safeXml(safeImageUrl(data.imageUrl) || `${WEBSITE_URL}/og-image.jpg`); // P0-3
                 const imageTitle = safeXml(data.title || "StudyGyaan Blog");
 
                 xml += `  <url>\n`;
@@ -650,7 +674,7 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
                 const route = 'job';
                 const slug = safeXml(data.slug || doc.id);
                 const updateTime = getIsoDate(data.updatedAt || data.createdAt, now);
-                const imageUrl = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
+                const imageUrl = safeXml(safeImageUrl(data.imageUrl) || `${WEBSITE_URL}/og-image.jpg`); // P0-3
                 const imageTitle = safeXml(data.title || "StudyGyaan Job");
 
                 xml += `  <url>\n`;

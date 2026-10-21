@@ -12,6 +12,8 @@ const {
     buildKeywordSlug,
     scoreDiscoverReadiness
 } = require("./blog_discover");
+// 💓 P0-4: har run ka outcome Firestore heartbeat me (zero-output mystery solve)
+const { buildHeartbeatPayload, writeHeartbeat } = require("./blog_heartbeat");
 
 // =========================================================
 // 🔐 1. FIREBASE & AUTH INITIALIZATION
@@ -1131,6 +1133,7 @@ async function generateDailyBlog(attempt = 0) {
             console.log(`📅 Aaj ke blogs: ${todayCount}/${BLOG_DAILY_CAP}`);
             if (todayCount >= BLOG_DAILY_CAP) {
                 console.log("✅ Daily cap full — best-2 already published, skipping.");
+                await writeHeartbeat(db, buildHeartbeatPayload({ outcome: "cap_skip", reason: `daily cap full (${todayCount}/${BLOG_DAILY_CAP})` }));
                 return true;
             }
         } catch (capErr) {
@@ -1446,11 +1449,13 @@ async function generateDailyBlog(attempt = 0) {
         console.log(`🛡️ Duplicate: PASSED`);
         console.log("=".repeat(60) + "\n");
 
+        await writeHeartbeat(db, buildHeartbeatPayload({ outcome: "published", savedCount: 1, title: finalTitle, url: blogUrl, reason: `topic:${topicFrom} quality:${finalQuality.score}` }));
         return true;
 
     } catch (error) {
         console.error("\n❌ CRITICAL ERROR:", error.message);
         console.error("Stack:", error.stack);
+        await writeHeartbeat(db, buildHeartbeatPayload({ outcome: "error", reason: String((error && error.message) || error).slice(0, 300) }));
         return false;
     }
 }

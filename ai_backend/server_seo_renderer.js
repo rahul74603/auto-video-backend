@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { buildOgImageUrl } = require("./og_image");
+const { findJobHub } = require("./job_hubs"); // P0-2: hub pages ko LEGACY redirect se bachao
 // 🚀 Indexing Booster — orphan pages fix + multi-engine ping (loaded lazily to avoid circular requires)
 let _booster = null;
 function booster() {
@@ -32,6 +33,10 @@ const STATIC_PAGES = Object.freeze({
   "govt-jobs": {
     title: "Latest Government Jobs - Sarkari Naukri | StudyGyaan",
     description: "SSC, Railway, Banking, Police, UPSC और State Government की latest vacancies, eligibility, important dates और official apply links देखें।"
+  },
+  "exam-calendar": {
+    title: "Sarkari Exam Calendar - Last Dates & Exam Dates | StudyGyaan",
+    description: "Government job last dates, exam dates aur upcoming deadlines ek jagah dekhein — roz auto-update hota hai।"
   },
   blog: {
     title: "Education Blog, Exam Strategy & Updates | StudyGyaan",
@@ -479,6 +484,28 @@ function createServerSeoHandler({ db, renderWebStory }) {
       if (category === "web-stories") {
         req.params = { id: identifier };
         return renderWebStory(req, res);
+      }
+
+      // P0-2: /jobs/<hub> — hub slug ho to 200 HTML serve karo (LEGACY
+      // jobs→job 301 me mat bhejo — warna hub pages bots ke liye 404).
+      // Non-hub identifiers purane job links ho sakte hain → legacy redirect.
+      if (category === "jobs" && identifier) {
+        const hub = findJobHub(identifier);
+        if (hub) {
+          const canonical = `${SITE_URL}/jobs/${hub.slug}`;
+          const data = { title: hub.seoTitle, description: hub.metaDescription, content: hub.metaDescription };
+          let html = injectSeo(template, {
+            title: hub.seoTitle,
+            description: hub.metaDescription,
+            canonical,
+            image: `${SITE_URL}/og-image.jpg`
+          }, data, "website");
+          const b = booster();
+          if (b) html = await b.injectInternalLinksHtml(html, { category, path: rawPath });
+          res.set("Cache-Control", "public, max-age=300, s-maxage=900, stale-while-revalidate=1800");
+          res.set("Content-Type", "text/html; charset=utf-8");
+          return res.status(200).send(html);
+        }
       }
 
       if (LEGACY_ROUTES[category]) {

@@ -75,7 +75,7 @@ const STATIC_PAGES = [
   { path: "", priority: "1.0", freq: "daily" },
   { path: "/govt-jobs", priority: "0.9", freq: "daily" },
   { path: "/exam-calendar", priority: "0.9", freq: "daily" },
-  { path: "/tools/", priority: "0.8", freq: "weekly" },
+  { path: "/tools", priority: "0.8", freq: "weekly" },
   { path: "/blog", priority: "0.9", freq: "daily" },
   { path: "/test", priority: "0.9", freq: "daily" },
   { path: "/web-stories", priority: "0.9", freq: "daily" },
@@ -205,10 +205,24 @@ function dedupeUrlset(xml) {
 // (sitemap URL ≠ page canonical URL ho to "non-canonical in sitemap" warning aati hai)
 function normalizeSitemapUrl(url) {
   if (!url) return url;
-  url = String(url).replace(/\/+$/, "");        // trailing slash(es)
+  url = String(url).replace(/\\/g, "/");        // Windows backslash → slash (P0-3)
+  url = url.replace(/\/+$/, "");                // trailing slash(es)
   url = url.replace("://www.", "://");          // www → apex
   url = url.replace("http://", "https://");     // https force
   return url;
+}
+
+// P0-3: DB me kabhi-kabhi Windows-style relative image paths hote hain
+// ("uploads\\repaired\\blogs\\_x.jpg") — image:loc me RAW jaane se Google
+// image index toot-ta tha (live sitemap-blogs bug). Absolute https banao.
+function safeImageUrl(value) {
+  if (!value) return "";
+  let u = String(value).trim().replace(/\\/g, "/");
+  u = u.replace(/([^:])\/{2,}/g, "$1/");        // dup slashes (:// bachao)
+  if (/^https?:\/\//i.test(u)) return u;
+  if (u.startsWith("//")) return `https:${u}`;
+  if (!u.startsWith("/")) u = `/${u}`;
+  return `${WEBSITE_URL}${u}`;
 }
 
 function sitemapIndex() {
@@ -268,7 +282,7 @@ function buildAll(colls, ogMap = {}) {
 
   // 🖼️ Sitemap/RSS image: doc image → generated OG → type fallback
   const imgOr = (pathKey, data, field, fbType) => {
-    if (data[field]) return safeXml(data[field]);
+    if (data[field]) return safeXml(safeImageUrl(data[field])); // P0-3 sanitize
     if (ogMap[pathKey]) return `${WEBSITE_URL}${ogMap[pathKey]}`;
     return `${WEBSITE_URL}/fallback/${fbType}.png`;
   };
@@ -291,7 +305,7 @@ function buildAll(colls, ogMap = {}) {
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
     const slug = safeXml(data.slug || id);
     const lastmod = getIsoDate(data.updatedAt || data.createdAt, now);
-    const img = safeXml(data.imageUrl || `${WEBSITE_URL}/og-image.jpg`);
+    const img = safeXml(safeImageUrl(data.imageUrl) || `${WEBSITE_URL}/og-image.jpg`); // P0-3
     const entry = urlEntry({
       loc: `${WEBSITE_URL}/blog/${slug}`,
       lastmod,
@@ -371,7 +385,7 @@ function buildAll(colls, ogMap = {}) {
       lastmod,
       freq: "weekly",
       priority: "0.9",
-      image: safeXml(data.coverImage || `${WEBSITE_URL}/og-image.jpg`),
+      image: safeXml(safeImageUrl(data.coverImage) || `${WEBSITE_URL}/og-image.jpg`), // P0-3
       imageTitle: safeXml(data.title || "StudyGyaan Web Story"),
     });
     storiesXml += e;

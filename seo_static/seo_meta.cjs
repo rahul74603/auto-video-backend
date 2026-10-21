@@ -28,6 +28,18 @@ function truncate(s, n) {
   return s.length <= n ? s : s.slice(0, n - 1).trimEnd() + "…";
 }
 
+// P0-3: DB image paths me Windows backslash / relative path — meta.php ke
+// og:image + JSON img fields ke liye absolute https banao (generate.cjs twin).
+function safeImageUrl(value) {
+  if (!value) return "";
+  let u = String(value).trim().replace(/\\/g, "/");
+  u = u.replace(/([^:])\/{2,}/g, "$1/");
+  if (/^https?:\/\//i.test(u)) return u;
+  if (u.startsWith("//")) return `https:${u}`;
+  if (!u.startsWith("/")) u = `/${u}`;
+  return `${SITE}${u}`;
+}
+
 /**
  * 🚑 LONE-SURROGATE KILLER (404-massacre fix, 2026-10-07):
  * truncate()/slice() UTF-16 code-units pe emoji pair ko beech me kaat sakta hai
@@ -207,7 +219,7 @@ function buildMetaFiles(colls, opts = {}) {
   };
   const resolveImg = (path, data, imgField, type) => {
     if (ogMap[path]) return SITE + ogMap[path];
-    if (data[imgField]) return data[imgField];
+    if (data[imgField]) return safeImageUrl(data[imgField]); // P0-3 sanitize
     return SITE + (FALLBACK_BY_TYPE[type] || "/og-image.jpg");
   };
 
@@ -638,6 +650,8 @@ function buildMetaFiles(colls, opts = {}) {
     .map(({ id, data }) => `<li><a href="${SITE}${base}/${esc(data.slug || id)}">${esc(stripHtml(data.title))}</a></li>`)
     .join("");
 
+  // P1-5: listing titles me dynamic year (Jan-2027 staleness fix)
+  const YEAR_NOW = new Date().getFullYear();
   const addListing = (pathKey, meta) => {
     if (!pages[pathKey]) {
       pages[pathKey] = { t: truncate(meta.t, 70), d: truncate(meta.d, 160), img: DEFAULT_IMG, type: "website", content: meta.content || "", ld: [] };
@@ -651,31 +665,31 @@ function buildMetaFiles(colls, opts = {}) {
   });
 
   addListing("/govt-jobs", {
-    t: "Latest Govt Jobs 2026 - सरकारी नौकरी | StudyGyaan",
-    d: "Sabhi Latest Government Jobs 2026 ki jankari. SSC, Railway, Bank, Police, UPSC aur State PSC ki Vacancy, Syllabus aur Preparation Tips.",
+    t: `Latest Govt Jobs ${YEAR_NOW} - सरकारी नौकरी | StudyGyaan`,
+    d: `Sabhi Latest Government Jobs ${YEAR_NOW} ki jankari. SSC, Railway, Bank, Police, UPSC aur State PSC ki Vacancy, Syllabus aur Preparation Tips.`,
     content: `<h2>Active Bhartiyan</h2><ul>${jobLinks(30)}</ul><p><a href="${SITE}/exam-calendar">Exam Calendar</a> | <a href="${SITE}/results">Results</a> | <a href="${SITE}/admit-card">Admit Cards</a></p>`,
   });
 
   addListing("/results", {
-    t: "Latest Results 2026 - Sarkari Exam Results | StudyGyaan",
+    t: `Latest Results ${YEAR_NOW} - Sarkari Exam Results | StudyGyaan`,
     d: "Sabhi Sarkari Exam Results, Merit List, Cut Off — university results, board results aur government exam results sabse pehle StudyGyaan par.",
     content: `<h2>Latest Results</h2><ul>${updatesByCategory("result", 25)}</ul><p><a href="${SITE}/admit-card">Admit Cards</a> | <a href="${SITE}/answer-key">Answer Keys</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
   });
 
   addListing("/admit-card", {
-    t: "Admit Card 2026 - Download Hall Ticket | StudyGyaan",
+    t: `Admit Card ${YEAR_NOW} - Download Hall Ticket | StudyGyaan`,
     d: "Sabhi Sarkari Exam ke Admit Card, Hall Ticket, Call Letter — direct download link ke saath sabse fast update StudyGyaan par.",
     content: `<h2>Latest Admit Cards</h2><ul>${updatesByCategory("admit", 25)}</ul><p><a href="${SITE}/results">Results</a> | <a href="${SITE}/answer-key">Answer Keys</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
   });
 
   addListing("/answer-key", {
-    t: "Answer Key 2026 - Sarkari Exam Answer Keys | StudyGyaan",
+    t: `Answer Key ${YEAR_NOW} - Sarkari Exam Answer Keys | StudyGyaan`,
     d: "Sabhi Government Exam ki Official Answer Key, Model Answer Key aur Response Sheet — direct PDF link ke saath.",
     content: `<h2>Latest Answer Keys</h2><ul>${updatesByCategory("answer", 25)}</ul><p><a href="${SITE}/results">Results</a> | <a href="${SITE}/admit-card">Admit Cards</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
   });
 
   addListing("/syllabus", {
-    t: "Exam Syllabus & Pattern 2026 | StudyGyaan",
+    t: `Exam Syllabus & Pattern ${YEAR_NOW} | StudyGyaan`,
     d: "SSC, Railway, Bank, Police, UPSC aur sabhi Sarkari Exam ka latest Syllabus aur Exam Pattern Hindi me.",
     content: `<h2>Latest Syllabus</h2><ul>${updatesByCategory("syllabus", 25)}</ul><p><a href="${SITE}/test">Free Mock Tests</a> | <a href="${SITE}/free-study-material">Free Study Material</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
   });

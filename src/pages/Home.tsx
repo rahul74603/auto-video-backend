@@ -137,13 +137,11 @@ const Home = () => {
     return (
         <main className="min-h-screen">
 
-            {/* ✅ Homepage SEO */}
+            {/* ✅ Homepage SEO — text PAGE_SEO_MAP se (dynamic year); yahan sirf schemas.
+                P0-1: stale hardcoded 2025 title/desc/keywords hataye (global map single source). */}
             <SEO
-                customTitle="StudyGyaan - Latest Govt Jobs Alert & Free Study Material 2025"
-                customDescription="StudyGyaan पर पाएं Latest Sarkari Naukri, Free PDF Notes, Online Mock Tests और Premium Study Material। SSC, Railway, Bank, Police की सबसे बेहतर तैयारी करें।"
                 customUrl="https://studygyaan.in"
                 customImage="https://studygyaan.in/og-image.jpg"
-                customKeywords="studygyaan, sarkari naukri 2025, govt jobs, free study material, mock test, SSC CGL, RRB NTPC, bank jobs"
                 ogType="website"
                 schemaType="all"
             />

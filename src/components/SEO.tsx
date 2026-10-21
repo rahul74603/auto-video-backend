@@ -99,6 +99,11 @@ const PAGE_SEO_MAP: Record<string, PageSeoEntry> = {
         title: 'Terms & Conditions | StudyGyaan',
         description: 'StudyGyaan Terms and Conditions - Website Use के Rules और Regulations।',
         keywords: 'terms conditions, terms of use, studygyaan'
+    },
+    '/search': {
+        title: 'Search StudyGyaan - Jobs, Blogs & Updates',
+        description: 'StudyGyaan par Govt Jobs, Blogs aur Fast Track Updates search karo.',
+        keywords: 'studygyaan search, sarkari naukri search'
     }
 };
 

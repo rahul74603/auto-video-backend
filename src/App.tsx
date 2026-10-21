@@ -25,6 +25,7 @@ import { SiteSettingsProvider, PromoBanner } from './sections/Ads';
 // Core
 const Home = lazy(() => import('./pages/Home'));
 const NotFound = lazy(() => import('./pages/NotFound'));
+const Search = lazy(() => import('./pages/Search')); // P1-7
 
 // Jobs
 const GovtJobs = lazy(() => import('@/sections/GovtJobs'));
@@ -207,6 +208,15 @@ function App() {
                                         <Route path="/" element={<Home />} />
 
                                         {/* 🔄 UTILITY */}
+                                        {/* 🔍 SEARCH (P1-7, noindex) */}
+                                        <Route
+                                            path="/search"
+                                            element={
+                                                <PageWrapper>
+                                                    <Search />
+                                                </PageWrapper>
+                                            }
+                                        />
                                         <Route path="/redirect" element={<Redirect />} />
                                         <Route path="/success" element={<Success />} />
 

@@ -58,3 +58,61 @@ test("HTML is stripped before metadata and schema output", () => {
   );
   assert.equal(schema["@type"], "Article");
 });
+
+// =========================================================
+// P0-2: /jobs/<hub> hub-guard + P1-8 exam-calendar (Firebase path)
+// =========================================================
+const {
+  createServerSeoHandler,
+  STATIC_PAGES,
+} = require("../server_seo_renderer");
+const { JOB_HUBS, findJobHub } = require("../job_hubs");
+
+function mockRes() {
+  return {
+    headers: {},
+    statusCode: 200,
+    body: "",
+    redirected: "",
+    set(k, v) { this.headers[k] = v; return this; },
+    status(c) { this.statusCode = c; return this; },
+    send(h) { this.body = String(h); return this; },
+    redirect(code, loc) { this.statusCode = code; this.redirected = loc; return this; },
+  };
+}
+
+test("P0-2: hub slug /jobs/railway serves 200 with hub title (no legacy 301)", async () => {
+  const handle = createServerSeoHandler({ db: null, renderWebStory: () => {} });
+  const res = mockRes();
+  await handle({ path: "/jobs/railway" }, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.redirected, "");
+  assert.match(res.body, /Railway Jobs/);
+  assert.match(res.body, /studygyaan\.in\/jobs\/railway/);
+});
+
+test("P0-2: non-hub /jobs/xyz still legacy-redirects to /job/xyz", async () => {
+  const handle = createServerSeoHandler({ db: null, renderWebStory: () => {} });
+  const res = mockRes();
+  await handle({ path: "/jobs/some-old-job" }, res);
+  assert.equal(res.statusCode, 301);
+  assert.equal(res.redirected, "https://studygyaan.in/job/some-old-job");
+});
+
+test("P1-8: exam-calendar static page serves 200", async () => {
+  assert.ok(STATIC_PAGES["exam-calendar"]);
+  const handle = createServerSeoHandler({ db: null, renderWebStory: () => {} });
+  const res = mockRes();
+  await handle({ path: "/exam-calendar" }, res);
+  assert.equal(res.statusCode, 200);
+  assert.match(res.body, /Exam Calendar/);
+});
+
+test("P0-2: job_hubs twin has 18 slugs, case-insensitive lookup", () => {
+  assert.equal(JOB_HUBS.length, 18);
+  assert.equal(findJobHub("Railway").slug, "railway");
+  assert.equal(findJobHub("mp").label, "MP Jobs");
+  assert.equal(findJobHub("  SSC ").slug, "ssc");
+  assert.equal(findJobHub("nope"), null);
+  assert.equal(findJobHub(""), null);
+});

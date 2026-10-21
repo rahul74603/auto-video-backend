@@ -1,0 +1,67 @@
+name: Daily Social Auto-Post (FB + Twitter + LinkedIn)
+
+# P1-6: roz 1 baar latest published item (job/update/blog) ko social pe post karo.
+# NOTE: schedule sirf default branch (main) pe chalta hai — arena branch merge ke baad active hoga.
+
+on:
+  schedule:
+    - cron: "30 4 * * *"   # roz subah ~10:00 AM IST
+  workflow_dispatch:
+
+jobs:
+  check-automation:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.automation_check.outputs.enabled }}
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      - name: 🛑 Check Automation Switch (global)
+        id: automation_check
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        working-directory: ai_backend
+        run: |
+          npm install --ignore-scripts --legacy-peer-deps firebase-admin axios 2>&1 | tail -n 3 || true
+          node check_automation.js global || STATUS=$?
+          if [ "$STATUS" = "78" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏸️ Social daily paused — global OFF"
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
+  post_latest_social:
+    needs: check-automation
+    if: needs.check-automation.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ai_backend
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: 📦 Install Dependencies
+        run: npm install --ignore-scripts --legacy-peer-deps
+      - name: 📣 Post Latest to Social
+        env:
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
+          TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
+          TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
+          TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
+          TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_ORGANIZATION_ID: ${{ secrets.LINKEDIN_ORGANIZATION_ID }}
+          LINKEDIN_PERSON_ID: ${{ secrets.LINKEDIN_PERSON_ID }}
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node social_media/post_latest.js
