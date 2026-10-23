@@ -1,0 +1,32 @@
+name: Diag - Site Health (READ-ONLY)
+
+# 🩺 Manual diagnostic — kuch likhta/badalta NAHI, sirf report deta hai.
+# Actions tab → Diag - Site Health → Run workflow → Branch: arena/cb68691a-auto-video-backend
+# Poora report job LOG me milega.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ai_backend
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 📦 Install Dependencies
+        run: npm install --ignore-scripts --legacy-peer-deps
+
+      - name: 🩺 Run Site-Health Diag
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+        run: node diag_site_health.js

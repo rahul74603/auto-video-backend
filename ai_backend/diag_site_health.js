@@ -1,0 +1,207 @@
+"use strict";
+
+/**
+ * diag_site_health.js — 🩺 READ-ONLY site health report (manual diag workflow)
+ * ============================================================================
+ * GitHub Actions se chalao (diag_site_health.yml → Run workflow). Ye script
+ * SIRF padhta hai, kuch likhta/badalta NAHI:
+ *
+ *  1. Firestore: har collection me total + status-wise counts (+ published slugs)
+ *  2. Live sitemaps: HTTP status, URL count, backslash-URL check, newest lastmod
+ *  3. Diff: Firestore published slugs vs sitemap URLs (missing = sitemap gap)
+ *  4. Bot-view: Googlebot UA se key URLs fetch → status + <title>
+ *     (meta.php/cPanel bot-stack end-to-end verify, bina cPanel login ke)
+ *  5. Freshness: sitemap files ki Last-Modified (FTP upload fresh hai ya stale?)
+ *  6. robots.txt + IndexNow key reachability
+ *
+ * Poori report workflow LOG me print hoti hai.
+ */
+
+const SITE = "https://studygyaan.in";
+const BOT_UA =
+  "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
+
+// ---------------- pure helpers (unit-tested) ----------------
+
+function extractTitle(html = "") {
+  const m = String(html).match(/<title>([^<]*)<\/title>/i);
+  return m ? m[1].trim().slice(0, 160) : "";
+}
+
+function extractLocs(xml = "") {
+  const out = [];
+  const re = /<loc>([^<]*)<\/loc>/g;
+  let m;
+  while ((m = re.exec(String(xml))) !== null) out.push(m[1].trim());
+  return out;
+}
+
+function countBackslashUrls(urls = []) {
+  return urls.filter((u) => u.includes("\\")).length;
+}
+
+function newestLastmod(xml = "") {
+  const re = /<lastmod>([^<]*)<\/lastmod>/g;
+  let m;
+  let best = "";
+  while ((m = re.exec(String(xml))) !== null) {
+    if (m[1] > best) best = m[1];
+  }
+  return best;
+}
+
+/** firestore slugs me se wo jo sitemap URLs me NAHI hain */
+function findMissingSlugs(slugs = [], sitemapUrls = [], base = "") {
+  const set = new Set(sitemapUrls);
+  return slugs.filter((s) => !set.has(`${base}/${s}`) && !set.has(`${base}/${s}/`));
+}
+
+// ---------------- IO ----------------
+
+function initDb() {
+  const admin = require("firebase-admin");
+  if (!admin.apps.length) {
+    const raw = process.env.SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (!raw) throw new Error("SERVICE_ACCOUNT_JSON missing — workflow secrets check karo");
+    admin.initializeApp({ credential: admin.credential.cert(JSON.parse(raw)) });
+  }
+  return admin.firestore();
+}
+
+async function fetchText(url, { ua = BOT_UA, timeoutMs = 15000 } = {}) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { headers: { "User-Agent": ua }, signal: ctrl.signal });
+    const text = await res.text();
+    return { status: res.status, text, headers: res.headers };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+function isPublished(data = {}) {
+  if (data.noIndex === true || data.deleted === true || data.isDeleted === true) return false;
+  const status = String(data.status || "published").trim().toLowerCase();
+  return !["draft", "pending", "rejected", "private", "archived", "deleted", "trash"].includes(status);
+}
+
+async function collectionStats(db, name) {
+  const snap = await db.collection(name).select("status", "title", "post_name", "slug").get();
+  const byStatus = {};
+  const publishedSlugs = [];
+  snap.forEach((doc) => {
+    const d = doc.data() || {};
+    const st = String(d.status || "(blank)").toLowerCase();
+    byStatus[st] = (byStatus[st] || 0) + 1;
+    const title = String(d.title || d.post_name || "").trim();
+    if (isPublished(d) && title.length >= 5) publishedSlugs.push(d.slug || doc.id);
+  });
+  return { total: snap.size, byStatus, publishedSlugs };
+}
+
+async function main() {
+  console.log("🩺 STUDYGYAAN SITE-HEALTH DIAG — " + new Date().toISOString());
+  const db = initDb();
+
+  // ---- 1. Firestore counts ----
+  console.log("\n========== 1. FIRESTORE ==========");
+  const cols = ["blogs", "jobs", "fast_track", "mock_tests", "web_stories", "courses", "study_materials"];
+  const stats = {};
+  for (const c of cols) {
+    try {
+      stats[c] = await collectionStats(db, c);
+      console.log(`📌 ${c}: total=${stats[c].total} published-ish=${stats[c].publishedSlugs.length} status=${JSON.stringify(stats[c].byStatus)}`);
+    } catch (e) {
+      console.log(`📌 ${c}: READ FAIL — ${e.message}`);
+      stats[c] = { total: -1, byStatus: {}, publishedSlugs: [] };
+    }
+  }
+
+  // ---- 2. Live sitemaps ----
+  console.log("\n========== 2. LIVE SITEMAPS ==========");
+  const index = await fetchText(`${SITE}/sitemap.xml`, { ua: "diag-site-health" });
+  console.log(`sitemap.xml → HTTP ${index.status}, ${index.text.length} bytes`);
+  const maps = extractLocs(index.text).filter((u) => u.includes("sitemap-"));
+  console.log(`maps in index: ${maps.length}`);
+  const mapData = {};
+  for (const m of maps) {
+    try {
+      const r = await fetchText(m, { ua: "diag-site-health" });
+      const locs = extractLocs(r.text);
+      const bs = countBackslashUrls(locs);
+      mapData[m] = locs;
+      console.log(`  ${m.replace(SITE + "/", "")} → HTTP ${r.status}, urls=${locs.length}, backslash=${bs}, newest=${newestLastmod(r.text) || "n/a"}, lastmod-hdr=${r.headers.get("last-modified") || "n/a"}`);
+    } catch (e) {
+      console.log(`  ${m} → FETCH FAIL — ${e.message}`);
+      mapData[m] = [];
+    }
+  }
+
+  // ---- 3. Diff: Firestore vs sitemap ----
+  console.log("\n========== 3. FIRESTORE↔SITEMAP DIFF ==========");
+  const checks = [
+    ["blogs", `${SITE}/sitemap-blogs.xml`, `${SITE}/blog`],
+    ["jobs", `${SITE}/sitemap-jobs.xml`, `${SITE}/job`],
+    ["fast_track", `${SITE}/sitemap-updates.xml`, `${SITE}/update`],
+  ];
+  for (const [col, mapUrl, base] of checks) {
+    const missing = findMissingSlugs(stats[col].publishedSlugs, mapData[mapUrl] || [], base);
+    console.log(`${col}: published=${stats[col].publishedSlugs.length}, in-sitemap=${(mapData[mapUrl] || []).length}, MISSING=${missing.length}${missing.length ? " → " + missing.slice(0, 10).join(", ") : ""}`);
+  }
+
+  // ---- 4. Bot-view (Googlebot UA) ----
+  console.log("\n========== 4. BOT-VIEW (Googlebot UA) ==========");
+  const botUrls = [
+    `${SITE}/`,
+    `${SITE}/blog`,
+    `${SITE}/govt-jobs`,
+    `${SITE}/exam-calendar`,
+    `${SITE}/jobs/railway`,
+    `${SITE}/jobs/mp`,
+    `${SITE}/test`,
+    ...(mapData[`${SITE}/sitemap-blogs.xml`] || []).slice(0, 30),
+    ...(mapData[`${SITE}/sitemap-jobs.xml`] || []).slice(0, 5),
+  ];
+  let botOk = 0;
+  let botFail = 0;
+  for (const u of botUrls) {
+    try {
+      const r = await fetchText(u);
+      const title = extractTitle(r.text);
+      const ok = r.status === 200 && title.length > 0;
+      if (ok) botOk++;
+      else botFail++;
+      console.log(`${ok ? "✅" : "❌"} ${r.status} ${u.replace(SITE, "")} — "${title.slice(0, 90)}"${r.text.length < 2000 ? ` [THIN:${r.text.length}b]` : ""}`);
+    } catch (e) {
+      botFail++;
+      console.log(`❌ FETCH-FAIL ${u.replace(SITE, "")} — ${e.message}`);
+    }
+  }
+  console.log(`bot-view: OK=${botOk} FAIL=${botFail}`);
+
+  // ---- 5. robots + key ----
+  console.log("\n========== 5. ROBOTS + MISC ==========");
+  for (const u of [`${SITE}/robots.txt`, `${SITE}/9629c8c41fa94b898f83a53ecd320743.txt`]) {
+    try {
+      const r = await fetchText(u, { ua: "diag-site-health" });
+      console.log(`${r.status === 200 ? "✅" : "❌"} ${r.status} ${u.replace(SITE, "")} (${r.text.length}b)`);
+    } catch (e) {
+      console.log(`❌ FETCH-FAIL ${u.replace(SITE, "")} — ${e.message}`);
+    }
+  }
+
+  console.log("\n🩺 DIAG DONE — ye poora log share karo, dikkat exact line me dikhegi.");
+  return true;
+}
+
+if (require.main === module) {
+  main()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error("🩺 DIAG FATAL:", err && err.message);
+      process.exit(1);
+    });
+}
+
+module.exports = { extractTitle, extractLocs, countBackslashUrls, newestLastmod, findMissingSlugs };
