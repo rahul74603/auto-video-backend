@@ -7,6 +7,10 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 const WEBSITE_URL = "https://studygyaan.in";
+// NOTE: sitemap full-fetches me orderBy("createdAt") NAHI — Firestore orderBy
+// bina-createdAt docs ko result se bahar rakhta hai (769 blogs gayab the!).
+// Sitemap me order irrelevant hai. Sirf latest-N feeds (RSS-50, news-100)
+// me orderBy intentional hai (wahan "latest" ke liye date chahiye).
 // PHASE-2: Google News sitemap ka pure builder (blogs+jobs+fast_track, tests ke saath)
 const { buildNewsEntries, renderNewsSitemapXml } = require("./news_sitemap");
 
@@ -175,7 +179,6 @@ exports.generateSitemapBlogs = functions.https.onRequest(async (req, res) => {
         xml += `        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n`;
 
         const snap = await db.collection("blogs")
-            .orderBy("createdAt", "desc")
             .limit(5000)
             .get();
 
@@ -228,7 +231,6 @@ exports.generateSitemapJobs = functions.https.onRequest(async (req, res) => {
         xml += `        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n`;
 
         const snap = await db.collection("jobs")
-            .orderBy("createdAt", "desc")
             .limit(5000)
             .get();
 
@@ -277,7 +279,6 @@ exports.generateSitemapTests = functions.https.onRequest(async (req, res) => {
         xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
 
         const snap = await db.collection("mock_tests")
-            .orderBy("createdAt", "desc")
             .limit(2000)
             .get();
 
@@ -319,7 +320,6 @@ exports.generateSitemapStories = functions.https.onRequest(async (req, res) => {
         xml += `        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n`;
 
         const snap = await db.collection("web_stories")
-            .orderBy("createdAt", "desc")
             .limit(2000)
             .get();
 
@@ -367,7 +367,6 @@ exports.generateSitemapUpdates = functions.https.onRequest(async (_req, res) => 
         xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
 
         const snap = await db.collection("fast_track")
-            .orderBy("createdAt", "desc")
             .limit(5000)
             .get();
 
@@ -404,7 +403,6 @@ exports.generateSitemapCourses = functions.https.onRequest(async (req, res) => {
         xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
 
         const snap = await db.collection("courses")
-            .orderBy("createdAt", "desc")
             .limit(5000)
             .get();
 
@@ -441,7 +439,6 @@ exports.generateSitemapMaterials = functions.https.onRequest(async (req, res) =>
         xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
 
         const snap = await db.collection("study_materials")
-            .orderBy("createdAt", "desc")
             .limit(5000)
             .get();
 
@@ -461,7 +458,6 @@ exports.generateSitemapMaterials = functions.https.onRequest(async (req, res) =>
         // Also try studyMaterials (camelCase) collection as a fallback
         try {
             const snap2 = await db.collection("studyMaterials")
-                .orderBy("createdAt", "desc")
                 .limit(5000)
                 .get();
             snap2.forEach(doc => {
@@ -634,7 +630,6 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
         // ============ BLOGS ============
         try {
             const blogsSnap = await db.collection("blogs")
-                .orderBy("createdAt", "desc")
                 .limit(5000)
                 .get();
             
@@ -664,7 +659,6 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
         // ============ JOBS ============
         try {
             const jobsSnap = await db.collection("jobs")
-                .orderBy("createdAt", "desc")
                 .limit(5000)
                 .get();
             
@@ -695,7 +689,6 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
         // ============ MOCK TESTS ============
         try {
             const testsSnap = await db.collection("mock_tests")
-                .orderBy("createdAt", "desc")
                 .limit(2000)
                 .get();
             
@@ -719,7 +712,6 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
         // ============ WEB STORIES ============
         try {
             const storiesSnap = await db.collection("web_stories")
-                .orderBy("createdAt", "desc")
                 .limit(2000)
                 .get();
             
@@ -749,7 +741,6 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
         // ============ FAST TRACK ============
         try {
             const fastSnap = await db.collection("fast_track")
-                .orderBy("createdAt", "desc")
                 .limit(5000)
                 .get();
             
@@ -773,7 +764,6 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
         // ============ COURSES ============
         try {
             const coursesSnap = await db.collection("courses")
-                .orderBy("createdAt", "desc")
                 .limit(5000)
                 .get();
 
@@ -797,7 +787,6 @@ exports.generateSitemap = functions.https.onRequest(async (req, res) => {
         // ============ STUDY MATERIALS ============
         try {
             const matsSnap = await db.collection("study_materials")
-                .orderBy("createdAt", "desc")
                 .limit(5000)
                 .get();
 

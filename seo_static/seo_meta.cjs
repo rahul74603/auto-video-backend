@@ -273,6 +273,7 @@ function buildMetaFiles(colls, opts = {}) {
 
   // ===== JOBS: full content + JobPosting schema =====
   (colls.jobs || []).forEach(({ id, data }) => {
+    try { // per-doc guard: ek kharab doc poora JSON kill na kare
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
     if ((data.type || "").toUpperCase() === "COURSE") return;
     const slug = data.slug || id;
@@ -346,10 +347,12 @@ function buildMetaFiles(colls, opts = {}) {
       content: expiredBanner + (data.description || "") + relatedHtml(slug, String(data.category || "").toLowerCase()),
       ld,
     };
+    } catch (e) { console.error("⚠️ seo_meta jobs doc skip:", id, "-", e.message); }
   });
 
   // ===== FAST TRACK UPDATES: full content + NewsArticle schema =====
   (colls.fast_track || []).forEach(({ id, data }) => {
+    try { // per-doc guard: ek kharab doc poora JSON kill na kare
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
     const slug = data.slug || id;
     const path = `/update/${slug}`;
@@ -388,6 +391,7 @@ function buildMetaFiles(colls, opts = {}) {
       content: body + relatedHtml(slug, String(data.category || "").toLowerCase()),
       ld,
     };
+    } catch (e) { console.error("⚠️ seo_meta fast_track doc skip:", id, "-", e.message); }
   });
 
   // ===== BAAKI PAGES: preview meta =====
@@ -406,6 +410,7 @@ function buildMetaFiles(colls, opts = {}) {
   // Pehle blogs ko sirf preview meta milta tha — Googlebot ko article dikhta hi
   // nahi tha → thin content → koi ranking nahi. Ab poora article HTML + schema.
   (colls.blogs || []).forEach(({ id, data }) => {
+    try { // per-doc guard: ek kharab doc poora JSON kill na kare
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
     const slug = data.slug || id;
     const path = `/blog/${slug}`;
@@ -451,6 +456,7 @@ function buildMetaFiles(colls, opts = {}) {
       const idPath = `/blog/${id}`;
       if (!pages[idPath]) pages[idPath] = { redirect: path };
     }
+    } catch (e) { console.error("⚠️ seo_meta blogs doc skip:", id, "-", e.message); }
   });
 
   (colls.mock_tests || []).forEach(({ id, data }) => addPage(`/test/${data.slug || id}`, data, "imageUrl", "test"));
@@ -473,6 +479,7 @@ function buildMetaFiles(colls, opts = {}) {
       category: String(data.category || "").toLowerCase(),
     }));
   (colls.web_stories || []).forEach(({ id, data }) => {
+    try { // per-doc guard: ek kharab doc poora JSON kill na kare
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
     const slug = data.slug || id;
     const path = `/web-stories/${slug}`;
@@ -548,6 +555,7 @@ function buildMetaFiles(colls, opts = {}) {
       const idPath = `/web-stories/${id}`;
       if (!stories[idPath]) stories[idPath] = { redirect: path };
     }
+    } catch (e) { console.error("⚠️ seo_meta stories doc skip:", id, "-", e.message); }
   });
 
   // 🎯 HUB PAGES — bots ko real content list (title/desc + matching active jobs)

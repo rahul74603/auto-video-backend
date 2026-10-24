@@ -169,20 +169,23 @@ async function main() {
   ];
   let botOk = 0;
   let botFail = 0;
+  const botGap = [];
   for (const u of botUrls) {
     try {
       const r = await fetchText(u);
       const title = extractTitle(r.text);
       const ok = r.status === 200 && title.length > 0;
       if (ok) botOk++;
-      else botFail++;
+      else { botFail++; botGap.push(`${r.status} ${u.replace(SITE, "")}`); }
       console.log(`${ok ? "✅" : "❌"} ${r.status} ${u.replace(SITE, "")} — "${title.slice(0, 90)}"${r.text.length < 2000 ? ` [THIN:${r.text.length}b]` : ""}`);
     } catch (e) {
       botFail++;
+      botGap.push(`FETCH-FAIL ${u.replace(SITE, "")}`);
       console.log(`❌ FETCH-FAIL ${u.replace(SITE, "")} — ${e.message}`);
     }
   }
   console.log(`bot-view: OK=${botOk} FAIL=${botFail}`);
+  if (botGap.length) console.log(`⚠️ BOT-JSON GAP (sitemap-me-hai-par-bot-404):\n   - ${botGap.join("\n   - ")}`);
 
   // ---- 5. robots + key ----
   console.log("\n========== 5. ROBOTS + MISC ==========");

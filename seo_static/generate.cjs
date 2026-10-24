@@ -98,6 +98,21 @@ function hasUsefulTitle(data = {}) {
   return String(data.title || data.post_name || "").trim().length >= 5;
 }
 
+// Doc timestamp (Timestamp/Date/number/string) → ms. Missing/invalid → 0 (last me, exclude NAHI).
+function toMillis(data = {}) {
+  const t = data.createdAt || data.updatedAt || data.publishedAt || data.publishedDate;
+  if (!t) return 0;
+  try {
+    if (typeof t === "number") return t;
+    if (t.toMillis) return t.toMillis();
+    if (t.toDate) return t.toDate().getTime();
+    const parsed = Date.parse(t);
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch {
+    return 0;
+  }
+}
+
 // ---------- Firestore fetch ----------
 async function fetchCollections() {
   if (MOCK) {
@@ -158,9 +173,13 @@ async function fetchCollections() {
 
   async function grab(coll, limit) {
     try {
-      const snap = await db.collection(coll).orderBy("createdAt", "desc").limit(limit).get();
+      // ⚠️ orderBy("createdAt") NAHI — Firestore orderBy un docs ko RESULT SE
+      // BAHAR rakhta hai jinme wo field nahi hai (769 blogs isi se gayab the).
+      // Sab lao, memory me newest-first sort karo (bina-date wale last me).
+      const snap = await db.collection(coll).limit(limit).get();
       const rows = [];
       snap.forEach((doc) => rows.push({ id: doc.id, data: doc.data() }));
+      rows.sort((a, b) => toMillis(b.data) - toMillis(a.data));
       console.log(`   📥 ${coll}: ${rows.length} docs`);
       return rows;
     } catch (e) {
@@ -645,7 +664,7 @@ async function generateFallbackImages() {
 }
 
 // ---------- Main ----------
-(async () => {
+async function main() {
   const colls = await fetchCollections();
 
   // 🖼️ Pehle OG images banao (jin pages ko image nahi hai) — sitemap/meta dono use karenge
@@ -684,7 +703,13 @@ async function generateFallbackImages() {
   console.log(`\n🎉 DONE! ${Object.keys(files).length + 1} files → ${OUT_DIR}`);
   console.log(`   Total URLs in sitemaps: ${totalUrls}`);
   process.exit(0);
-})().catch((e) => {
-  console.error("❌ FATAL:", e);
-  process.exit(1);
-});
+}
+
+if (require.main === module) {
+  main().catch((e) => {
+    console.error("❌ FATAL:", e);
+    process.exit(1);
+  });
+}
+
+module.exports = { toMillis, safeImageUrl, normalizeSitemapUrl };
