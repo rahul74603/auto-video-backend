@@ -61,7 +61,8 @@ Options -Indexes
   RewriteRule \.(js|mjs|css|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|otf|eot|mp4|webm|ogg|mp3|pdf|wasm|zip|xml|txt)$ - [L,NC]
 
   # ---------- 5) SEO data files ko direct access block ----------
-  <FilesMatch "^(seo-meta-.+\.json|_urls\.json)$">
+  # (ftp sync-state me file hashes/paths hote hain — public pe kyu dikhaye?)
+<FilesMatch "^(seo-meta-.+\.json|_urls\.json|\.ftp-deploy-sync-state\.json)$">
     <IfModule mod_authz_core.c>
       Require all denied
     </IfModule>
