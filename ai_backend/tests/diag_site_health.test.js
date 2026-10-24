@@ -37,3 +37,10 @@ test("findMissingSlugs sitemap-gap pakadta hai", () => {
   assert.deepEqual(findMissingSlugs(slugs, urls, "https://studygyaan.in/blog"), ["b"]);
   assert.deepEqual(findMissingSlugs(slugs, [...urls, "https://studygyaan.in/blog/b"], "https://studygyaan.in/blog"), []);
 });
+
+test("detectSitemapRoot INDEX vs URLSET pehchanta hai", () => {
+  const { detectSitemapRoot } = require("../diag_site_health");
+  assert.equal(detectSitemapRoot('<sitemapindex xmlns="x"><sitemap></sitemap></sitemapindex>'), "INDEX");
+  assert.equal(detectSitemapRoot('<urlset xmlns="x"><url></url></urlset>'), "URLSET");
+  assert.equal(detectSitemapRoot("<html>nope</html>"), "UNKNOWN");
+});

@@ -121,11 +121,15 @@ async function main() {
   // ---- 2. Live sitemaps ----
   console.log("\n========== 2. LIVE SITEMAPS ==========");
   const index = await fetchText(`${SITE}/sitemap.xml`, { ua: "diag-site-health" });
-  console.log(`sitemap.xml → HTTP ${index.status}, ${index.text.length} bytes`);
-  const maps = extractLocs(index.text).filter((u) => u.includes("sitemap-"));
-  console.log(`maps in index: ${maps.length}`);
+  const indexRoot = detectSitemapRoot(index.text);
+  console.log(`sitemap.xml → HTTP ${index.status}, ${index.text.length} bytes, ROOT=${indexRoot}${indexRoot !== "INDEX" ? " ⚠️ INDEX hona chahiye tha!" : ""}`);
+  const mapsInIndex = extractLocs(index.text).filter((u) => u.includes("sitemap-"));
+  console.log(`maps in index: ${mapsInIndex.length}`);
+  // Maps ko DIRECT fetch karo (toote index ke bawjood diff sahi aaye)
+  const KNOWN_MAPS = ["main", "blogs", "jobs", "tests", "stories", "updates", "courses", "materials"]
+    .map((n) => `${SITE}/sitemap-${n}.xml`);
   const mapData = {};
-  for (const m of maps) {
+  for (const m of KNOWN_MAPS) {
     try {
       const r = await fetchText(m, { ua: "diag-site-health" });
       const locs = extractLocs(r.text);
@@ -204,4 +208,12 @@ if (require.main === module) {
     });
 }
 
-module.exports = { extractTitle, extractLocs, countBackslashUrls, newestLastmod, findMissingSlugs };
+/** sitemap file ka root: INDEX (sahi) ya URLSET (galat jagah) ya UNKNOWN */
+function detectSitemapRoot(xml = "") {
+  const t = String(xml);
+  if (t.includes("<sitemapindex")) return "INDEX";
+  if (t.includes("<urlset")) return "URLSET";
+  return "UNKNOWN";
+}
+
+module.exports = { extractTitle, extractLocs, countBackslashUrls, newestLastmod, findMissingSlugs, detectSitemapRoot };
