@@ -1242,6 +1242,7 @@ async function generateDailyBlog(attempt = 0) {
             while (n <= 9 && (await db.collection("blogs").doc(`${slug}-${n}`).get()).exists) n++;
             slug = n <= 9 ? `${slug}-${n}` : `${slug}-${Date.now().toString(36)}`;
         }
+        slug = String(slug).trim(); // belt & suspenders: doc-id + field dono clean
         const blogUrl = `https://studygyaan.in/blog/${slug}`;
         console.log(`🔗 URL: ${blogUrl}`);
 

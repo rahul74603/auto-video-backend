@@ -224,7 +224,7 @@ function dedupeUrlset(xml) {
 // (sitemap URL ≠ page canonical URL ho to "non-canonical in sitemap" warning aati hai)
 function normalizeSitemapUrl(url) {
   if (!url) return url;
-  url = String(url).replace(/\\/g, "/");        // Windows backslash → slash (P0-3)
+  url = String(url).trim().replace(/\\/g, "/");   // trim + Windows backslash → slash (P0-3)
   url = url.replace(/\/+$/, "");                // trailing slash(es)
   url = url.replace("://www.", "://");          // www → apex
   url = url.replace("http://", "https://");     // https force
@@ -297,7 +297,7 @@ function buildAll(colls, ogMap = {}) {
   const nowUtc = new Date().toUTCString();
   const allUrls = []; // {url, lastmod}
 
-  const push = (url, lastmod) => allUrls.push({ url, lastmod });
+  const push = (url, lastmod) => allUrls.push({ url: normalizeSitemapUrl(url), lastmod });
 
   // 🖼️ Sitemap/RSS image: doc image → generated OG → type fallback
   const imgOr = (pathKey, data, field, fbType) => {

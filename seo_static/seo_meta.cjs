@@ -103,6 +103,14 @@ function isIndexableDocument(data = {}) {
   return !["draft", "pending", "rejected", "private", "archived", "deleted", "trash"].includes(status);
 }
 
+// 🧹 Slug clean: Firestore slug me kabhi leading/trailing space ya slash aa jaye to
+// sitemap (normalized) aur JSON key (raw) ka MISMATCH ho jata hai → bot-404.
+// Dono builders ab IDENTICAL clean slug use karte hain.
+function cleanSlug(value, fallback) {
+  const s = String(value ?? fallback ?? "").trim().replace(/^\/+|\/+$/g, "");
+  return s || String(fallback ?? "").trim();
+}
+
 function hasUsefulTitle(data = {}) {
   return String(data.title || data.post_name || "").trim().length >= 5;
 }
@@ -231,7 +239,7 @@ function buildMetaFiles(colls, opts = {}) {
     .map(({ id, data }) => {
       const vt = parseLastDate(data.lastDate);
       return {
-        slug: data.slug || id,
+        slug: cleanSlug(data.slug, id),
         title: stripHtml(data.title),
         category: String(data.category || "").toLowerCase(),
         lastDate: String(data.lastDate || ""),
@@ -246,7 +254,7 @@ function buildMetaFiles(colls, opts = {}) {
     .filter(({ data }) => isIndexableDocument(data) && hasUsefulTitle(data))
     .slice(0, 40)
     .map(({ id, data }) => ({
-      slug: data.slug || id,
+      slug: cleanSlug(data.slug, id),
       title: stripHtml(data.title),
       category: String(data.category || "").toLowerCase(),
     }));
@@ -276,7 +284,7 @@ function buildMetaFiles(colls, opts = {}) {
     try { // per-doc guard: ek kharab doc poora JSON kill na kare
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
     if ((data.type || "").toUpperCase() === "COURSE") return;
-    const slug = data.slug || id;
+    const slug = cleanSlug(data.slug, id);
     const path = `/job/${slug}`;
     const title = data.seoTitle || data.title;
     const desc = truncate(data.metaDescription || stripHtml(data.description), 160);
@@ -354,7 +362,7 @@ function buildMetaFiles(colls, opts = {}) {
   (colls.fast_track || []).forEach(({ id, data }) => {
     try { // per-doc guard: ek kharab doc poora JSON kill na kare
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
-    const slug = data.slug || id;
+    const slug = cleanSlug(data.slug, id);
     const path = `/update/${slug}`;
     const title = data.seoTitle || data.title;
     const body = data.description || data.content || "";
@@ -412,7 +420,7 @@ function buildMetaFiles(colls, opts = {}) {
   (colls.blogs || []).forEach(({ id, data }) => {
     try { // per-doc guard: ek kharab doc poora JSON kill na kare
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
-    const slug = data.slug || id;
+    const slug = cleanSlug(data.slug, id);
     const path = `/blog/${slug}`;
     const title = data.seoTitle || data.title;
     const body = data.content || data.description || data.articleHtml || "";
@@ -459,12 +467,12 @@ function buildMetaFiles(colls, opts = {}) {
     } catch (e) { console.error("⚠️ seo_meta blogs doc skip:", id, "-", e.message); }
   });
 
-  (colls.mock_tests || []).forEach(({ id, data }) => addPage(`/test/${data.slug || id}`, data, "imageUrl", "test"));
+  (colls.mock_tests || []).forEach(({ id, data }) => addPage(`/test/${cleanSlug(data.slug, id)}`, data, "imageUrl", "test"));
   // 📱 Web stories ab NEECHE full-content builder me jaate hain (preview nahi) —
   // Google Discover/Web-Stories surface ke liye poora text + schema + internal links.
-  (colls.courses || []).forEach(({ id, data }) => addPage(`/course/${data.slug || id}`, data, "imageUrl", "course"));
+  (colls.courses || []).forEach(({ id, data }) => addPage(`/course/${cleanSlug(data.slug, id)}`, data, "imageUrl", "course"));
   [...(colls.study_materials || []), ...(colls.studyMaterials || [])].forEach(({ id, data }) =>
-    addPage(`/material/${data.slug || id}`, data, "imageUrl", "material")
+    addPage(`/material/${cleanSlug(data.slug, id)}`, data, "imageUrl", "material")
   );
 
   // ===== WEB STORIES: FULL CONTENT + Article schema (Google Discover power-up) =====
@@ -474,14 +482,14 @@ function buildMetaFiles(colls, opts = {}) {
   const storyPool = (colls.web_stories || [])
     .filter(({ data }) => isIndexableDocument(data) && hasUsefulTitle(data))
     .map(({ id, data }) => ({
-      slug: data.slug || id,
+      slug: cleanSlug(data.slug, id),
       title: stripHtml(data.title),
       category: String(data.category || "").toLowerCase(),
     }));
   (colls.web_stories || []).forEach(({ id, data }) => {
     try { // per-doc guard: ek kharab doc poora JSON kill na kare
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
-    const slug = data.slug || id;
+    const slug = cleanSlug(data.slug, id);
     const path = `/web-stories/${slug}`;
     const title = stripHtml(data.title);
     const desc = truncate(data.metaDescription || stripHtml(data.description) || `${title} — StudyGyaan Web Story`, 160);
@@ -649,13 +657,13 @@ function buildMetaFiles(colls, opts = {}) {
     .filter(({ data }) => isIndexableDocument(data) && hasUsefulTitle(data))
     .filter(({ data }) => String(data.category || "").toLowerCase().includes(kw))
     .slice(0, n)
-    .map(({ id, data }) => `<li><a href="${SITE}/update/${esc(data.slug || id)}">${esc(stripHtml(data.title))}</a></li>`)
+    .map(({ id, data }) => `<li><a href="${SITE}/update/${esc(cleanSlug(data.slug, id))}">${esc(stripHtml(data.title))}</a></li>`)
     .join("");
 
   const collectionLinks = (rows, base, n) => rows
     .filter(({ data }) => isIndexableDocument(data) && hasUsefulTitle(data))
     .slice(0, n)
-    .map(({ id, data }) => `<li><a href="${SITE}${base}/${esc(data.slug || id)}">${esc(stripHtml(data.title))}</a></li>`)
+    .map(({ id, data }) => `<li><a href="${SITE}${base}/${esc(cleanSlug(data.slug, id))}">${esc(stripHtml(data.title))}</a></li>`)
     .join("");
 
   // P1-5: listing titles me dynamic year (Jan-2027 staleness fix)

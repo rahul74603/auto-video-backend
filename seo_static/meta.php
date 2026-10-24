@@ -105,6 +105,12 @@ if ($file && is_readable($file)) {
     if (is_array($data)) {
         $jsonOk = true;
         $entry = $data[$path] ?? null;
+        if (!$entry && $path !== '/') {
+            // Generator key-format guard: purani JSON me key me trailing slash/space
+            // ho to trimmed variant retry karo (sirf fallback — normal path same hai)
+            $alt = '/' . trim($path, " \t\n\r\0\x0B/");
+            if ($alt !== $path) $entry = $data[$alt] ?? null;
+        }
     }
     // corrupt/empty JSON → $entry null hi rahega, 5xx nahi aayega
 }

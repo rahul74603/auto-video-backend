@@ -37,6 +37,30 @@ test("normalizeSitemapUrl: backslash + www + http fix", () => {
   );
 });
 
+test("normalizeSitemapUrl: leading/trailing whitespace trim", () => {
+  assert.equal(
+    normalizeSitemapUrl("  https://studygyaan.in/blog/x  "),
+    "https://studygyaan.in/blog/x"
+  );
+});
+
+test("buildMetaFiles: dirty slugs (space/slash) → clean keys, sitemap se match", () => {
+  const colls = {
+    blogs: [
+      { id: "b1", data: { status: "published", title: "Spaced Slug Blog Post", slug: "  spaced-slug  ", content: "<p>body</p>", createdAt: "2026-10-24T00:00:00Z" } },
+      { id: "b2", data: { status: "published", title: "Slashed Slug Blog Post", slug: "slashed-slug/", content: "<p>body</p>", createdAt: "2026-10-24T00:00:00Z" } },
+    ],
+    jobs: [], fast_track: [], mock_tests: [], web_stories: [], courses: [],
+    study_materials: [], studyMaterials: [],
+  };
+  const files = buildMetaFiles(colls, { ogMap: {} });
+  const pages = JSON.parse(files["seo-meta-pages.json"]);
+  assert.ok(pages["/blog/spaced-slug"], "trimmed key present");
+  assert.ok(pages["/blog/slashed-slug"], "slash-stripped key present");
+  assert.equal(pages["/blog/  spaced-slug  "], undefined, "dirty key absent");
+  assert.equal(pages["/blog/slashed-slug/"], undefined, "dirty key absent");
+});
+
 test("buildMetaFiles: poison docs par throw NAHI, achhe docs safe", () => {
   const colls = {
     blogs: [

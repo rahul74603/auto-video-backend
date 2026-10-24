@@ -178,6 +178,14 @@ async function main() {
       if (ok) botOk++;
       else { botFail++; botGap.push(`${r.status} ${u.replace(SITE, "")}`); }
       console.log(`${ok ? "✅" : "❌"} ${r.status} ${u.replace(SITE, "")} — "${title.slice(0, 90)}"${r.text.length < 2000 ? ` [THIN:${r.text.length}b]` : ""}`);
+      if (!ok) {
+        // 🔬 Cache-layer forensics: 404 LIVE hai ya LiteSpeed/Cloudflare se cached?
+        try {
+          const hdrs = r.headers || { get: () => null };
+          const pick = (h) => hdrs.get(h) || "-";
+          console.log(`   ↳ cache-forensics: cache-control=${pick("cache-control")} | age=${pick("age")} | cf=${pick("cf-cache-status")} | litespeed=${pick("x-litespeed-cache")} | x-cache=${pick("x-cache")} | lastmod=${pick("last-modified")}`);
+        } catch (_) { /* headers na mile to skip */ }
+      }
     } catch (e) {
       botFail++;
       botGap.push(`FETCH-FAIL ${u.replace(SITE, "")}`);
@@ -185,7 +193,24 @@ async function main() {
     }
   }
   console.log(`bot-view: OK=${botOk} FAIL=${botFail}`);
-  if (botGap.length) console.log(`⚠️ BOT-JSON GAP (sitemap-me-hai-par-bot-404):\n   - ${botGap.join("\n   - ")}`);
+  if (botGap.length) {
+    console.log(`⚠️ BOT-JSON GAP (sitemap-me-hai-par-bot-404):\n   - ${botGap.join("\n   - ")}`);
+    // 🔬 GAP-URL ka Firestore doc dump — dirty slug (space/slash) vs stale-cache ka faisla
+    const GAP_COL = { blog: "blogs", job: "jobs", update: "fast_track", test: "mock_tests", "web-stories": "web_stories", course: "courses", material: "study_materials" };
+    for (const g of botGap.slice(0, 10)) {
+      const m = g.match(/^\S+\s+(\/[a-z-]+\/[^/\s]+)/);
+      if (!m) continue;
+      const segs = m[1].split("/").filter(Boolean);
+      const col = GAP_COL[segs[0]];
+      if (!col || !segs[1]) { console.log(`   🔬 ${m[1]} → (non-detail URL, dump skip)`); continue; }
+      try {
+        const doc = await db.collection(col).doc(segs[1]).get();
+        if (!doc.exists) { console.log(`   🔬 ${m[1]} → Firestore ${col}/${segs[1]} NOT-FOUND (slug≠doc-id?)`); continue; }
+        const d = doc.data() || {};
+        console.log(`   🔬 ${m[1]} → ${JSON.stringify({ id: doc.id, slug: d.slug ?? null, title: String(d.title || "").slice(0, 70), status: d.status ?? null, noIndex: d.noIndex ?? null })}`);
+      } catch (e) { console.log(`   🔬 ${m[1]} → dump fail: ${e.message}`); }
+    }
+  }
 
   // ---- 5. robots + key ----
   console.log("\n========== 5. ROBOTS + MISC ==========");
