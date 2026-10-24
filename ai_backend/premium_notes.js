@@ -438,6 +438,11 @@ Exam: ${exam}
 Set Number: ${currentSet}
 Subject Type: ${subjectType.toUpperCase()}
 
+⚠️ COUNT CONTRACT (NON-NEGOTIABLE):
+   Generate EXACTLY 25 questions — Q.1 to Q.25, in order.
+   STOP immediately after Q.25. NEVER write Q.26 or any higher number.
+   Do NOT add extra/bonus/revision questions anywhere.
+
 ═══════════════════════════════════════════════
 🎯 QUALITY STANDARDS (CRITICAL!)
 ═══════════════════════════════════════════════
@@ -668,7 +673,7 @@ ${topic} MCQ Practice Set ${currentSet} | ${exam} ${CURRENT_YEAR} | ${BRAND.name
 CONTENT_HTML:
 [Only clean inner HTML - no DOCTYPE, html, head, body tags]
 [Follow the EXACT template structure above]
-[All 25 questions with proper formatting]
+[EXACTLY Q.1 to Q.25 — STOP after Q.25, nothing more]
 `;
 }
 
@@ -779,6 +784,52 @@ function isAcceptableSetSize(n) {
   return Number.isInteger(n) && n >= 20 && n <= 30;
 }
 exports.isAcceptableSetSize = isAcceptableSetSize;
+
+// PHASE-4: badge parser — ordered [{ n, pos }]. AI kabhi 25 se zyada cards
+// likh deta hai (overshoot) ya answer-key me number repeat karta hai —
+// isliye gate sequential-run pe chalta hai, raw badge-count pe nahi.
+function parseQuestionBadges(html) {
+  const out = [];
+  // Template comments (<!-- Repeat Q.1 to Q.25 -->) ko same-length spaces se mask karo —
+  // badge-pos ORIGINAL string me valid rehte hain (truncate cut-point sahi aata hai)
+  const masked = String(html || "").replace(/<!--[\s\S]*?-->/g, (m) => " ".repeat(m.length));
+  const re = /Q\.\s?(\d+)/g;
+  for (const m of masked.matchAll(re)) {
+    out.push({ n: Number(m[1]), pos: m.index });
+  }
+  return out;
+}
+exports.parseQuestionBadges = parseQuestionBadges;
+
+// Leading sequential run 1,2,3... ki length = asli set (baad ke repeats = answer-key)
+function sequentialRunLength(badges) {
+  let run = 0;
+  for (const b of badges || []) {
+    if (b.n === run + 1) run++;
+    else break;
+  }
+  return run;
+}
+exports.sequentialRunLength = sequentialRunLength;
+
+// Overshoot truncate: pehle 25 cards rakho. 26th badge se pehle kaato,
+// latke hue opening tags/comments hatao, SECTION-2 ka </div> band karo.
+// (Sirf tab call karo jab leading run 1..26+ sequential ho.)
+function truncateToFirst25(html, badges) {
+  const cut = (badges || []).find((b) => b.n === 26);
+  if (!cut) return String(html || "");
+  let kept = String(html).slice(0, cut.pos);
+  // Trailing dangling run: 26th card ke adhoore <div>/<span> opens + comments + space.
+  // Card hamesha </div> pe khatam hota hai (</ match nahi hota) — wahi natural stop hai.
+  // Comment alternative TEMPERED hai ((?!-->)) — warna $ anchor ke saath backtracking
+  // pehle comment se aakhri --> tak sab kuch kha jata hai (catastrophic over-strip)!
+  kept = kept.replace(/(?:<[a-zA-Z][^>]*>|<!--(?:(?!-->)[\s\S])*-->|\s)+$/, "");
+  const out = kept + "\n</div>";
+  // Verify: exactly 25 sequential badges hone chahiye, warna null (caller fallback)
+  if (sequentialRunLength(parseQuestionBadges(out)) !== 25) return null;
+  return out;
+}
+exports.truncateToFirst25 = truncateToFirst25;
 
 // PHASE-3: dynamic year — 2026 → 2027 automatic (titles/SEO/slug)
 const CURRENT_YEAR = new Date().getFullYear();
@@ -929,12 +980,29 @@ async function premiumSetHandler(req, res) {
 
       console.log(`✅ Content length: ${contentHTML.length} chars`);
 
-      // PHASE-3 IMPROVEMENT: 20-30 Q quality gate — adhoora/bahut-bada AI set save nahi hota
-      const qCount = countQuestions(contentHTML);
-      if (!isAcceptableSetSize(qCount)) {
-        throw new Error(`Content me ${qCount} questions mile — acceptable range 20-30 hai. AI response dobara try karo.`);
+      // PHASE-4: quality gate — USER RULE "kam-jada ho to bhi save ho".
+      // Overshoot (>25 sequential) → pehle 25 rakh ke SAVE (discard baaki).
+      // 10-24 sequential → SAVE with warning. <10 hi genuinely-broken → retry.
+      const qBadges = parseQuestionBadges(contentHTML);
+      const qSeq = sequentialRunLength(qBadges);
+      const qCount = qBadges.length;
+      if (qSeq > 25) {
+        console.warn(`⚠️ Overshoot: AI ne ${qSeq} questions likhe — pehle 25 rakh ke SAVE (baaki discard)`);
+        const truncated = truncateToFirst25(contentHTML, qBadges);
+        if (truncated) {
+          contentHTML = truncated;
+          console.log(`✅ Question gate: 25 questions (truncated from ${qSeq})`);
+        } else {
+          console.warn(`⚠️ Truncate verify fail — poora ${qSeq}-Q set as-is SAVE (user-rule: save anyway)`);
+        }
+      } else if (qSeq >= 10) {
+        console.log(`✅ Question gate: ${qSeq} sequential questions (raw badges ${qCount}) — SAVE`);
+        if (qSeq < 20) console.warn(`⚠️ Short set: ${qSeq} questions (<20) — user-rule: save anyway`);
+      } else if (isAcceptableSetSize(qCount)) {
+        console.log(`✅ Question gate: ${qCount} badges (non-sequential numbering, legacy pass) — SAVE`);
+      } else {
+        throw new Error(`Content me sirf ${qSeq} sequential questions (${qCount} badges) — minimum 10 chahiye. AI response dobara try karo.`);
       }
-      console.log(`✅ Question gate: ${qCount} questions (20-30 range OK)`);
 
       // ===== STEP 7: ADD BRANDING + WATERMARK =====
       console.log("🎨 Step 7: Adding branding...");
