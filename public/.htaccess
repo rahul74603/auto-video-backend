@@ -79,7 +79,7 @@ Options -Indexes
   RewriteCond %{REQUEST_URI} !^/meta\.php$
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteCond %{HTTP_USER_AGENT} (ahrefs|semrush|mj12|petalbot|applebot|googlebot|bingbot|yandex|duckduck|baiduspider|sogou|facebookexternalhit|whatsapp|telegram|twitterbot|linkedin|discord|pinterest|slackbot|instagram|embedly|quora|skype|bot|crawl|spider|slurp|headlesschrome|lighthouse|pagespeed|gtmetrix|pingdom|uptimerobot|validator|wget|curl|python|scrapy|okhttp|libwww) [NC]
+  RewriteCond %{HTTP_USER_AGENT} (ahrefs|semrush|mj12|petalbot|applebot|googlebot|bingbot|yandex|duckduck|baiduspider|sogou|facebookexternalhit|whatsapp|telegram|twitterbot|linkedin|discord|pinterest|slackbot|instagram|embedly|quora|skype|inspectiontool|mediapartners-google|bot|crawl|spider|slurp|headlesschrome|lighthouse|pagespeed|gtmetrix|pingdom|uptimerobot|validator|wget|curl|python|scrapy|okhttp|libwww) [NC]
   RewriteRule ^ /meta.php [L]
 
   # ---------- 7) Humans → React SPA fallback ----------
@@ -106,7 +106,7 @@ Options -Indexes
   CacheEnable public /
   RewriteEngine On
   # Bot requests cache me mat daalo — warna cached bot-HTML humans ko mil sakta hai
-  RewriteCond %{HTTP_USER_AGENT} (ahrefs|semrush|mj12|bot|crawl|spider|slurp|facebookexternalhit|whatsapp|telegram|headlesschrome|curl|wget|python|scrapy) [NC]
+  RewriteCond %{HTTP_USER_AGENT} (ahrefs|semrush|mj12|inspectiontool|mediapartners-google|bot|crawl|spider|slurp|facebookexternalhit|whatsapp|telegram|headlesschrome|curl|wget|python|scrapy) [NC]
   RewriteRule .* - [E=Cache-Control:no-cache,L]
   # Baaki pages: 5 min server cache
   RewriteRule .* - [E=cache-control:max-age=300]

@@ -227,7 +227,11 @@ if (!$entry && $jsonOk && $isDetail && isset($detailAlias[$first])) {
 }
 
 header('Content-Type: text/html; charset=utf-8');
-header('Cache-Control: public, max-age=300');
+// Bot HTML DYNAMIC hai (roz deploy hota hai) — edge-cache me 5 min bhi stale
+// snapshot ka risk hai (Oct-24 incident: stale cached 404). Kabhi cache mat karo.
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: Wed, 11 Jan 1984 05:00:00 GMT');
 if (!$entry) { http_response_code(200); } // homepage/listing → generic meta, 200
 ?>
 <!DOCTYPE html>
