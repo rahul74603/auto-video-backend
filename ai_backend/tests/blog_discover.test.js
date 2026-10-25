@@ -10,6 +10,7 @@ const {
     hasFaqSection,
     hasSourcesSection,
     buildKeywordSlug,
+    transliterateDevanagari,
     scoreDiscoverReadiness,
 } = require('../blog_discover');
 
@@ -63,6 +64,38 @@ test('buildKeywordSlug makes clean slugs', () => {
     assert.equal(buildKeywordSlug('SSC CGL 2026 Notification Out!'), 'ssc-cgl-2026-notification-out');
     assert.equal(buildKeywordSlug(''), 'studygyaan-blog');
     assert.ok(buildKeywordSlug('a '.repeat(100)).length <= 70);
+});
+
+test('buildKeywordSlug transliterates Hindi titles (2026-1600-cm kachra nahi)', () => {
+    // Asli case: Uttarakhand Police blog — pehle "2026-1600-cm" banta tha
+    assert.equal(
+        buildKeywordSlug('उत्तराखंड पुलिस भर्ती 2026: 1600 पदों पर CM धामी का ऐलान'),
+        'uttarakhand-pulis-bharti-2026-1600-padon-par-cm-dhami-ka-ailan'
+    );
+    assert.equal(
+        buildKeywordSlug('सरकारी नौकरी के नाम पर ठगी: कैसे पहचानें और बचें?'),
+        'sarakari-naukari-ke-nam-par-thagi-kaise-pahachanen-aur-bachen'
+    );
+    // Mixed Hindi-English + fallback intact
+    assert.equal(buildKeywordSlug('UPSC और BPSC पास'), 'upsc-aur-bpsc-pas');
+    assert.equal(buildKeywordSlug('ज्ञान की बात'), 'gyan-ki-bat');
+    assert.equal(buildKeywordSlug('🔥🎉'), 'studygyaan-blog');
+});
+
+test('transliterateDevanagari: schwa rules (pad/par, kamal, pulis)', () => {
+    assert.equal(transliterateDevanagari('पद'), 'pad');
+    assert.equal(transliterateDevanagari('पर'), 'par');
+    assert.equal(transliterateDevanagari('कमल'), 'kamal');
+    assert.equal(transliterateDevanagari('पुलिस'), 'pulis');
+    assert.equal(transliterateDevanagari('भर्ती'), 'bharti');
+    assert.equal(transliterateDevanagari('खंड'), 'khand');
+    assert.equal(transliterateDevanagari('SSC 2026'), 'SSC 2026'); // Latin as-is
+});
+
+test('buildKeywordSlug cuts at word boundary, never mid-word', () => {
+    const long = buildKeywordSlug('Complete Guide Defense Career Your Ultimate Career Roadmap 2026 Extra Words Here');
+    assert.ok(long.length <= 70);
+    assert.ok(!/masterpla|roadma$/.test(long), 'no mid-word cut: ' + long);
 });
 
 test('scoreDiscoverReadiness passes a good trend blog', () => {

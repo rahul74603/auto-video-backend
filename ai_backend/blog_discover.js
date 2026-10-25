@@ -99,17 +99,74 @@ function hasSourcesSection(html) {
     return /<h2[^>]*>([^<]*(स्रोत|sources?|आधिकारिक\s*(लिंक|स्रोत|वेबसाइट))[^<]*)<\/h2>/i.test(String(html || ''));
 }
 
-/** Clean keyword slug (ugly timestamp-hash nahi) */
+/** Devanagari → Roman (Hinglish-style) — Hindi titles se readable SEO slugs.
+ *  Pehle: "उत्तराखंड पुलिस भर्ती 2026..." → "2026-1600-cm" (kachra!) ya fallback.
+ *  Ab:   → "uttarakhand-pulis-bharti-2026-..." (readable + keywords!) */
+const DEVANAGARI_PRE = [
+    // Conjuncts/nukta-forms jinka compositional result galat aata hai (string match, pehle)
+    ['ज्ञ', 'gy'], ['क़', 'q'], ['ख़', 'kh'], ['ग़', 'gh'], ['ज़', 'z'], ['फ़', 'f'],
+    ['ड़', 'ड'], ['ढ़', 'ढ'], // precomposed nukta → plain (nukta drop)
+];
+const DEVANAGARI_MAP = {
+    'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'i', 'उ': 'u', 'ऊ': 'u',
+    'ऋ': 'ri', 'ॠ': 'ri', 'ऌ': 'lri', 'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au',
+    'ऍ': 'e', 'ऑ': 'o', 'ऑ': 'o', 'ॐ': 'om',
+    'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'ng',
+    'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'ny',
+    'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n',
+    'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n',
+    'प': 'p', 'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm',
+    'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v',
+    'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h',
+    'ा': 'a', 'ि': 'i', 'ी': 'i', 'ु': 'u', 'ू': 'u', 'ृ': 'ri', 'ॄ': 'ri',
+    'ॅ': 'e', 'े': 'e', 'ै': 'ai', 'ॉ': 'o', 'ो': 'o', 'ौ': 'au',
+    'ं': 'n', 'ँ': 'n', 'ः': 'h',
+    '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+    '५': '5', '६': '6', '७': '7', '८': '8', '९': '9',
+    '।': ' ', '॥': ' ', '्': '', '़': '', '‌': '', '‍': '',
+};
+const DEVANAGARI_CONSONANTS = new Set(
+    'कखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह'.split('')
+);
+// Inherent-'a' (schwa): vyanjan ke baad halant/matra/nukta/chandrabindu NA ho,
+// aur agla akshar Devanagari vyanjan ho → 'a' jodo. Shabd-ant me mat jodo
+// (schwa-deletion: कमल→kamal, पुलिस→pulis, par पद→pad, पर→par).
+function transliterateDevanagari(text) {
+    let s = String(text || '');
+    for (const [dev, rom] of DEVANAGARI_PRE) s = s.split(dev).join(rom);
+    const chars = [...s];
+    let out = '';
+    for (let i = 0; i < chars.length; i++) {
+        const ch = chars[i];
+        if (!DEVANAGARI_CONSONANTS.has(ch)) {
+            out += (ch in DEVANAGARI_MAP) ? DEVANAGARI_MAP[ch]
+                : (/[\u0900-\u097F]/.test(ch) ? '' : ch); // unknown marks drop, Latin as-is
+            continue;
+        }
+        out += DEVANAGARI_MAP[ch];
+        const next = chars[i + 1];
+        // Inherent 'a': agla akshar vyanjan ho YA anusvara-type mark (ंँः) ho —
+        // ye inherent vowel ko maarte NAHI (खं→khan). Halant/matra/nukta maarte
+        // hain → bare. Shabd-ant (space/end) pe bhi bare (schwa-deletion).
+        if (next && (DEVANAGARI_CONSONANTS.has(next) || next === 'ं' || next === 'ँ' || next === 'ः')) out += 'a';
+    }
+    return out;
+}
+
+/** Clean keyword slug (ugly timestamp-hash nahi; Hindi titles transliterate hote hain) */
 function buildKeywordSlug(title, maxLen = 70) {
-    const slug = String(title || '')
+    const slug = transliterateDevanagari(title)
         .toLowerCase()
         .replace(/[^a-z0-9\s-]/g, '')
         .replace(/\s+/g, '-')
         .replace(/-+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .substring(0, maxLen)
-        .replace(/-+$/, '');
-    return slug || 'studygyaan-blog';
+        .replace(/^-+|-+$/g, '');
+    if (!slug) return 'studygyaan-blog';
+    if (slug.length <= maxLen) return slug;
+    // Word-boundary cut (beech-shabd me katne se "masterpla" jaisa kachra nahi)
+    const cut = slug.substring(0, maxLen);
+    const dash = cut.lastIndexOf('-');
+    return ((dash > 20 ? cut.substring(0, dash) : cut).replace(/-+$/, '')) || 'studygyaan-blog';
 }
 
 /**
@@ -188,5 +245,6 @@ module.exports = {
     hasFaqSection,
     hasSourcesSection,
     buildKeywordSlug,
+    transliterateDevanagari,
     scoreDiscoverReadiness,
 };

@@ -723,6 +723,7 @@ function createInternalLinksHTML(smartLinks, template) {
 // =========================================================
 
 // v4 NOTE: timestamp-hash slugs hata diye — ab buildKeywordSlug() se clean
+// (Hindi titles Devanagari→Roman transliterate hote hain — 2026-1600-cm kachra nahi)
 // keyword URLs (collision pe -2, -3...). Ugly URLs CTR kharab karte hain.
 
 function generateAdvancedMetaTags(data) {
