@@ -12,6 +12,8 @@ jobs:
   build_and_publish:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    outputs:
+      enabled: ${{ steps.automation_check.outputs.enabled }}
 
     defaults:
       run:
@@ -63,3 +65,13 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           BLOG_DAILY_CAP: '2'
         run: node auto_blog.js
+
+  # 🔗 SEO auto-refresh: blog publish hote hi sitemap + bot-JSON + IndexNow
+  # refresh — lag-window khatam (pehle agle 6 AM tak wait hota tha).
+  seo-refresh:
+    needs: [build_and_publish]
+    if: needs.build_and_publish.outputs.enabled == 'true'
+    uses: ./.github/workflows/seo-daily.yml
+    with:
+      mode: daily
+    secrets: inherit

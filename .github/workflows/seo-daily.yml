@@ -1,5 +1,8 @@
 name: Daily SEO - Sitemaps + IndexNow (FREE)
 
+# NOTE: auto_blog.yml har publish ke baad isko auto-trigger karta hai
+# (reusable workflow_call) — taaki naya blog minutes me sitemap + bot-JSON
+# me aa jaye. Manual/schedule runs jaise the waise hi chalte hain.
 on:
   schedule:
     - cron: "30 0 * * *"   # roz subah 6:00 AM IST
@@ -9,6 +12,13 @@ on:
         description: "daily = naye URLs only | bulk = SAARE URLs IndexNow pe (pehli baar ye chalao)"
         required: false
         default: "daily"
+  workflow_call:
+    inputs:
+      mode:
+        description: "daily = naye URLs only | bulk = SAARE URLs"
+        required: false
+        default: "daily"
+        type: string
 
 jobs:
   seo:
@@ -31,7 +41,8 @@ jobs:
       - name: Generate sitemaps + RSS + recent-urls
         working-directory: seo_static
         env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          # Dono secret-naam support (purani staging copy wala fallback merge kiya)
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.SERVICE_ACCOUNT_JSON }}
         run: node generate.cjs --out ../seo_out
 
       - name: Upload to cPanel via FTP
@@ -47,4 +58,4 @@ jobs:
 
       - name: Submit URLs to IndexNow (Bing/Yandex/Seznam)
         working-directory: seo_static
-        run: node indexnow.cjs ${{ github.event.inputs.mode || 'daily' }}
+        run: node indexnow.cjs ${{ inputs.mode || github.event.inputs.mode || 'daily' }}
