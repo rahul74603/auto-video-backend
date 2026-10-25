@@ -56,6 +56,18 @@ jobs:
           exclude: |
             _urls.json
 
+      # ✅ SELF-VERIFY: FTP ke turant baad newest-30 blogs + key pages Googlebot
+      # UA se check. Koi sitemap-listed URL bot-404 de (stale edge-cache / gap)
+      # to run YAHIN red hoga + log me cache-forensics batayega (live vs cached).
+      - name: ✅ Verify deploy — newest blogs bot-visible (diag)
+        working-directory: ai_backend
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.SERVICE_ACCOUNT_JSON }}
+        run: |
+          npm install --ignore-scripts --legacy-peer-deps firebase-admin 2>&1 | tail -n 2 || true
+          node diag_site_health.js
+
+      # ⏭️ Verify red hui to ye step auto-skip (toote URLs Bing ko mat bhejo)
       - name: Submit URLs to IndexNow (Bing/Yandex/Seznam)
         working-directory: seo_static
         run: node indexnow.cjs ${{ inputs.mode || github.event.inputs.mode || 'daily' }}

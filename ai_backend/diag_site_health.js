@@ -223,13 +223,20 @@ async function main() {
     }
   }
 
-  console.log("\n🩺 DIAG DONE — ye poora log share karo, dikkat exact line me dikhegi.");
-  return true;
+  // 🔴 FAIL-LOUD: sitemap me listed URL bot-404 = contract violation (stale
+  // edge-cache ya JSON gap). Green-success ke peeche chhupana BAND — run RED
+  // hoga taaki turant dikhe. (Sec-3 MISSING fail nahi — wo lag-window me normal.)
+  const failed = botFail > 0;
+  console.log(failed
+    ? "\n🔴 DIAG RESULT: FAIL — bot-view me " + botFail + " URL toot rahe hain (upar BOT-JSON GAP + cache-forensics dekho)."
+    : "\n🟢 DIAG RESULT: PASS — sitemap ↔ bot-view sab green.");
+  console.log("🩺 DIAG DONE — ye poora log share karo, dikkat exact line me dikhegi.");
+  return !failed;
 }
 
 if (require.main === module) {
   main()
-    .then(() => process.exit(0))
+    .then((ok) => process.exit(ok ? 0 : 1))
     .catch((err) => {
       console.error("🩺 DIAG FATAL:", err && err.message);
       process.exit(1);
