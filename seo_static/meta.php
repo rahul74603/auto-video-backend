@@ -122,7 +122,9 @@ if (is_array($entry) && !empty($entry['redirect'])) {
     $target = (string)$entry['redirect'];
     if (preg_match('~^/(blog|web-stories)/[^/?#\r\n]+$~uD', $target)) {
         header('Location: ' . $SITE . $target, true, 301);
-        header('Cache-Control: public, max-age=3600');
+        // Uniform policy: bot ka KOI jawab cache nahi (slug-alias badle to stale 301 ka risk zero)
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('X-LiteSpeed-Cache-Control: no-cache');
         exit;
     }
 }
@@ -204,11 +206,19 @@ $allLd = array_merge(is_array($ld) ? $ld : [], $extraLd);
 // taaki Google "Soft 404" / "Duplicate canonical" me na phansaye.
 // ⚠️ $jsonOk guard: JSON file corrupt/unparseable ho to MASS-404 NAHI —
 //    tab generic 200 do (infra failure ko content-404 mat banao).
+// 🧊 CACHE-KILLER (25-Oct-2026 proof: x-litespeed-cache:hit par stale bot-404):
+//    LiteSpeed page-cache PLAIN `Cache-Control: no-store` ko ignore karke 404
+//    chipka leta hai. `X-LiteSpeed-Cache-Control: no-cache` uska ASLI header
+//    hai — ye lagao to bot response KABHI cache nahi hoga (Cloudflare/browsers
+//    ke liye full no-cache set bhi saath me).
 if (!$entry && $jsonOk && $isDetail && isset($detailAlias[$first])) {
     http_response_code(404);
     header('Content-Type: text/html; charset=utf-8');
     header('X-Robots-Tag: noindex, nofollow');
-    header('Cache-Control: no-store, max-age=0');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('X-LiteSpeed-Cache-Control: no-cache');
+    header('Pragma: no-cache');
+    header('Expires: Wed, 11 Jan 1984 05:00:00 GMT');
     ?>
 <!DOCTYPE html>
 <html lang="hi">
@@ -230,6 +240,7 @@ header('Content-Type: text/html; charset=utf-8');
 // Bot HTML DYNAMIC hai (roz deploy hota hai) — edge-cache me 5 min bhi stale
 // snapshot ka risk hai (Oct-24 incident: stale cached 404). Kabhi cache mat karo.
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('X-LiteSpeed-Cache-Control: no-cache');
 header('Pragma: no-cache');
 header('Expires: Wed, 11 Jan 1984 05:00:00 GMT');
 if (!$entry) { http_response_code(200); } // homepage/listing → generic meta, 200
