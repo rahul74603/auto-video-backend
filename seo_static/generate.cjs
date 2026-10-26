@@ -712,4 +712,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { toMillis, safeImageUrl, normalizeSitemapUrl };
+module.exports = { toMillis, safeImageUrl, normalizeSitemapUrl, buildAll };

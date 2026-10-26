@@ -100,15 +100,23 @@ async function collectionStats(db, name) {
   return { total: snap.size, byStatus, publishedSlugs };
 }
 
+/** CLI flags: --slim = HTTP-only verify (0 Firestore reads, Spark-safe).
+ *  Pipeline (seo-daily/quick-add) hamesha --slim; manual diag full. */
+function parseArgs(argv = []) {
+  return { slim: (argv || []).includes("--slim") };
+}
+
 async function main() {
   console.log("🩺 STUDYGYAAN SITE-HEALTH DIAG — " + new Date().toISOString());
-  const db = initDb();
+  const { slim } = parseArgs(process.argv);
+  if (slim) console.log("⚡ SLIM MODE — HTTP-only verify (0 Firestore reads, Spark-safe)");
+  const db = slim ? null : initDb();
 
   // ---- 1. Firestore counts ----
   console.log("\n========== 1. FIRESTORE ==========");
   const cols = ["blogs", "jobs", "fast_track", "mock_tests", "web_stories", "courses", "study_materials"];
   const stats = {};
-  for (const c of cols) {
+  for (const c of (slim ? [] : cols)) { // slim: Firestore skip
     try {
       stats[c] = await collectionStats(db, c);
       console.log(`📌 ${c}: total=${stats[c].total} published-ish=${stats[c].publishedSlugs.length} status=${JSON.stringify(stats[c].byStatus)}`);
@@ -149,7 +157,7 @@ async function main() {
     ["jobs", `${SITE}/sitemap-jobs.xml`, `${SITE}/job`],
     ["fast_track", `${SITE}/sitemap-updates.xml`, `${SITE}/update`],
   ];
-  for (const [col, mapUrl, base] of checks) {
+  for (const [col, mapUrl, base] of (slim ? [] : checks)) { // slim: Firestore skip
     const missing = findMissingSlugs(stats[col].publishedSlugs, mapData[mapUrl] || [], base);
     console.log(`${col}: published=${stats[col].publishedSlugs.length}, in-sitemap=${(mapData[mapUrl] || []).length}, MISSING=${missing.length}${missing.length ? " → " + missing.slice(0, 10).join(", ") : ""}`);
   }
@@ -166,6 +174,9 @@ async function main() {
     `${SITE}/test`,
     ...(mapData[`${SITE}/sitemap-blogs.xml`] || []).slice(0, 30),
     ...(mapData[`${SITE}/sitemap-jobs.xml`] || []).slice(0, 5),
+    ...(mapData[`${SITE}/sitemap-updates.xml`] || []).slice(0, 10),
+    ...(mapData[`${SITE}/sitemap-stories.xml`] || []).slice(0, 5),
+    ...(mapData[`${SITE}/sitemap-tests.xml`] || []).slice(0, 5),
   ];
   let botOk = 0;
   let botFail = 0;
@@ -197,7 +208,7 @@ async function main() {
     console.log(`⚠️ BOT-JSON GAP (sitemap-me-hai-par-bot-404):\n   - ${botGap.join("\n   - ")}`);
     // 🔬 GAP-URL ka Firestore doc dump — dirty slug (space/slash) vs stale-cache ka faisla
     const GAP_COL = { blog: "blogs", job: "jobs", update: "fast_track", test: "mock_tests", "web-stories": "web_stories", course: "courses", material: "study_materials" };
-    for (const g of botGap.slice(0, 10)) {
+    for (const g of (slim ? [] : botGap.slice(0, 10))) { // slim: Firestore dump skip
       const m = g.match(/^\S+\s+(\/[a-z-]+\/[^/\s]+)/);
       if (!m) continue;
       const segs = m[1].split("/").filter(Boolean);
@@ -251,4 +262,4 @@ function detectSitemapRoot(xml = "") {
   return "UNKNOWN";
 }
 
-module.exports = { extractTitle, extractLocs, countBackslashUrls, newestLastmod, findMissingSlugs, detectSitemapRoot };
+module.exports = { extractTitle, extractLocs, countBackslashUrls, newestLastmod, findMissingSlugs, detectSitemapRoot, parseArgs };

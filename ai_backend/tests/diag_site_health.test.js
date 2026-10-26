@@ -44,3 +44,10 @@ test("detectSitemapRoot INDEX vs URLSET pehchanta hai", () => {
   assert.equal(detectSitemapRoot('<urlset xmlns="x"><url></url></urlset>'), "URLSET");
   assert.equal(detectSitemapRoot("<html>nope</html>"), "UNKNOWN");
 });
+
+test("parseArgs: default full, --slim pe slim (pipeline HTTP-only)", () => {
+  const { parseArgs } = require("../diag_site_health");
+  assert.deepEqual(parseArgs(["node", "diag_site_health.js"]), { slim: false });
+  assert.deepEqual(parseArgs(["node", "diag_site_health.js", "--slim"]), { slim: true });
+  assert.deepEqual(parseArgs([]), { slim: false });
+});

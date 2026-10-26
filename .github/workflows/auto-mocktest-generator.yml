@@ -17,6 +17,8 @@ jobs:
   generate-mock-test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      enabled: ${{ steps.automation_check.outputs.enabled }}
 
     steps:
       - name: Checkout Repository
@@ -68,3 +70,21 @@ jobs:
       - name: ❌ Failure notice
         if: failure()
         run: echo "💥 Mock generator run failed — logs me Auto-Mock Error dekho (GEMINI_API_KEY / JSON parse / Firestore)."
+
+  # ⚡ Incremental SEO: publish ke minutes me naye URLs live
+  # (sitemap+meta+news+nav+IndexNow). Spark-safe (~25 reads), self-gating.
+  seo-quick-add:
+    needs: [generate-mock-test]
+    if: needs.generate-mock-test.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: "⚡ SEO Quick-Add (incremental: test)"
+        uses: ./.github/actions/seo-quick-add
+        with:
+          type: test
+          firebase-service-account: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.SERVICE_ACCOUNT_JSON }}
+          ftp-server: ${{ secrets.FTP_SERVER }}
+          ftp-username: ${{ secrets.FTP_USERNAME }}
+          ftp-password: ${{ secrets.FTP_PASSWORD }}
+          ftp-server-dir: ${{ secrets.FTP_SERVER_DIR }}
