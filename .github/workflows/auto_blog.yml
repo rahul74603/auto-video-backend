@@ -66,12 +66,20 @@ jobs:
           BLOG_DAILY_CAP: '2'
         run: node auto_blog.js
 
-  # 🔗 SEO auto-refresh: blog publish hote hi sitemap + bot-JSON + IndexNow
-  # refresh — lag-window khatam (pehle agle 6 AM tak wait hota tha).
-  seo-refresh:
+  # ⚡ Incremental SEO: publish ke minutes me naya blog live
+  # (full seo-daily ki jagah — Spark quota: ~25 reads vs ~3,300!)
+  seo-quick-add:
     needs: [build_and_publish]
     if: needs.build_and_publish.outputs.enabled == 'true'
-    uses: ./.github/workflows/seo-daily.yml
-    with:
-      mode: daily
-    secrets: inherit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: "⚡ SEO Quick-Add (incremental: blog)"
+        uses: ./.github/actions/seo-quick-add
+        with:
+          type: blog
+          firebase-service-account: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.SERVICE_ACCOUNT_JSON }}
+          ftp-server: ${{ secrets.FTP_SERVER }}
+          ftp-username: ${{ secrets.FTP_USERNAME }}
+          ftp-password: ${{ secrets.FTP_PASSWORD }}
+          ftp-server-dir: ${{ secrets.FTP_SERVER_DIR }}

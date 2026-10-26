@@ -106,3 +106,21 @@ jobs:
           else
             echo "::warning::Local Fast Track scraper failed; see the fallback step. Video generation is independent of this workflow."
           fi
+
+  # ⚡ Incremental SEO: publish ke minutes me naye URLs live
+  # (sitemap+meta+news+nav+IndexNow). Spark-safe (~25 reads), self-gating.
+  seo-quick-add:
+    needs: [check-automation, run-scraper]
+    if: needs.check-automation.outputs.enabled == 'true' && needs.run-scraper.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: "⚡ SEO Quick-Add (incremental: update)"
+        uses: ./.github/actions/seo-quick-add
+        with:
+          type: update
+          firebase-service-account: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.SERVICE_ACCOUNT_JSON }}
+          ftp-server: ${{ secrets.FTP_SERVER }}
+          ftp-username: ${{ secrets.FTP_USERNAME }}
+          ftp-password: ${{ secrets.FTP_PASSWORD }}
+          ftp-server-dir: ${{ secrets.FTP_SERVER_DIR }}

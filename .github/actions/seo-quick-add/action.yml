@@ -1,0 +1,52 @@
+name: "SEO Quick-Add (incremental)"
+description: >
+  Publisher ke baad naye URLs turant live SEO files me jodo (sitemap + meta +
+  news + nav + IndexNow). Spark-safe: sirf ~25 Firestore reads, self-gating
+  (kuch naya nahi to no-op). Full seo-daily subah-6 reconciler bana rehta hai.
+
+inputs:
+  type:
+    description: "blog | job | update | story | test"
+    required: true
+  firebase-service-account:
+    description: "Service-account JSON (newest-25 collect query ke liye)"
+    required: true
+  ftp-server:
+    required: true
+  ftp-username:
+    required: true
+  ftp-password:
+    required: true
+  ftp-server-dir:
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: 📥 Checkout (quick-add runner)
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Setup Node.js 20
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    - name: 📦 Deps (sirf firebase-admin — sharp nahi chahiye)
+      working-directory: seo_static
+      shell: bash
+      run: npm install --no-save --ignore-scripts --legacy-peer-deps firebase-admin 2>&1 | tail -n 2 || true
+
+    - name: ⚡ Quick-Add (incremental SEO)
+      working-directory: seo_static
+      shell: bash
+      env:
+        FIREBASE_SERVICE_ACCOUNT: ${{ inputs.firebase-service-account }}
+        FTP_SERVER: ${{ inputs.ftp-server }}
+        FTP_USERNAME: ${{ inputs.ftp-username }}
+        FTP_PASSWORD: ${{ inputs.ftp-password }}
+        FTP_SERVER_DIR: ${{ inputs.ftp-server-dir }}
+      run: node quick_add.cjs --type ${{ inputs.type }}
+
+    - name: ✅ Slim verify (HTTP-only diag, 0 reads)
+      shell: bash
+      run: node ai_backend/diag_site_health.js --slim

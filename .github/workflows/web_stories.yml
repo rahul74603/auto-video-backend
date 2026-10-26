@@ -96,3 +96,21 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: node ai_backend/auto_stories.js blog
+
+  # ⚡ Incremental SEO: publish ke minutes me naye URLs live
+  # (sitemap+meta+news+nav+IndexNow). Spark-safe (~25 reads), self-gating.
+  seo-quick-add:
+    needs: [check-automation, run-story-generator]
+    if: needs.check-automation.outputs.enabled == 'true' && needs.run-story-generator.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: "⚡ SEO Quick-Add (incremental: story)"
+        uses: ./.github/actions/seo-quick-add
+        with:
+          type: story
+          firebase-service-account: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.SERVICE_ACCOUNT_JSON }}
+          ftp-server: ${{ secrets.FTP_SERVER }}
+          ftp-username: ${{ secrets.FTP_USERNAME }}
+          ftp-password: ${{ secrets.FTP_PASSWORD }}
+          ftp-server-dir: ${{ secrets.FTP_SERVER_DIR }}
