@@ -326,6 +326,26 @@ function serverTimestamp(admin) {
     return admin.firestore.FieldValue.serverTimestamp();
 }
 
+// Claim-transaction kitni baar retry (har retry = FRESH transaction).
+const CLAIM_MAX_ATTEMPTS = 3;
+
+/**
+ * Retry ke laayak (transient) transaction errors. INVALID_ARGUMENT sirf tab
+ * transient jab message transaction-expiry bole — baaki invalid-argument
+ * (galat args/bug) turant throw, retry bekaar.
+ */
+function isTransientTxError(err) {
+    if (!err) return false;
+    const code = err.code;
+    // gRPC retryable: ABORTED / UNAVAILABLE / DEADLINE_EXCEEDED / RESOURCE_EXHAUSTED / INTERNAL
+    if (code === 10 || code === 14 || code === 4 || code === 8 || code === 13) return true;
+    const text = String((err.details || '') + ' ' + (err.message || ''));
+    if (code === 3 || code === '3' || code === 'INVALID_ARGUMENT') {
+        return /transaction.*(expired|no longer valid)|no longer valid/i.test(text);
+    }
+    return /transaction has expired|transaction.*no longer valid/i.test(text);
+}
+
 /**
  * Atomically claim a document for rendering.
  * Returns { claimed:boolean, reason:string, data:object|null, attempts:number }
@@ -342,7 +362,7 @@ async function claim(db, admin, kind, docRefOrId, options = {}) {
     const worker = options.worker || 'github-actions';
     const force = options.force === true;
 
-    return db.runTransaction(async (tx) => {
+    const doClaim = async (tx) => {
         const snap = await tx.get(ref);
         if (!snap.exists) return { claimed: false, reason: 'document not found', data: null, attempts: 0 };
 
@@ -366,7 +386,25 @@ async function claim(db, admin, kind, docRefOrId, options = {}) {
         });
 
         return { claimed: true, reason: 'claimed', data, attempts, ref };
-    });
+    };
+
+    // Firestore khud kehta hai: transactions ko retry karo. Expired-tx /
+    // contention pe FRESH transaction se dobara. Logical {claimed:false}
+    // return hai (throw nahi) — wo retry nahi hota. Failed tx kuch likhta
+    // nahi, isliye attempts double-count nahi hote.
+    let lastErr = null;
+    for (let attempt = 1; attempt <= CLAIM_MAX_ATTEMPTS; attempt++) {
+        try {
+            return await db.runTransaction(doClaim);
+        } catch (err) {
+            lastErr = err;
+            if (!isTransientTxError(err) || attempt === CLAIM_MAX_ATTEMPTS) throw err;
+            const waitMs = 500 * attempt * attempt;
+            console.log(`⚠️ claim() transient tx error (attempt ${attempt}/${CLAIM_MAX_ATTEMPTS}) — ${waitMs}ms baad retry: ${shortError(err, 120)}`);
+            await new Promise((r) => setTimeout(r, waitMs));
+        }
+    }
+    throw lastErr;
 }
 
 async function markCompleted(db, admin, collection, ref, payload = {}) {
@@ -477,6 +515,7 @@ module.exports = {
     evaluateFastTrack,
     evaluateMockTest,
     resolveDocRef,
+    isTransientTxError,
     claim,
     markCompleted,
     markFailed,
