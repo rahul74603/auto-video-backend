@@ -9,6 +9,8 @@ const { google } = require("googleapis");
 const cheerio = require("cheerio");
 const Parser = require('rss-parser');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { parsePublishedAt, isRecentPublication } = require("./source_freshness");
+const MAX_SCRAPE_AGE_DAYS = 10; // sirf pichhle 10 din ke jobs — isse purana kabhi nahi
 
 // =========================================================
 // 🔐 FIREBASE INIT
@@ -28,7 +30,9 @@ if (!admin.apps.length) {
 }
 
 const db     = admin.firestore();
-const parser = new Parser();
+// 🌐 Browser UA: rss-parser ka default 'rss-parser' UA kai WAF ko bot lagta hai
+// (SarkariExam 403). Public RSS feed hai — reader jaisa UA legitimate hai.
+const parser = new Parser({ headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" } });
 
 // =========================================================
 // 🛠️ HELPERS
@@ -416,6 +420,27 @@ async function scrapeJobPageOnce(url) {
 const { DEFAULT_SOURCES, getEnabledSources, recordSourceCheck } = require("./source_registry");
 const JOB_SOURCES = DEFAULT_SOURCES;
 
+// Per-feed transform (map+filter): testable pure fn — behavior bilkul same,
+// crash-site (parsePublishedAt/isRecentPublication/MAX_AGE) ka regression-guard.
+function normalizeFeedItems(rawItems, sourceName, perSource = 12) {
+    return (rawItems || []).slice(0, perSource).map((it) => ({
+        title:  (it.title || '').trim(),
+        link:   (it.link || it.guid || '').trim(),
+        source: sourceName,
+        publishedAt: parsePublishedAt(it.isoDate, it.pubDate, it.publishedAt)
+    })).filter((it) => {
+        if (!it.title || !it.link || it.link.includes('127.0.0.1')) return false;
+        // 🗓️ FRESHNESS — 10 din se purana post kabhi nahi (poora year compare
+        // hota hai, isliye "same date purana year" wala bug ab impossible hai)
+        if (it.publishedAt > 0 && !isRecentPublication(it.publishedAt, { maxAgeDays: MAX_SCRAPE_AGE_DAYS })) {
+            console.log(`⏭️ Old (>10d): ${it.title.slice(0, 70)}`);
+            return false;
+        }
+        return true;
+    });
+}
+exports.normalizeFeedItems = normalizeFeedItems;
+
 async function fetchAllJobItems(perSource = 12, limitTotal = 60) {
     const buckets = [];
     // Registry-enabled sources (Firestore `sources`), warna legacy fallback
@@ -423,21 +448,7 @@ async function fetchAllJobItems(perSource = 12, limitTotal = 60) {
     for (const src of sources) {
         try {
             const feed = await parser.parseURL(src.url);
-            const items = (feed.items || []).slice(0, perSource).map((it) => ({
-                title:  (it.title || '').trim(),
-                link:   (it.link || it.guid || '').trim(),
-                source: src.name,
-                publishedAt: parsePublishedAt(it.isoDate, it.pubDate, it.publishedAt)
-            })).filter((it) => {
-                if (!it.title || !it.link || it.link.includes('127.0.0.1')) return false;
-                // 🗓️ FRESHNESS — 10 din se purana post kabhi nahi (poora year compare
-                // hota hai, isliye "same date purana year" wala bug ab impossible hai)
-                if (it.publishedAt > 0 && !isRecentPublication(it.publishedAt, { maxAgeDays: MAX_SCRAPE_AGE_DAYS })) {
-                    console.log(`⏭️ Old (>10d): ${it.title.slice(0, 70)}`);
-                    return false;
-                }
-                return true;
-            });
+            const items = normalizeFeedItems(feed.items, src.name, perSource);
             buckets.push(items);
             console.log(`📰 ${src.name}: ${items.length} items`);
             await recordSourceCheck(db, src.name, { ok: true, itemCount: items.length });
