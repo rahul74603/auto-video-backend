@@ -21,6 +21,11 @@ const SITE = "https://studygyaan.in";
 const BOT_UA =
   "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
 
+// 🔍 GSC "Test live URL" wala UA — Google jo dekhta hai wahi dekho.
+// (Googlebot-UA-green + InspectionTool-red = UA-specific cache-bucket ka proof!)
+const INSPECTION_UA =
+  "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 (compatible; Google-InspectionTool/1.0;)";
+
 // ---------------- pure helpers (unit-tested) ----------------
 
 function extractTitle(html = "") {
@@ -78,6 +83,14 @@ async function fetchText(url, { ua = BOT_UA, timeoutMs = 15000 } = {}) {
   } finally {
     clearTimeout(t);
   }
+}
+
+function logForensics(r, tag) {
+  try {
+    const hdrs = (r && r.headers) || { get: () => null };
+    const pick = (h) => (hdrs.get ? hdrs.get(h) : null) || "-";
+    console.log(`   ↳ cache-forensics[${tag}]: cache-control=${pick("cache-control")} | age=${pick("age")} | cf=${pick("cf-cache-status")} | litespeed=${pick("litespeed-cache")} | litespeed=${pick("x-litespeed-cache")} | x-cache=${pick("x-cache")} | lastmod=${pick("last-modified")}`);
+  } catch (_) { /* headers na mile to skip */ }
 }
 
 function isPublished(data = {}) {
@@ -180,6 +193,9 @@ async function main() {
   ];
   let botOk = 0;
   let botFail = 0;
+  let inspOk = 0;
+  let inspFail = 0;
+  const mismatch = [];
   const botGap = [];
   for (const u of botUrls) {
     try {
@@ -189,13 +205,26 @@ async function main() {
       if (ok) botOk++;
       else { botFail++; botGap.push(`${r.status} ${u.replace(SITE, "")}`); }
       console.log(`${ok ? "✅" : "❌"} ${r.status} ${u.replace(SITE, "")} — "${title.slice(0, 90)}"${r.text.length < 2000 ? ` [THIN:${r.text.length}b]` : ""}`);
-      if (!ok) {
-        // 🔬 Cache-layer forensics: 404 LIVE hai ya LiteSpeed/Cloudflare se cached?
-        try {
-          const hdrs = r.headers || { get: () => null };
-          const pick = (h) => hdrs.get(h) || "-";
-          console.log(`   ↳ cache-forensics: cache-control=${pick("cache-control")} | age=${pick("age")} | cf=${pick("cf-cache-status")} | litespeed=${pick("x-litespeed-cache")} | x-cache=${pick("x-cache")} | lastmod=${pick("last-modified")}`);
-        } catch (_) { /* headers na mile to skip */ }
+      // 🔬 Cache-layer forensics: 404 LIVE hai ya LiteSpeed/Cloudflare se cached?
+      if (!ok) logForensics(r, "gb");
+      // 🔍 InspectionTool UA se bhi fetch — mismatch = UA-specific cache/proxy ka proof
+      try {
+        const ri = await fetchText(u, { ua: INSPECTION_UA });
+        const ititle = extractTitle(ri.text);
+        const iok = ri.status === 200 && ititle.length > 0;
+        if (iok) { inspOk++; }
+        else {
+          inspFail++;
+          botGap.push(`INSP-${ri.status} ${u.replace(SITE, "")}`);
+          console.log(`   ❌ INSP-${ri.status} ${u.replace(SITE, "")} (Googlebot=${r.status}) — "${ititle.slice(0, 60)}"`);
+          logForensics(ri, "insp");
+          if (ok) mismatch.push(`${u.replace(SITE, "")} (Googlebot-200, INSP-${ri.status})`);
+        }
+      } catch (e) {
+        inspFail++;
+        botGap.push(`INSP-FETCH-FAIL ${u.replace(SITE, "")}`);
+        console.log(`   ❌ INSP-FETCH-FAIL ${u.replace(SITE, "")} — ${e.message}`);
+        if (ok) mismatch.push(`${u.replace(SITE, "")} (Googlebot-200, INSP-FETCH-FAIL)`);
       }
     } catch (e) {
       botFail++;
@@ -203,7 +232,10 @@ async function main() {
       console.log(`❌ FETCH-FAIL ${u.replace(SITE, "")} — ${e.message}`);
     }
   }
-  console.log(`bot-view: OK=${botOk} FAIL=${botFail}`);
+  console.log(`bot-view: OK=${botOk} FAIL=${botFail} | insp-view: OK=${inspOk} FAIL=${inspFail}`);
+  if (mismatch.length) {
+    console.log(`⚠️ UA-MISMATCH (Googlebot-200 par InspectionTool-fail — cache-bucket suspect):\n   - ${mismatch.join("\n   - ")}`);
+  }
   if (botGap.length) {
     console.log(`⚠️ BOT-JSON GAP (sitemap-me-hai-par-bot-404):\n   - ${botGap.join("\n   - ")}`);
     // 🔬 GAP-URL ka Firestore doc dump — dirty slug (space/slash) vs stale-cache ka faisla
@@ -237,9 +269,9 @@ async function main() {
   // 🔴 FAIL-LOUD: sitemap me listed URL bot-404 = contract violation (stale
   // edge-cache ya JSON gap). Green-success ke peeche chhupana BAND — run RED
   // hoga taaki turant dikhe. (Sec-3 MISSING fail nahi — wo lag-window me normal.)
-  const failed = botFail > 0;
+  const failed = botFail > 0 || inspFail > 0;
   console.log(failed
-    ? "\n🔴 DIAG RESULT: FAIL — bot-view me " + botFail + " URL toot rahe hain (upar BOT-JSON GAP + cache-forensics dekho)."
+    ? "\n🔴 DIAG RESULT: FAIL — bot-view me " + botFail + " + insp-view me " + inspFail + " URL toot rahe hain (upar BOT-JSON GAP + cache-forensics dekho)."
     : "\n🟢 DIAG RESULT: PASS — sitemap ↔ bot-view sab green.");
   console.log("🩺 DIAG DONE — ye poora log share karo, dikkat exact line me dikhegi.");
   return !failed;
