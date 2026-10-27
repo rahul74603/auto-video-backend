@@ -865,6 +865,43 @@ async function uploadToYouTube(youtube, finalVideoPath, ytTitle, seoDescription,
 }
 
 // =========================================================
+// 🎯 Standalone target-picker (mock_test_maker.yml path)
+// NEWEST-first scan + skip-reason histogram. Purana unordered
+// limit(300) window-ke-bahar ke pending tests kabhi dikhta hi nahi
+// tha (534 docs!) — wahi wajah thi videos achanak band hone ki.
+// =========================================================
+async function pickPendingMockTest(firestoreDb, { limit = 300 } = {}) {
+    let snapshot;
+    let ordered = true;
+    try {
+        snapshot = await firestoreDb.collection('mock_tests').orderBy('createdAt', 'desc').limit(limit).get();
+        if (snapshot.empty) {
+            // dispatcher-mirror: khali ordered-read = field/index dikkat ho sakti hai
+            ordered = false;
+            snapshot = await firestoreDb.collection('mock_tests').limit(limit).get();
+        }
+    } catch (err) {
+        ordered = false;
+        snapshot = await firestoreDb.collection('mock_tests').limit(limit).get();
+    }
+    const histogram = {};
+    let targetDoc = null;
+    for (const doc of snapshot.docs) {
+        const verdict = V.evaluateMockTest(doc.data() || {}, { maxAgeDays: 0 });
+        const key = verdict.eligible ? 'eligible' : String(verdict.reason || 'unknown').slice(0, 60);
+        histogram[key] = (histogram[key] || 0) + 1;
+        if (verdict.eligible && !targetDoc) targetDoc = doc;
+    }
+    return { targetDoc, scanned: snapshot.docs.length, ordered, histogram };
+}
+
+function logPickHistogram(pick) {
+    const parts = Object.entries(pick.histogram).map(([k, n]) => `${k}×${n}`).join(', ');
+    console.log(`🔍 mock_tests scan: ${pick.scanned} docs (${pick.ordered ? 'createdAt-desc' : 'unordered-fallback'}) → ${parts || 'koi doc nahi'}`);
+    if (pick.targetDoc) console.log(`🎯 target: mock_tests/${pick.targetDoc.id}`);
+}
+
+// =========================================================
 // 🚀 9. MAIN MOCK TEST VIDEO ENGINE
 // =========================================================
 /**
@@ -897,26 +934,17 @@ async function generateMockTestVideo(options = {}) {
             mockData = { ...snap.data(), id: snap.id };
         } else {
             // Standalone mode (mock_test_maker.yml / manual run):
-            // pick the first document that the shared state machine considers pending.
-            const snapshot = await db.collection('mock_tests').limit(300).get();
-            if (snapshot.empty) {
-                console.log("ℹ️ mock_tests collection खाली है — कुछ करने को नहीं।");
-                return { success: true, skipped: true };
-            }
-
-            let targetDoc = null;
-            for (const doc of snapshot.docs) {
-                const verdict = V.evaluateMockTest(doc.data() || {}, { maxAgeDays: 0 });
-                if (verdict.eligible) { targetDoc = doc; break; }
-            }
-
-            if (!targetDoc) {
+            // NEWEST-first scan — unordered limit(300) naye pending tests ko
+            // miss kar deta tha, isliye videos achanak band ho gaye the.
+            const pick = await pickPendingMockTest(db, { limit: 300 });
+            logPickHistogram(pick);
+            if (!pick.targetDoc) {
                 console.log("✅ सभी eligible Mock Tests के Videos बन चुके हैं (या permanently failed हैं)।");
                 return { success: true, skipped: true };
             }
 
-            targetRef = targetDoc.ref;
-            mockData = { ...targetDoc.data(), id: targetDoc.id };
+            targetRef = pick.targetDoc.ref;
+            mockData = { ...pick.targetDoc.data(), id: pick.targetDoc.id };
 
             // Claim it so a parallel dispatcher run can never duplicate the video.
             const claim = await V.claim(db, admin, V.KIND.MOCK_TEST, targetRef, {
@@ -1303,7 +1331,7 @@ async function generateMockTestVideo(options = {}) {
     }
 }
 
-module.exports = { generateMockTestVideo };
+module.exports = { generateMockTestVideo, pickPendingMockTest };
 
 // ============================================================================
 // ✅ GitHub Actions Entry Point
