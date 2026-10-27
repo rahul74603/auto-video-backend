@@ -523,13 +523,21 @@ ${'─'.repeat(60)}`);
 async function processCandidate(candidate, ctx) {
     const { kind, collection, ref, id } = candidate;
 
-    const claimResult = await V.claim(ctx.db, admin, kind, ref, {
-        runId: ctx.runId,
-        worker: 'github-dispatcher',
-        maxAgeDays: ctx.maxAgeDays,
-        shortsCutoffMs: ctx.shortsCutoffMs,
-        freshOnly: ctx.maxAgeDays > 0   // legacy content hard guard
-    });
+    let claimResult;
+    try {
+        claimResult = await V.claim(ctx.db, admin, kind, ref, {
+            runId: ctx.runId,
+            worker: 'github-dispatcher',
+            maxAgeDays: ctx.maxAgeDays,
+            shortsCutoffMs: ctx.shortsCutoffMs,
+            freshOnly: ctx.maxAgeDays > 0   // legacy content hard guard
+        });
+    } catch (err) {
+        // Infra-blip (tx-expired/contention) ek doc tak सीमित — poora run red
+        // nahi hoga, retry-budget bhi poison nahi hoga. Agla candidate try karo.
+        console.error(`⚠️ [${kind}] ${id} claim threw (no poison): ${V.shortError(err)}`);
+        return { status: 'claim-error', kind, id, error: V.shortError(err) };
+    }
 
     if (!claimResult.claimed) {
         console.log(`⏭️ [${kind}] ${id} not claimed — ${claimResult.reason}`);
@@ -732,7 +740,10 @@ async function main() {
         await updateQueueHealth(db, { pendingCount: eligiblePendingCount });
     }
 
-    const hardFailures = results.filter((r) => r.status === 'failed' || r.status === 'upload_failed' || r.status === 'error');
+    const anyCompleted = results.some((r) => r.status === 'completed');
+    const hardFailures = results.filter((r) =>
+        r.status === 'failed' || r.status === 'upload_failed' || r.status === 'error' ||
+        (r.status === 'claim-error' && !anyCompleted));
     return hardFailures.length === 0 ? 0 : 1;
 }
 

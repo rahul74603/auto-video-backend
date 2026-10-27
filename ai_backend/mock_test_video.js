@@ -947,11 +947,18 @@ async function generateMockTestVideo(options = {}) {
             mockData = { ...pick.targetDoc.data(), id: pick.targetDoc.id };
 
             // Claim it so a parallel dispatcher run can never duplicate the video.
-            const claim = await V.claim(db, admin, V.KIND.MOCK_TEST, targetRef, {
-                runId: process.env.GITHUB_RUN_ID ? `mock-${process.env.GITHUB_RUN_ID}` : `mock-${Date.now()}`,
-                worker: 'mock-test-workflow',
-                maxAgeDays: 0
-            });
+            let claim;
+            try {
+                claim = await V.claim(db, admin, V.KIND.MOCK_TEST, targetRef, {
+                    runId: process.env.GITHUB_RUN_ID ? `mock-${process.env.GITHUB_RUN_ID}` : `mock-${Date.now()}`,
+                    worker: 'mock-test-workflow',
+                    maxAgeDays: 0
+                });
+            } catch (err) {
+                if (!V.isTransientTxError(err)) throw err;
+                console.log(`⚠️ claim transient-fail (no poison — dispatcher/agle-run retry karega): ${V.shortError(err, 120)}`);
+                return { success: true, skipped: true };
+            }
             if (!claim.claimed) {
                 console.log(`⏭️ ${targetRef.id} किसी और worker ने ले लिया — ${claim.reason}`);
                 return { success: true, skipped: true };
