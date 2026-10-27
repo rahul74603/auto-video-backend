@@ -22,10 +22,10 @@ inputs:
 
 runs:
   using: "composite"
+  # NOTE: caller job ko PEHLE actions/checkout karna ZAROORI hai —
+  # local composite action runner ke workspace se padha jata hai
+  # (bina checkout: "Can't find action.yml" error aata hai).
   steps:
-    - name: 📥 Checkout (quick-add runner)
-      uses: actions/checkout@v4
-
     - name: ⚙️ Setup Node.js 20
       uses: actions/setup-node@v4
       with:

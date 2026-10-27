@@ -105,6 +105,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: 📥 Checkout (local action se pehle zaroori)
+        uses: actions/checkout@v4
+
       - name: "⚡ SEO Quick-Add (incremental: story)"
         uses: ./.github/actions/seo-quick-add
         with:
