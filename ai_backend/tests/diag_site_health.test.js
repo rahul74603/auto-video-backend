@@ -47,7 +47,24 @@ test("detectSitemapRoot INDEX vs URLSET pehchanta hai", () => {
 
 test("parseArgs: default full, --slim pe slim (pipeline HTTP-only)", () => {
   const { parseArgs } = require("../diag_site_health");
-  assert.deepEqual(parseArgs(["node", "diag_site_health.js"]), { slim: false });
-  assert.deepEqual(parseArgs(["node", "diag_site_health.js", "--slim"]), { slim: true });
-  assert.deepEqual(parseArgs([]), { slim: false });
+  assert.deepEqual(parseArgs(["node", "diag_site_health.js"]), { slim: false, urls: null });
+  assert.deepEqual(parseArgs(["node", "diag_site_health.js", "--slim"]), { slim: true, urls: null });
+  assert.deepEqual(parseArgs([]), { slim: false, urls: null });
+});
+
+test("parseArgs: --urls probe-list nikalta hai (equals/space/comma forms)", () => {
+  const { parseArgs } = require("../diag_site_health");
+  assert.deepEqual(parseArgs(["node", "d.js", "--urls", "/a,/b"]), { slim: false, urls: ["/a", "/b"] });
+  assert.deepEqual(parseArgs(["node", "d.js", "--urls=/a,/b"]), { slim: false, urls: ["/a", "/b"] });
+  assert.deepEqual(parseArgs(["node", "d.js", "--urls", "/a,", "/b"]), { slim: false, urls: ["/a", "/b"] });
+  assert.deepEqual(parseArgs(["node", "d.js", "--urls", "/a", "/b"]), { slim: false, urls: ["/a", "/b"] });
+  assert.deepEqual(parseArgs(["node", "d.js", "--slim", "--urls", "/a"]), { slim: true, urls: ["/a"] });
+  assert.deepEqual(parseArgs(["node", "d.js", "--urls"]), { slim: false, urls: null });
+});
+
+test("resolveProbeUrl: relative→SITE, full URL as-is", () => {
+  const { resolveProbeUrl } = require("../diag_site_health");
+  assert.equal(resolveProbeUrl("/blog/x"), "https://studygyaan.in/blog/x");
+  assert.equal(resolveProbeUrl("blog/x"), "https://studygyaan.in/blog/x");
+  assert.equal(resolveProbeUrl("https://studygyaan.in/blog/x"), "https://studygyaan.in/blog/x");
 });

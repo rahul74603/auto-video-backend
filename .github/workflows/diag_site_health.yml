@@ -1,11 +1,16 @@
 name: Diag - Site Health (READ-ONLY)
 
 # 🩺 Manual diagnostic — kuch likhta/badalta NAHI, sirf report deta hai.
-# Actions tab → Diag - Site Health → Run workflow → Branch: arena/cb68691a-auto-video-backend
+# Actions tab → Diag - Site Health → Run workflow → Branch: main (urls input khali = full diag)
 # Poora report job LOG me milega.
 
 on:
   workflow_dispatch:
+    inputs:
+      urls:
+        description: 'Probe URLs (khali = full diag). Example: --urls /blog/x,/update/y'
+        required: false
+        default: ''
 
 jobs:
   diag:
@@ -29,4 +34,4 @@ jobs:
       - name: 🩺 Run Site-Health Diag
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
-        run: node diag_site_health.js
+        run: node diag_site_health.js ${{ inputs.urls }}
