@@ -279,6 +279,7 @@ function ftpDownload(file, dest) {
   execFileSync(
     "curl",
     ["-sS", "--fail", "--connect-timeout", "20", "--max-time", "180",
+      "--retry", "3", "--retry-delay", "15", "--retry-connrefused",
       "--user", `${user}:${pass}`, `ftp://${server}/${dir}/${file}`, "-o", dest],
     { stdio: "pipe" }
   );
@@ -290,6 +291,7 @@ function ftpUpload(local, file) {
   execFileSync(
     "curl",
     ["-sS", "--fail", "--connect-timeout", "20", "--max-time", "180",
+      "--retry", "3", "--retry-delay", "15", "--retry-connrefused",
       "--user", `${user}:${pass}`, "-T", local, `ftp://${server}/${dir}/${file}`],
     { stdio: "pipe" }
   );

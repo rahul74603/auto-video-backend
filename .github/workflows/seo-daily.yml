@@ -45,8 +45,13 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.SERVICE_ACCOUNT_JSON }}
         run: node generate.cjs --out ../seo_out
 
-      - name: Upload to cPanel via FTP
+      # 🔁 FTP auto-retry: Hostinger control-socket ETIMEDOUT jaise transient blip
+      # khud heal (60s gap, 3 attempts). Teeno fail = gate step red (asli problem).
+      # continue-on-error: beech ka fail downstream verify/IndexNow ko rokta NAHI.
+      - name: Upload to cPanel via FTP (attempt 1/3)
+        id: ftp1
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        continue-on-error: true
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
@@ -55,6 +60,41 @@ jobs:
           server-dir: ${{ secrets.FTP_SERVER_DIR }}
           exclude: |
             _urls.json
+      - name: FTP blip - 60s wait, phir retry
+        if: steps.ftp1.outcome == 'failure'
+        run: sleep 60
+      - name: Upload to cPanel via FTP (attempt 2/3)
+        id: ftp2
+        if: steps.ftp1.outcome == 'failure'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        continue-on-error: true
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: seo_out/
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          exclude: |
+            _urls.json
+      - name: FTP blip - 60s wait, phir aakhri retry
+        if: steps.ftp1.outcome == 'failure' && steps.ftp2.outcome == 'failure'
+        run: sleep 60
+      - name: Upload to cPanel via FTP (attempt 3/3)
+        id: ftp3
+        if: steps.ftp1.outcome == 'failure' && steps.ftp2.outcome == 'failure'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        continue-on-error: true
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: seo_out/
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          exclude: |
+            _urls.json
+      - name: FTP 3 attempts me fail - asli problem
+        if: steps.ftp1.outcome == 'failure' && steps.ftp2.outcome == 'failure' && steps.ftp3.outcome == 'failure'
+        run: echo "::error::FTP deploy 3 attempts me fail (server/network down?)." && exit 1
 
       # ✅ SELF-VERIFY (slim: HTTP-only, 0 Firestore reads): FTP ke turant baad
       # newest blogs/jobs/updates/stories/tests Googlebot UA se check. Koi
