@@ -114,22 +114,46 @@ async function collectionStats(db, name) {
 }
 
 /** CLI flags: --slim = HTTP-only verify (0 Firestore reads, Spark-safe).
- *  Pipeline (seo-daily/quick-add) hamesha --slim; manual diag full. */
+ *  Pipeline (seo-daily/quick-add) hamesha --slim; manual diag full.
+ *  --urls a,b = PROBE mode: sirf ye URLs (Googlebot+InspectionTool dono UA),
+ *  sec-1/2/3/5 skip. Forms: `--urls /a,/b`, `--urls=/a,/b`, space/comma mix. */
 function parseArgs(argv = []) {
-  return { slim: (argv || []).includes("--slim") };
+  const args = argv || [];
+  const out = { slim: args.includes("--slim"), urls: null };
+  const vals = [];
+  for (let i = 0; i < args.length; i++) {
+    const t = String(args[i]);
+    if (t === "--urls" || t.startsWith("--urls=")) {
+      if (t.startsWith("--urls=")) vals.push(t.slice("--urls=".length));
+      for (let j = i + 1; j < args.length && !String(args[j]).startsWith("--"); j++) vals.push(String(args[j]));
+      break;
+    }
+  }
+  const joined = vals.join(",").trim();
+  if (joined) out.urls = joined.split(",").map((x) => x.trim()).filter(Boolean);
+  return out;
+}
+
+/** probe URL resolve: relative path → SITE-prefixed; full http(s) → as-is. */
+function resolveProbeUrl(u) {
+  const t = String(u || "").trim();
+  if (/^https?:\/\//i.test(t)) return t;
+  return SITE + (t.startsWith("/") ? t : "/" + t);
 }
 
 async function main() {
   console.log("🩺 STUDYGYAAN SITE-HEALTH DIAG — " + new Date().toISOString());
-  const { slim } = parseArgs(process.argv);
+  const { slim, urls: urlsArg } = parseArgs(process.argv);
   if (slim) console.log("⚡ SLIM MODE — HTTP-only verify (0 Firestore reads, Spark-safe)");
+  const probeOnly = Array.isArray(urlsArg) && urlsArg.length > 0;
+  if (probeOnly) console.log(`🎯 PROBE MODE — ${urlsArg.length} custom URLs (sec-1/2/3/5 skip, sirf bot+insp check)`);
   const db = slim ? null : initDb();
 
   // ---- 1. Firestore counts ----
-  console.log("\n========== 1. FIRESTORE ==========");
+  if (!probeOnly) console.log("\n========== 1. FIRESTORE ==========");
   const cols = ["blogs", "jobs", "fast_track", "mock_tests", "web_stories", "courses", "study_materials"];
   const stats = {};
-  for (const c of (slim ? [] : cols)) { // slim: Firestore skip
+  for (const c of (slim || probeOnly ? [] : cols)) { // slim/probe: Firestore skip
     try {
       stats[c] = await collectionStats(db, c);
       console.log(`📌 ${c}: total=${stats[c].total} published-ish=${stats[c].publishedSlugs.length} status=${JSON.stringify(stats[c].byStatus)}`);
@@ -140,17 +164,19 @@ async function main() {
   }
 
   // ---- 2. Live sitemaps ----
-  console.log("\n========== 2. LIVE SITEMAPS ==========");
-  const index = await fetchText(`${SITE}/sitemap.xml`, { ua: "diag-site-health" });
-  const indexRoot = detectSitemapRoot(index.text);
-  console.log(`sitemap.xml → HTTP ${index.status}, ${index.text.length} bytes, ROOT=${indexRoot}${indexRoot !== "INDEX" ? " ⚠️ INDEX hona chahiye tha!" : ""}`);
-  const mapsInIndex = extractLocs(index.text).filter((u) => u.includes("sitemap-"));
-  console.log(`maps in index: ${mapsInIndex.length}`);
+  if (!probeOnly) console.log("\n========== 2. LIVE SITEMAPS ==========");
+  if (!probeOnly) {
+    const index = await fetchText(`${SITE}/sitemap.xml`, { ua: "diag-site-health" });
+    const indexRoot = detectSitemapRoot(index.text);
+    console.log(`sitemap.xml → HTTP ${index.status}, ${index.text.length} bytes, ROOT=${indexRoot}${indexRoot !== "INDEX" ? " ⚠️ INDEX hona chahiye tha!" : ""}`);
+    const mapsInIndex = extractLocs(index.text).filter((u) => u.includes("sitemap-"));
+    console.log(`maps in index: ${mapsInIndex.length}`);
+  }
   // Maps ko DIRECT fetch karo (toote index ke bawjood diff sahi aaye)
   const KNOWN_MAPS = ["main", "blogs", "jobs", "tests", "stories", "updates", "courses", "materials"]
     .map((n) => `${SITE}/sitemap-${n}.xml`);
   const mapData = {};
-  for (const m of KNOWN_MAPS) {
+  for (const m of (probeOnly ? [] : KNOWN_MAPS)) { // probe: sitemap fetch skip
     try {
       const r = await fetchText(m, { ua: "diag-site-health" });
       const locs = extractLocs(r.text);
@@ -164,20 +190,22 @@ async function main() {
   }
 
   // ---- 3. Diff: Firestore vs sitemap ----
-  console.log("\n========== 3. FIRESTORE↔SITEMAP DIFF ==========");
+  if (!probeOnly) console.log("\n========== 3. FIRESTORE↔SITEMAP DIFF ==========");
   const checks = [
     ["blogs", `${SITE}/sitemap-blogs.xml`, `${SITE}/blog`],
     ["jobs", `${SITE}/sitemap-jobs.xml`, `${SITE}/job`],
     ["fast_track", `${SITE}/sitemap-updates.xml`, `${SITE}/update`],
   ];
-  for (const [col, mapUrl, base] of (slim ? [] : checks)) { // slim: Firestore skip
+  for (const [col, mapUrl, base] of (slim || probeOnly ? [] : checks)) { // slim/probe: Firestore skip
     const missing = findMissingSlugs(stats[col].publishedSlugs, mapData[mapUrl] || [], base);
     console.log(`${col}: published=${stats[col].publishedSlugs.length}, in-sitemap=${(mapData[mapUrl] || []).length}, MISSING=${missing.length}${missing.length ? " → " + missing.slice(0, 10).join(", ") : ""}`);
   }
 
   // ---- 4. Bot-view (Googlebot UA) ----
   console.log("\n========== 4. BOT-VIEW (Googlebot UA) ==========");
-  const botUrls = [
+  const botUrls = probeOnly
+    ? urlsArg.map(resolveProbeUrl)
+    : [
     `${SITE}/`,
     `${SITE}/blog`,
     `${SITE}/govt-jobs`,
@@ -256,8 +284,8 @@ async function main() {
   }
 
   // ---- 5. robots + key ----
-  console.log("\n========== 5. ROBOTS + MISC ==========");
-  for (const u of [`${SITE}/robots.txt`, `${SITE}/9629c8c41fa94b898f83a53ecd320743.txt`]) {
+  if (!probeOnly) console.log("\n========== 5. ROBOTS + MISC ==========");
+  for (const u of (probeOnly ? [] : [`${SITE}/robots.txt`, `${SITE}/9629c8c41fa94b898f83a53ecd320743.txt`])) {
     try {
       const r = await fetchText(u, { ua: "diag-site-health" });
       console.log(`${r.status === 200 ? "✅" : "❌"} ${r.status} ${u.replace(SITE, "")} (${r.text.length}b)`);
@@ -271,8 +299,9 @@ async function main() {
   // hoga taaki turant dikhe. (Sec-3 MISSING fail nahi — wo lag-window me normal.)
   const failed = botFail > 0 || inspFail > 0;
   console.log(failed
-    ? "\n🔴 DIAG RESULT: FAIL — bot-view me " + botFail + " + insp-view me " + inspFail + " URL toot rahe hain (upar BOT-JSON GAP + cache-forensics dekho)."
-    : "\n🟢 DIAG RESULT: PASS — sitemap ↔ bot-view sab green.");
+    ? "\n🔴 " + (probeOnly ? "PROBE" : "DIAG") + " RESULT: FAIL — bot-view me " + botFail + " + insp-view me " + inspFail + " URL toot rahe hain (upar BOT-JSON GAP + cache-forensics dekho)."
+    : (probeOnly ? `\n🟢 PROBE RESULT: PASS — ${botUrls.length} URLs, Googlebot+InspectionTool dono green.`
+      : "\n🟢 DIAG RESULT: PASS — sitemap ↔ bot-view sab green."));
   console.log("🩺 DIAG DONE — ye poora log share karo, dikkat exact line me dikhegi.");
   return !failed;
 }
@@ -294,4 +323,4 @@ function detectSitemapRoot(xml = "") {
   return "UNKNOWN";
 }
 
-module.exports = { extractTitle, extractLocs, countBackslashUrls, newestLastmod, findMissingSlugs, detectSitemapRoot, parseArgs };
+module.exports = { extractTitle, extractLocs, countBackslashUrls, newestLastmod, findMissingSlugs, detectSitemapRoot, parseArgs, resolveProbeUrl };
