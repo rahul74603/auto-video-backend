@@ -55,12 +55,12 @@ jobs:
           set -o pipefail
           flutter build apk --debug 2>&1 | tee /tmp/build.txt
 
-      - name: TEMP DEBUG - surface ALL failures as annotations
+
+      - name: TEMP DEBUG - dump all step outputs as annotations
         if: failure() && github.event_name == 'pull_request'
         run: |
           python3 - <<'PYEOF' || echo EMIT_FAILED
           import re
-          files = {'ANALYZE': '/tmp/an.txt', 'TEST': '/tmp/test.txt', 'BUILD': '/tmp/build.txt'}
           n = 0
           def emit(level, where, msg):
             global n
@@ -69,31 +69,21 @@ jobs:
             msg = re.sub(r'\s+', ' ', msg)[:380]
             print(f"::{level} {where}::{msg}")
             n += 1
-          for tag, path in files.items():
+          def read(p):
             try:
-              lines = [l.rstrip('\n') for l in open(path, errors='replace')]
+              with open(p, errors='replace') as f:
+                return [l.rstrip('\n') for l in f]
             except OSError:
-              continue
-            if not lines:
-              continue
-            emit('notice', 'file=.github/workflows/mobile-ci.yml', f'{tag}: {len(lines)} lines captured')
-            for line in lines:
-              s = line.strip()
-              if not s:
-                continue
-              bad = re.search(r'\b(error|Error|ERROR|FAILED|FAIL|Exception|exited|failing)\b', s)
-              if bad or 'test failed' in s.lower():
-                loc = re.search(r'([\w\-/]+\.dart|pubspec\.yaml|analysis_options\.yaml|build\.gradle|settings\.gradle):(\d+)', s)
-                if loc:
-                  f = loc.group(1)
-                  l = loc.group(2)
-                  if '/mobile/' in f:
-                    f = f.split('/mobile/', 1)[1]
-                  emit('error', f'file=mobile/{f},line={l}', f'{tag}: {s}')
-                else:
-                  emit('notice', 'file=.github/workflows/mobile-ci.yml', f'{tag}: {s}')
-            tail = [l.strip() for l in lines if l.strip()][-6:]
-            for s in tail:
-              emit('notice', 'file=.github/workflows/mobile-ci.yml', f'{tag} TAIL: {s}')
+              return []
+          an, te, bu = read('/tmp/an.txt'), read('/tmp/test.txt'), read('/tmp/build.txt')
+          emit('notice', 'file=.github/workflows/mobile-ci.yml', f'CAPTURED analyze={len(an)} test={len(te)} build={len(bu)}')
+          for i, l in enumerate(te, 1):
+            s = l.strip()
+            if s:
+              emit('notice', 'file=.github/workflows/mobile-ci.yml', f'TEST L{i:02d}: {s}')
+          for s in [l.strip() for l in bu if l.strip()][-15:]:
+            emit('notice', 'file=.github/workflows/mobile-ci.yml', f'BUILD TAIL: {s}')
+          for s in [l.strip() for l in an if l.strip()][-5:]:
+            emit('notice', 'file=.github/workflows/mobile-ci.yml', f'ANALYZE TAIL: {s}')
           print(f"annotations emitted: {n}")
           PYEOF
