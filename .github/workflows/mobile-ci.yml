@@ -43,43 +43,57 @@ jobs:
           set -o pipefail
           flutter analyze --no-fatal-infos 2>&1 | tee /tmp/an.txt
 
-      - name: TEMP DEBUG - surface ALL analyze findings as annotations
+
+
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          flutter test 2>&1 | tee /tmp/test.txt
+
+      - name: Build debug APK
+        run: |
+          set -o pipefail
+          flutter build apk --debug 2>&1 | tee /tmp/build.txt
+
+      - name: TEMP DEBUG - surface ALL failures as annotations
         if: failure() && github.event_name == 'pull_request'
         run: |
           python3 - <<'PYEOF' || echo EMIT_FAILED
           import re
-          lines = [l.rstrip('\n') for l in open('/tmp/an.txt', errors='replace')]
+          files = {'ANALYZE': '/tmp/an.txt', 'TEST': '/tmp/test.txt', 'BUILD': '/tmp/build.txt'}
           n = 0
           def emit(level, where, msg):
             global n
             if n >= 45:
               return
-            msg = re.sub(r'\s+', ' ', msg)[:400]
+            msg = re.sub(r'\s+', ' ', msg)[:380]
             print(f"::{level} {where}::{msg}")
             n += 1
-          for line in lines:
-            s = line.strip()
-            if not s:
+          for tag, path in files.items():
+            try:
+              lines = [l.rstrip('\n') for l in open(path, errors='replace')]
+            except OSError:
               continue
-            m = re.search(r'\b(error|warning)\b', s)
-            loc = re.search(r'([\w\-/]+\.dart|pubspec\.yaml|analysis_options\.yaml):(\d+):(\d+)', s)
-            if m and loc:
-              f, l, c = loc.group(1), loc.group(2), loc.group(3)
-              if '/mobile/' in f:
-                f = f.split('/mobile/', 1)[1]
-              lvl = 'error' if m.group(1) == 'error' else 'warning'
-              emit(lvl, f'file=mobile/{f},line={l},col={c}', s)
-            elif m or 'issues found' in s or 'Analyzing' in s or 'no issues found' in s:
-              emit('notice', 'file=.github/workflows/mobile-ci.yml', s)
-          tail = [l.strip() for l in lines if l.strip()][-8:]
-          for s in tail:
-            emit('notice', 'file=.github/workflows/mobile-ci.yml', 'TAIL: ' + s)
+            if not lines:
+              continue
+            emit('notice', 'file=.github/workflows/mobile-ci.yml', f'{tag}: {len(lines)} lines captured')
+            for line in lines:
+              s = line.strip()
+              if not s:
+                continue
+              bad = re.search(r'\b(error|Error|ERROR|FAILED|FAIL|Exception|exited|failing)\b', s)
+              if bad or 'test failed' in s.lower():
+                loc = re.search(r'([\w\-/]+\.dart|pubspec\.yaml|analysis_options\.yaml|build\.gradle|settings\.gradle):(\d+)', s)
+                if loc:
+                  f = loc.group(1)
+                  l = loc.group(2)
+                  if '/mobile/' in f:
+                    f = f.split('/mobile/', 1)[1]
+                  emit('error', f'file=mobile/{f},line={l}', f'{tag}: {s}')
+                else:
+                  emit('notice', 'file=.github/workflows/mobile-ci.yml', f'{tag}: {s}')
+            tail = [l.strip() for l in lines if l.strip()][-6:]
+            for s in tail:
+              emit('notice', 'file=.github/workflows/mobile-ci.yml', f'{tag} TAIL: {s}')
           print(f"annotations emitted: {n}")
           PYEOF
-
-
-      - name: Unit tests
-        run: flutter test
-
-      - name: Build debug APK
-        run: flutter build apk --debug
