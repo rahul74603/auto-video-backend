@@ -404,7 +404,7 @@ class _QuizScreenState extends State<QuizScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            );
+            ));
           },
         ),
       ),
@@ -486,7 +486,7 @@ class ResultCalc {
     required this.skipped,
   });
 
-  static ResultCalc score(MockTest test, Map<int, int> answers) {
+  static ResultCalc calc(MockTest test, Map<int, int> answers) {
     var correct = 0;
     var wrong = 0;
     var skipped = 0;
@@ -523,7 +523,7 @@ class ResultScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final r = ResultCalc.score(test, answers);
+    final r = ResultCalc.calc(test, answers);
     final total = test.questions.length;
     final pct = total == 0 ? 0 : (r.correct * 100 / total).round();
     return Scaffold(
