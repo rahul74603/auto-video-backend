@@ -443,7 +443,7 @@ class _QuizScreenState extends State<QuizScreen> {
     if (_submitting || !mounted) return;
     _submitting = true;
     _timer?.cancel();
-    final result = ResultCalc.score(_test, _answers);
+    final result = ResultCalc.calc(_test, _answers);
     try {
       await context.read<UserStore>().saveHistory(
             HistoryEntry(
