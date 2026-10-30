@@ -305,7 +305,7 @@ class _QuizScreenState extends State<QuizScreen> {
             width: selected ? 2 : 1,
           ),
           color: selected
-              ? scheme.primaryContainer.withOpacity(0.35)
+              ? scheme.primaryContainer.withValues(alpha: 0.35)
               : Colors.transparent,
         ),
         child: Row(
@@ -407,7 +407,6 @@ class _QuizScreenState extends State<QuizScreen> {
             ));
           },
         ),
-      ),
     );
   }
 
@@ -642,8 +641,8 @@ class ResultScreen extends StatelessWidget {
               leading: Text(String.fromCharCode(65 + o)),
               title: Text(q.options[o]),
               tileColor: (validCorrect && o == q.correct)
-                  ? Colors.green.withOpacity(0.12)
-                  : (userAns == o ? Colors.red.withOpacity(0.12) : null),
+                  ? Colors.green.withValues(alpha: 0.12)
+                  : (userAns == o ? Colors.red.withValues(alpha: 0.12) : null),
             ),
           if (q.explanation.isNotEmpty)
             Padding(
