@@ -355,7 +355,7 @@ class AboutScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'StudyGyaan App v1.0.0',
+              'StudyGyaan App v$appVersion',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 8),

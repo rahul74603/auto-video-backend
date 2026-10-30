@@ -55,7 +55,7 @@ wo follow-up backend kaam hai (ai_backend script ya Cloud Function), is PR me na
 ## Play Store checklist (publish se pehle)
 
 - [ ] Real app icons (`flutter_launcher_icons` + designer art)
-- [ ] Real release keystore + `key.properties` (abhi debug-signed)
+- [ ] Play ke liye PRIVATE release keystore + `key.properties` (committed sideload key sirf direct-download ke liye hai)
 - [ ] `flutter build appbundle --release`
 - [ ] Play Console ($25 one-time) + store listing + privacy policy URL
 - [ ] Flutter/AGP upgrade (tab tak jo latest stable ho) + targetSdk check
@@ -79,6 +79,19 @@ test/  models_test.dart (pure parsing, CI me chalta hai)
   `matches()` API, which html 0.15.7 removed (upstream issue, unmaintained
   since Mar 2025). Long-term: migrate article rendering to
   `flutter_widget_from_html`.
+
+## APK release (bina PC ke — sab GitHub se)
+
+1. `gh workflow run mobile-release.yml --ref <branch> -f version_name=1.0.0`
+   (ya GitHub web: Actions → Mobile Release → Run workflow → version likho)
+2. ~8-12 min me **GitHub Release** ban jayega (tag `mobile-v<version>-<build>`):
+   - `studygyaan-v<version>-<build>.apk` — versioned file (history)
+   - `studygyaan-latest.apk` — **stable link, hamesha newest**:
+     `https://github.com/rahul74603/auto-video-backend/releases/latest/download/studygyaan-latest.apk`
+3. Phone me download → install (Unknown sources allow karna pad sakta hai).
+   Update purane version ke upar seedha install hoga (fixed signature + badhta build number).
+
+Version app ke **Menu → About** me bhi dikhta hai (release CI inject karta hai).
 
 ## CI
 

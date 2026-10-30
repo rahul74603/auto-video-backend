@@ -33,10 +33,20 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        sideload {
+            storeFile = file('sideload.keystore')
+            storePassword = 'studygyaan'
+            keyAlias = 'studygyaan'
+            keyPassword = 'studygyaan'
+        }
+    }
+
     buildTypes {
         release {
             // Debug-signed release (Play upload se pehle real keystore — README dekho).
-            signingConfig = signingConfigs.debug
+            // Sideload keystore = fixed signature (updates seedha install honge).
+            signingConfig = file('sideload.keystore').exists() ? signingConfigs.sideload : signingConfigs.debug
         }
     }
 }

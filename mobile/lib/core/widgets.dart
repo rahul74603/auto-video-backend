@@ -6,6 +6,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../data/models.dart';
 import '../data/user_store.dart';
 
+/// Release CI --dart-define=APP_VERSION se set hota hai (About screen).
+const String appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.0.0');
+
 /// Har jagah same loading / error / empty / image / tile.
 
 class LoadingView extends StatelessWidget {
