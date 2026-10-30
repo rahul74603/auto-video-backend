@@ -11,7 +11,11 @@ void main() {
     expect(intNum('abc', 7), 7);
     expect(intNum(3.6), 4);
     expect(dblNum('0.5'), 0.5);
-    expect(tsDate(Timestamp(1000, 0))?.millisecondsSinceEpoch, 1000000);
+    expect(
+      tsDate(Timestamp.fromMillisecondsSinceEpoch(1000000))
+          ?.millisecondsSinceEpoch,
+      1000000,
+    );
     expect(tsDate('2026-01-02T03:04:05Z')?.year, 2026);
     expect(tsDate(null), null);
     expect(visibleStatus(''), true);

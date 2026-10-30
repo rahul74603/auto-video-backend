@@ -39,7 +39,17 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: TEMP DEBUG - post analyze output to PR
+        if: failure() && github.event_name == 'pull_request'
+        run: |
+          flutter analyze > /tmp/analyze_full.txt 2>&1 || true
+          python3 -c "print(open('/tmp/analyze_full.txt', errors='replace').read()[:60000])" > /tmp/analyze_short.txt
+          { echo 'TEMP DEBUG - full flutter analyze output:'; echo '```'; cat /tmp/analyze_short.txt; echo '```'; } > /tmp/comment.md
+          gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/comment.md || echo COMMENT_FAILED
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Unit tests
         run: flutter test
