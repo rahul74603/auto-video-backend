@@ -63,7 +63,8 @@ jobs:
 
 
 
-      - name: TEMP DEBUG - prioritized failure surfacing (quota-aware)
+
+      - name: TEMP DEBUG - v7 head+tail+patterns full surfacing
         if: failure() && github.event_name == 'pull_request'
         run: |
           python3 - <<'PYEOF' || echo EMIT_FAILED
@@ -93,13 +94,16 @@ jobs:
           tn = [l.strip() for l in te if l.strip()]
           if tn:
             emit('notice', YML, 'TEST RESULT: ' + tn[-1])
+          bl = [l.strip() for l in bu if l.strip()]
+          for i, s in enumerate(bl):
+            if re.search(r'(?i)(could not|a problem occurred|failed|exception|error[: ]|caused by|what went wrong|unresolved|not found|couldn.t|killed|out of memory|no space)', s):
+              emit('error', YML, f'BUILD L{i+1:02d}: ' + s)
+          for s in bl[-8:]:
+            emit('error', YML, 'BUILD TAIL: ' + s)
+          for i, s in enumerate(bl[:5]):
+            emit('notice', YML, f'BUILD HEAD L{i+1:02d}: ' + s)
           ann = [l.strip() for l in an if l.strip()]
           if ann:
             emit('notice', YML, 'ANALYZE RESULT: ' + ann[-1])
-          for s in [l.strip() for l in bu if l.strip()]:
-            if re.search(r'^e: |[Ee]rror:|Unresolved reference|FAILED|FAILURE|Exception|What went wrong|Caused by:|\.kt[:(]|\.java[:(]', s):
-              emit('error', YML, 'BUILD: ' + s)
-          for s in [l.strip() for l in bu if l.strip()][-8:]:
-            emit('error', YML, 'BUILD TAIL: ' + s)
-          print('v5 emitter done')
+          print('v7 emitter done')
           PYEOF
