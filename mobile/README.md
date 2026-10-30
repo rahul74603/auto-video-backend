@@ -73,6 +73,13 @@ lib/
 test/  models_test.dart (pure parsing, CI me chalta hai)
 ```
 
+## Known pins
+
+- `html: '>=0.15.5 <0.15.7'` — flutter_html 3.0.0 uses package:html's private
+  `matches()` API, which html 0.15.7 removed (upstream issue, unmaintained
+  since Mar 2025). Long-term: migrate article rendering to
+  `flutter_widget_from_html`.
+
 ## CI
 
 `.github/workflows/mobile-ci.yml` — har push pe: `pub get → analyze → test →
