@@ -41,15 +41,24 @@ jobs:
       - name: Analyze
         run: flutter analyze --no-fatal-infos
 
-      - name: TEMP DEBUG - post analyze output to PR
+      - name: TEMP DEBUG - surface analyze findings as annotations
         if: failure() && github.event_name == 'pull_request'
         run: |
-          flutter analyze > /tmp/analyze_full.txt 2>&1 || true
-          python3 -c "print(open('/tmp/analyze_full.txt', errors='replace').read()[:60000])" > /tmp/analyze_short.txt
-          { echo 'TEMP DEBUG - full flutter analyze output:'; echo '```'; cat /tmp/analyze_short.txt; echo '```'; } > /tmp/comment.md
-          gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/comment.md || echo COMMENT_FAILED
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          flutter analyze --no-fatal-infos > /tmp/an.txt 2>&1 || true
+          python3 - <<'PYEOF'
+          import re
+          n = 0
+          for raw in open('/tmp/an.txt', errors='replace'):
+            line = raw.strip()
+            m = re.search(r'\b(error|warning)\b', line)
+            loc = re.search(r'([\w\-/]+\.dart):(\d+):(\d+)', line)
+            if m and loc and n < 50:
+              sev, f, l, c = m.group(1), loc.group(1), loc.group(2), loc.group(3)
+              msg = re.sub(r'\s+', ' ', line)[:400]
+              print(f"::{'error' if sev == 'error' else 'warning'} file=mobile/{f},line={l},col={c}::{msg}")
+              n += 1
+          print(f"annotations emitted: {n}")
+          PYEOF
 
       - name: Unit tests
         run: flutter test
