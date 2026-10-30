@@ -30,3 +30,8 @@ Thumbs.db
 # signature deta hai taaki updates install hon. Play wali private key
 # yahan kabhi commit mat karna.
 !android/app/sideload.p12
+
+# google-services.json: PUBLIC client config (API key har APK me hoti hai).
+# CI release build ko chahiye taaki Firebase init ho — isliye committed.
+# Asli security Firestore rules + SHA-1 restricted key se (Firebase console).
+!android/app/google-services.json
