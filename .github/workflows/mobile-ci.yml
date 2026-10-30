@@ -35,6 +35,12 @@ jobs:
       - name: Flutter version
         run: flutter --version
 
+      - name: Setup Java 17 (AGP 8.5 / Gradle 8.9 need JDK 17; runner default is too new)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Install dependencies
         run: flutter pub get
 
