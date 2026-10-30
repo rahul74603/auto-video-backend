@@ -36,7 +36,7 @@ jobs:
         run: flutter --version
 
       - name: Setup Java 17 (AGP 8.5 / Gradle 8.9 need JDK 17; runner default is too new)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -62,19 +62,12 @@ jobs:
           flutter build apk --debug 2>&1 | tee /tmp/build.txt
 
 
-      - name: TEMP DEBUG - dump all step outputs as annotations
+
+      - name: TEMP DEBUG - prioritized failure surfacing (quota-aware)
         if: failure() && github.event_name == 'pull_request'
         run: |
           python3 - <<'PYEOF' || echo EMIT_FAILED
           import re
-          n = 0
-          def emit(level, where, msg):
-            global n
-            if n >= 45:
-              return
-            msg = re.sub(r'\s+', ' ', msg)[:380]
-            print(f"::{level} {where}::{msg}")
-            n += 1
           def read(p):
             try:
               with open(p, errors='replace') as f:
@@ -82,14 +75,31 @@ jobs:
             except OSError:
               return []
           an, te, bu = read('/tmp/an.txt'), read('/tmp/test.txt'), read('/tmp/build.txt')
-          emit('notice', 'file=.github/workflows/mobile-ci.yml', f'CAPTURED analyze={len(an)} test={len(te)} build={len(bu)}')
-          for i, l in enumerate(te, 1):
-            s = l.strip()
-            if s:
-              emit('notice', 'file=.github/workflows/mobile-ci.yml', f'TEST L{i:02d}: {s}')
-          for s in [l.strip() for l in bu if l.strip()][-15:]:
-            emit('notice', 'file=.github/workflows/mobile-ci.yml', f'BUILD TAIL: {s}')
-          for s in [l.strip() for l in an if l.strip()][-5:]:
-            emit('notice', 'file=.github/workflows/mobile-ci.yml', f'ANALYZE TAIL: {s}')
-          print(f"annotations emitted: {n}")
+          n_err = n_note = 0
+          def emit(level, where, msg):
+            global n_err, n_note
+            if level == 'error':
+              if n_err >= 9:
+                return
+              n_err += 1
+            else:
+              if n_note >= 9:
+                return
+              n_note += 1
+            msg = re.sub(r'\s+', ' ', msg)[:380]
+            print(f"::{level} {where}::{msg}")
+          YML = 'file=.github/workflows/mobile-ci.yml'
+          emit('notice', YML, f'CAPTURED analyze={len(an)} test={len(te)} build={len(bu)}')
+          tn = [l.strip() for l in te if l.strip()]
+          if tn:
+            emit('notice', YML, 'TEST RESULT: ' + tn[-1])
+          ann = [l.strip() for l in an if l.strip()]
+          if ann:
+            emit('notice', YML, 'ANALYZE RESULT: ' + ann[-1])
+          for s in [l.strip() for l in bu if l.strip()]:
+            if re.search(r'[Ee]rror|FAILED|Exception|FAILURE|What went wrong|went wrong', s):
+              emit('error', YML, 'BUILD: ' + s)
+          for s in [l.strip() for l in bu if l.strip()][-8:]:
+            emit('error', YML, 'BUILD TAIL: ' + s)
+          print('v5 emitter done')
           PYEOF
