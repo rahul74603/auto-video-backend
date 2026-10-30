@@ -1,0 +1,46 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+// google-services.json OPTIONAL: CI/debug builds Firebase config ke bina bhi
+// chalti hain (app setup-screen dikhata hai). File rakhne pe real build.
+if (file("google-services.json").exists()) {
+    apply plugin: "com.google.gms.google-services"
+}
+
+android {
+    namespace = "in.studygyaan.app"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_11
+    }
+
+    defaultConfig {
+        applicationId = "in.studygyaan.app"
+        // minSdk 23: Firebase ko 21+ chahiye; 23 = native multidex, koi extra dep nahi.
+        minSdk = 23
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    buildTypes {
+        release {
+            // Debug-signed release (Play upload se pehle real keystore — README dekho).
+            signingConfig = signingConfigs.debug
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}
