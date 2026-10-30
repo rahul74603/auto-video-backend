@@ -82,8 +82,9 @@ test/  models_test.dart (pure parsing, CI me chalta hai)
 
 ## APK release (bina PC ke — sab GitHub se)
 
-1. `gh workflow run mobile-release.yml --ref <branch> -f version_name=1.0.0`
-   (ya GitHub web: Actions → Mobile Release → Run workflow → version likho)
+1. Tag banao + push karo: `git tag mobile-v1.0.0-b1 && git push origin mobile-v1.0.0-b1`
+   (agle update pe build badhao: `mobile-v1.0.0-b2`…; version badhao: `mobile-v1.1.0-b3`…;
+   ya GitHub web: Actions → Mobile Release → Run workflow → version input)
 2. ~8-12 min me **GitHub Release** ban jayega (tag `mobile-v<version>-<build>`):
    - `studygyaan-v<version>-<build>.apk` — versioned file (history)
    - `studygyaan-latest.apk` — **stable link, hamesha newest**:

@@ -29,4 +29,4 @@ Thumbs.db
 # Ye PUBLIC sideload key hai (intentionally committed) — har CI build same
 # signature deta hai taaki updates install hon. Play wali private key
 # yahan kabhi commit mat karna.
-!android/app/sideload.keystore
+!android/app/sideload.p12
