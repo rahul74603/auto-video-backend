@@ -97,7 +97,7 @@ jobs:
           if ann:
             emit('notice', YML, 'ANALYZE RESULT: ' + ann[-1])
           for s in [l.strip() for l in bu if l.strip()]:
-            if re.search(r'[Ee]rror|FAILED|Exception|FAILURE|What went wrong|went wrong', s):
+            if re.search(r'^e: |[Ee]rror:|Unresolved reference|FAILED|FAILURE|Exception|What went wrong|Caused by:|\.kt[:(]|\.java[:(]', s):
               emit('error', YML, 'BUILD: ' + s)
           for s in [l.strip() for l in bu if l.strip()][-8:]:
             emit('error', YML, 'BUILD TAIL: ' + s)
