@@ -114,7 +114,7 @@ void main() {
     expect(b2.kind, 'job');
     expect(b2.ts?.millisecondsSinceEpoch, 1000);
 
-    final h = HistoryEntry(
+    final h = const HistoryEntry(
       testId: 't1',
       title: 'T',
       score: 8,

@@ -44,66 +44,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze
-        run: |
-          set -o pipefail
-          flutter analyze --no-fatal-infos 2>&1 | tee /tmp/an.txt
-
-
+      - name: Analyze (errors + warnings fail; style infos don't)
+        run: flutter analyze --no-fatal-infos
 
       - name: Unit tests
-        run: |
-          set -o pipefail
-          flutter test 2>&1 | tee /tmp/test.txt
+        run: flutter test
 
       - name: Build debug APK
-        run: |
-          set -o pipefail
-          flutter build apk --debug 2>&1 | tee /tmp/build.txt
-
-
-
-
-      - name: TEMP DEBUG - v7 head+tail+patterns full surfacing
-        if: failure() && github.event_name == 'pull_request'
-        run: |
-          python3 - <<'PYEOF' || echo EMIT_FAILED
-          import re
-          def read(p):
-            try:
-              with open(p, errors='replace') as f:
-                return [l.rstrip('\n') for l in f]
-            except OSError:
-              return []
-          an, te, bu = read('/tmp/an.txt'), read('/tmp/test.txt'), read('/tmp/build.txt')
-          n_err = n_note = 0
-          def emit(level, where, msg):
-            global n_err, n_note
-            if level == 'error':
-              if n_err >= 9:
-                return
-              n_err += 1
-            else:
-              if n_note >= 9:
-                return
-              n_note += 1
-            msg = re.sub(r'\s+', ' ', msg)[:380]
-            print(f"::{level} {where}::{msg}")
-          YML = 'file=.github/workflows/mobile-ci.yml'
-          emit('notice', YML, f'CAPTURED analyze={len(an)} test={len(te)} build={len(bu)}')
-          tn = [l.strip() for l in te if l.strip()]
-          if tn:
-            emit('notice', YML, 'TEST RESULT: ' + tn[-1])
-          bl = [l.strip() for l in bu if l.strip()]
-          for i, s in enumerate(bl):
-            if re.search(r'(?i)(could not|a problem occurred|failed|exception|error[: ]|caused by|what went wrong|unresolved|not found|couldn.t|killed|out of memory|no space)', s):
-              emit('error', YML, f'BUILD L{i+1:02d}: ' + s)
-          for s in bl[-8:]:
-            emit('error', YML, 'BUILD TAIL: ' + s)
-          for i, s in enumerate(bl[:5]):
-            emit('notice', YML, f'BUILD HEAD L{i+1:02d}: ' + s)
-          ann = [l.strip() for l in an if l.strip()]
-          if ann:
-            emit('notice', YML, 'ANALYZE RESULT: ' + ann[-1])
-          print('v7 emitter done')
-          PYEOF
+        run: flutter build apk --debug
