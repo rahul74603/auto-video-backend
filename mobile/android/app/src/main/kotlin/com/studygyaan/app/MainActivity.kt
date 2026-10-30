@@ -1,4 +1,4 @@
-package in.studygyaan.app
+package com.studygyaan.app
 
 import io.flutter.embedding.android.FlutterActivity
 

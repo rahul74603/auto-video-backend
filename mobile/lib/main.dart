@@ -86,7 +86,7 @@ class SetupNeededScreen extends StatelessWidget {
             ),
             SizedBox(height: 12),
             Text(
-              '1. Firebase console me Android app banao (package: in.studygyaan.app)\n'
+              '1. Firebase console me Android app banao (package: com.studygyaan.app)\n'
               '2. SHA-1 add karo (Google login ke liye zaroori)\n'
               '3. google-services.json download karke mobile/android/app/ me rakho\n'
               '4. App dobara build karo\n\n'

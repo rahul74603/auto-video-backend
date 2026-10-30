@@ -11,7 +11,7 @@ if (file("google-services.json").exists()) {
 }
 
 android {
-    namespace = "in.studygyaan.app"
+    namespace = "com.studygyaan.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -25,7 +25,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "in.studygyaan.app"
+        applicationId = "com.studygyaan.app"
         // minSdk 23: Firebase ko 21+ chahiye; 23 = native multidex, koi extra dep nahi.
         minSdk = 23
         targetSdk = flutter.targetSdkVersion

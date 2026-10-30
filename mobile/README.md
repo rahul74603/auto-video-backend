@@ -23,10 +23,10 @@ website padhti hai. Dono saath-saath chalte hain.
 2. `cd mobile && flutter pub get`
 3. Firebase joddo — 2 tareeke (koi ek):
    - **A. `flutterfire configure`** (recommended): `dart pub global activate flutterfire_cli`,
-     phir `flutterfire configure` (package: `in.studygyaan.app`) — ye
+     phir `flutterfire configure` (package: `com.studygyaan.app`) — ye
      `lib/firebase_options.dart` overwrite kar dega. ✅
    - **B. Manual**: Firebase console → Project Settings → Android app add
-     (package `in.studygyaan.app`) → `google-services.json` download karke
+     (package `com.studygyaan.app`) → `google-services.json` download karke
      `mobile/android/app/` me rakho. (Ye file git me NAHI jayegi.)
 4. **SHA-1 add karna MAT bhoolna** (Google login bina iske fail hoga):
    Firebase console → Project Settings → Android app → SHA certificate
