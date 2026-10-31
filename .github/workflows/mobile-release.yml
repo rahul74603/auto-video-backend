@@ -1,0 +1,108 @@
+name: Mobile Release (APK)
+
+# Release 2 tareeke se: (1) Actions → Run workflow → version input do, ya
+# (2) tag push karo mobile-v<version>-b<build> (e.g. mobile-v1.0.0-b1).
+# Release APK + studygyaan-latest.apk (stable link) GitHub Release me attach hote hain.
+# PC ki zaroorat nahi — sab yahi hota hai.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'Version name (e.g. 1.0.0, 1.1.0)'
+        required: true
+        default: '1.0.0'
+  push:
+    tags:
+      - 'mobile-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Flutter (pinned — versions README me)
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.4'
+          channel: 'stable'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Compute version
+        id: ver
+        run: |
+          if [ '${{ github.event_name }}' = 'workflow_dispatch' ]; then
+            VERSION='${{ inputs.version_name }}'
+            BUILD='${{ github.run_number }}'
+            TAG="mobile-v${VERSION}-b${BUILD}"
+          else
+            TAG='${{ github.ref_name }}'
+            VERSION=$(echo "$TAG" | sed 's/^mobile-v//; s/-b[0-9][0-9]*$//')
+            BUILD=$(echo "$TAG" | sed 's/^.*-b//')
+          fi
+          [ -n "$VERSION" ] && [ -n "$BUILD" ] || { echo "BAD VERSION/TAG: $TAG"; exit 1; }
+          echo "$BUILD" | grep -qE '^[0-9]+$' || { echo "BAD BUILD NUMBER: $BUILD"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "apk=studygyaan-v${VERSION}-b${BUILD}.apk" >> "$GITHUB_OUTPUT"
+          echo "Releasing $TAG"
+
+      - name: Build release APK
+        run: flutter build apk --release --build-name='${{ steps.ver.outputs.version }}' --build-number='${{ steps.ver.outputs.build }}' --dart-define='APP_VERSION=${{ steps.ver.outputs.version }} (${{ steps.ver.outputs.build }})'
+
+      - name: Prepare APK files
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk '${{ steps.ver.outputs.apk }}'
+          cp build/app/outputs/flutter-apk/app-release.apk studygyaan-latest.apk
+          ls -la *.apk
+
+      - name: Release notes
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          LAST_TAG=$(git tag --list 'mobile-v*' --sort=-v:refname | grep -v "^${{ steps.ver.outputs.tag }}$" | head -1)
+          {
+            echo "## StudyGyaan App v${{ steps.ver.outputs.version }} (build ${{ steps.ver.outputs.build }})"
+            echo ""
+            echo "Seedha phone me download karke install karo (Unknown sources allow karna pad sakta hai)."
+            echo ""
+            echo "**Stable link (hamesha newest):** studygyaan-latest.apk (neeche Assets me)"
+            echo ""
+            echo "### Is version me"
+            if [ -n "$LAST_TAG" ]; then
+              git log "$LAST_TAG"..HEAD --oneline -- mobile/ | head -20
+            else
+              git log --oneline -10 -- mobile/
+            fi
+          } > /tmp/notes.md
+          cat /tmp/notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARGS=(--title 'StudyGyaan v${{ steps.ver.outputs.version }} (build ${{ steps.ver.outputs.build }})' --notes-file /tmp/notes.md)
+          if [ '${{ github.event_name }}' = 'workflow_dispatch' ]; then
+            ARGS+=(--target '${{ github.ref_name }}')
+          fi
+          gh release create '${{ steps.ver.outputs.tag }}' "${ARGS[@]}" '${{ steps.ver.outputs.apk }}' studygyaan-latest.apk

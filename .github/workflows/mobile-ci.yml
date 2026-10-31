@@ -1,0 +1,54 @@
+name: Mobile CI (Flutter)
+
+# Har push/PR pe: analyze + unit tests + debug APK.
+# google-services.json ke BINA bhi build chalti hai (app setup-screen dikhata hai),
+# isliye Firebase config kabhi CI red nahi karta.
+
+on:
+  push:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ci.yml'
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Flutter (pinned — versions README me)
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.4'
+          channel: 'stable'
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Setup Java 17 (AGP 8.5 / Gradle 8.9 need JDK 17; runner default is too new)
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze (errors + warnings fail; style infos don't)
+        run: flutter analyze --no-fatal-infos
+
+      - name: Unit tests
+        run: flutter test
+
+      - name: Build debug APK
+        run: flutter build apk --debug
