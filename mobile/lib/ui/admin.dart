@@ -3,8 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/widgets.dart';
+import '../data/admin_repo.dart';
 import '../data/models.dart';
 import '../data/repository.dart';
+import 'admin_edit.dart';
+import 'admin_lists.dart';
+
+/// Website admin (src/pages/Admin) ka mobile mirror — Review Queue
+/// (AI/Job/FT drafts + approval), Payment Desk, Published manage.
 
 /// Admin allowlist — sirf in logins ko Admin panel dikhega.
 const Set<String> adminEmails = {'rahulkumar74603@gmail.com'};
@@ -21,11 +27,10 @@ class _Col {
   const _Col(this.label, this.name, this.icon);
 }
 
-/// Admin home: har collection ka count + andar Hide/Publish/Delete.
 class AdminScreen extends StatelessWidget {
   const AdminScreen({super.key});
 
-  static const _cols = [
+  static const _published = [
     _Col('Fast Track', Repo.updates, Icons.bolt),
     _Col('Govt Jobs', Repo.jobs, Icons.work),
     _Col('Blogs', Repo.blogs, Icons.article),
@@ -39,37 +44,102 @@ class AdminScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('Admin Panel')),
       body: ListView(
         children: [
+          _sectionTitle('Review Queue'),
+          _countTile(
+            context,
+            icon: Icons.psychology_outlined,
+            label: 'Review AI Drafts',
+            future: AdminRepo.countAIPending(),
+            suffix: 'pending',
+            screen: const AIDraftsScreen(),
+          ),
+          _countTile(
+            context,
+            icon: Icons.work_outline,
+            label: 'Job Drafts',
+            future: AdminRepo.countAll(AdminRepo.jobDrafts),
+            suffix: 'drafts',
+            screen: const JobDraftsScreen(),
+          ),
+          _countTile(
+            context,
+            icon: Icons.bolt_outlined,
+            label: 'Fast Track Drafts',
+            future: AdminRepo.countWhere(AdminRepo.fastTrack, 'status', 'draft'),
+            suffix: 'pending',
+            screen: const FTDraftsScreen(),
+          ),
+          _sectionTitle('Payments'),
+          _countTile(
+            context,
+            icon: Icons.payments_outlined,
+            label: 'Payment Desk',
+            future: AdminRepo.countWhere(
+              AdminRepo.purchases,
+              'status',
+              'pending',
+            ),
+            suffix: 'pending',
+            screen: const PaymentsScreen(),
+          ),
+          _sectionTitle('Published Content'),
+          for (final c in _published)
+            _countTile(
+              context,
+              icon: c.icon,
+              label: c.label,
+              future: Repo.count(c.name),
+              suffix: 'items',
+              screen: AdminListScreen(
+                collection: c.name,
+                title: c.label,
+              ),
+            ),
           const Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 24),
             child: Text(
-              'Naye 30 items — Hide, Publish ya Delete karo. '
-              'Ye badlav website par bhi turant dikhenge.',
-              style: TextStyle(fontSize: 13),
+              'Badlav website par bhi turant dikhenge. '
+              'AI-draft publish wahi gate follow karta hai jo website par hai.',
+              style: TextStyle(fontSize: 12),
             ),
           ),
-          for (final c in _cols)
-            FutureBuilder<int>(
-              future: Repo.count(c.name),
-              builder: (context, snap) {
-                final n = snap.data;
-                return ListTile(
-                  leading: Icon(c.icon),
-                  title: Text(c.label),
-                  subtitle: Text(n == null ? '...' : '$n items'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => AdminListScreen(
-                        collection: c.name,
-                        title: c.label,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
         ],
       ),
+    );
+  }
+
+  Widget _sectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Text(
+        title,
+        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  Widget _countTile(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required Future<int> future,
+    required String suffix,
+    required Widget screen,
+  }) {
+    return FutureBuilder<int>(
+      future: future,
+      builder: (context, snap) {
+        final n = snap.data;
+        return ListTile(
+          leading: Icon(icon),
+          title: Text(label),
+          subtitle: Text(n == null ? '...' : '$n $suffix'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => screen),
+          ),
+        );
+      },
     );
   }
 }
@@ -83,6 +153,9 @@ class AdminListScreen extends StatelessWidget {
     required this.collection,
     required this.title,
   });
+
+  bool get _editable =>
+      collection == Repo.jobs || collection == Repo.updates;
 
   @override
   Widget build(BuildContext context) {
@@ -130,6 +203,11 @@ class AdminListScreen extends StatelessWidget {
                   trailing: PopupMenuButton<String>(
                     onSelected: (v) => _act(context, v, d),
                     itemBuilder: (_) => [
+                      if (_editable)
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Text('Edit'),
+                        ),
                       PopupMenuItem(
                         value: hidden ? 'show' : 'hide',
                         child: Text(hidden ? 'Publish karo' : 'Hide karo'),
@@ -153,6 +231,10 @@ class AdminListScreen extends StatelessWidget {
   }
 
   Future<void> _act(BuildContext context, String action, AdminDoc doc) async {
+    if (action == 'edit') {
+      await _edit(context, doc);
+      return;
+    }
     if (action == 'delete') {
       final yes = await showDialog<bool>(
         context: context,
@@ -188,6 +270,33 @@ class AdminListScreen extends StatelessWidget {
         context,
         'Publish ho gaya',
         () => Repo.adminSetStatus(collection, doc.id, 'published'),
+      );
+    }
+  }
+
+  Future<void> _edit(BuildContext context, AdminDoc doc) async {
+    final messenger = ScaffoldMessenger.of(context);
+    Map<String, dynamic>? full;
+    try {
+      full = await AdminRepo.fetchDoc(collection, doc.id);
+    } catch (_) {
+      full = null;
+    }
+    if (!context.mounted) return;
+    if (full == null) {
+      messenger.showSnackBar(const SnackBar(content: Text('Doc nahi mila')));
+      return;
+    }
+    final data = full;
+    if (collection == Repo.jobs) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => JobEditScreen(doc: data, isDraft: false),
+        ),
+      );
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => FTEditScreen(doc: data)),
       );
     }
   }
