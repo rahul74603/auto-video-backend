@@ -8,7 +8,7 @@ import 'home.dart';
 import 'menu.dart';
 import 'quiz.dart';
 
-/// Bottom-nav shell: Home / Jobs / Tests / Stories / Menu.
+/// Bottom-nav shell: Home / Jobs / Fast Track / Tests / Menu.
 class Shell extends StatefulWidget {
   const Shell({super.key});
 
@@ -38,8 +38,8 @@ class _ShellState extends State<Shell> {
         children: [
           HomeScreen(onSeeAll: _go),
           const ContentListScreen(kind: ContentKind.job),
+          const ContentListScreen(kind: ContentKind.update),
           const TestsScreen(),
-          const StoriesScreen(),
           const MenuScreen(),
         ],
       ),
@@ -58,14 +58,14 @@ class _ShellState extends State<Shell> {
             label: 'Jobs',
           ),
           NavigationDestination(
+            icon: Icon(Icons.bolt_outlined),
+            selectedIcon: Icon(Icons.bolt),
+            label: 'Fast Track',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.quiz_outlined),
             selectedIcon: Icon(Icons.quiz),
             label: 'Tests',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.auto_stories_outlined),
-            selectedIcon: Icon(Icons.auto_stories),
-            label: 'Stories',
           ),
           NavigationDestination(
             icon: Icon(Icons.menu),

@@ -85,4 +85,57 @@ class Repo {
   /// App user-data website wale users/{uid} doc me (merge) — rules pehle se OK.
   static DocumentReference<Map<String, dynamic>> userDoc(String uid) =>
       _db.collection('users').doc(uid);
+
+  // ---------------- ADMIN ----------------
+
+  /// Collection me kul kitne docs (admin stats).
+  static Future<int> count(String collection) async {
+    final agg = await _db.collection(collection).count().get();
+    return agg.count ?? 0;
+  }
+
+  /// Naye docs BINA status-filter (admin ko hidden bhi dikhte hain).
+  static Stream<List<AdminDoc>> streamAdmin(String collection, int n) {
+    return _db
+        .collection(collection)
+        .orderBy('createdAt', descending: true)
+        .limit(n)
+        .snapshots()
+        .map(
+          (snap) => snap.docs.map((d) {
+            final m = d.data();
+            return AdminDoc(
+              id: d.id,
+              title: pick(m, ['title', 'name']),
+              status: str(m['status']),
+              date: tsDate(m['publishedAt']) ?? tsDate(m['createdAt']),
+            );
+          }).toList(),
+        );
+  }
+
+  /// Hide = 'archived', Publish = 'published'. Rules-deny pe throw (UI pakdta hai).
+  static Future<void> adminSetStatus(
+    String collection,
+    String id,
+    String status,
+  ) =>
+      _db.collection(collection).doc(id).update({'status': status});
+
+  static Future<void> adminDelete(String collection, String id) =>
+      _db.collection(collection).doc(id).delete();
+}
+
+/// Admin list ka halka doc (poora parse nahi chahiye).
+class AdminDoc {
+  final String id;
+  final String title;
+  final String status;
+  final DateTime? date;
+  const AdminDoc({
+    required this.id,
+    required this.title,
+    required this.status,
+    required this.date,
+  });
 }

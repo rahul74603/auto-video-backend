@@ -7,7 +7,7 @@ import '../data/models.dart';
 import '../data/user_store.dart';
 
 /// Release CI --dart-define=APP_VERSION se set hota hai (About screen).
-const String appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.0.0');
+const String appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.1.0');
 
 /// Har jagah same loading / error / empty / image / tile.
 
@@ -79,29 +79,38 @@ class EmptyView extends StatelessWidget {
   }
 }
 
-/// Cache wali image + graceful fallback (toota URL kabhi UI nahi todega).
+/// Cache wali image + gradient fallback (khali/toota URL ab sundar dikhta hai).
 class ThumbImage extends StatelessWidget {
   final String? url;
   final double height;
   final double? width;
   final double radius;
+  final IconData icon;
   const ThumbImage({
     super.key,
     required this.url,
     this.height = 120,
     this.width,
     this.radius = 12,
+    this.icon = Icons.image_outlined,
   });
 
   @override
   Widget build(BuildContext context) {
     final u = (url ?? '').trim();
     Widget fallback() {
+      final scheme = Theme.of(context).colorScheme;
       return Container(
         height: height,
         width: width ?? double.infinity,
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        child: const Icon(Icons.image_outlined, size: 40),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [scheme.primary, scheme.tertiary],
+          ),
+        ),
+        child: Icon(icon, size: height * 0.4, color: Colors.white),
       );
     }
 
@@ -127,8 +136,9 @@ class ThumbImage extends StatelessWidget {
 
 class SectionHeader extends StatelessWidget {
   final String title;
+  final IconData? icon;
   final VoidCallback? onSeeAll;
-  const SectionHeader({super.key, required this.title, this.onSeeAll});
+  const SectionHeader({super.key, required this.title, this.icon, this.onSeeAll});
 
   @override
   Widget build(BuildContext context) {
@@ -136,6 +146,14 @@ class SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 20, 8, 8),
       child: Row(
         children: [
+          if (icon != null) ...[
+            Icon(
+              icon,
+              size: 20,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+          ],
           Expanded(
             child: Text(
               title,
@@ -158,6 +176,7 @@ class ContentTile extends StatelessWidget {
   final String date;
   final Widget? trailing;
   final VoidCallback onTap;
+  final IconData icon;
   const ContentTile({
     super.key,
     required this.image,
@@ -166,6 +185,7 @@ class ContentTile extends StatelessWidget {
     required this.date,
     required this.onTap,
     this.trailing,
+    this.icon = Icons.image_outlined,
   });
 
   @override
@@ -180,7 +200,7 @@ class ContentTile extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ThumbImage(url: image, height: 76, width: 76, radius: 10),
+              ThumbImage(url: image, height: 76, width: 76, radius: 10, icon: icon),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

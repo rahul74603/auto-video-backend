@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../core/widgets.dart';
+import '../data/auth.dart';
 import '../data/models.dart';
 import '../data/repository.dart';
 import 'content.dart';
 import 'quiz.dart';
 
-/// Home: welcome + latest strips (jobs/tests/blogs/updates).
+/// Home: welcome + quick chips + latest strips (Fast Track sabse pehle).
 class HomeScreen extends StatelessWidget {
   final void Function(int) onSeeAll;
   const HomeScreen({super.key, required this.onSeeAll});
@@ -18,30 +20,40 @@ class HomeScreen extends StatelessWidget {
       body: ListView(
         children: [
           _welcomeCard(context),
+          _quickChips(context),
+          SectionHeader(
+            title: 'Fast Track',
+            icon: Icons.bolt,
+            onSeeAll: () => onSeeAll(2),
+          ),
+          _strip<ArticleItem>(
+            icon: Icons.bolt,
+            stream: Repo.streamLatest(Repo.updates, 8, ArticleItem.fromDoc),
+            onTap: (a) => _push(
+              context,
+              ArticleScreen(kind: ContentKind.update, id: a.id),
+            ),
+          ),
           SectionHeader(
             title: 'Latest Govt Jobs',
+            icon: Icons.work,
             onSeeAll: () => onSeeAll(1),
           ),
           _strip<JobItem>(
+            icon: Icons.work,
             stream: Repo.streamLatest(Repo.jobs, 8, JobItem.fromDoc),
             onTap: (j) => _push(context, JobDetailScreen(id: j.id)),
           ),
           SectionHeader(
-            title: 'Latest Mock Tests',
-            onSeeAll: () => onSeeAll(2),
-          ),
-          _strip<MockTest>(
-            stream: Repo.streamLatest(Repo.tests, 8, MockTest.fromDoc),
-            onTap: (t) => _push(context, TestInfoScreen(test: t)),
-          ),
-          SectionHeader(
             title: 'Latest Blogs',
+            icon: Icons.article,
             onSeeAll: () => _push(
               context,
               const ContentListScreen(kind: ContentKind.blog),
             ),
           ),
           _strip<ArticleItem>(
+            icon: Icons.article,
             stream: Repo.streamLatest(Repo.blogs, 8, ArticleItem.fromDoc),
             onTap: (a) => _push(
               context,
@@ -49,18 +61,14 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
           SectionHeader(
-            title: 'Latest Updates',
-            onSeeAll: () => _push(
-              context,
-              const ContentListScreen(kind: ContentKind.update),
-            ),
+            title: 'Latest Mock Tests',
+            icon: Icons.quiz,
+            onSeeAll: () => onSeeAll(3),
           ),
-          _strip<ArticleItem>(
-            stream: Repo.streamLatest(Repo.updates, 8, ArticleItem.fromDoc),
-            onTap: (a) => _push(
-              context,
-              ArticleScreen(kind: ContentKind.update, id: a.id),
-            ),
+          _strip<MockTest>(
+            icon: Icons.quiz,
+            stream: Repo.streamLatest(Repo.tests, 8, MockTest.fromDoc),
+            onTap: (t) => _push(context, TestInfoScreen(test: t)),
           ),
           const SizedBox(height: 24),
         ],
@@ -73,6 +81,15 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _welcomeCard(BuildContext context) {
+    final user = context.watch<AuthService>().user;
+    final rawName = (user?.displayName ?? '').trim();
+    final firstName = rawName.isEmpty ? '' : rawName.split(' ').first;
+    final hello = firstName.isEmpty
+        ? 'Namaste! Kya padhna hai aaj?'
+        : 'Namaste, $firstName!';
+    final sub = firstName.isEmpty
+        ? 'Jobs • Tests • Blogs • Stories — sab yahi'
+        : 'Aaj kya padhna hai? Fast Track se shuru karo';
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
       child: Padding(
@@ -92,16 +109,19 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Namaste! Kya padhna hai aaj?',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    hello,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                  SizedBox(height: 2),
-                  Text('Jobs • Tests • Blogs • Stories — sab yahi'),
+                  const SizedBox(height: 2),
+                  Text(sub),
                 ],
               ),
             ),
@@ -111,7 +131,45 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  Widget _quickChips(BuildContext context) {
+    final chips = [
+      _Chip('Jobs', Icons.work, () => onSeeAll(1)),
+      _Chip('Fast Track', Icons.bolt, () => onSeeAll(2)),
+      _Chip('Tests', Icons.quiz, () => onSeeAll(3)),
+      _Chip(
+        'Blogs',
+        Icons.article,
+        () => _push(context, const ContentListScreen(kind: ContentKind.blog)),
+      ),
+      _Chip(
+        'Stories',
+        Icons.auto_stories,
+        () => _push(context, const StoriesScreen()),
+      ),
+      _Chip(
+        'Videos',
+        Icons.ondemand_video,
+        () => _push(context, const VideosScreen()),
+      ),
+    ];
+    return SizedBox(
+      height: 44,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        itemCount: chips.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) => ActionChip(
+          avatar: Icon(chips[i].icon, size: 16),
+          label: Text(chips[i].label),
+          onPressed: chips[i].onTap,
+        ),
+      ),
+    );
+  }
+
   Widget _strip<T>({
+    required IconData icon,
     required Stream<List<T>> stream,
     required void Function(T) onTap,
   }) {
@@ -160,6 +218,7 @@ class HomeScreen extends StatelessWidget {
                               url: image,
                               height: 110,
                               radius: 0,
+                              icon: icon,
                             ),
                             Positioned(
                               right: 4,
@@ -267,4 +326,11 @@ class HomeScreen extends StatelessWidget {
       ts: DateTime.now(),
     );
   }
+}
+
+class _Chip {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  const _Chip(this.label, this.icon, this.onTap);
 }

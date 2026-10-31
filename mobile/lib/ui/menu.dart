@@ -8,6 +8,7 @@ import '../data/messaging.dart';
 import '../data/models.dart';
 import '../data/repository.dart';
 import '../data/user_store.dart';
+import 'admin.dart';
 import 'content.dart';
 import 'quiz.dart';
 
@@ -26,6 +27,48 @@ class MenuScreen extends StatelessWidget {
         children: [
           _profileHeader(context, auth),
           const Divider(),
+          if (isAdminEmail(auth.user?.email))
+            ListTile(
+              leading: const Icon(
+                Icons.admin_panel_settings,
+                color: Colors.deepPurple,
+              ),
+              title: const Text('Admin Panel'),
+              subtitle: const Text('Sirf tumhe dikhta hai'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AdminScreen()),
+              ),
+            ),
+          ListTile(
+            leading: const Icon(Icons.bolt_outlined),
+            title: const Text('Fast Track'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) =>
+                    const ContentListScreen(kind: ContentKind.update),
+              ),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.article_outlined),
+            title: const Text('Blogs'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const ContentListScreen(kind: ContentKind.blog),
+              ),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.auto_stories_outlined),
+            title: const Text('Stories'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const StoriesScreen()),
+            ),
+          ),
           ListTile(
             leading: const Icon(Icons.ondemand_video_outlined),
             title: const Text('Videos'),

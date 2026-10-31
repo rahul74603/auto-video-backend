@@ -26,7 +26,7 @@ extension ContentKindX on ContentKind {
       case ContentKind.blog:
         return 'Blogs';
       case ContentKind.update:
-        return 'Updates';
+        return 'Fast Track';
       case ContentKind.job:
         return 'Govt Jobs';
     }
