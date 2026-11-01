@@ -128,10 +128,13 @@ function verifiedDate(value) {
     return parsed && parsed.year >= new Date().getFullYear() ? text : '';
 }
 
-function extractLabeledDate(content, labelPattern) {
+const LABELED_START_DATE_PATTERN = /(?:application\s*(?:start|begin|opening)\s*date|start\s*date|registration\s*(?:start|from)\s*date|आवेदन\s*(?:प्रारंभ|शुरू|आरंभ).*?तिथि)[^.]{0,80}?((?:20\d{2}-\d{1,2}-\d{1,2}|\d{1,2}[./-]\d{1,2}[./-](?:19|20)\d{2}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9},?\s+(?:19|20)\d{2}|[A-Za-z]{3,9}\s+\d{1,2},?\s+(?:19|20)\d{2}))/i;
+const LABELED_LAST_DATE_PATTERN = /(?:last\s*date(?:\s*(?:to\s*apply|for\s*(?:apply|application|submission)))?|closing\s*date|application\s*deadline|end\s*date|अंतिम\s*तिथि|आखिरी\s*तारीख)[^.]{0,80}?((?:20\d{2}-\d{1,2}-\d{1,2}|\d{1,2}[./-]\d{1,2}[./-](?:19|20)\d{2}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9},?\s+(?:19|20)\d{2}|[A-Za-z]{3,9}\s+\d{1,2},?\s+(?:19|20)\d{2}))/i;
+
+function extractLabeledDate(content, field) {
     const text = String(content || '').replace(/\s+/g, ' ');
-    const datePattern = String.raw`((?:20\d{2}-\d{1,2}-\d{1,2}|\d{1,2}[./-]\d{1,2}[./-](?:19|20)\d{2}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9},?\s+(?:19|20)\d{2}|[A-Za-z]{3,9}\s+\d{1,2},?\s+(?:19|20)\d{2}))`;
-    const match = text.match(new RegExp(`(?:${labelPattern})[^.]{0,80}?${datePattern}`, 'i'));
+    const pattern = field === 'startDate' ? LABELED_START_DATE_PATTERN : LABELED_LAST_DATE_PATTERN;
+    const match = text.match(pattern);
     return match ? verifiedDate(match[1]) : '';
 }
 
@@ -734,14 +737,8 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
             const verifiedJobData = {
                 ...jobData,
                 title: finalTitle,
-                startDate: verifiedDate(jobData.startDate) || extractLabeledDate(
-                    scrapedContent,
-                    '(?:application\s*(?:start|begin|opening)\s*date|start\s*date|registration\s*(?:start|from)\s*date|आवेदन\s*(?:प्रारंभ|शुरू|आरंभ).*?तिथि)',
-                ),
-                lastDate: verifiedDate(jobData.lastDate) || extractLabeledDate(
-                    scrapedContent,
-                    '(?:last\s*date(?:\s*(?:to\s*apply|for\s*(?:apply|application|submission)))?|closing\s*date|application\s*deadline|end\s*date|अंतिम\s*तिथि|आखिरी\s*तारीख)',
-                ),
+                startDate: verifiedDate(jobData.startDate) || extractLabeledDate(scrapedContent, 'startDate'),
+                lastDate: verifiedDate(jobData.lastDate) || extractLabeledDate(scrapedContent, 'lastDate'),
                 applyLink: cleanApplyLink,
                 notificationLink: cleanNotificationLink,
                 officialSiteLink: cleanOfficialSiteLink

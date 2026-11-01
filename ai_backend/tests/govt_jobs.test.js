@@ -47,10 +47,14 @@ test("public job links reject FreeJobAlert and descriptions have a factual fallb
   assert.equal(verifiedDate("31 February 2026"), "");
   assert.equal(verifiedDate("18 October 2026"), "18 October 2026");
   assert.equal(
-    extractLabeledDate("Application Start Date: 01/11/2026; Last Date: 30/11/2026", "last\\s*date"),
+    extractLabeledDate("Application Start Date: 01/11/2026; Last Date: 30/11/2026", "startDate"),
+    "01/11/2026",
+  );
+  assert.equal(
+    extractLabeledDate("Application Start Date: 01/11/2026; Last Date: 30/11/2026", "lastDate"),
     "30/11/2026",
   );
-  assert.equal(extractLabeledDate("Last Date: 30 November", "last\\s*date"), "");
+  assert.equal(extractLabeledDate("Last Date: 30 November", "lastDate"), "");
   const description = buildJobDescription("SSC CGL Recruitment", {
     vacancies: "12",
     qualification: "Graduation",
