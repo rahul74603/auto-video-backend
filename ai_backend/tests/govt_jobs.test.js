@@ -43,6 +43,8 @@ test("public job links reject FreeJobAlert and descriptions have a factual fallb
   assert.equal(sanitizeOfficialLink("https://example.org/apply"), "https://example.org/apply");
   assert.equal(sanitizeOfficialLink("not-a-url"), "");
   assert.equal(verifiedDate("18 October"), "");
+  assert.equal(verifiedDate("18 October 2025"), "");
+  assert.equal(verifiedDate("31 February 2026"), "");
   assert.equal(verifiedDate("18 October 2026"), "18 October 2026");
   assert.equal(
     extractLabeledDate("Application Start Date: 01/11/2026; Last Date: 30/11/2026", "last\\s*date"),

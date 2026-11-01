@@ -11,6 +11,7 @@ const Parser = require('rss-parser');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { parsePublishedAt, isRecentPublication } = require("./source_freshness");
 const { isInterviewNotice } = require("./scraper_policy");
+const { researchMissingJobFields, parseFullYearDate } = require("./job_research_agent");
 const MAX_SCRAPE_AGE_DAYS = 10; // sirf pichhle 10 din ke jobs — isse purana kabhi nahi
 
 // =========================================================
@@ -121,14 +122,15 @@ function hasExplicitYear(value) {
 
 function verifiedDate(value) {
     const text = String(value || '').trim();
-    // Keep the source's date wording, but reject a date with an omitted year;
-    // we must never silently turn an old notice into a current-year deadline.
-    return text && hasExplicitYear(text) ? text : '';
+    const parsed = parseFullYearDate(text);
+    // Keep the source's date wording, but reject omitted, impossible, or old
+    // years; a previous recruitment cycle must never become a current date.
+    return parsed && parsed.year >= new Date().getFullYear() ? text : '';
 }
 
 function extractLabeledDate(content, labelPattern) {
     const text = String(content || '').replace(/\s+/g, ' ');
-    const datePattern = String.raw`(\d{1,2}[./-]\d{1,2}[./-](?:19|20)\d{2}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9},?\s+(?:19|20)\d{2}|[A-Za-z]{3,9}\s+\d{1,2},?\s+(?:19|20)\d{2})`;
+    const datePattern = String.raw`((?:20\d{2}-\d{1,2}-\d{1,2}|\d{1,2}[./-]\d{1,2}[./-](?:19|20)\d{2}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9},?\s+(?:19|20)\d{2}|[A-Za-z]{3,9}\s+\d{1,2},?\s+(?:19|20)\d{2}))`;
     const match = text.match(new RegExp(`(?:${labelPattern})[^.]{0,80}?${datePattern}`, 'i'));
     return match ? verifiedDate(match[1]) : '';
 }
@@ -678,10 +680,31 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
             const scrapedContent = await scrapeJobPage(jobLink);
 
             console.log(`🤖 AI Processing: ${titleText}`);
-            const jobData = await extractJobDataWithAI(scrapedContent, jobLink);
+            let jobData = await extractJobDataWithAI(scrapedContent, jobLink);
 
             const finalTitle = jobData.title || titleText;
 
+            if (!finalTitle || finalTitle.length < 5) continue;
+
+            // 🔎 Research agent: only missing/invalid core facts, using current
+            // Google Search results + fetched official source evidence. Failure
+            // is non-fatal; the field remains blank for human review.
+            const research = await researchMissingJobFields(
+                { ...jobData, title: finalTitle },
+                { publishedAt: item.publishedAt },
+            );
+            jobData = research.jobData;
+            if (research.filledFields.length) {
+                console.log(
+                    `🔎 Official research filled ${research.filledFields.join(', ')} from ${research.sourceUrls.join(', ')}`,
+                );
+            } else if (research.reason && research.reason !== "no-verified-field-evidence") {
+                console.log(`ℹ️ Research left fields blank: ${research.reason}`);
+            }
+
+            // A current official deadline found by the agent supersedes a
+            // stale/incorrect AI expiry guess; otherwise preserve the old gate.
+            if (research.filledFields.includes("lastDate")) jobData.isExpired = false;
             if (jobData.isExpired === true) {
                 console.log(`⏭️ Expired: ${finalTitle}`);
                 await db.collection("processed_links").doc(docId).set({
@@ -691,8 +714,6 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 });
                 continue;
             }
-
-            if (!finalTitle || finalTitle.length < 5) continue;
 
             const baseSlug  = jobData.slug || createSlug(finalTitle);
             const finalSlug = `${baseSlug}-${dateSuffix}`;
