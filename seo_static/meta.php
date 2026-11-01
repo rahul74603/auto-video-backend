@@ -23,8 +23,8 @@
  */
 
 $SITE = 'https://studygyaan.in';
-$DEFAULT_TITLE = 'StudyGyaan - Sarkari Naukri, Mock Tests & Free Study Material';
-$DEFAULT_DESC = 'Latest Govt Jobs, Free Mock Tests, Study Material, Fast Track Updates aur Exam Preparation - sab kuch free, StudyGyaan par.';
+$DEFAULT_TITLE = 'StudyGyaan - Free Study Material, Govt Jobs & Mock Tests ' . date('Y');
+$DEFAULT_DESC = 'StudyGyaan पर पाएं Latest Sarkari Naukri, Free PDF Notes, Online Mock Tests, Admit Card, Result और Premium Study Material। SSC, Railway, Bank, Police Exam की सबसे बेहतर तैयारी।';
 $DEFAULT_IMG = $SITE . '/og-image.jpg';
 
 // ---------- path nikalo ----------
@@ -201,17 +201,27 @@ if ($path === '/') {
 }
 $allLd = array_merge(is_array($ld) ? $ld : [], $extraLd);
 
-// 🛑 SOFT-404 KILLER: content-detail URL hai lekin data me entry NAHI —
-// matlab ye page exist hi nahi karta (deleted/galat slug). Bots ko asli 404 do
-// taaki Google "Soft 404" / "Duplicate canonical" me na phansaye.
-// ⚠️ $jsonOk guard: JSON file corrupt/unparseable ho to MASS-404 NAHI —
-//    tab generic 200 do (infra failure ko content-404 mat banao).
+// 🛑 SOFT-404 KILLER: unknown paths without an SEO entry get a real 404.
+// Known SPA routes and /jobs/<hub> remain valid; JSON failures never mass-404.
 // 🧊 CACHE-KILLER (25-Oct-2026 proof: x-litespeed-cache:hit par stale bot-404):
 //    LiteSpeed page-cache PLAIN `Cache-Control: no-store` ko ignore karke 404
 //    chipka leta hai. `X-LiteSpeed-Cache-Control: no-cache` uska ASLI header
 //    hai — ye lagao to bot response KABHI cache nahi hoga (Cloudflare/browsers
 //    ke liye full no-cache set bhi saath me).
-if (!$entry && $jsonOk && $isDetail && isset($detailAlias[$first])) {
+$spaRoutes = [
+    'search', 'redirect', 'success', 'govt-jobs', 'exam-calendar', 'jobs',
+    'admit-card', 'results', 'answer-key', 'syllabus', 'blog', 'test',
+    'mock-tests', 'free-study-material', 'e-books', 'premium-notes',
+    'my-courses', 'manual-payment', 'web-stories', 'all-stories', 'fasttrack',
+    'privacy-policy', 'terms-conditions', 'refund-cancellation-policy',
+    'shipping-policy', 'contact-us', 'about-us', 'disclaimer',
+    'secret-admin', 'write-blog-secret', 'admin-stories-secret',
+    'tools',
+];
+$isKnownSpaRoute = !$isDetail && in_array($first, $spaRoutes, true);
+$isHubPath = $isDetail && $first === 'jobs';
+$isUnknownPath = !$entry && $jsonOk && $path !== '/' && !$isKnownSpaRoute && !$isHubPath;
+if ($isUnknownPath) {
     http_response_code(404);
     header('Content-Type: text/html; charset=utf-8');
     header('X-Robots-Tag: noindex, nofollow');

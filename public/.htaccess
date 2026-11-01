@@ -72,6 +72,15 @@ Options -Indexes
     </IfModule>
   </FilesMatch>
 
+  # ---------- 6a) HOMEPAGE bots → meta.php (root-directory trap fix) ----------
+  # '/' khud ek REAL directory hai — isliye rule 6 ki `!-d` condition
+  # homepage par hamesha fail ho jaati thi aur Googlebot ko homepage par
+  # meta.php ki jagah khaali SPA shell milta tha (title sirf "StudyGyaan",
+  # koi canonical/OG/schema nahi — live test 31-Oct-2026 me confirm).
+  # Homepage ke liye bina !-d condition wala alag rule:
+  RewriteCond %{HTTP_USER_AGENT} (ahrefs|semrush|mj12|petalbot|applebot|googlebot|bingbot|yandex|duckduck|baiduspider|sogou|facebookexternalhit|whatsapp|telegram|twitterbot|linkedin|discord|pinterest|slackbot|instagram|embedly|quora|skype|inspectiontool|mediapartners-google|bot|crawl|spider|slurp|headlesschrome|lighthouse|pagespeed|gtmetrix|pingdom|uptimerobot|validator|wget|curl|python|scrapy|okhttp|libwww) [NC]
+  RewriteRule ^$ /meta.php [L]
+
   # ---------- 6) SAB BOTS → meta.php (Health-Score ka sabse important fix) ----------
   # AhrefsSiteAudit, AhrefsBot, Semrush, MJ12, Googlebot, Bingbot, Yandex,
   # DuckDuck, social previews, headless crawlers — SAB ko clean static HTML.
