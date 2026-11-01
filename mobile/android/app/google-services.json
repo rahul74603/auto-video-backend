@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "544327120035",
+    "project_id": "studymaterial-406ad",
+    "storage_bucket": "studymaterial-406ad.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:544327120035:android:9af97319ecd444f984bb16",
+        "android_client_info": {
+          "package_name": "com.studygyaan.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "544327120035-10vlut4bbbe1gbcbntsiro56b6h8o6um.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAPSipVDZcYyyjFtr45Uyl8PyN2N8IPwcI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "544327120035-10vlut4bbbe1gbcbntsiro56b6h8o6um.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -48,6 +48,9 @@ test("interview-ONLY notices blocked, genuine exam+interview jobs allowed", () =
   assert.equal(isInterviewNotice("SSC CGL Online Form 2026"), false);
   assert.equal(isInterviewNotice("SSC MTS Recruitment 2026 through Exam and Interview"), false);
   assert.equal(isInterviewNotice("BMC साक्षात्कार भर्ती 2026"), false);
+  assert.equal(isInterviewNotice("SSC Recruitment Notice: written exam and interview selection 2026"), false);
+  assert.equal(isInterviewNotice("SSC Recruitment Interview Schedule 2026"), true);
+  assert.equal(isInterviewNotice("SSC Recruitment by Written Exam and Direct Interview 2026"), false);
   assert.equal(isInterviewNotice("IBPS PO Recruitment", "https://example.in/ibps-po-interview"), false);
 });
 

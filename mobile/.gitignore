@@ -1,0 +1,37 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+# NOTE: pubspec.lock is intentionally NOT ignored — apps should commit it
+# (first `flutter pub get` will create it; commit that file).
+
+# Android
+android/app/google-services.json
+android/local.properties
+android/.gradle/
+android/app/build/
+android/build/
+*.keystore
+*.jks
+key.properties
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Ye PUBLIC sideload key hai (intentionally committed) — har CI build same
+# signature deta hai taaki updates install hon. Play wali private key
+# yahan kabhi commit mat karna.
+!android/app/sideload.p12
+
+# google-services.json: PUBLIC client config (API key har APK me hoti hai).
+# CI release build ko chahiye taaki Firebase init ho — isliye committed.
+# Asli security Firestore rules + SHA-1 restricted key se (Firebase console).
+!android/app/google-services.json

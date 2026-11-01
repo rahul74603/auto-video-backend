@@ -22,19 +22,30 @@ function compareNewestFirst(a, b, getPublishedAt = (item) => item && item.publis
 
 // 🚫 INTERVIEW-ONLY detection — walk-in / direct-interview / interview-EVENT
 // notices block hote hain, par genuine vacancy (exam+interview wali) KABHI
-// skip nahi hoti. link bhi check hota hai (title me chhupa ho tab bhi).
+// skip nahi hoti. Walk-in links bhi title ke bina detect hote hain.
 function isInterviewNotice(title, link = "") {
-  const text = `${title || ""} ${link || ""}`.toLowerCase();
-  if (/walk[\s_\-]*in/.test(text)) return true;               // walk-in / walkin / walk_in
-  if (/direct[\s_\-]*interview/.test(text)) return true;      // direct interview
-  if (/साक्षात्कार/.test(text) && !/भर्ती|भर्ती|पद|रिक्त|vacan|recruit/.test(text)) return true;
-  if (!/interview/.test(text)) return false;
-  // "interview" shabd hai — genuine vacancy signals hon to ALLOW (exam+interview jobs safe)
-  if (/recruit|vacan|online[\s_\-]*form|apply|advertis|bharti|भर्ती|भर्ती|\bposts?\b/.test(text)) {
-    // ...par interview-EVENT wali (schedule/notice/list/result/call-letter) phir bhi block
-    return /schedul|notice|notifica|list|result|call|admit|venue|round|letter|card|slot/.test(text);
-  }
-  return true; // bare interview, no vacancy signal = notice
+  const titleText = String(title || "").toLowerCase();
+  const linkText = String(link || "").toLowerCase();
+  const text = `${titleText} ${linkText}`;
+
+  // Walk-in/direct-interview roles are the interview-only cases explicitly
+  // excluded by policy. Keep the link check for walk-in URLs whose title omits it.
+  if (/walk[\s_\-]*in/.test(text)) return true;
+
+  const hasVacancySignal = /recruit|vacan|online[\s_\-]*form|apply|advertis|bharti|भर्ती|पद|रिक्त|\bposts?\b/.test(titleText);
+  const hasExamSelection = /written|competitive|entrance|prelim|mains?|exam|test|परीक्षा/.test(titleText);
+  if (/direct[\s_\-]*interview/.test(titleText) && !(hasVacancySignal && hasExamSelection)) return true;
+
+  const hasInterview = /interview|साक्षात्कार/.test(titleText);
+  if (!hasInterview) return false;
+
+  const isInterviewEvent = /(?:interview|साक्षात्कार).{0,35}(?:schedul|date|call[\s_\-]*letter|admit[\s_\-]*card|result|list|venue|slot|shortlist|programme|program|तिथि|सूची|कार्यक्रम|प्रवेश पत्र|कॉल लेटर)|(?:schedul|date|call[\s_\-]*letter|admit[\s_\-]*card|result|list|venue|slot|shortlist).{0,35}(?:interview|साक्षात्कार)/.test(titleText);
+
+  // A real recruitment/vacancy is never discarded merely because selection
+  // includes an interview. Only a clearly event-only interview notice is blocked.
+  if (hasVacancySignal && !isInterviewEvent) return false;
+  if (isInterviewEvent) return true;
+  return true; // bare interview/sाक्षात्कार notice without an application vacancy
 }
 
 const GOVERNMENT_SIGNALS = [
