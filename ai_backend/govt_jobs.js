@@ -10,6 +10,7 @@ const cheerio = require("cheerio");
 const Parser = require('rss-parser');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { parsePublishedAt, isRecentPublication } = require("./source_freshness");
+const { isInterviewNotice } = require("./scraper_policy");
 const MAX_SCRAPE_AGE_DAYS = 10; // sirf pichhle 10 din ke jobs — isse purana kabhi nahi
 
 // =========================================================
@@ -80,13 +81,72 @@ const BLOCKED_DOMAINS = [
 ];
 
 function isBlockedLink(url) {
-    if (!url || url === '#' || url.trim() === '') return false;
+    const raw = String(url || '').trim();
+    if (!raw || raw === '#') return false;
+
+    // The AI/feed may return a bare, encoded, or redirect URL rather than a
+    // canonical URL. Reject FreeJobAlert anywhere in the value, not just when
+    // URL() can parse the hostname; a source article must never become an
+    // official apply/notification/site link by fallback.
+    let decoded = raw;
+    try { decoded = decodeURIComponent(raw); } catch { /* keep raw */ }
+    const values = `${raw} ${decoded}`.toLowerCase();
+    if (values.includes('freejobalert')) return true;
+
     try {
-        const hostname = new URL(url).hostname.toLowerCase();
-        return BLOCKED_DOMAINS.some(domain => hostname.includes(domain));
+        const hostname = new URL(raw).hostname.toLowerCase();
+        return BLOCKED_DOMAINS.some(domain => hostname === domain || hostname.endsWith(`.${domain}`));
     } catch {
-        return false;
+        return BLOCKED_DOMAINS.some(domain => values.includes(domain));
     }
+}
+
+function sanitizeOfficialLink(url) {
+    const raw = String(url || '').trim();
+    if (!raw || isBlockedLink(raw)) return '';
+    try {
+        const parsed = new URL(raw);
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return '';
+        return parsed.href;
+    } catch {
+        return '';
+    }
+}
+
+function hasExplicitYear(value) {
+    if (value instanceof Date) return Number.isFinite(value.getTime());
+    if (typeof value === 'number') return Number.isFinite(value) && value > Date.UTC(2000, 0, 1);
+    return /\b(?:19|20)\d{2}\b/.test(String(value || ''));
+}
+
+function verifiedDate(value) {
+    const text = String(value || '').trim();
+    // Keep the source's date wording, but reject a date with an omitted year;
+    // we must never silently turn an old notice into a current-year deadline.
+    return text && hasExplicitYear(text) ? text : '';
+}
+
+function extractLabeledDate(content, labelPattern) {
+    const text = String(content || '').replace(/\s+/g, ' ');
+    const datePattern = String.raw`(\d{1,2}[./-]\d{1,2}[./-](?:19|20)\d{2}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9},?\s+(?:19|20)\d{2}|[A-Za-z]{3,9}\s+\d{1,2},?\s+(?:19|20)\d{2})`;
+    const match = text.match(new RegExp(`(?:${labelPattern})[^.]{0,80}?${datePattern}`, 'i'));
+    return match ? verifiedDate(match[1]) : '';
+}
+
+function buildJobDescription(title, jobData) {
+    const parts = [];
+    const organization = String(jobData.organization || '').trim();
+    const vacancies = String(jobData.vacancies || '').trim();
+    const qualification = String(jobData.qualification || '').trim();
+    const lastDate = verifiedDate(jobData.lastDate);
+    const selectionProcess = String(jobData.selectionProcess || '').trim();
+
+    parts.push(`${organization ? `${organization} की ` : ''}${title} भर्ती की जानकारी।`);
+    if (vacancies) parts.push(`कुल रिक्तियां: ${vacancies}।`);
+    if (qualification) parts.push(`योग्यता: ${qualification}।`);
+    if (lastDate) parts.push(`आवेदन की अंतिम तारीख: ${lastDate}।`);
+    if (selectionProcess) parts.push(`चयन प्रक्रिया: ${selectionProcess}।`);
+    return parts.slice(0, 4).join(' ');
 }
 
 // =========================================================
@@ -236,11 +296,13 @@ Follow these mapping rules to fill EVERY field:
 15. feeFemale: Female fee amount
 16. feeOBC: OBC/EWS fee amount
 17. applicationFee: Payment mode description
-18. notificationLink: URL from brackets like (URL: https://...) - ONLY official govt/org URLs
-19. applyLink: Official apply URL only, default "${jobLink}"
-20. officialSiteLink: Official website URL
+18. notificationLink: URL from scraped data only - ONLY official govt/org URLs; never use FreeJobAlert or any job-portal/source URL
+19. applyLink: Official apply URL only, from scraped data; if not verified, return an empty string (never default to the source URL)
+20. officialSiteLink: Official organization website URL only; if unverified, return an empty string
 21. isExpired: Compare lastDate with today (${todayDate}), true if expired
 22. category: ssc/banking/railway/upsc/defense/teaching/state/engineering/other
+23. Dates: copy only dates explicitly present in source, include the full 4-digit year; never guess a year. Unknown date = empty string.
+24. description: ALWAYS provide a concise 3-4 sentence Hinglish summary using only extracted facts. If facts are sparse, say only what is known; do not leave it blank and do not invent details.
 
 SCRAPED DATA:
 ${scrapedContent}
@@ -269,7 +331,7 @@ Return ONLY this JSON (no markdown):
   "feeOBC": "",
   "applicationFee": "",
   "notificationLink": "",
-  "applyLink": "${jobLink}",
+  "applyLink": "",
   "officialSiteLink": "",
   "description": "3-4 line Hinglish summary",
   "isExpired": false
@@ -422,24 +484,33 @@ const JOB_SOURCES = DEFAULT_SOURCES;
 
 // Per-feed transform (map+filter): testable pure fn — behavior bilkul same,
 // crash-site (parsePublishedAt/isRecentPublication/MAX_AGE) ka regression-guard.
-function normalizeFeedItems(rawItems, sourceName, perSource = 12) {
-    return (rawItems || []).slice(0, perSource).map((it) => ({
+function normalizeFeedItems(rawItems, sourceName, perSource = 12, now = Date.now()) {
+    return (rawItems || []).map((it) => ({
         title:  (it.title || '').trim(),
         link:   (it.link || it.guid || '').trim(),
         source: sourceName,
-        publishedAt: parsePublishedAt(it.isoDate, it.pubDate, it.publishedAt)
+        publishedAt: parsePublishedAt(it.isoDate, it.pubDate, it.publishedAt),
+        hasYear: [it.isoDate, it.pubDate, it.publishedAt].some(hasExplicitYear)
     })).filter((it) => {
         if (!it.title || !it.link || it.link.includes('127.0.0.1')) return false;
-        // 🗓️ FRESHNESS — 10 din se purana post kabhi nahi (poora year compare
-        // hota hai, isliye "same date purana year" wala bug ab impossible hai)
-        if (it.publishedAt > 0 && !isRecentPublication(it.publishedAt, { maxAgeDays: MAX_SCRAPE_AGE_DAYS })) {
-            console.log(`⏭️ Old (>10d): ${it.title.slice(0, 70)}`);
+        // Strict freshness: an unknown/partial-year feed date is not proof of
+        // recency. Require an explicit year and a real timestamp within 10d.
+        if (!it.hasYear || !it.publishedAt || it.publishedAt > now ||
+            !isRecentPublication(it.publishedAt, { now, maxAgeDays: MAX_SCRAPE_AGE_DAYS })) {
+            console.log(`⏭️ Missing/invalid/old (>10d) source date: ${it.title.slice(0, 70)}`);
             return false;
         }
         return true;
-    });
+    }).sort((a, b) => b.publishedAt - a.publishedAt)
+      .slice(0, perSource)
+      .map(({ hasYear, ...item }) => item);
 }
 exports.normalizeFeedItems = normalizeFeedItems;
+exports.isBlockedLink = isBlockedLink;
+exports.sanitizeOfficialLink = sanitizeOfficialLink;
+exports.verifiedDate = verifiedDate;
+exports.extractLabeledDate = extractLabeledDate;
+exports.buildJobDescription = buildJobDescription;
 
 async function fetchAllJobItems(perSource = 12, limitTotal = 60) {
     const buckets = [];
@@ -581,9 +652,10 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
         const jobLink = (item.link || item.guid || '').trim();
         if (!jobLink || jobLink.includes('127.0.0.1')) continue;
 
-        // 🚫 INTERVIEW BLOCK — link me interview/walk-in ho to bhi skip (title me na ho tab bhi)
-        if (/interview|walk[\s_-]*in|साक्षात्कार/i.test(jobLink)) {
-            console.log(`⏭️ Interview link skipped: ${titleText}`);
+        // 🚫 Interview-only / walk-in / interview-event notices are excluded,
+        // but genuine vacancies whose selection includes interview are allowed.
+        if (isInterviewNotice(titleText, jobLink)) {
+            console.log(`⏭️ Interview-only notice skipped: ${titleText}`);
             continue;
         }
 
@@ -632,29 +704,35 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
             }
 
             // =========================================================
-            // ✅ SIRF LINKS CLEAN KARO - RSS fetch pe koi asar nahi
-            // applyLink blocked → original jobLink use karo
-            // notificationLink blocked → empty string
-            // officialSiteLink blocked → empty string
+            // ✅ Only verified official links enter public job fields.
+            // Never fall back to the RSS/source article: it may be FreeJobAlert.
             // =========================================================
-            const cleanApplyLink = isBlockedLink(jobData.applyLink)
-                ? jobLink
-                : (jobData.applyLink || jobLink);
+            const cleanApplyLink = sanitizeOfficialLink(jobData.applyLink);
+            const cleanNotificationLink = sanitizeOfficialLink(jobData.notificationLink);
+            const cleanOfficialSiteLink = sanitizeOfficialLink(jobData.officialSiteLink);
+            const verifiedJobData = {
+                ...jobData,
+                title: finalTitle,
+                startDate: verifiedDate(jobData.startDate) || extractLabeledDate(
+                    scrapedContent,
+                    '(?:application\s*(?:start|begin|opening)\s*date|start\s*date|registration\s*(?:start|from)\s*date|आवेदन\s*(?:प्रारंभ|शुरू|आरंभ).*?तिथि)',
+                ),
+                lastDate: verifiedDate(jobData.lastDate) || extractLabeledDate(
+                    scrapedContent,
+                    '(?:last\s*date(?:\s*(?:to\s*apply|for\s*(?:apply|application|submission)))?|closing\s*date|application\s*deadline|end\s*date|अंतिम\s*तिथि|आखिरी\s*तारीख)',
+                ),
+                applyLink: cleanApplyLink,
+                notificationLink: cleanNotificationLink,
+                officialSiteLink: cleanOfficialSiteLink
+            };
 
-            const cleanNotificationLink = isBlockedLink(jobData.notificationLink)
-                ? ''
-                : (jobData.notificationLink || '');
+            console.log(`🔗 official applyLink: ${cleanApplyLink || '(not verified)'}`);
 
-            const cleanOfficialSiteLink = isBlockedLink(jobData.officialSiteLink)
-                ? ''
-                : (jobData.officialSiteLink || '');
-
-            console.log(`🔗 applyLink: ${cleanApplyLink}`);
-
-            // ✍️ FULL ARTICLE — scraper ke saath hi ready (admin ko bas review karna hai)
+            // ✍️ FULL ARTICLE — pass sanitized links only; no aggregator URL can
+            // be presented by the writer as an official application link.
             let articleHtml = '';
             try {
-                articleHtml = await generateFullJobArticle(jobData, scrapedContent);
+                articleHtml = await generateFullJobArticle(verifiedJobData, scrapedContent);
                 const words = articleHtml.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
                 console.log(`📝 Full article generated: ${words} words`);
             } catch (artErr) {
@@ -667,13 +745,13 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 type:             "JOB",
                 status:           "pending",
                 metaDescription:  jobData.metaDescription  || '',
-                description:      jobData.description      || '',
+                description:      String(jobData.description || '').trim() || buildJobDescription(finalTitle, verifiedJobData),
                 articleHtml:      articleHtml              || '',
                 category:         jobData.category         || 'other',
                 organization:     jobData.organization     || '',
                 advtNo:           jobData.advtNo           || '',
-                startDate:        jobData.startDate        || '',
-                lastDate:         jobData.lastDate         || '',
+                startDate:        verifiedJobData.startDate,
+                lastDate:         verifiedJobData.lastDate,
                 vacancies:        jobData.vacancies        || '',
                 salary:           jobData.salary           || '',
                 qualification:    jobData.qualification    || '',
@@ -701,7 +779,7 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
             );
 
             // ⭐ QUALITY GATE — sirf ache article wale jobs save honge
-            const { score, words } = jobQualityScore(jobData, articleHtml);
+            const { score, words } = jobQualityScore(verifiedJobData, articleHtml);
             console.log(`⭐ Quality: ${score}/14 (${words} words) — ${finalTitle.slice(0, 50)}`);
 
             // Processed mark turant (dobara AI-quota waste na ho)
