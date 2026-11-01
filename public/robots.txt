@@ -2,10 +2,11 @@ User-agent: *
 Allow: /
 
 # 🛑 Private Routes
-Disallow: /secret-admin/
+# NOTE: "secret" naam wale admin routes (/secret-admin/ adi) yahan NAHI likhe
+# hain — robots.txt public file hai, usme naam likhna matlab poori duniya ko
+# admin ka pata bata dena. Unki asli suraksha login/auth se hai, naam
+# chhupane se nahi. Sirf aam (non-secret) private hisse hi disallow hain:
 Disallow: /admin/
-Disallow: /write-blog-secret/
-Disallow: /admin-stories-secret/
 Disallow: /student-dashboard/
 Disallow: /manual-payment/
 

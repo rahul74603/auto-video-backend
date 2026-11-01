@@ -149,3 +149,16 @@ Options -Indexes
     Header set Cache-Control "no-cache, must-revalidate"
   </FilesMatch>
 </IfModule>
+
+# ---------- Security headers (safe set) ----------
+# CSP jaanboojh kar NAHI lagaya: site par Firebase/GTM/OneSignal/Google Fonts
+# jaise bahari sources chalti hain — galat CSP poori site tod sakta hai.
+# Ye paanch headers koi functionality nahi badalte, sirf browser ko
+# sakht hidayatein dete hain (clickjacking, MIME-sniffing, downgrade rokna).
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set X-Frame-Options "SAMEORIGIN"
+  Header set Referrer-Policy "strict-origin-when-cross-origin"
+  Header set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  Header set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+</IfModule>
