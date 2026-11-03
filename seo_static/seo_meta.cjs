@@ -282,6 +282,13 @@ function buildMetaFiles(colls, opts = {}) {
   // ===== JOBS: full content + JobPosting schema =====
   (colls.jobs || []).forEach(({ id, data }) => {
     try { // per-doc guard: ek kharab doc poora JSON kill na kare
+    // Doc-level merge redirect: duplicate doc ka bot-path pradhan page par 301.
+    // redirectTo sirf local /job/ path ho sakta hai (open-redirect suraksha meta.php me bhi hai).
+    if (typeof data.redirectTo === "string" && /^\/job\/[^/?#\s]+$/.test(data.redirectTo)) {
+      const rPath = `/job/${cleanSlug(data.slug, id)}`;
+      if (!jobs[rPath]) jobs[rPath] = { redirect: data.redirectTo };
+      return;
+    }
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
     if ((data.type || "").toUpperCase() === "COURSE") return;
     const slug = cleanSlug(data.slug, id);
