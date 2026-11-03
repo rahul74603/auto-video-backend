@@ -92,6 +92,9 @@ const AdminPage = () => {
     const [loginPassword, setLoginPassword] = useState('');
     const [loginError, setLoginError] = useState('');
     const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL;
+    // VITE_ADMIN_EMAIL me comma se kai admin email ho sakte hain
+    const isAdminEmail = (email?: string | null) =>
+        !!email && (ADMIN_EMAIL || '').split(',').map((e: string) => e.trim().toLowerCase()).includes(email.toLowerCase());
     
     const location = useLocation(); 
 
@@ -144,7 +147,7 @@ const AdminPage = () => {
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-            if (currentUser && currentUser.email === ADMIN_EMAIL) {
+            if (currentUser && isAdminEmail(currentUser.email)) {
                 setUser(currentUser);
             } else {
                 signOut(auth);
@@ -402,3 +405,4 @@ const AdminPage = () => {
 };
 
 export default AdminPage;
+
