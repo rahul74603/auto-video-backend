@@ -653,6 +653,12 @@ function buildMetaFiles(colls, opts = {}) {
     return `<li><a href="${SITE}/job/${esc(j.slug)}">${esc(j.title)}</a>${extra ? ` — ${esc(extra)}` : ""}</li>`;
   }).join("");
 
+  // Archive ke liye: saari indexable jobs (expired bhi — result/syllabus khoj par wohi kaam ke hain)
+  const jobLinksAll = () => jobPool.map((j) => {
+    const extra = [j.vacancies ? `${j.vacancies} Posts` : "", j.lastDate ? `Last Date: ${j.lastDate}` : ""].filter(Boolean).join(" · ");
+    return `<li><a href="${SITE}/job/${esc(j.slug)}">${esc(j.title)}</a>${extra ? ` — ${esc(extra)}` : ""}</li>`;
+  }).join("");
+
   const updatesByCategory = (kw, n) => (colls.fast_track || [])
     .filter(({ data }) => isIndexableDocument(data) && hasUsefulTitle(data))
     .filter(({ data }) => String(data.category || "").toLowerCase().includes(kw))
@@ -677,13 +683,13 @@ function buildMetaFiles(colls, opts = {}) {
   addListing("/", {
     t: "StudyGyaan - Free Study Material, Govt Jobs & Mock Tests",
     d: "StudyGyaan par payein Latest Sarkari Naukri, Free PDF Notes, Online Mock Tests, Admit Card, Result aur Premium Study Material. SSC, Railway, Bank, Police Exam ki best taiyari.",
-    content: `<h2>Latest Govt Jobs</h2><ul>${jobLinks(15)}</ul><h2>Fast Track Updates</h2><ul>${collectionLinks(colls.fast_track || [], "/update", 10)}</ul><p><a href="${SITE}/govt-jobs">सभी Latest Govt Jobs</a> | <a href="${SITE}/test">Free Mock Tests</a> | <a href="${SITE}/blog">Blog</a> | <a href="${SITE}/exam-calendar">Exam Calendar</a></p>`,
+    content: `<h2>Latest Govt Jobs</h2><ul>${jobLinks(15)}</ul><h2>Fast Track Updates</h2><ul>${collectionLinks(colls.fast_track || [], "/update", 10)}</ul><p><a href="${SITE}/govt-jobs">सभी Latest Govt Jobs</a> | <a href="${SITE}/test">Free Mock Tests</a> | <a href="${SITE}/blog">Blog</a> | <a href="${SITE}/exam-calendar">Exam Calendar</a> | <a href="${SITE}/update/archive">All Updates</a></p>`,
   });
 
   addListing("/govt-jobs", {
     t: `Latest Govt Jobs ${YEAR_NOW} - सरकारी नौकरी | StudyGyaan`,
     d: `Sabhi Latest Government Jobs ${YEAR_NOW} ki jankari. SSC, Railway, Bank, Police, UPSC aur State PSC ki Vacancy, Syllabus aur Preparation Tips.`,
-    content: `<h2>Active Bhartiyan</h2><ul>${jobLinks(30)}</ul><p><a href="${SITE}/exam-calendar">Exam Calendar</a> | <a href="${SITE}/results">Results</a> | <a href="${SITE}/admit-card">Admit Cards</a></p>`,
+    content: `<h2>Active Bhartiyan</h2><ul>${jobLinks(30)}</ul><p><a href="${SITE}/exam-calendar">Exam Calendar</a> | <a href="${SITE}/results">Results</a> | <a href="${SITE}/admit-card">Admit Cards</a> | <a href="${SITE}/job/archive">All Govt Jobs</a></p>`,
   });
 
   addListing("/results", {
@@ -710,28 +716,75 @@ function buildMetaFiles(colls, opts = {}) {
     content: `<h2>Latest Syllabus</h2><ul>${updatesByCategory("syllabus", 25)}</ul><p><a href="${SITE}/test">Free Mock Tests</a> | <a href="${SITE}/free-study-material">Free Study Material</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
   });
 
+  addListing("/update", {
+    t: `Latest Updates ${YEAR_NOW} - Admit Card, Result, Syllabus | StudyGyaan`,
+    d: "Sabhi Sarkari Exam Updates — Admit Card, Result, Answer Key, Syllabus aur Exam Dates sabse pehle StudyGyaan par.",
+    content: `<h2>Latest Updates</h2><ul>${collectionLinks(colls.fast_track || [], "/update", 25)}</ul><p><a href="${SITE}/govt-jobs">Govt Jobs</a> | <a href="${SITE}/results">Results</a> | <a href="${SITE}/admit-card">Admit Cards</a> | <a href="${SITE}/update/archive">All Updates</a></p>`,
+  });
+
   addListing("/blog", {
     t: "Education Blog - Exam Tips & Updates | StudyGyaan",
     d: "Latest Education News, Exam Analysis, Study Tips aur Competitive Exam Updates — Hindi me.",
-    content: `<h2>Latest Blog Posts</h2><ul>${collectionLinks(colls.blogs || [], "/blog", 25)}</ul><p><a href="${SITE}/govt-jobs">Govt Jobs</a> | <a href="${SITE}/test">Mock Tests</a> | <a href="${SITE}/web-stories">Web Stories</a></p>`,
+    content: `<h2>Latest Blog Posts</h2><ul>${collectionLinks(colls.blogs || [], "/blog", 25)}</ul><p><a href="${SITE}/govt-jobs">Govt Jobs</a> | <a href="${SITE}/test">Mock Tests</a> | <a href="${SITE}/web-stories">Web Stories</a> | <a href="${SITE}/blog/archive">All Blog Posts</a></p>`,
   });
 
   addListing("/test", {
     t: "Free Online Mock Tests - Practice Sets | StudyGyaan",
     d: "SSC, Railway, Bank, Police ke Free Online Mock Tests. Bilingual Hindi+English Practice Sets with Timer.",
-    content: `<h2>Mock Tests</h2><ul>${collectionLinks(colls.mock_tests || [], "/test", 25)}</ul><p><a href="${SITE}/free-study-material">Free Study Material</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
+    content: `<h2>Mock Tests</h2><ul>${collectionLinks(colls.mock_tests || [], "/test", 25)}</ul><p><a href="${SITE}/free-study-material">Free Study Material</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a> | <a href="${SITE}/test/archive">All Mock Tests</a></p>`,
   });
 
   addListing("/web-stories", {
     t: "Web Stories - Quick Updates & News | StudyGyaan",
     d: "Latest Sarkari Naukri aur Exam Updates Web Stories format me — quick, visual aur easy to read.",
-    content: `<h2>Latest Web Stories</h2><ul>${collectionLinks(colls.web_stories || [], "/web-stories", 25)}</ul><p><a href="${SITE}/govt-jobs">Govt Jobs</a> | <a href="${SITE}/blog">Blog</a></p>`,
+    content: `<h2>Latest Web Stories</h2><ul>${collectionLinks(colls.web_stories || [], "/web-stories", 25)}</ul><p><a href="${SITE}/govt-jobs">Govt Jobs</a> | <a href="${SITE}/blog">Blog</a> | <a href="${SITE}/web-stories/archive">All Web Stories</a></p>`,
   });
 
   addListing("/free-study-material", {
     t: "Free Study Material PDF Download | StudyGyaan",
     d: "SSC, Railway, Bank, Police, UPSC ke liye Free PDF Notes, Previous Year Papers aur Topic-wise Study Material download karein.",
-    content: `<h2>Study Material</h2><ul>${[...(colls.study_materials || []), ...(colls.studyMaterials || [])].length ? collectionLinks([...(colls.study_materials || []), ...(colls.studyMaterials || [])], "/material", 25) : "<li>Free PDF notes jaldi hi add ho rahe hain.</li>"}</ul><p><a href="${SITE}/e-books">E-Books</a> | <a href="${SITE}/premium-notes">Premium Notes</a> | <a href="${SITE}/test">Mock Tests</a></p>`,
+    content: `<h2>Study Material</h2><ul>${[...(colls.study_materials || []), ...(colls.studyMaterials || [])].length ? collectionLinks([...(colls.study_materials || []), ...(colls.studyMaterials || [])], "/material", 25) : "<li>Free PDF notes jaldi hi add ho rahe hain.</li>"}</ul><p><a href="${SITE}/e-books">E-Books</a> | <a href="${SITE}/premium-notes">Premium Notes</a> | <a href="${SITE}/test">Mock Tests</a> | <a href="${SITE}/material/archive">All Study Material</a></p>`,
+  });
+
+  // ===== ARCHIVE LISTINGS: har hisse ke saare pages ka crawl-raasta =====
+  // Mukhya listings sirf 25 naye pages dikhati thi; baaki hazaro pages sirf
+  // sitemap me the, isiliye Google unhe crawl me sabse peeche rakhta tha.
+  // Archive har indexable page ko listing se 1 click par rakhta hai.
+  // Ye pages sirf bots ko dikhte hain (meta.php) — website (SPA) par asar nahi.
+  addListing("/job/archive", {
+    t: "All Govt Jobs — Complete List | StudyGyaan",
+    d: "StudyGyaan par maujud saari Sarkari Naukri bhartiyon ki puri list — SSC, Railway, Bank, Police, UPSC, State PSC sab.",
+    content: `<h2>All Govt Jobs</h2><ul>${jobLinksAll()}</ul><p><a href="${SITE}/govt-jobs">Latest Govt Jobs</a> | <a href="${SITE}/exam-calendar">Exam Calendar</a></p>`,
+  });
+
+  addListing("/blog/archive", {
+    t: "All Blog Posts — Complete List | StudyGyaan",
+    d: "StudyGyaan ke saare blog posts ki puri list — Exam Tips, Analysis, Study Guides aur Education News.",
+    content: `<h2>All Blog Posts</h2><ul>${collectionLinks(colls.blogs || [], "/blog", 100000)}</ul><p><a href="${SITE}/blog">Latest Blog Posts</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
+  });
+
+  addListing("/update/archive", {
+    t: "All Exam Updates — Complete List | StudyGyaan",
+    d: "StudyGyaan ke saare Fast Track Updates ki puri list — Admit Card, Result, Answer Key, Syllabus aur Exam Dates.",
+    content: `<h2>All Updates</h2><ul>${collectionLinks(colls.fast_track || [], "/update", 100000)}</ul><p><a href="${SITE}/update">Latest Updates</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
+  });
+
+  addListing("/test/archive", {
+    t: "All Mock Tests — Complete List | StudyGyaan",
+    d: "StudyGyaan ke saare Free Mock Tests aur Practice Sets ki puri list — SSC, Railway, Bank, Police sab ke liye.",
+    content: `<h2>All Mock Tests</h2><ul>${collectionLinks(colls.mock_tests || [], "/test", 100000)}</ul><p><a href="${SITE}/test">Latest Mock Tests</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
+  });
+
+  addListing("/web-stories/archive", {
+    t: "All Web Stories — Complete List | StudyGyaan",
+    d: "StudyGyaan ki saari Web Stories ki puri list — Sarkari Naukri aur Exam Updates quick visual format me.",
+    content: `<h2>All Web Stories</h2><ul>${collectionLinks(colls.web_stories || [], "/web-stories", 100000)}</ul><p><a href="${SITE}/web-stories">Latest Web Stories</a> | <a href="${SITE}/govt-jobs">Govt Jobs</a></p>`,
+  });
+
+  addListing("/material/archive", {
+    t: "All Study Material — Complete List | StudyGyaan",
+    d: "StudyGyaan ke saare Free Study Material, PDF Notes aur Practice Sets ki puri list.",
+    content: `<h2>All Study Material</h2><ul>${collectionLinks([...(colls.study_materials || []), ...(colls.studyMaterials || [])], "/material", 100000)}</ul><p><a href="${SITE}/free-study-material">Free Study Material</a> | <a href="${SITE}/test">Mock Tests</a></p>`,
   });
 
   addListing("/e-books", {
