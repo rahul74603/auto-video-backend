@@ -120,7 +120,7 @@ if ($file && is_readable($file)) {
 // the target locally so generated JSON can never create an open redirect.
 if (is_array($entry) && !empty($entry['redirect'])) {
     $target = (string)$entry['redirect'];
-    if (preg_match('~^/(blog|web-stories)/[^/?#\r\n]+$~uD', $target)) {
+    if (preg_match('~^/(blog|web-stories|job)/[^/?#\r\n]+$~uD', $target)) {
         header('Location: ' . $SITE . $target, true, 301);
         // Uniform policy: bot ka KOI jawab cache nahi (slug-alias badle to stale 301 ka risk zero)
         header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
