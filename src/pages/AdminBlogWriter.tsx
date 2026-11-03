@@ -35,6 +35,9 @@ const AdminBlogWriter = () => {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL;
+  // VITE_ADMIN_EMAIL me comma se kai admin email ho sakte hain
+  const isAdminEmail = (email?: string | null) =>
+    !!email && (ADMIN_EMAIL || '').split(',').map((e: string) => e.trim().toLowerCase()).includes(email.toLowerCase());
 const [aiGenerating, setAiGenerating] = useState(false);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
@@ -56,7 +59,7 @@ const [aiGenerating, setAiGenerating] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser && currentUser.email === ADMIN_EMAIL) {
+      if (currentUser && isAdminEmail(currentUser.email)) {
         setUser(currentUser);
       } else {
         setUser(null);
