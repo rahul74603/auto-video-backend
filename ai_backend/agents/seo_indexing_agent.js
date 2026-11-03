@@ -301,6 +301,32 @@ async function submitSitemap(auth, siteUrl, sitemapUrl) {
   }
 }
 
+// Roz ka audit window chunna:
+// - Taaza job pages (lastmod pichhle 2 din me) hamesha shamil — unki Indexing
+//   API notification usi raat jaani chahiye.
+// - Baaki poora sitemap ek ghumte hue (rotating) hisse me — taaki capped daily
+//   audit kuch dino me PURA sitemap cover kare, har roz wahi pehle 200 nahi.
+function selectDailyWindow(entries, maxUrls) {
+  if (entries.length <= maxUrls) return entries.slice();
+  const now = Date.now();
+  const freshCutoff = now - 2 * 24 * 60 * 60 * 1000;
+  const isFreshJob = (entry) => {
+    if (!isEligibleIndexingApiUrl(entry.url) || !entry.lastmod) return false;
+    const t = new Date(entry.lastmod).getTime();
+    return Number.isFinite(t) && t >= freshCutoff;
+  };
+  const fresh = entries.filter(isFreshJob).slice(0, maxUrls);
+  const freshSet = new Set(fresh);
+  const rest = entries.filter((entry) => !freshSet.has(entry));
+  const slots = maxUrls - fresh.length;
+  if (slots <= 0) return fresh;
+  if (rest.length <= slots) return [...fresh, ...rest];
+  const epochDay = Math.floor(now / (24 * 60 * 60 * 1000));
+  const offset = (epochDay * slots) % rest.length;
+  const rotated = rest.slice(offset).concat(rest.slice(0, offset));
+  return [...fresh, ...rotated.slice(0, slots)];
+}
+
 function signatureFor(entry) {
   return crypto.createHash("sha256").update(`${entry.url}|${entry.lastmod || "unknown"}`).digest("hex");
 }
@@ -454,13 +480,15 @@ class SEOIndexingAgent {
 
     // Recent job pages are checked first. The remainder is rotated so a capped
     // daily audit eventually covers the complete sitemap rather than the same
-    // first 200 URLs forever.
+    // first 200 URLs forever. (Rotation asal me selectDailyWindow karta hai —
+    // pehle sirf sort karke pehle maxUrls le liye jaate the, isiliye purane
+    // pages kabhi audit/notify hi nahi hote the.)
     deduplicated.sort((a, b) => {
       const jobDelta = Number(isEligibleIndexingApiUrl(b.url)) - Number(isEligibleIndexingApiUrl(a.url));
       if (jobDelta) return jobDelta;
       return String(b.lastmod || "").localeCompare(String(a.lastmod || ""));
     });
-    const selected = deduplicated.slice(0, maxUrls);
+    const selected = selectDailyWindow(deduplicated, maxUrls);
     const audits = await mapWithConcurrency(
       selected,
       intEnv("SEO_AUDIT_CONCURRENCY", 5, 1, 15),
