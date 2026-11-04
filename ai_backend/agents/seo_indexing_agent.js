@@ -359,11 +359,13 @@ async function notifyIndexNowAll(urls) {
     if (!list.length) return { attempted: 0, success: 0, failed: 0 };
     const INDEXNOW_KEY = process.env.INDEXNOW_KEY || "9629c8c41fa94b898f83a53ecd320743";
     try {
-      await axios.post("https://api.indexnow.org/indexnow", {
+      const res = await axios.post("https://api.indexnow.org/indexnow", {
         host: "studygyaan.in", key: INDEXNOW_KEY,
         keyLocation: `${DEFAULT_SITE}/${INDEXNOW_KEY}.txt`, urlList: list.slice(0, 1000)
       }, { headers: { "Content-Type": "application/json; charset=utf-8" }, timeout: 15000, validateStatus: () => true });
-      return { attempted: list.length, success: list.length, failed: 0 };
+      // Status dekhe bina success ginna galat report deta tha — asal status hi sach hai.
+      const okStatus = res.status === 200 || res.status === 202;
+      return { attempted: list.length, success: okStatus ? list.length : 0, failed: okStatus ? 0 : list.length, status: res.status, via: "fallback" };
     } catch (err) {
       return { attempted: list.length, success: 0, failed: list.length, error: err.message };
     }
@@ -433,6 +435,7 @@ async function saveReport(db, report) {
       ...report.indexingApi,
       results: report.indexingApi.results.slice(0, 200)
     },
+    indexNow: report.indexNow || null,
     audits: compactAudits
   });
   await db.collection("system_configs").doc("latest_seo_audit").set({
