@@ -794,6 +794,17 @@ function buildMetaFiles(colls, opts = {}) {
     content: `<h2>All Study Material</h2><ul>${collectionLinks([...(colls.study_materials || []), ...(colls.studyMaterials || [])], "/material", 100000)}</ul><p><a href="${SITE}/free-study-material">Free Study Material</a> | <a href="${SITE}/test">Mock Tests</a></p>`,
   });
 
+  // meta.php 2-hisso wale (detail-jaise) raasto ko unke section JSON me
+  // dhundhta hai (job->jobs, update->updates, web-stories->stories), jabki
+  // addListing saari listings pages JSON me dalta hai. Isiliye in teen
+  // archive listings ko unke section maps me bhi rakhna zaroori hai —
+  // warna /job/archive, /update/archive, /web-stories/archive 404 rahenge
+  // (4 Nov live jaanch me yahi hua; blog/test/material wale chal gaye the
+  // kyunki woh pages JSON se hi padhe jate hain).
+  if (pages["/job/archive"]) jobs["/job/archive"] = pages["/job/archive"];
+  if (pages["/update/archive"]) updates["/update/archive"] = pages["/update/archive"];
+  if (pages["/web-stories/archive"]) stories["/web-stories/archive"] = pages["/web-stories/archive"];
+
   addListing("/e-books", {
     t: "Free E-Books & Handwritten Notes | StudyGyaan",
     d: "All Competitive Exams ke liye Free E-Books. GK, Math, Reasoning, English, Hindi aur Science ki complete books.",
