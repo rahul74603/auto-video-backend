@@ -1,0 +1,78 @@
+name: SEO Change Outcomes
+
+# PHASE 3 — MEASUREMENT ONLY. This workflow measures what happened after an
+# applied/rolled-back SEO change by connecting Phase 1 GSC Search Analytics
+# rows with Phase 2 change events (deterministic 7-day before/after windows).
+# It NEVER optimizes pages, NEVER applies or proposes SEO changes, NEVER
+# writes public content, and NEVER learns. Outcomes are observed
+# before/after differences — correlation, NOT causation.
+# ACTIVE WORKFLOW REQUIRES MANUAL COPY — see WORKFLOW_COPY/README.md (Rule 2).
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "recent = measure new/incomplete outcomes | event = one event (--event-id) | recalc = force re-measure (idempotent)"
+        required: false
+        default: "recent"
+      event_id:
+        description: "Event mode only: the seo_change_events document id to measure"
+        required: false
+        default: ""
+      max_events:
+        description: "Max change events measured per run (1-100, default 25)"
+        required: false
+        default: "25"
+      window_days:
+        description: "Pre/post window length in completed GSC days (3-31, default 7)"
+        required: false
+        default: "7"
+      dry_run:
+        description: "true = compute outcomes but write nothing to Firestore"
+        required: false
+        default: "false"
+  schedule:
+    # Daily at 11:00 AM IST (05:30 UTC) — one hour AFTER the GSC ingest job
+    # (04:30 UTC) so the most recent finalized GSC days are already collected.
+    # Missing GSC days are recorded as coverage gaps and re-measured on later
+    # runs as data arrives; nothing is fabricated.
+    - cron: "30 5 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  seo-change-outcomes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install backend dependencies
+        working-directory: ai_backend
+        run: npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+
+      - name: Run SEO outcome measurement
+        working-directory: ai_backend
+        env:
+          # SAME service account already used for GSC ingest (no second
+          # credential architecture). Reads seo_change_events +
+          # gsc_search_analytics_daily; writes ONLY seo_change_outcomes and
+          # system_settings/seo_intelligence runner status.
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          SEO_OUTCOMES_MODE: ${{ github.event.inputs.mode || 'recent' }}
+          SEO_OUTCOMES_EVENT_ID: ${{ github.event.inputs.event_id || '' }}
+          SEO_OUTCOMES_MAX_EVENTS: ${{ github.event.inputs.max_events || '25' }}
+          SEO_OUTCOMES_WINDOW_DAYS: ${{ github.event.inputs.window_days || '7' }}
+          SEO_OUTCOMES_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          ARGS="--mode=$SEO_OUTCOMES_MODE --max-events=$SEO_OUTCOMES_MAX_EVENTS --window-days=$SEO_OUTCOMES_WINDOW_DAYS --dry-run=$SEO_OUTCOMES_DRY_RUN"
+          if [ -n "$SEO_OUTCOMES_EVENT_ID" ]; then ARGS="$ARGS --event-id=$SEO_OUTCOMES_EVENT_ID"; fi
+          node run_seo_outcomes.js $ARGS
