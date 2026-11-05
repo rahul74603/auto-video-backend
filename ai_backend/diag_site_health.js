@@ -4,7 +4,11 @@
  * diag_site_health.js — 🩺 READ-ONLY site health report (manual diag workflow)
  * ============================================================================
  * GitHub Actions se chalao (diag_site_health.yml → Run workflow). Ye script
- * SIRF padhta hai, kuch likhta/badalta NAHI:
+ * site ka data kuch likhta/badalta NAHI — sirf padhta hai. Ek hi likhai hai:
+ * apni hi report ki ek copy Firestore `diag_reports` me save hoti hai (aur
+ * `system_configs/latest_diag` pointer), taaki report sirf Actions log me
+ * band na rahe aur Muse use seedha padh sake. SERVICE_ACCOUNT_JSON na ho
+ * (jaise seo-daily ka slim step) to save chup-chaap skip ho jata hai:
  *
  *  1. Firestore: har collection me total + status-wise counts (+ published slugs)
  *  2. Live sitemaps: HTTP status, URL count, backslash-URL check, newest lastmod
@@ -139,6 +143,57 @@ function resolveProbeUrl(u) {
   const t = String(u || "").trim();
   if (/^https?:\/\//i.test(t)) return t;
   return SITE + (t.startsWith("/") ? t : "/" + t);
+}
+
+// ---------------- report save (Firestore) ----------------
+// Poora console output ek buffer me bhi jama hota hai (tee), taaki aakhir me
+// wahi report Firestore me save ho sake. Save kabhi fail ho to diag ka result
+// ya exit code NAHI badalta — best-effort hai.
+const reportLines = [];
+const _origLog = console.log.bind(console);
+console.log = (...args) => {
+  try {
+    reportLines.push(args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "));
+  } catch (_) { /* buffer fail = report save skip, print phir bhi chalega */ }
+  _origLog(...args);
+};
+
+async function saveReportToFirestore({ mode, ok, botOk, botFail, inspOk, inspFail }) {
+  try {
+    if (!process.env.SERVICE_ACCOUNT_JSON && !process.env.FIREBASE_SERVICE_ACCOUNT) {
+      _origLog("📥 Report save SKIP — SERVICE_ACCOUNT_JSON nahi mila (sirf log me rahi).");
+      return false;
+    }
+    const admin = require("firebase-admin");
+    const firestore = initDb();
+    const runId = new Date().toISOString().replace(/[:.]/g, "-");
+    const problemLines = reportLines
+      .filter((l) => l.includes("❌") || l.includes("⚠️") || l.includes("🔴"))
+      .slice(0, 200);
+    const reportText = reportLines.join("\n").slice(0, 900000);
+    await firestore.collection("diag_reports").doc(runId).set({
+      runId,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      mode,
+      source: process.env.GITHUB_WORKFLOW || "local",
+      ok,
+      summary: { botOk, botFail, inspOk, inspFail },
+      problemLines,
+      reportText
+    });
+    await firestore.collection("system_configs").doc("latest_diag").set({
+      runId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      mode,
+      ok,
+      summary: { botOk, botFail, inspOk, inspFail }
+    });
+    _origLog(`📥 Report Firestore me save ho gayi: diag_reports/${runId} (+ system_configs/latest_diag)`);
+    return true;
+  } catch (e) {
+    _origLog(`📥 Report save FAIL (diag result par asar nahi): ${e.message}`);
+    return false;
+  }
 }
 
 async function main() {
@@ -303,6 +358,10 @@ async function main() {
     : (probeOnly ? `\n🟢 PROBE RESULT: PASS — ${botUrls.length} URLs, Googlebot+InspectionTool dono green.`
       : "\n🟢 DIAG RESULT: PASS — sitemap ↔ bot-view sab green."));
   console.log("🩺 DIAG DONE — ye poora log share karo, dikkat exact line me dikhegi.");
+  await saveReportToFirestore({
+    mode: probeOnly ? "probe" : (slim ? "slim" : "full"),
+    ok: !failed, botOk, botFail, inspOk, inspFail
+  });
   return !failed;
 }
 
