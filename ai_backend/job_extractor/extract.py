@@ -284,7 +284,19 @@ def quarantine(url, reason, artifacts=None):
     return path
 
 
-def process_url(url):
+def apply_title_hint(result, title_hint):
+    """RSS feed ka title ek verified source hai (feed ne khud diya
+    hai) — JSON-LD se title na mile to yahi title banta hai. Pehli
+    live run (2026-11-05) me yahi kami mili thi: sahi lastDate hote
+    hue bhi title na hone se items 'ok' nahi ban pa rahe the."""
+    hint = str(title_hint or "").strip()
+    if hint and not result["job"].get("title"):
+        result["job"]["title"] = hint
+        result["evidence"]["title"] = "rss-feed"
+    return result
+
+
+def process_url(url, title_hint=""):
     result = {"sourceUrl": url, "job": {}, "evidence": {},
               "ladder": [], "ok": False}
     try:
@@ -334,6 +346,7 @@ def process_url(url):
         if job2:
             result["ladder"].append(f"text-rules({src[:40]}): "
                                      f"{len(job2)} fields")
+    apply_title_hint(result, title_hint)
     result["job"] = {k: v for k, v in result["job"].items()
                      if not k.startswith("_") or k == "_postRows"}
     core = [k for k in ("title", "lastDate", "vacancies")
