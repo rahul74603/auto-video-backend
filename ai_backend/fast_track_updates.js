@@ -43,6 +43,32 @@ const { isInterviewNotice } = require("./scraper_policy");
 const MAX_SCRAPE_AGE_DAYS = 10; // sirf pichhle 10 din ke updates — isse purana kabhi nahi
 
 // =========================================================
+// 🛡️ FACT GATE WIRING (Fast Track, 2026-11-05) — AI ki di hui
+// updateDate asal source (links text) me hai ya nahi, ye jaanch
+// sirf tab chalta hai jab Firestore system_configs/scraper_flags
+// me fastTrackGate === true ho. OFF par purana vyavhaar bilkul
+// same; gate ki galti par original data hi rehta hai.
+// =========================================================
+let _ftGateCache = null; // null = abhi padha nahi
+async function applyFastTrackDateGate(extracted, linksText, logger = console.log) {
+    try {
+        if (_ftGateCache === null) {
+            const snap = await db.collection('system_configs').doc('scraper_flags').get();
+            _ftGateCache = !!(snap.exists && snap.data().fastTrackGate === true);
+            logger(`🛡️ fast-track fact-gate switch: ${_ftGateCache ? 'ON' : 'OFF'}`);
+        }
+        if (!_ftGateCache) return extracted;
+        const gate = require('./job_fact_gate');
+        const out = gate.verifyDateField(extracted.updateDate, linksText);
+        if (out.note) logger('🛡️ fact-gate:', out.note);
+        return { ...extracted, updateDate: out.value };
+    } catch (e) {
+        logger(`🛡️ fact-gate fail (original data hi chalega): ${e.message}`);
+        return extracted;
+    }
+}
+
+// =========================================================
 // 🛠️ HELPERS
 // =========================================================
 function createSlug(title) {
@@ -488,7 +514,10 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
             logger(`📋 Found ${linksText.split('\n').length} links`);
 
             // ✅ logger pass karo retry messages ke liye
-            const extracted = await extractWithAI(linksText, category, title, apiKey, logger);
+            const extractedRaw = await extractWithAI(linksText, category, title, apiKey, logger);
+
+            // 🛡️ FACT GATE — updateDate ki asal jaanch (switch ke peeche, upar dekho)
+            const extracted = await applyFastTrackDateGate(extractedRaw, linksText, logger);
 
             const finalTitle = extracted.title || title;
             const baseSlug   = extracted.slug  || createSlug(finalTitle);

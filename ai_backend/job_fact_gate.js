@@ -125,7 +125,69 @@ function verifyJobFacts(jobData, sourceText, labeled) {
     return { data, notes };
 }
 
+// =========================================================
+// 📅 FAST TRACK ke liye: updateDate ki jaanch. Fast Track me
+// vacancies/fees hote hi nahi — wahan AI ki sabse badi gadbad
+// tareekh me hoti hai (purani/galat saal wali result-date).
+// Tareekh agar source text me kisi bhi format me na mile to
+// khaali; jo tareekh samajh hi na aaye use haath nahi lagate.
+// =========================================================
+const MONTHS = {
+    jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+    apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+    aug: 8, august: 8, sep: 9, sept: 9, september: 9, oct: 10,
+    october: 10, nov: 11, november: 11, dec: 12, december: 12,
+};
+const MONTH_NAMES = ['january', 'february', 'march', 'april', 'may', 'june',
+    'july', 'august', 'september', 'october', 'november', 'december'];
+
+function parseDateParts(value) {
+    const tx = normalizeText(value);
+    let m = tx.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/);
+    if (m) return { y: +m[1], mo: +m[2], d: +m[3] };
+    m = tx.match(/\b(\d{1,2})[./-](\d{1,2})[./-](20\d{2})\b/);
+    if (m) return { y: +m[3], mo: +m[2], d: +m[1] };
+    m = tx.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})\.?,?\s+(20\d{2})\b/);
+    if (m && MONTHS[m[2]]) return { y: +m[3], mo: MONTHS[m[2]], d: +m[1] };
+    m = tx.match(/\b([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(20\d{2})\b/);
+    if (m && MONTHS[m[1]]) return { y: +m[3], mo: MONTHS[m[1]], d: +m[2] };
+    return null;
+}
+
+function dateForms({ y, mo, d }) {
+    const p2 = n => String(n).padStart(2, '0');
+    const mon = MONTH_NAMES[mo - 1];
+    const mon3 = mon.slice(0, 3);
+    return [
+        `${d}/${mo}/${y}`, `${p2(d)}/${p2(mo)}/${y}`,
+        `${d}-${mo}-${y}`, `${p2(d)}-${p2(mo)}-${y}`,
+        `${d}.${mo}.${y}`, `${p2(d)}.${p2(mo)}.${y}`,
+        `${y}-${p2(mo)}-${p2(d)}`,
+        `${d} ${mon} ${y}`, `${d} ${mon3} ${y}`,
+        `${mon} ${d}, ${y}`, `${mon3} ${d}, ${y}`,
+        `${mon} ${d} ${y}`, `${mon3} ${d} ${y}`,
+    ];
+}
+
+function verifyDateField(value, sourceText) {
+    const v = String(value || '').trim();
+    if (!v) return { value: v, note: '' };
+    try {
+        const parts = parseDateParts(v);
+        if (!parts) return { value: v, note: '' };
+        const src = normalizeText(sourceText);
+        if (src.length < 100) return { value: v, note: '' };
+        const ok = dateForms(parts).some(f => src.includes(f));
+        return ok
+            ? { value: v, note: '' }
+            : { value: '', note: `updateDate '${v}' source me nahi mila — khaali kiya` };
+    } catch (e) {
+        return { value: v, note: '' };
+    }
+}
+
 module.exports = {
     verifyJobFacts,
-    _internals: { normalizeText, numberForms, containsNumber, firstNumber, allNumbers },
+    verifyDateField,
+    _internals: { normalizeText, numberForms, containsNumber, firstNumber, allNumbers, parseDateParts, dateForms },
 };
