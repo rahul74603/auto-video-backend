@@ -83,4 +83,32 @@ t('khaali field par gate kuch nahi karta; null-safe hai', () => {
     assert.deepStrictEqual(out.data, {});
 });
 
+// ---- Fast Track: verifyDateField ----
+const FT_SOURCE = `
+[Context: SSC CGL Result 2026 declared] -> (URL: https://ssc.gov.in/result)
+Board ne Result 03 November 2026 ko ghoshit kiya. Cut-off marks aur merit
+list aadhikarik website par uplabdh hai. Candidates apna roll number daalkar
+result check kar sakte hain. Document verification ki tareekh jald aayegi.
+`.repeat(3);
+
+t('FT: sahi tareekh har format me rehti hai', () => {
+    for (const v of ['03/11/2026', '3/11/2026', '2026-11-03', '03 November 2026', 'Nov 3, 2026']) {
+        assert.strictEqual(gate.verifyDateField(v, FT_SOURCE).value, v, v);
+    }
+});
+
+t('FT: galat saal wali tareekh girti hai (purani gadbad)', () => {
+    assert.strictEqual(gate.verifyDateField('03/11/2025', FT_SOURCE).value, '');
+    assert.strictEqual(gate.verifyDateField('03 November 2024', FT_SOURCE).value, '');
+});
+
+t('FT: galat din wali tareekh girti hai', () => {
+    assert.strictEqual(gate.verifyDateField('04/11/2026', FT_SOURCE).value, '');
+});
+
+t('FT: jo tareekh samajh na aaye use haath nahi lagate', () => {
+    assert.strictEqual(gate.verifyDateField('Coming soon', FT_SOURCE).value, 'Coming soon');
+    assert.strictEqual(gate.verifyDateField('', FT_SOURCE).value, '');
+});
+
 console.log(`\n${passed} tests pass`);
