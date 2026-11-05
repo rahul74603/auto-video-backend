@@ -1,0 +1,46 @@
+{
+ "sourceUrl": "CEN_09_2026_official",
+ "job": {
+  "startDate": "05.11.2026",
+  "lastDate": "04.12.2026",
+  "vacancies": "191",
+  "_postRows": [
+   [
+    "Chief Law Assistant",
+    17
+   ],
+   [
+    "Public Prosecutor",
+    21
+   ],
+   [
+    "Senior Publicity Inspector",
+    8
+   ],
+   [
+    "Junior Translator / Hindi",
+    79
+   ],
+   [
+    "Staff and Welfare Inspector",
+    27
+   ],
+   [
+    "Scientific Assistant (Training)",
+    3
+   ],
+   [
+    "Lab Assistant Gr. III (Chemist & Metallurgist)",
+    36
+   ]
+  ],
+  "feeGen": "₹500"
+ },
+ "evidence": {
+  "startDate": "CEN_09_2026_official",
+  "lastDate": "CEN_09_2026_official",
+  "vacancies": "CEN_09_2026_official (vacancy-table: 7 posts ka yog/total)",
+  "feeGen": "CEN_09_2026_official"
+ },
+ "ok": true
+}
