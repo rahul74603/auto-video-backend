@@ -298,12 +298,10 @@ async function triggerGitHubVideoAction(jobData) {
 // 🤖 AI JOB DATA EXTRACTOR
 // =========================================================
 async function extractJobDataWithAI(scrapedContent, jobLink) {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-    const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        generationConfig: { responseMimeType: "application/json" }
-    });
+    // 🔀 Provider chain (ai_provider.js): Gemini/Groq baari-baari
+    // primary — dono ka quota banta hai, ek fail to dusra sambhale.
+    // Switch: scraper_flags.groqChain; OFF par sirf Gemini (same purana).
+    const { generateText } = require('./ai_provider');
 
     const todayDate = new Date().toLocaleDateString('en-IN', {
         timeZone: 'Asia/Kolkata',
@@ -373,8 +371,8 @@ Return ONLY this JSON (no markdown):
   "isExpired": false
 }`;
 
-    const result = await model.generateContent(prompt);
-    let text = result.response.text()
+    let text = await generateText({ prompt, jsonMode: true, maxTokens: 4000 });
+    text = text
         .replace(/```json/g, '')
         .replace(/```/g, '')
         .trim();
@@ -390,8 +388,8 @@ Return ONLY this JSON (no markdown):
 // ko Review Draft me sab READYMADE mile — bas check karke publish.
 // =========================================================
 async function generateFullJobArticle(jobData, scrapedContent) {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    // 🔀 Provider chain — upar extraction wala hi (ai_provider.js)
+    const { generateText } = require('./ai_provider');
 
     const facts = JSON.stringify({
         title: jobData.title, organization: jobData.organization, advtNo: jobData.advtNo,
@@ -440,8 +438,8 @@ ${String(scrapedContent).slice(0, 15000)}
   14. Chhota useful conclusion <p> (official notification check karke deadline se pehle apply karne ki salah)
 - Target: 1500-2200 meaningful words. Agar source me kam jankari hai to chhota likho — filler add MAT karo.`;
 
-    const result = await model.generateContent(prompt);
-    let html = result.response.text()
+    let html = await generateText({ prompt, jsonMode: false, maxTokens: 8000 });
+    html = html
         .replace(/```html/gi, '')
         .replace(/```/g, '')
         .trim();
