@@ -100,7 +100,7 @@ def main():
             if seen.exists:
                 continue
         print(f"processing: {item['title'][:70]}")
-        r = process_url(item["link"])
+        r = process_url(item["link"], title_hint=item["title"])
         r["feedTitle"] = item["title"]
         r["feedSource"] = item["source"]
         results.append(r)
