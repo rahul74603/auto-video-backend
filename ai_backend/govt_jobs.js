@@ -138,6 +138,37 @@ function extractLabeledDate(content, field) {
     return match ? verifiedDate(match[1]) : '';
 }
 
+// =========================================================
+// 🛡️ FACT GATE WIRING (2026-11-05) — upar wala job_fact_gate
+// sirf tab chalta hai jab Firestore system_configs/scraper_flags
+// me factGate === true ho. Switch OFF (ya doc na ho, ya koi bhi
+// galti ho) to purana vyavhaar bilkul same — ye Eric ki "kuch
+// bigadna mat" wali shart ka seedha ilaaj hai: sudhaar ek switch
+// ke peeche hai, band karna = purana system turant wapas.
+// =========================================================
+let _factGateCache = null; // null = abhi padha nahi
+async function applyFactGate(db, jobData, scrapedContent) {
+    try {
+        if (_factGateCache === null) {
+            const snap = await db.collection('system_configs').doc('scraper_flags').get();
+            _factGateCache = !!(snap.exists && snap.data().factGate === true);
+            console.log(`🛡️ fact-gate switch: ${_factGateCache ? 'ON' : 'OFF'}`);
+        }
+        if (!_factGateCache) return jobData;
+        const gate = require('./job_fact_gate');
+        const labeled = {
+            startDate: extractLabeledDate(scrapedContent, 'startDate'),
+            lastDate: extractLabeledDate(scrapedContent, 'lastDate')
+        };
+        const out = gate.verifyJobFacts(jobData, scrapedContent, labeled);
+        if (out.notes.length) console.log('🛡️ fact-gate:', out.notes.join(' | '));
+        return out.data;
+    } catch (e) {
+        console.warn('🛡️ fact-gate fail (original data hi chalega):', e.message);
+        return jobData;
+    }
+}
+
 function buildJobDescription(title, jobData) {
     const parts = [];
     const organization = String(jobData.organization || '').trim();
@@ -717,6 +748,10 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 });
                 continue;
             }
+
+            // 🛡️ FACT GATE — draft/article se pehle number-tareekh
+            // ki asal jaanch (switch ke peeche, upar dekho).
+            jobData = await applyFactGate(db, jobData, scrapedContent);
 
             const baseSlug  = jobData.slug || createSlug(finalTitle);
             const finalSlug = `${baseSlug}-${dateSuffix}`;
