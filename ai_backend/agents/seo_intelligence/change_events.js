@@ -149,6 +149,30 @@ function buildGscJoinKey(pageUrl) {
   return normalizeGscPageUrl(absolute).normalizedPageUrl;
 }
 
+// ─── Page URL derivation (2026-11-05 fix) ────────────────────
+// Kuch writers (khaas taur par purane publish-hook wale) pageUrl
+// diye bina event bana dete the — unke events ka gscJoinKey
+// hamesha khaali rehta tha aur outcome meter unhe kabhi naap hi
+// nahi pata tha (2026-11-05 ki jaanch me 69/69 events isi haal
+// me mile). Jinki public route pakki taur par jaani jaati hai,
+// unke liye URL collection + contentId (slug) se banta hai.
+// Jiski route pakki nahi (study_materials — wahan abhi ID-based
+// URL hai), wahan kuch nahi banta: galat URL se khaali behtar.
+const DERIVABLE_PAGE_ROUTES = Object.freeze({
+  mock_tests: "/test/",
+  blogs: "/blog/",
+  jobs: "/job/",
+  fast_track: "/update/",
+  web_stories: "/web-stories/"
+});
+
+function derivePageUrl(collectionName, contentId) {
+  const prefix = DERIVABLE_PAGE_ROUTES[String(collectionName || "")];
+  const slug = String(contentId || "").trim();
+  if (!prefix || !slug) return "";
+  return `${SITE_ORIGIN}${prefix}${slug}`;
+}
+
 // ─── Lifecycle at change time ───────────────────────────────────────
 
 /**
@@ -247,7 +271,8 @@ function buildChangeEvent({
   const effectiveContentId = String(contentId || record.contentId || "").slice(0, 120);
   const effectiveField = String(field || record.field || "");
   const effectiveType = String(contentType || record.contentType || "").toUpperCase();
-  const effectiveUrl = String(pageUrl || record.url || "");
+  const effectiveUrl = String(pageUrl || record.url || "") ||
+    derivePageUrl(collectionName, effectiveContentId);
   const atIso = isoNow(at);
   const lifecycle = classifyLifecycleForLedger(page, effectiveType, at instanceof Date ? at : new Date(atIso));
   const idempotencyKey = buildIdempotencyKey({
@@ -392,6 +417,7 @@ module.exports = {
   FIELD_GROUPS,
   AUTOMATIC_OPTIMIZATION_BLOCKED_LIFECYCLE,
   buildGscJoinKey,
+  derivePageUrl,
   classifyLifecycleForLedger,
   isEligibleForAutomaticOptimization,
   fieldGroupOf,
