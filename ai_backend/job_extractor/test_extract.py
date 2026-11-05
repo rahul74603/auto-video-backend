@@ -92,6 +92,35 @@ class TestJsonLd(unittest.TestCase):
         self.assertEqual(job["organization"], "SSC")
 
 
+class TestTitleHint(unittest.TestCase):
+    def test_hint_fills_missing_title(self):
+        r = {"job": {}, "evidence": {}}
+        extract.apply_title_hint(r, "WAPCOS Recruitment 2026")
+        self.assertEqual(r["job"]["title"], "WAPCOS Recruitment 2026")
+        self.assertEqual(r["evidence"]["title"], "rss-feed")
+
+    def test_hint_never_overrides_jsonld_title(self):
+        r = {"job": {"title": "Asli Title"}, "evidence": {}}
+        extract.apply_title_hint(r, "Feed Wala Title")
+        self.assertEqual(r["job"]["title"], "Asli Title")
+
+    def test_process_url_with_hint_offline(self):
+        html = ("<html><body><p>Last Date: 20 November 2026</p>"
+                "</body></html>")
+        old_fetch, old_pdf = extract.fetch, extract.find_pdf_links
+        extract.fetch = lambda url, binary=False, timeout=30: html
+        extract.find_pdf_links = lambda h, u: []
+        try:
+            r = extract.process_url("https://example.com/job",
+                                    title_hint="Example Recruitment 2026")
+        finally:
+            extract.fetch, extract.find_pdf_links = old_fetch, old_pdf
+        self.assertEqual(r["job"].get("title"),
+                         "Example Recruitment 2026")
+        self.assertEqual(r["job"].get("lastDate"), "20 November 2026")
+        self.assertTrue(r["ok"])
+
+
 class TestQuarantine(unittest.TestCase):
     def test_quarantine_writes_file(self):
         import tempfile
