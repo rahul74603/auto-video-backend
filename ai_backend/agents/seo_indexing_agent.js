@@ -302,29 +302,69 @@ async function submitSitemap(auth, siteUrl, sitemapUrl) {
 }
 
 // Roz ka audit window chunna:
-// - Taaza job pages (lastmod pichhle 2 din me) hamesha shamil — unki Indexing
-//   API notification usi raat jaani chahiye.
+// - Taaza job pages (lastmod pichhle 2 din me) pehle shamil — unki Indexing
+//   API notification usi raat jaani chahiye. LEKIN fresh par ek CAP hai
+//   (window ka 25%): agar lastmod data kabhi bulk-stamp/bigda hua ho (saare
+//   jobs ek saath "fresh" dikhne lagein) to fresh poora window kabhi nahi kha
+//   sakta — 2026-11-04 ki run isi tarah top-200 jobs par atki rahi aur
+//   rotation band ho gaya, bina report me koi saboot chhode.
 // - Baaki poora sitemap ek ghumte hue (rotating) hisse me — taaki capped daily
 //   audit kuch dino me PURA sitemap cover kare, har roz wahi pehle 200 nahi.
-function selectDailyWindow(entries, maxUrls) {
-  if (entries.length <= maxUrls) return entries.slice();
-  const now = Date.now();
+// - Har run ke window diagnostics (fresh counts, offset, composition) report
+//   me save hote hain, taaki rotation ka saboot Firestore se hi mil jaye.
+const FRESH_WINDOW_CAP_RATIO = 0.25;
+
+function selectDailyWindow(entries, maxUrls, nowOverride) {
+  const now = Number.isFinite(nowOverride) ? nowOverride : Date.now();
+  const diagnostics = {
+    totalEntries: entries.length,
+    maxUrls,
+    freshJobs: 0,
+    freshIncluded: 0,
+    freshCapped: false,
+    rotatedFromRest: 0,
+    rotationOffset: 0,
+    restSize: 0,
+    jobsInWindow: 0,
+    nonJobsInWindow: 0
+  };
+  const finish = (selected) => {
+    diagnostics.jobsInWindow = selected.filter((entry) => isEligibleIndexingApiUrl(entry.url)).length;
+    diagnostics.nonJobsInWindow = selected.length - diagnostics.jobsInWindow;
+    return { selected, diagnostics };
+  };
+  if (entries.length <= maxUrls) {
+    diagnostics.rotatedFromRest = entries.length;
+    return finish(entries.slice());
+  }
   const freshCutoff = now - 2 * 24 * 60 * 60 * 1000;
   const isFreshJob = (entry) => {
     if (!isEligibleIndexingApiUrl(entry.url) || !entry.lastmod) return false;
     const t = new Date(entry.lastmod).getTime();
     return Number.isFinite(t) && t >= freshCutoff;
   };
-  const fresh = entries.filter(isFreshJob).slice(0, maxUrls);
+  const allFresh = entries.filter(isFreshJob);
+  diagnostics.freshJobs = allFresh.length;
+  const freshCap = Math.max(1, Math.floor(maxUrls * FRESH_WINDOW_CAP_RATIO));
+  const fresh = allFresh.slice(0, freshCap);
+  diagnostics.freshIncluded = fresh.length;
+  diagnostics.freshCapped = allFresh.length > fresh.length;
   const freshSet = new Set(fresh);
   const rest = entries.filter((entry) => !freshSet.has(entry));
+  diagnostics.restSize = rest.length;
   const slots = maxUrls - fresh.length;
-  if (slots <= 0) return fresh;
-  if (rest.length <= slots) return [...fresh, ...rest];
+  if (slots <= 0) return finish(fresh);
+  if (rest.length <= slots) {
+    diagnostics.rotatedFromRest = rest.length;
+    return finish([...fresh, ...rest]);
+  }
   const epochDay = Math.floor(now / (24 * 60 * 60 * 1000));
   const offset = (epochDay * slots) % rest.length;
+  diagnostics.rotationOffset = offset;
   const rotated = rest.slice(offset).concat(rest.slice(0, offset));
-  return [...fresh, ...rotated.slice(0, slots)];
+  const selected = [...fresh, ...rotated.slice(0, slots)];
+  diagnostics.rotatedFromRest = selected.length - fresh.length;
+  return finish(selected);
 }
 
 function signatureFor(entry) {
@@ -429,6 +469,7 @@ async function saveReport(db, report) {
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     mode: report.mode,
     summary: report.summary,
+    window: report.window || null,
     sitemap: report.sitemap,
     searchConsole: report.searchConsole,
     indexingApi: {
@@ -491,7 +532,13 @@ class SEOIndexingAgent {
       if (jobDelta) return jobDelta;
       return String(b.lastmod || "").localeCompare(String(a.lastmod || ""));
     });
-    const selected = selectDailyWindow(deduplicated, maxUrls);
+    const { selected, diagnostics: windowDiagnostics } = selectDailyWindow(deduplicated, maxUrls);
+    console.log(
+      `[seo-agent] Window: fresh ${windowDiagnostics.freshIncluded}/${windowDiagnostics.freshJobs}` +
+      ` (capped=${windowDiagnostics.freshCapped}), rotated ${windowDiagnostics.rotatedFromRest}` +
+      ` from rest ${windowDiagnostics.restSize} @ offset ${windowDiagnostics.rotationOffset},` +
+      ` jobs in window ${windowDiagnostics.jobsInWindow}/${selected.length}`
+    );
     const audits = await mapWithConcurrency(
       selected,
       intEnv("SEO_AUDIT_CONCURRENCY", 5, 1, 15),
@@ -562,6 +609,7 @@ class SEOIndexingAgent {
         pings: sitemapPings
       },
       summary,
+      window: windowDiagnostics,
       audits,
       searchConsole,
       indexingApi,
@@ -589,5 +637,6 @@ module.exports = {
   isEligibleIndexingApiUrl,
   normalizeUrl,
   sameCanonical,
+  selectDailyWindow,
   summarizeAudits
 };

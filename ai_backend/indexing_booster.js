@@ -71,6 +71,7 @@ async function submitToAllIndexNow(urls, { batchSize = 1000 } = {}) {
 
   let success = 0, failed = 0;
   const errors = [];
+  const endpointStatuses = [];
 
   for (const batch of batches) {
     const payload = {
@@ -93,17 +94,28 @@ async function submitToAllIndexNow(urls, { batchSize = 1000 } = {}) {
       )
     );
 
-    for (const r of results) {
-      if (r.status === "fulfilled" && (r.value.status === 200 || r.value.status === 202)) {
-        success += batch.length;
+    // Har endpoint ka ASAL HTTP status record karo — pehle fulfilled-but-error
+    // status bhi sirf "unknown" ban jata tha, isiliye 2026-11-04 ki run me
+    // 800/800 fail ka kaaran report se kabhi pata hi nahi chal sakta tha.
+    results.forEach((r, i) => {
+      const endpoint = INDEXNOW_ENDPOINTS[i];
+      if (r.status === "fulfilled") {
+        endpointStatuses.push({ endpoint, status: r.value.status });
+        if (r.value.status === 200 || r.value.status === 202) {
+          success += batch.length;
+        } else {
+          failed += batch.length;
+          errors.push(`${endpoint} HTTP ${r.value.status}`);
+        }
       } else {
+        endpointStatuses.push({ endpoint, status: null, error: r.reason?.message || "unknown" });
         failed += batch.length;
-        errors.push(r.reason?.message || "unknown");
+        errors.push(`${endpoint} ${r.reason?.message || "unknown"}`);
       }
-    }
+    });
   }
 
-  return { attempted: list.length * INDEXNOW_ENDPOINTS.length, success, failed, errors: errors.slice(0, 5) };
+  return { attempted: list.length * INDEXNOW_ENDPOINTS.length, success, failed, endpointStatuses, errors: errors.slice(0, 5) };
 }
 
 /** Sitemap ko Google/Bing/Yandex me ping karo — best-effort, kabhi block nahi. */
