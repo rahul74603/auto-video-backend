@@ -98,23 +98,15 @@ jobs:
           cache-dependency-path: ai_backend/package-lock.json
 
       - name: 🔧 System Dependencies (canvas + FFmpeg + Hindi fonts)
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fonts-noto-core fonts-noto-color-emoji
+          version: 1.0
+
+      - name: 🖋️ Refresh font cache
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            build-essential \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libjpeg-dev \
-            libgif-dev \
-            librsvg2-dev \
-            fonts-noto-core \
-            fonts-noto-extra \
-            fonts-noto-cjk \
-            fonts-noto-color-emoji
           # fonts-noto-devanagari is INVALID on current Ubuntu runners.
-          # Noto Sans Devanagari ships in fonts-noto-core / fonts-noto-extra.
-          # Regenerate the font cache so canvas + libass can resolve
-          # "Noto Sans Devanagari" immediately.
+          # Noto Sans Devanagari ships in fonts-noto-core.
           fc-cache -f >/dev/null 2>&1 || true
 
       - name: ✅ Verify Devanagari font (Hindi rendering regression check)
