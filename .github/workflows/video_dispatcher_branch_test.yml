@@ -115,15 +115,10 @@ jobs:
           cache-dependency-path: ai_backend/package-lock.json
 
       - name: 🔧 System Dependencies (canvas + FFmpeg build deps)
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            build-essential \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libjpeg-dev \
-            libgif-dev \
-            librsvg2-dev
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+          version: 1.0
 
       - name: 📦 Install dependencies (npm ci)
         run: npm ci
