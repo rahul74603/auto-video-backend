@@ -48,11 +48,30 @@ Options -Indexes
   RewriteRule ^fast-track/?$ /govt-jobs [R=301,L]
   RewriteRule ^refund-policy/?$ /refund-cancellation-policy [R=301,L]
 
+  # ---------- 3a) Ahrefs audit 2026-11-06: mare purane raste -> asal pages ----------
+  RewriteRule ^course/?$ /courses [R=301,L]
+  RewriteRule ^railway-exams/?$ /jobs/railway [R=301,L]
+  RewriteRule ^mock-tests-railway/?$ /jobs/railway [R=301,L]
+  RewriteRule ^ssc/ssc-cgl/syllabus/?$ /syllabus [R=301,L]
+  RewriteRule ^exam-strategies/?$ /blog [R=301,L]
+  RewriteRule ^medical-courses/?$ /courses [R=301,L]
+  RewriteRule ^student-life-motivation/?$ /blog [R=301,L]
+  RewriteRule ^current-affairs/?$ /results [R=301,L]
+  RewriteRule ^job-updates/?$ /govt-jobs [R=301,L]
+  RewriteRule ^study-material-railway/?$ /free-study-material [R=301,L]
+  RewriteRule ^update/?$ /results [R=301,L]
+  RewriteRule ^material/?$ /free-study-material [R=301,L]
+
   # ---------- 3b) Trailing slash → no-slash 301 (duplicate URL consolidate) ----------
   # Virtual pages (/blog/x/ → /blog/x) — canonical chain strong, GSC duplicate kam
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteCond %{REQUEST_URI} ^/(.+)/$
   RewriteRule ^ /%1 [R=301,L,NE]
+
+  # ---------- 3c) /jobs/<detail-slug> -> /job/<detail-slug> (categories chhod kar) ----------
+  # Category hubs (/jobs/ssc, /jobs/railway...) asal pages hain — unhe mat chhedo.
+  RewriteCond %{REQUEST_URI} !^/jobs/(10th-pass|12th-pass|graduate|diploma|iti|engineering|teaching|ssc|railway|banking|police|defence|upsc|up|rajasthan|mp|bihar|maharashtra)/?$ [NC]
+  RewriteRule ^jobs/(.+)$ /job/$1 [R=301,L]
 
   # ---------- 4) Missing assets → HARD 404 (broken-JavaScript fix) ----------
   # Jo asset exist NAHI karti wo 404 hogi — SPA ka index.html uski jagah
