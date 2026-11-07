@@ -32,11 +32,16 @@ on:
         required: false
         default: "false"
   schedule:
-    # Daily at 11:00 AM IST (05:30 UTC) — one hour AFTER the GSC ingest job
-    # (04:30 UTC) so the most recent finalized GSC days are already collected.
+    # 2026-11-07 REFRESH: pichhli file ka schedule GitHub par fire hi nahi ho
+    # raha tha (6-7 Nov dono din), isliye nayi copy + samay pehle kiya gaya.
+    # Daily at 05:00 AM IST (23:30 UTC) + backup 07:00 AM IST (01:30 UTC) —
+    # hamesha GSC ingest (22:30/00:30 UTC) ke ek ghanta BAAD, taaki taaza
+    # finalized GSC days pehle collect ho jayein. Run idempotent hai
+    # (re-measure), dohra chale to koi nuksaan nahi.
     # Missing GSC days are recorded as coverage gaps and re-measured on later
     # runs as data arrives; nothing is fabricated.
-    - cron: "30 5 * * *"
+    - cron: "30 23 * * *"
+    - cron: "30 1 * * *"
 
 permissions:
   contents: read
