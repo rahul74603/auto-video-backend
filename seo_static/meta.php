@@ -60,8 +60,40 @@ $redirectMap = [
     'stories'         => 'web-stories',
 ];
 if (isset($redirectMap[$first])) {
-    $newSegments = array_merge([$redirectMap[$first]], array_slice($segments, 1));
-    header('Location: ' . $SITE . '/' . implode('/', $newSegments), true, 301);
+    if ($isDetail) {
+        // Detail alias: /blogs/<slug> -> /blog/<slug> waghera (asal istemal yahi hai)
+        $newSegments = array_merge([$redirectMap[$first]], array_slice($segments, 1));
+        header('Location: ' . $SITE . '/' . implode('/', $newSegments), true, 301);
+        exit;
+    }
+    // Bare alias (bina slug): sirf tab redirect karo jab target khud ek asal
+    // listing page ho. Pehle /courses -> /course (404) aur /updates -> /update
+    // (404) jaisi tooti chains banti thi (Ahrefs audit 2026-11-06: Broken redirect).
+    $bareRedirectMap = [
+        'blogs'           => 'blog',
+        'tests'           => 'test',
+        'mock-test'       => 'test',
+        'mock-tests'      => 'test',
+        'web-story'       => 'web-stories',
+        'story'           => 'web-stories',
+        'stories'         => 'web-stories',
+        'updates'         => 'results',
+        'materials'       => 'free-study-material',
+        'study-material'  => 'free-study-material',
+        'study-materials' => 'free-study-material',
+    ];
+    if (isset($bareRedirectMap[$first])) {
+        header('Location: ' . $SITE . '/' . $bareRedirectMap[$first], true, 301);
+        exit;
+    }
+    // 'courses' bare par redirect NAHI — woh khud asal listing hai (neeche
+    // render hoga). 'fasttrack'/'fast-track' bare ko .htaccess pehle hi
+    // /govt-jobs bhej deta hai, isliye yahan kabhi aata hi nahi.
+}
+
+// ---------- Legacy: bare /course -> asal listing /courses ----------
+if ($path === '/course') {
+    header('Location: ' . $SITE . '/courses', true, 301);
     exit;
 }
 
@@ -113,6 +145,35 @@ if ($file && is_readable($file)) {
         }
     }
     // corrupt/empty JSON → $entry null hi rahega, 5xx nahi aayega
+}
+
+// ---------- /jobs/<slug>: category hub hai ya job-detail ki nakli copy? ----------
+// /jobs/<category> asal hub pages hain (footer se jude hue). Lekin
+// /jobs/<job-slug> /job/<slug> ki duplicate copy bankar generic title ke
+// saath khulta tha (Ahrefs 2026-11-06: 58 duplicate pages). Asal job maujood
+// ho to canonical /job/ pate par 301; na category na job ho to asli 404
+// (neeche wala soft-404 logic sambhalega).
+$jobHubCategories = ['10th-pass', '12th-pass', 'graduate', 'diploma', 'iti',
+    'engineering', 'teaching', 'ssc', 'railway', 'banking', 'police', 'defence',
+    'upsc', 'up', 'rajasthan', 'mp', 'bihar', 'maharashtra'];
+$forceUnknownPath = false;
+if ($first === 'jobs' && $isDetail) {
+    $jobSlug = $segments[1];
+    if (!in_array(strtolower($jobSlug), $jobHubCategories, true)) {
+        $jobsFile = __DIR__ . '/seo-meta-jobs.json';
+        $jflags = defined('JSON_INVALID_UTF8_SUBSTITUTE') ? JSON_INVALID_UTF8_SUBSTITUTE : 0;
+        $jobsData = is_readable($jobsFile)
+            ? json_decode((string)file_get_contents($jobsFile), true, 512, $jflags)
+            : null;
+        if (is_array($jobsData) && isset($jobsData['/job/' . $jobSlug])) {
+            header('Location: ' . $SITE . '/job/' . $jobSlug, true, 301);
+            header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+            header('X-LiteSpeed-Cache-Control: no-cache');
+            exit;
+        }
+        $entry = null;
+        $forceUnknownPath = true;
+    }
 }
 
 // ---------- Legacy document-ID URL → current slug canonical (301) ----------
@@ -216,11 +277,11 @@ $spaRoutes = [
     'privacy-policy', 'terms-conditions', 'refund-cancellation-policy',
     'shipping-policy', 'contact-us', 'about-us', 'disclaimer',
     'secret-admin', 'write-blog-secret', 'admin-stories-secret',
-    'tools',
+    'tools', 'courses',
 ];
 $isKnownSpaRoute = !$isDetail && in_array($first, $spaRoutes, true);
-$isHubPath = $isDetail && $first === 'jobs';
-$isUnknownPath = !$entry && $jsonOk && $path !== '/' && !$isKnownSpaRoute && !$isHubPath;
+$isHubPath = $isDetail && $first === 'jobs' && !$forceUnknownPath;
+$isUnknownPath = $forceUnknownPath || (!$entry && $jsonOk && $path !== '/' && !$isKnownSpaRoute && !$isHubPath);
 if ($isUnknownPath) {
     http_response_code(404);
     header('Content-Type: text/html; charset=utf-8');
