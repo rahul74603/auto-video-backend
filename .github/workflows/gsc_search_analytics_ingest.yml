@@ -33,12 +33,18 @@ on:
         required: false
         default: "false"
   schedule:
-    # Daily at 10:00 AM IST (04:30 UTC). Search Console data is NOT real-time:
+    # 2026-11-07 REFRESH: pichhli file ka schedule GitHub par fire hi nahi ho
+    # raha tha (6-7 Nov dono din), isliye nayi copy + samay pehle kiya gaya.
+    # Daily at 04:00 AM IST (22:30 UTC) + backup 06:00 AM IST (00:30 UTC).
+    # GitHub ke schedule ghanteon late fire hote hain; dono run idempotent
+    # hain (finalized dates dobara collect nahi hote), dohra koi nuksaan nahi.
+    # Search Console data is NOT real-time:
     # the job collects a small rolling window of the most recent FINALIZED
     # dates (default: 3 days ending 2 days ago) with dataState=final, so recent
     # dates can legitimately return zero rows until Google finalizes them.
     # High-frequency polling is deliberately avoided.
-    - cron: "30 4 * * *"
+    - cron: "30 22 * * *"
+    - cron: "30 0 * * *"
 
 permissions:
   contents: read
