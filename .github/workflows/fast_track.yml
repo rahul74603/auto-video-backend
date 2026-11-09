@@ -12,7 +12,7 @@ name: Fast Track Scraper
 
 on:
   schedule:
-    - cron: '0 0,6,12,18 * * *' # हर 6 घंटे नए Result/Admit/Answer Key/Syllabus RSS scan
+    - cron: '0 6 * * *' # Din me EK baar (Eric ka order 2026-11-09): declared 11:30 IST, GitHub delay ke baad asal run aam taur par ~17:30 IST ke aas-paas hota hai — Result/Admit/Answer Key/Syllabus RSS scan
   workflow_dispatch:
 
 concurrency:
