@@ -7,6 +7,7 @@ const { google } = require('googleapis');
 const admin = require("firebase-admin");
 const FormData = require('form-data');
 const V = require('./video_state');
+const socialExtra = require('./social_extra');
 const ttsEngine = require('./tts_engine');
 const flags = require('./agents/growth/feature_flags');
 const motionEngine = require('./agents/growth/motion_engine');
@@ -1331,6 +1332,66 @@ const motionEngine = require('./agents/growth/motion_engine');
         } else {
             console.log('️ Telegram credentials missing, skipping...');
             platformStatuses.telegram = 'skipped';
+        }
+
+        // ✅ Instagram Reel + Threads (public runs only)
+        // Dono platforms ko public mp4 URL chahiye — ek hi temp release
+        // asset dono ke liye banta hai, publish ke baad delete ho jata hai.
+        const igConfigured      = !!(process.env.IG_USER_ID && process.env.FB_PAGE_TOKEN);
+        const threadsConfigured = !!(process.env.THREADS_USER_ID && process.env.THREADS_ACCESS_TOKEN);
+        let publicVideoUrl = null;
+        if (!isTestUpload && (igConfigured || threadsConfigured)) {
+            publicVideoUrl = await socialExtra.getPublicVideoUrl(videoPath);
+            if (!publicVideoUrl) {
+                console.log('⚠️ Public video URL नहीं मिला — Instagram / Threads skip होंगे।');
+            }
+        }
+
+        // ✅ Instagram Reel
+        if (isTestUpload) {
+            console.log('⏭️ Instagram skip — test upload.');
+            platformStatuses.instagram = 'skipped';
+        } else if (!igConfigured) {
+            console.log('⏭️ Instagram skip — IG_USER_ID / FB_PAGE_TOKEN नहीं है।');
+            platformStatuses.instagram = 'skipped';
+        } else if (!publicVideoUrl) {
+            platformStatuses.instagram = 'skipped';
+        } else {
+            try {
+                const igMediaId = await socialExtra.postToInstagram({ videoUrl: publicVideoUrl, caption: seoData.description });
+                platformStatuses.instagram = igMediaId ? 'completed' : 'skipped';
+                if (igMediaId) console.log(`✅ Instagram status recorded: ${igMediaId}`);
+            } catch (igErr) {
+                console.log('⚠️ Instagram post failed:', igErr.response?.data?.error?.message || igErr.message);
+                platformStatuses.instagram = 'failed';
+                platformStatuses.instagramError = V.shortError(igErr, 200);
+            }
+        }
+
+        // ✅ Threads Video
+        if (isTestUpload) {
+            console.log('⏭️ Threads skip — test upload.');
+            platformStatuses.threads = 'skipped';
+        } else if (!threadsConfigured) {
+            console.log('⏭️ Threads skip — THREADS_USER_ID / THREADS_ACCESS_TOKEN नहीं है।');
+            platformStatuses.threads = 'skipped';
+        } else if (!publicVideoUrl) {
+            platformStatuses.threads = 'skipped';
+        } else {
+            try {
+                const threadsId = await socialExtra.postToThreads({ videoUrl: publicVideoUrl, caption: seoData.description });
+                platformStatuses.threads = threadsId ? 'completed' : 'skipped';
+                if (threadsId) console.log(`✅ Threads status recorded: ${threadsId}`);
+            } catch (thErr) {
+                console.log('⚠️ Threads post failed:', thErr.response?.data?.error?.message || thErr.message);
+                platformStatuses.threads = 'failed';
+                platformStatuses.threadsError = V.shortError(thErr, 200);
+            }
+        }
+
+        // 🧹 Temp release asset saaf karo (best-effort)
+        if (publicVideoUrl) {
+            await socialExtra.cleanupTempVideoAsset();
         }
 
         // ✅ Auto First Comment (public runs only)
