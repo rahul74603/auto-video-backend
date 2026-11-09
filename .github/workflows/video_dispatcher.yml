@@ -98,3 +98,120 @@ jobs:
           cache-dependency-path: ai_backend/package-lock.json
 
       - name: 🔧 System Dependencies (canvas + FFmpeg + Hindi fonts)
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fonts-noto-core fonts-noto-color-emoji
+          version: 1.0
+
+      - name: 🖋️ Refresh font cache
+        run: |
+          # fonts-noto-devanagari is INVALID on current Ubuntu runners.
+          # Noto Sans Devanagari ships in fonts-noto-core.
+          fc-cache -f >/dev/null 2>&1 || true
+
+      - name: ✅ Verify Devanagari font (Hindi rendering regression check)
+        run: |
+          if ! fc-list | grep -qi "Noto Sans Devanagari"; then
+            echo "::error::Noto Sans Devanagari is NOT installed — Hindi text will render as boxes"
+            fc-list | grep -i devanagari || true
+            exit 1
+          fi
+          echo "✅ Noto Sans Devanagari is installed:"
+          fc-list | grep -i "Noto Sans Devanagari" | head -5
+
+      - name:  Install dependencies (npm ci — lockfile preserved)
+        run: npm ci
+
+      - name:  Verify secrets are present (values never printed)
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          GMAIL_CREDENTIALS:    ${{ secrets.GMAIL_CREDENTIALS }}
+          YOUTUBE_TOKEN:        ${{ secrets.YOUTUBE_TOKEN }}
+          TTS_KEY_JSON:         ${{ secrets.TTS_KEY_JSON }}
+        run: |
+          missing=0
+          # TTS_KEY_JSON is NOT required: tts_engine falls back to the free
+          # Edge voices when Google TTS is unavailable (billing disabled).
+          for name in SERVICE_ACCOUNT_JSON GMAIL_CREDENTIALS YOUTUBE_TOKEN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Required secret $name is not configured"
+              missing=1
+            else
+              echo "✅ $name present"
+            fi
+          done
+          if [ -z "$TTS_KEY_JSON" ]; then
+            echo "ℹ️ TTS_KEY_JSON absent — free Edge TTS will be used"
+          else
+            echo "✅ TTS_KEY_JSON present"
+          fi
+
+          if [ "$missing" = "1" ]; then
+            echo "::error::Configure the missing secrets in Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+
+      - name: 🎬 Run Video Dispatcher
+        env:
+          # --- Firestore (only Firebase service used — works on Spark) ---
+          SERVICE_ACCOUNT_JSON:  ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          # --- Rendering + upload ---
+          GMAIL_CREDENTIALS:     ${{ secrets.GMAIL_CREDENTIALS }}
+          YOUTUBE_TOKEN:         ${{ secrets.YOUTUBE_TOKEN }}
+          YOUTUBE_TOKEN_SELF_TEST: ${{ secrets.YOUTUBE_TOKEN_SELF_TEST }}
+          TTS_KEY_JSON:          ${{ secrets.TTS_KEY_JSON }}
+          # Optional: set repo variable TTS_ENGINE=edge to skip Google TTS entirely
+          # while billing is disabled (avoids one failed API call per render).
+          TTS_ENGINE:            ${{ vars.TTS_ENGINE }}
+          # Optional: freshness window (days) for auto-rendering content.
+          # Blank/unset = 7 days (DEFAULT_MAX_AGE_DAYS in video_state.js).
+          # Only content published inside the window is auto-rendered.
+          # Set 0 to disable the guard for a run.
+          VIDEO_MAX_AGE_DAYS:    ${{ vars.VIDEO_MAX_AGE_DAYS }}
+          # --- Growth Engine (AI visuals, layouts, motion) ---
+          AI_VISUAL_ENABLED:     ${{ vars.AI_VISUAL_ENABLED || 'true' }}
+          # --- Optional distribution (missing values are skipped gracefully) ---
+          FB_PAGE_ID:            ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_TOKEN:         ${{ secrets.FB_PAGE_TOKEN }}
+          # --- Instagram + Threads (social_extra.js; missing = skip) ---
+          IG_USER_ID:            ${{ secrets.IG_USER_ID }}
+          THREADS_USER_ID:       ${{ secrets.THREADS_USER_ID }}
+          THREADS_ACCESS_TOKEN:  ${{ secrets.THREADS_ACCESS_TOKEN }}
+          # Temp GitHub Release asset (public video URL) ke liye Actions token
+          GITHUB_TOKEN:          ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN:    ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:      ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHANNEL_LINK: ${{ secrets.TELEGRAM_CHANNEL_LINK }}
+          TELEGRAM_CHANNEL_NAME: ${{ secrets.TELEGRAM_CHANNEL_NAME }}
+          # --- Run tuning ---
+          VIDEO_PRIVACY_STATUS:  ${{ github.event.inputs.privacy }}
+          # --- repository_dispatch support ---
+          IN_JOBDATA: ${{ toJSON(github.event.client_payload.jobData) }}
+          # workflow_dispatch inputs are user supplied, so they are passed as
+          # env vars (data) instead of being interpolated into the script (code).
+          IN_KIND:  ${{ github.event.inputs.kind }}
+          IN_LIMIT: ${{ github.event.inputs.limit }}
+          IN_DRY:   ${{ github.event.inputs.dry_run }}
+          IN_DOC:   ${{ github.event.inputs.doc }}
+        run: |
+          KIND="$IN_KIND"
+          LIMIT="$IN_LIMIT"
+          DRY="$IN_DRY"
+          DOC="$IN_DOC"
+
+          # repository_dispatch → instant trigger, process immediately
+          if [ -n "$IN_JOBDATA" ] && [ "$IN_JOBDATA" != "null" ] && [ "$IN_JOBDATA" != "" ]; then
+            echo " Instant trigger (repository_dispatch) — processing immediately"
+            ARGS="--kind=all --limit=1 --max-age-days=0"
+          else
+            ARGS="--kind=${KIND:-all} --limit=${LIMIT:-1}"
+            if [ "$DRY" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+            if [ -n "$DOC" ]; then ARGS="$ARGS --doc=$DOC"; fi
+          fi
+
+          echo "▶️ node video_dispatcher.js $ARGS"
+          node video_dispatcher.js $ARGS
+
+      - name: ❌ Failure notice
+        if: failure()
+        run: echo "💥 Dispatcher run failed — check the logs above. Firestore videoStatus/videoError holds the per-document reason."
