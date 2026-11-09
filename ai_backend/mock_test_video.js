@@ -19,6 +19,7 @@ try {
 const ffmpegPath = require('ffmpeg-static');
 const FormData = require('form-data');
 const V = require('./video_state');
+const socialExtra = require('./social_extra');
 const ttsEngine = require('./tts_engine');
 require("dotenv").config();
 
@@ -1283,6 +1284,32 @@ async function generateMockTestVideo(options = {}) {
                 chat_id: TELEGRAM_CHAT_ID,
                 text: tgMsg
             }).catch(() => console.log('⚠️ Telegram fail।'));
+        }
+
+        // INSTAGRAM + THREADS (optional, public runs only — kabhi run fail nahi karte)
+        // Dono ko public mp4 URL chahiye — temp release asset CLEANUP se
+        // pehle banana/post karna zaroori hai (final video yahin delete hota hai).
+        if (isTestUpload) {
+            console.log('⏭️ Instagram / Threads skip — test upload.');
+        } else if ((process.env.IG_USER_ID && process.env.FB_PAGE_TOKEN) || (process.env.THREADS_USER_ID && process.env.THREADS_ACCESS_TOKEN)) {
+            const publicVideoUrl = await socialExtra.getPublicVideoUrl(finalVideoPath);
+            if (publicVideoUrl) {
+                if (process.env.IG_USER_ID && process.env.FB_PAGE_TOKEN) {
+                    try {
+                        await socialExtra.postToInstagram({ videoUrl: publicVideoUrl, caption: seoDescription });
+                    } catch (igErr) {
+                        console.log('⚠️ Instagram fail:', igErr.response?.data?.error?.message || igErr.message);
+                    }
+                }
+                if (process.env.THREADS_USER_ID && process.env.THREADS_ACCESS_TOKEN) {
+                    try {
+                        await socialExtra.postToThreads({ videoUrl: publicVideoUrl, caption: seoDescription });
+                    } catch (thErr) {
+                        console.log('⚠️ Threads fail:', thErr.response?.data?.error?.message || thErr.message);
+                    }
+                }
+                await socialExtra.cleanupTempVideoAsset();
+            }
         }
 
         // CLEANUP (always, before we decide success/failure)
