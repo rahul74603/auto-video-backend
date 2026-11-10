@@ -66,6 +66,7 @@ jobs:
           echo "build=$BUILD" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "apk=studygyaan-v${VERSION}-b${BUILD}.apk" >> "$GITHUB_OUTPUT"
+          echo "aab=studygyaan-v${VERSION}-b${BUILD}.aab" >> "$GITHUB_OUTPUT"
           echo "Releasing $TAG"
 
       - name: Build release APK
@@ -76,6 +77,14 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk '${{ steps.ver.outputs.apk }}'
           cp build/app/outputs/flutter-apk/app-release.apk studygyaan-latest.apk
           ls -la *.apk
+
+      - name: Build release AAB (Play Store)
+        run: flutter build appbundle --release --build-name='${{ steps.ver.outputs.version }}' --build-number='${{ steps.ver.outputs.build }}' --dart-define='APP_VERSION=${{ steps.ver.outputs.version }} (${{ steps.ver.outputs.build }})'
+
+      - name: Prepare AAB file
+        run: |
+          cp build/app/outputs/bundle/release/app-release.aab '${{ steps.ver.outputs.aab }}'
+          ls -la *.aab
 
       - name: Release notes
         run: |
@@ -105,4 +114,4 @@ jobs:
           if [ '${{ github.event_name }}' = 'workflow_dispatch' ]; then
             ARGS+=(--target '${{ github.ref_name }}')
           fi
-          gh release create '${{ steps.ver.outputs.tag }}' "${ARGS[@]}" '${{ steps.ver.outputs.apk }}' studygyaan-latest.apk
+          gh release create '${{ steps.ver.outputs.tag }}' "${ARGS[@]}" '${{ steps.ver.outputs.apk }}' studygyaan-latest.apk '${{ steps.ver.outputs.aab }}'
