@@ -95,7 +95,7 @@ const PopupAd = lazy(() =>
 // 📦 PAGE WRAPPER
 // =========================================================
 const PageWrapper = memo(({ children, className = "" }: { children?: ReactNode; className?: string }) => (
-    <div className={`pt-14 md:pt-20 ${className}`}>
+    <div className={`pt-3 md:pt-8 ${className}`}>
         {children}
     </div>
 ));

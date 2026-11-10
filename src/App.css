@@ -119,3 +119,14 @@ img:not([fetchpriority="high"]) {
     animation: none !important;
   }
 }
+
+/* 📱 Mobile par bade reserved min-height blocks hatao —
+   phone par ye khaali safed patti jaise dikhte the (2026-11-10) */
+@media (max-width: 768px) {
+  #hero-section { min-height: 0; }
+  #materials-page { min-height: 0; }
+  #govt-jobs { min-height: 0; }
+  #blog { min-height: 0; }
+  #free-study-material { min-height: 0; }
+  #premium-notes { min-height: 0; }
+}

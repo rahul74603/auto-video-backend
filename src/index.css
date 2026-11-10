@@ -76,10 +76,13 @@
 @layer base {
   * {
     @apply border-border;
+    -webkit-tap-highlight-color: transparent;
   }
 
   html {
     scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   body {
@@ -221,9 +224,48 @@
     @apply rounded-xl shadow-md;
   }
 
+  /* ✅ Tables — pehle koi styling hi nahi thi (mobile par phat ti thi) */
+  .prose table {
+    @apply w-full border-collapse my-6 text-sm;
+  }
+
+  .prose th {
+    @apply bg-blue-50 text-blue-900 font-bold text-left px-3 py-2 border border-slate-200;
+  }
+
+  .prose td {
+    @apply px-3 py-2 border border-slate-200 align-top;
+  }
+
   /* ✅ Content Visibility — Below fold sections */
   .below-fold {
     content-visibility: auto;
     contain-intrinsic-size: 0 400px;
+  }
+}
+
+/* =========================================================
+   📱 MOBILE POLISH (2026-11-10) — phones par article/content
+   Tables bagal me scroll hongi (page nahi phatega), justified
+   text ki badi khaali jagah khatam, lambe links tootenge.
+   ========================================================= */
+@media (max-width: 768px) {
+  .prose p {
+    text-align: left;
+  }
+
+  .prose table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .prose td,
+  .prose th {
+    word-break: break-word;
+  }
+
+  .prose a {
+    overflow-wrap: anywhere;
   }
 }
