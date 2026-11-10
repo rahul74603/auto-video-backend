@@ -62,10 +62,11 @@ const DEFAULT_MAX_ATTEMPTS = 3;
 // before the poller also picks the document up (avoids duplicate renders).
 const DEFAULT_LEGACY_GRACE_MS = 30 * 60 * 1000; // 30 minutes
 
-// Freshness guard: allow the recent one-week queue to drain when GitHub's
-// scheduled runner is delayed. 2024/2025 legacy posts remain ineligible.
+// Freshness guard (Eric ka niyam, 2026-11-10): video sirf publish ke
+// 24 ghante ke andar hi auto-banegi — purani miss hui video apne aap
+// dobara kabhi nahi uthegi. 2024/2025 legacy posts ineligible rehte hain.
 // Force an older specific doc manually with --doc=<id> --max-age-days=0.
-const DEFAULT_MAX_AGE_DAYS = 7;
+const DEFAULT_MAX_AGE_DAYS = 1;
 
 const JOB_BLOCKED_STATUSES = ['draft', 'pending', 'archived', 'rejected', 'unpublished', 'deleted', 'expired'];
 const NON_JOB_TYPES = ['MATERIAL', 'AFFILIATE', 'FAST_TRACK', 'BLOG', 'NOTE', 'PDF', 'STORY'];
