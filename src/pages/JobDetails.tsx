@@ -387,7 +387,7 @@ const JobDetails = () => {
     // 🎨 RENDER
     // =========================================================
     return (
-        <div className="pt-14 md:pt-16 pb-20 bg-[#F8FAFC] min-h-screen font-hindi antialiased">
+        <div className="pt-4 md:pt-8 pb-20 bg-[#F8FAFC] min-h-screen font-hindi antialiased">
 
             {/* ✅ SEO - Article type, all props */}
             <SEO
@@ -491,19 +491,19 @@ const JobDetails = () => {
                                 </div>
                             )}
                             {/* Header */}
-                            <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-900 p-4 md:p-8 text-white relative">
+                            <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-900 p-4 md:p-8 text-white relative overflow-hidden">
                                 <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
                                     <Briefcase size={120} aria-hidden="true" />
                                 </div>
                                 <div className="relative z-10">
                                     <div className="flex gap-2 mb-2 flex-wrap">
                                         {!jobExpired && (
-                                        <span className="bg-yellow-400 text-blue-900 font-black text-[7px] md:text-[10px] px-2 py-0.5 rounded-full uppercase">
+                                        <span className="bg-yellow-400 text-blue-900 font-black text-[10px] px-2.5 py-1 rounded-full uppercase">
                                             Latest Update
                                         </span>
                                         )}
                                         {job.organization && (
-                                            <span className="bg-white/10 text-white font-bold text-[7px] md:text-[10px] px-2 py-0.5 rounded-full border border-white/20 uppercase truncate"
+                                            <span className="bg-white/10 text-white font-bold text-[10px] px-2.5 py-1 rounded-full border border-white/20 uppercase"
                                                 itemProp="hiringOrganization">
                                                 {job.organization}
                                             </span>
@@ -512,13 +512,13 @@ const JobDetails = () => {
 
                                     {/* ✅ H1 - Proper */}
                                     <h1
-                                        className="text-lg md:text-3xl font-black mb-3 leading-tight uppercase tracking-tight"
+                                        className="text-[22px] md:text-3xl font-black mb-3 leading-snug tracking-tight"
                                         itemProp="title"
                                     >
                                         {job.title}{titleAlreadyHasYear ? '' : ` ${contentYear}`}
                                     </h1>
 
-                                    <div className="flex flex-wrap gap-3 md:gap-6 text-blue-100 font-bold text-[9px] md:text-xs pt-3 border-t border-white/10">
+                                    <div className="flex flex-wrap gap-3 md:gap-6 text-blue-100 font-bold text-[11px] md:text-xs pt-3 border-t border-white/10">
                                         {publishedIso && (
                                             <span className="flex items-center gap-1.5">
                                                 <Calendar size={14} className="text-yellow-400" aria-hidden="true" />
@@ -605,7 +605,7 @@ const JobDetails = () => {
                                 {/* Dates & Fees */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="bg-white border border-slate-100 p-5 md:p-8 rounded-3xl shadow-sm">
-                                        <h2 className="text-blue-800 font-black text-[12px] md:text-lg mb-5 flex items-center gap-2 border-b border-blue-50 pb-3 uppercase italic">
+                                        <h2 className="text-blue-800 font-black text-sm md:text-lg mb-5 flex items-center gap-2 border-b border-blue-50 pb-3 uppercase italic">
                                             <Clock size={20} className="text-blue-600" aria-hidden="true" />
                                             Important Dates
                                         </h2>
@@ -635,7 +635,7 @@ const JobDetails = () => {
                                     </div>
 
                                     <div className="bg-white border border-slate-100 p-5 md:p-8 rounded-3xl shadow-sm">
-                                        <h2 className="text-emerald-800 font-black text-[12px] md:text-lg mb-5 flex items-center gap-2 border-b border-emerald-50 pb-3 uppercase italic">
+                                        <h2 className="text-emerald-800 font-black text-sm md:text-lg mb-5 flex items-center gap-2 border-b border-emerald-50 pb-3 uppercase italic">
                                             <Banknote size={20} className="text-emerald-600" aria-hidden="true" />
                                             Application Fee
                                         </h2>
@@ -660,8 +660,8 @@ const JobDetails = () => {
 
                                 {/* Age Limit — render only values present in the saved source facts. */}
                                 {hasAgeDetails && (
-                                    <section className="bg-slate-900 rounded-3xl p-6 md:p-10 text-white relative overflow-hidden shadow-xl">
-                                        <h2 className="text-[12px] md:text-xl font-black mb-6 flex items-center gap-3 uppercase tracking-widest border-l-4 border-blue-500 pl-4 italic">
+                                    <section className="bg-slate-900 rounded-3xl p-5 md:p-8 text-white relative overflow-hidden shadow-xl">
+                                        <h2 className="text-sm md:text-xl font-black mb-4 flex items-center gap-3 uppercase tracking-widest border-l-4 border-blue-500 pl-4 italic">
                                             Age Limit Details
                                         </h2>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

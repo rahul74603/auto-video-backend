@@ -29,6 +29,19 @@ let jobsCache: { rows: Array<Record<string, unknown> & { id: string }>; at: numb
 const CACHE_MS = 5 * 60 * 1000;
 
 const asStr = (v: unknown) => (typeof v === 'string' ? v : '');
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// 📅 Card par date hamesha "14 Dec 2026" jaise dikhao — raw ISO/DD-MM-YYYY kabhi nahi.
+function formatDisplayDate(raw?: string): string {
+    if (!raw) return '';
+    const str = String(raw).trim();
+    const ind = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    if (ind) return `${+ind[1]} ${MONTHS_SHORT[+ind[2] - 1]} ${ind[3]}`;
+    const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${+iso[3]} ${MONTHS_SHORT[+iso[2] - 1]} ${iso[1]}`;
+    return str;
+}
+
 
 async function fetchJobsOnce() {
     if (jobsCache && Date.now() - jobsCache.at < CACHE_MS) return jobsCache.rows;
@@ -128,15 +141,15 @@ const JobHub = () => {
                                     <h2 className="font-black text-slate-800 text-sm md:text-base leading-snug group-hover:text-blue-700 transition-colors pr-6">
                                         {job.title}
                                     </h2>
-                                    <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2.5 text-[10px] md:text-xs font-bold text-slate-500">
+                                    <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2.5 text-[11px] md:text-xs font-bold text-slate-500">
                                         {job.organization && (
                                             <span className="flex items-center gap-1"><Building2 size={12} className="text-slate-400" />{job.organization}</span>
                                         )}
                                         {job.vacancies && (
-                                            <span className="flex items-center gap-1 text-emerald-600"><Users size={12} />{job.vacancies} Posts</span>
+                                            <span className="flex items-center gap-1 text-emerald-600"><Users size={12} />{job.vacancies} {String(job.vacancies).trim() === '1' ? 'Post' : 'Posts'}</span>
                                         )}
                                         {job.lastDate && (
-                                            <span className="flex items-center gap-1 text-orange-600"><CalendarDays size={12} />Last Date: {job.lastDate}</span>
+                                            <span className="flex items-center gap-1 text-orange-600"><CalendarDays size={12} />Last Date: {formatDisplayDate(job.lastDate)}</span>
                                         )}
                                     </div>
                                     <ArrowRight size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
