@@ -120,6 +120,24 @@ function hasExplicitYear(value) {
     return /\b(?:19|20)\d{2}\b/.test(String(value || ''));
 }
 
+// 2026-11-10: dates ko hamesha ek hi format DD/MM/YYYY me rakho.
+// AI/source kabhi "11 November 2026", kabhi "07.11.2026", kabhi
+// "16th November, 2026" deta hai — panel ka date-input aisi mixed
+// shaklon ko new Date() se padhkar ek din peeche kar deta tha
+// (IST aadhi-raat -> UTC pichhla din), aur description (jo source
+// se banti hai) sahi tareekh dikhati thi — ek din ka gap yahi tha.
+// Parse UTC par hota hai, isiliye yahan koi shift nahi hota.
+function normalizeDateStr(value) {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    const parsed = parseFullYearDate(text);
+    if (!parsed) return text;
+    const d = new Date(parsed.dayStart);
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    return `${dd}/${mm}/${d.getUTCFullYear()}`;
+}
+
 function verifiedDate(value) {
     const text = String(value || '').trim();
     const parsed = parseFullYearDate(text);
@@ -770,8 +788,8 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
             const verifiedJobData = {
                 ...jobData,
                 title: finalTitle,
-                startDate: verifiedDate(jobData.startDate) || extractLabeledDate(scrapedContent, 'startDate'),
-                lastDate: verifiedDate(jobData.lastDate) || extractLabeledDate(scrapedContent, 'lastDate'),
+                startDate: normalizeDateStr(verifiedDate(jobData.startDate) || extractLabeledDate(scrapedContent, 'startDate')),
+                lastDate: normalizeDateStr(verifiedDate(jobData.lastDate) || extractLabeledDate(scrapedContent, 'lastDate')),
                 applyLink: cleanApplyLink,
                 notificationLink: cleanNotificationLink,
                 officialSiteLink: cleanOfficialSiteLink
@@ -787,7 +805,34 @@ async function scrapeGovtJobsLogic(maxJobs = 5) {
                 const words = articleHtml.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
                 console.log(`📝 Full article generated: ${words} words`);
             } catch (artErr) {
-                console.warn(`⚠️ Full article generation fail (draft phir bhi banega): ${artErr.message}`);
+                // 2026-11-10: pehle ye fail CHUP-CHAAP hota tha aur draft
+                // khaali article ke saath save ho jata tha (Eric ko panel
+                // me "article banta hi nahi" dikhta tha). Ab: (1) poora
+                // error log hoga, (2) chhote source ke saath ek aur
+                // koshish, (3) phir bhi na bane to verified facts se
+                // template article — khaali article kabhi save nahi.
+                console.warn(`⚠️ Full article fail (chhota source dekar dobara koshish): ${String(artErr.message || artErr).slice(0, 300)}`);
+                try {
+                    articleHtml = await generateFullJobArticle(verifiedJobData, String(scrapedContent).slice(0, 7000));
+                    const retryWords = articleHtml.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
+                    console.log(`📝 Full article generated (dusri koshish): ${retryWords} words`);
+                } catch (artErr2) {
+                    console.warn(`⚠️ Article dusri koshish bhi fail: ${String(artErr2.message || artErr2).slice(0, 300)}`);
+                }
+            }
+            if (!articleHtml) {
+                try {
+                    const { buildFallbackArticleHtml } = require('./description_fallback');
+                    articleHtml = buildFallbackArticleHtml({
+                        ...verifiedJobData,
+                        kind: 'job',
+                        title: finalTitle,
+                        summary: String(jobData.description || '').trim(),
+                    }) || '';
+                    if (articleHtml) console.log('📝 Template article bhara (AI article nahi ban paya tha)');
+                } catch (tplErr) {
+                    console.warn('⚠️ Template article bhi fail:', tplErr.message);
+                }
             }
 
             const draftPayload = {
