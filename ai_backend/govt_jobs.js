@@ -1247,12 +1247,30 @@ exports.runJobScraper = async (maxJobs = 5) => {
 // =========================================================
 if (require.main === module) {
     const maxJobs = parseInt(process.argv[2]) || 5;
+    // 2026-11-10 wiring fix: panel ka "Jobs Scraper" status
+    // system_configs/scraper_status doc se banta hai — woh pehle sirf
+    // Firebase Cloud Function (fetchLatestGovtJobs) likhta tha, jo
+    // deploy hi nahi hai. Asli scraper (ye CLI, GitHub Actions se
+    // chalta hai) status kabhi likhta hi nahi tha, isiliye doc bana
+    // hi nahi aur panel hamesha "kabhi nahi chala" (red) dikhata tha.
+    // FastTrack CLI ki tarah ab har run ke ant me status likhega;
+    // status-write fail ho to bhi run ka natija nahi bigdega.
+    const writeScraperStatus = async (fields) => {
+        try {
+            await db.collection("system_configs").doc("scraper_status").set({
+                lastRun: admin.firestore.FieldValue.serverTimestamp(),
+                ...fields,
+            }, { merge: true });
+        } catch (e) { console.warn("scraper status write failed:", e.message); }
+    };
     scrapeGovtJobsLogic(maxJobs)
-        .then(count => {
+        .then(async count => {
+            await writeScraperStatus({ status: "completed", lastCount: count });
             console.log(`✅ Complete: ${count} jobs saved`);
             process.exit(0);
         })
-        .catch(err => {
+        .catch(async err => {
+            await writeScraperStatus({ status: "error", lastError: err.message });
             console.error("❌ Failed:", err.message);
             process.exit(1);
         });
