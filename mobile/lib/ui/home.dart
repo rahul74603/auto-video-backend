@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/theme.dart';
 import '../core/widgets.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
@@ -8,7 +9,9 @@ import '../data/repository.dart';
 import 'content.dart';
 import 'quiz.dart';
 
-/// Home: welcome + quick chips + latest strips (Fast Track sabse pehle).
+/// Home: brand header + welcome hero + quick chips + latest strips
+/// (Fast Track sabse pehle). 2026-11-10 professional redesign —
+/// sirf dikhawa badla hai, data/navigation/bookmark logic waisa hi.
 class HomeScreen extends StatelessWidget {
   final void Function(int) onSeeAll;
   const HomeScreen({super.key, required this.onSeeAll});
@@ -16,8 +19,12 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('StudyGyaan')),
+      appBar: AppBar(
+        title: const _BrandTitle(),
+        titleSpacing: 16,
+      ),
       body: ListView(
+        padding: const EdgeInsets.only(bottom: 8),
         children: [
           _welcomeCard(context),
           _quickChips(context),
@@ -80,6 +87,8 @@ class HomeScreen extends StatelessWidget {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
   }
 
+  // ---------- Header / hero / chips ----------
+
   Widget _welcomeCard(BuildContext context) {
     final user = context.watch<AuthService>().user;
     final rawName = (user?.displayName ?? '').trim();
@@ -90,38 +99,97 @@ class HomeScreen extends StatelessWidget {
     final sub = firstName.isEmpty
         ? 'Jobs • Tests • Blogs • Stories — sab yahi'
         : 'Aaj kya padhna hai? Fast Track se shuru karo';
-    return Card(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
+    final photo = (user?.photoURL ?? '').trim();
+    final initials = firstName.isNotEmpty
+        ? firstName.substring(0, 1).toUpperCase()
+        : 'SG';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+      decoration: BoxDecoration(
+        gradient: brandGradient,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.brand.withOpacity(0.35),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Stack(
           children: [
-            CircleAvatar(
-              radius: 24,
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              child: const Text(
-                'SG',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
+            Positioned(
+              right: -26,
+              top: -30,
+              child: Container(
+                width: 110,
+                height: 110,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.10),
                 ),
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            Positioned(
+              right: 34,
+              bottom: -38,
+              child: Container(
+                width: 76,
+                height: 76,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.08),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Row(
                 children: [
-                  Text(
-                    hello,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                  CircleAvatar(
+                    radius: 26,
+                    backgroundColor: Colors.white.withOpacity(0.22),
+                    backgroundImage:
+                        photo.isNotEmpty ? NetworkImage(photo) : null,
+                    child: photo.isEmpty
+                        ? Text(
+                            initials,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                            ),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          hello,
+                          style: const TextStyle(
+                            fontSize: 17.5,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          sub,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.white.withOpacity(0.85),
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(sub),
                 ],
               ),
             ),
@@ -152,21 +220,57 @@ class HomeScreen extends StatelessWidget {
         () => _push(context, const VideosScreen()),
       ),
     ];
+    final scheme = Theme.of(context).colorScheme;
     return SizedBox(
-      height: 44,
+      height: 46,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
         itemCount: chips.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (_, i) => ActionChip(
-          avatar: Icon(chips[i].icon, size: 16),
-          label: Text(chips[i].label),
-          onPressed: chips[i].onTap,
-        ),
+        itemBuilder: (context, i) {
+          final chip = chips[i];
+          return Material(
+            color: scheme.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: scheme.outlineVariant),
+            ),
+            child: InkWell(
+              onTap: chip.onTap,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: scheme.primary.withOpacity(0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(chip.icon, size: 15, color: scheme.primary),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      chip.label,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
+
+  // ---------- Content strips ----------
 
   Widget _strip<T>({
     required IconData icon,
@@ -177,10 +281,7 @@ class HomeScreen extends StatelessWidget {
       stream: stream,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const SizedBox(
-            height: 170,
-            child: LoadingView(label: ''),
-          );
+          return const _StripSkeleton();
         }
         if (snap.hasError || !(snap.hasData && snap.data!.isNotEmpty)) {
           return const SizedBox(
@@ -190,20 +291,22 @@ class HomeScreen extends StatelessWidget {
         }
         final items = snap.data!;
         return SizedBox(
-          height: 200,
+          height: 212,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (context, i) {
               final item = items[i];
               final title = _titleOf(item);
               final image = _imageOf(item);
               final meta = _metaOf(item);
+              final meta2 = _meta2Of(context, item);
+              final badge = _badgeOf(item);
               final bm = _bookmarkOf(item);
               return SizedBox(
-                width: 220,
+                width: 232,
                 child: Card(
                   margin: EdgeInsets.zero,
                   clipBehavior: Clip.antiAlias,
@@ -216,19 +319,25 @@ class HomeScreen extends StatelessWidget {
                           children: [
                             ThumbImage(
                               url: image,
-                              height: 110,
+                              height: 104,
                               radius: 0,
                               icon: icon,
                             ),
+                            if (badge != null)
+                              Positioned(
+                                left: 8,
+                                top: 8,
+                                child: badge,
+                              ),
                             Positioned(
-                              right: 4,
-                              top: 4,
+                              right: 6,
+                              top: 6,
                               child: BookmarkButton(entry: bm),
                             ),
                           ],
                         ),
                         Padding(
-                          padding: const EdgeInsets.all(10),
+                          padding: const EdgeInsets.fromLTRB(11, 9, 11, 10),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -237,11 +346,12 @@ class HomeScreen extends StatelessWidget {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w700,
                                   fontSize: 14,
+                                  height: 1.28,
                                 ),
                               ),
-                              const SizedBox(height: 2),
+                              const SizedBox(height: 4),
                               Text(
                                 meta,
                                 maxLines: 1,
@@ -253,6 +363,10 @@ class HomeScreen extends StatelessWidget {
                                       .onSurfaceVariant,
                                 ),
                               ),
+                              if (meta2 != null) ...[
+                                const SizedBox(height: 3),
+                                meta2,
+                              ],
                             ],
                           ),
                         ),
@@ -298,6 +412,83 @@ class HomeScreen extends StatelessWidget {
     return '';
   }
 
+  /// Dusri meta line — job par posts + last date (sabse kaam ki jaankari),
+  /// test par samay + exam, article par author.
+  Widget? _meta2Of(BuildContext context, dynamic item) {
+    final soft = Theme.of(context).colorScheme.onSurfaceVariant;
+    Widget line(IconData icon, String text,
+        {Color? color, bool bold = false, double maxW = 196}) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color ?? soft),
+          const SizedBox(width: 4),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxW),
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+                color: color ?? soft,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (item is JobItem) {
+      final parts = <Widget>[];
+      final vac = item.vacancies.trim();
+      if (vac.isNotEmpty) {
+        parts.add(line(Icons.people_outline, '$vac Posts', maxW: 92));
+      }
+      final last = item.lastDate.trim();
+      if (last.isNotEmpty) {
+        if (parts.isNotEmpty) parts.add(const SizedBox(width: 10));
+        parts.add(line(
+          Icons.event_outlined,
+          last,
+          color: const Color(0xFFDC2626),
+          bold: true,
+          maxW: 96,
+        ));
+      }
+      if (parts.isEmpty) return null;
+      return Row(mainAxisSize: MainAxisSize.min, children: parts);
+    }
+    if (item is MockTest) {
+      final bits = <String>[];
+      if (item.durationMin > 0) bits.add('${item.durationMin} min');
+      if (item.exam.trim().isNotEmpty) bits.add(item.exam.trim());
+      if (bits.isEmpty) return null;
+      return line(Icons.timer_outlined, bits.join(' • '));
+    }
+    if (item is ArticleItem) {
+      final author = item.author.trim();
+      if (author.isEmpty) return null;
+      return line(Icons.person_outline, author);
+    }
+    return null;
+  }
+
+  /// Cover ke upar ka chhota badge — job/article par category,
+  /// premium test par PREMIUM (amber).
+  Widget? _badgeOf(dynamic item) {
+    if (item is MockTest && item.premium) {
+      return const CoverBadge(label: 'Premium', accent: true);
+    }
+    String cat = '';
+    if (item is JobItem) cat = item.category.trim();
+    if (item is ArticleItem) cat = item.category.trim();
+    if (item is MockTest) cat = item.category.trim();
+    if (cat.isEmpty) return null;
+    return CoverBadge(label: cat);
+  }
+
   BookmarkEntry _bookmarkOf(dynamic item) {
     if (item is JobItem) {
       return BookmarkEntry(
@@ -324,6 +515,101 @@ class HomeScreen extends StatelessWidget {
       title: a.title,
       image: a.image,
       ts: DateTime.now(),
+    );
+  }
+}
+
+/// App bar ki brand pehchan — website wala bolt logo + naam.
+class _BrandTitle extends StatelessWidget {
+  const _BrandTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = Theme.of(context).colorScheme.onSurface;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            gradient: brandGradient,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(Icons.bolt, color: Colors.white, size: 20),
+        ),
+        const SizedBox(width: 10),
+        RichText(
+          text: TextSpan(
+            style: TextStyle(
+              fontSize: 20.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+              color: ink,
+            ),
+            children: const [
+              TextSpan(text: 'Study'),
+              TextSpan(
+                text: 'Gyaan',
+                style: TextStyle(color: AppTheme.brand),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Loading ke samay spinner ki jagah card-jaisi khaali aakriti —
+/// professional apps aise hi dikhte hain.
+class _StripSkeleton extends StatelessWidget {
+  const _StripSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final base = Theme.of(context).colorScheme.surfaceContainerHighest;
+    Widget block(double w, double h, [double r = 8]) {
+      return Container(
+        width: w,
+        height: h,
+        decoration: BoxDecoration(
+          color: base,
+          borderRadius: BorderRadius.circular(r),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 212,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: 3,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (_, __) => SizedBox(
+          width: 232,
+          child: Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(11),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  block(210, 92, 10),
+                  const SizedBox(height: 12),
+                  block(190, 13),
+                  const SizedBox(height: 7),
+                  block(150, 13),
+                  const SizedBox(height: 10),
+                  block(110, 11),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

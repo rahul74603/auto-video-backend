@@ -31,7 +31,7 @@ class MenuScreen extends StatelessWidget {
             ListTile(
               leading: const Icon(
                 Icons.admin_panel_settings,
-                color: Colors.deepPurple,
+                color: Color(0xFF2563EB),
               ),
               title: const Text('Admin Panel'),
               subtitle: const Text('Sirf tumhe dikhta hai'),

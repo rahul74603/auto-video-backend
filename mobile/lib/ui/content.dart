@@ -80,6 +80,7 @@ class ContentListScreen extends StatelessWidget {
               image: a.image,
               title: a.title,
               subtitle: a.category,
+              icon: Icons.article,
               date: timeAgo(a.date),
               trailing: BookmarkButton(
                 entry: BookmarkEntry(
@@ -124,6 +125,8 @@ class ContentListScreen extends StatelessWidget {
               image: j.image,
               title: j.title,
               subtitle: j.org,
+              icon: Icons.work,
+              badge: j.category,
               date: j.lastDate.isNotEmpty
                   ? 'Last date: ${j.lastDate}'
                   : timeAgo(j.date),
@@ -676,6 +679,7 @@ class VideosScreen extends StatelessWidget {
                 image: v.thumb,
                 title: v.title,
                 subtitle: v.source,
+                icon: Icons.ondemand_video,
                 date: timeAgo(v.date),
                 trailing: BookmarkButton(
                   entry: BookmarkEntry(
