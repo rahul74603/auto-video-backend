@@ -75,6 +75,20 @@ type SettingsResult = (GovtJobSettings & {
 // =========================================================
 // 🛠️ HELPERS
 // =========================================================
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// 📅 Card par date hamesha "14 Dec 2026" jaise dikhao —
+// raw ISO (2026-12-14) ya DD/MM/YYYY seedha kabhi mat dikhao.
+function formatDisplayDate(raw?: string): string {
+    if (!raw) return '';
+    const str = String(raw).trim();
+    const ind = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    if (ind) return `${+ind[1]} ${MONTHS_SHORT[+ind[2] - 1]} ${ind[3]}`;
+    const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${+iso[3]} ${MONTHS_SHORT[+iso[2] - 1]} ${iso[1]}`;
+    return str;
+}
+
 function checkIsExpired(lastDateStr: string): boolean {
     if (!lastDateStr) return false;
 
@@ -163,12 +177,12 @@ const JobCard = React.memo(({ job, onWhatsAppShare }: {
                 {/* Header Row */}
                 <div className="flex items-center gap-1.5 flex-wrap">
                     {isExpired ? (
-                        <span className="bg-red-50 text-red-700 text-[8px] md:text-[10px] px-2 py-0.5 rounded-full border border-red-200 font-black">
+                        <span className="bg-red-50 text-red-700 text-[10px] px-2 py-1 rounded-full border border-red-200 font-black">
                             CLOSED
                         </span>
                     ) : (
                         <span
-                            className="bg-blue-50 text-blue-700 text-[8px] md:text-[10px] px-2 py-0.5 rounded-full font-black truncate max-w-[200px]"
+                            className="bg-blue-50 text-blue-700 text-[10px] px-2 py-1 rounded-full font-black truncate max-w-[260px]"
                             itemProp="hiringOrganization"
                         >
                             {job.organization}
@@ -185,7 +199,7 @@ const JobCard = React.memo(({ job, onWhatsAppShare }: {
                 {/* Title */}
                 <a href={jobUrl} className="block group">
                     <h3
-                        className={`text-[11px] md:text-lg font-black line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors 
+                        className={`text-[15px] md:text-lg font-black line-clamp-2 leading-snug group-hover:text-blue-600 transition-colors 
                             ${isExpired ? 'text-gray-400' : 'text-gray-900'}`}
                         itemProp="title"
                     >
@@ -194,7 +208,7 @@ const JobCard = React.memo(({ job, onWhatsAppShare }: {
                 </a>
 
                 {/* Meta */}
-                <div className="flex flex-wrap gap-2 text-[8px] md:text-sm text-gray-500">
+                <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-[11px] md:text-sm text-gray-500">
                     {job.location && (
                         <span className="flex items-center gap-0.5" itemProp="jobLocation">
                             <MapPin size={8} className="md:w-3.5 md:h-3.5 shrink-0" aria-hidden="true" />
@@ -203,13 +217,13 @@ const JobCard = React.memo(({ job, onWhatsAppShare }: {
                     )}
                     {job.vacancies && (
                         <span className="flex items-center gap-0.5 text-blue-600 font-bold">
-                            👥 {job.vacancies} Posts
+                            👥 {job.vacancies} {String(job.vacancies).trim() === '1' ? 'Post' : 'Posts'}
                         </span>
                     )}
                     <span className={`flex items-center gap-0.5 font-bold ${isExpired ? 'text-red-500' : 'text-orange-600'}`}>
                         <Clock size={8} className="md:w-3.5 md:h-3.5 shrink-0" aria-hidden="true" />
                         {isExpired ? 'Expired: ' : 'Last Date: '}
-                        <time itemProp="validThrough">{job.lastDate}</time>
+                        <time itemProp="validThrough">{formatDisplayDate(job.lastDate)}</time>
                     </span>
                 </div>
 
@@ -221,7 +235,7 @@ const JobCard = React.memo(({ job, onWhatsAppShare }: {
                             `${window.location.origin}${jobUrl}`
                         )}
                         aria-label={`Share ${job.title} on WhatsApp`}
-                        className="bg-green-500 hover:bg-green-600 text-white px-2 py-1 md:px-3 md:py-1.5 rounded-lg flex items-center gap-1 transition-colors active:scale-95 text-[8px] md:text-xs font-bold"
+                        className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 md:px-3 md:py-1.5 rounded-lg flex items-center gap-1 transition-colors active:scale-95 text-[11px] md:text-xs font-bold"
                     >
                         <MessageCircle size={10} className="md:w-3.5 md:h-3.5" aria-hidden="true" />
                         Share
@@ -229,7 +243,7 @@ const JobCard = React.memo(({ job, onWhatsAppShare }: {
 
                     <a
                         href={jobUrl}
-                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 md:px-3 md:py-1.5 rounded-lg flex items-center gap-1 transition-colors text-[8px] md:text-xs font-bold"
+                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 md:px-3 md:py-1.5 rounded-lg flex items-center gap-1 transition-colors text-[11px] md:text-xs font-bold"
                     >
                         Details
                         <ArrowRight size={10} className="md:w-3.5 md:h-3.5" aria-hidden="true" />

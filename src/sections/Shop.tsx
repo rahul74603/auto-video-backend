@@ -177,11 +177,11 @@ if (settings) {
                   {/* Pricing Badge */}
                   <div className="flex flex-col items-center gap-1 my-4 md:my-8 mt-auto">
                     <div className="flex items-center gap-2 font-bold">
-                       <span className="text-slate-400 line-through text-[9px] md:text-sm">₹{globalSettings?.mrpPrice || '499'}</span>
+                       <span className="text-slate-400 line-through text-[9px] md:text-sm">₹{String(globalSettings?.mrpPrice || '499').replace(/^₹+\s*/, '')}</span>
                        <span className="text-red-500 text-[9px] md:text-sm font-black italic">{globalSettings?.discountPercent || '85'}% OFF</span>
                     </div>
                     <div className="bg-emerald-50 text-emerald-600 px-3 py-1 md:px-6 md:py-2 rounded-full text-xs md:text-2xl font-black border-2 border-emerald-200">
-                      ₹{sellingPrice}
+                      ₹{String(sellingPrice).replace(/^₹+\s*/, '')}
                     </div>
                   </div>
 

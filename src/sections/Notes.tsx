@@ -178,7 +178,7 @@ const Notes: React.FC = () => {
                         {/* Compact Price Tag */}
                         {note.price && (
                             <div className="absolute top-0 right-0 bg-green-600 text-white text-[9px] md:text-sm font-black px-2 md:px-3 py-1 rounded-bl-lg md:rounded-bl-xl z-10 shadow-md">
-                                ₹{note.price}
+                                ₹{String(note.price).replace(/^₹+\s*/, '')}
                             </div>
                         )}
 
