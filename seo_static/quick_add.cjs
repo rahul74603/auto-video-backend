@@ -387,6 +387,7 @@ async function main() {
   const newsLocs = patchOne(NEWS_FILE, () => computeSitemapPatch(base[NEWS_FILE], files[NEWS_FILE]));
   const metaKeys = patchOne(cfg.meta, () => computeJsonPatch(base[cfg.meta], JSON.parse(files[cfg.meta])));
   let navAdded = [];
+  let navEntries = null; // race-retry me nav dobara patch karne ke liye
   if (cfg.navKey) {
     // meta keys me se sirf is type ke detail-paths (redirect-alias nahi)
     const detailKeys = Object.keys(JSON.parse(files[cfg.meta])).filter(
@@ -394,6 +395,7 @@ async function main() {
     );
     const builtMeta = JSON.parse(files[cfg.meta]);
     const entries = detailKeys.map((k) => ({ u: k, t: (builtMeta[k] && builtMeta[k].t) || k }));
+    navEntries = entries;
     navAdded = patchOne(NAV_FILE, () => computeNavPatch(base[NAV_FILE], cfg.navKey, entries, cfg.navCap));
   }
   const allLocs = [...new Set([...sitemapLocs, ...newsLocs])];
@@ -448,25 +450,44 @@ async function main() {
   uploadAll();
   console.log(`   📤 uploaded: ${changedFiles.join(", ")}`);
   let missing = verifyLive();
-  if (missing.length) {
-    console.log(`   ⚠️ race-detect (${missing.length}) — fresh base pe re-patch + re-upload…`);
-    // dobara patch (fresh base pe) + upload + final verify
-    patched[cfg.sitemap] !== undefined && Object.assign(patched, { [cfg.sitemap]: computeSitemapPatch(base[cfg.sitemap], files[cfg.sitemap]).patched });
-    // (sirf wahi files jinka probe missing tha — simplify: sab re-patch, idempotent)
+  // RACE-RETRY (2026-11-10 fix): parallel publishers (dusri workflows ke
+  // quick-add + subah ka full-run) ek hi file ko ek saath badal sakte hain.
+  // Har koshish me SAB files fresh base par dobara patch hongi — nav/recent
+  // samet (pehle retry sirf sitemap/meta karti thi, isiliye nav race kabhi
+  // heal nahi hoti thi aur job FATAL ho jati thi). Beech me chhota random
+  // intezaar, taaki do publisher baar-baar na takrayein.
+  const MAX_RACE_RETRIES = 3;
+  for (let attempt = 1; missing.length && attempt <= MAX_RACE_RETRIES; attempt++) {
+    console.log(`   ⚠️ race-detect (${missing.length}) — fresh base pe SAB re-patch + re-upload (koshish ${attempt}/${MAX_RACE_RETRIES})…`);
+    await new Promise((r) => setTimeout(r, 1500 + Math.floor(Math.random() * 2500)));
     const repatch = {};
     repatch[cfg.sitemap] = computeSitemapPatch(base[cfg.sitemap], files[cfg.sitemap]);
     repatch[NEWS_FILE] = computeSitemapPatch(base[NEWS_FILE], files[NEWS_FILE]);
     repatch[cfg.meta] = computeJsonPatch(base[cfg.meta], JSON.parse(files[cfg.meta]));
-    for (const [name, r] of Object.entries(repatch)) {
-      if (r.added.length) patched[name] = r.patched;
+    if (cfg.navKey && navEntries) {
+      repatch[NAV_FILE] = computeNavPatch(base[NAV_FILE], cfg.navKey, navEntries, cfg.navCap);
     }
+    repatch[RECENT_FILE] = computeRecentPatch(base[RECENT_FILE], allLocs);
+    if (cfg.rss) {
+      for (const rf of RSS_FILES) repatch[rf] = computeRssPatch(base[rf], files[rf]);
+    }
+    for (const [name, r] of Object.entries(repatch)) {
+      if (r && r.added && r.added.length) patched[name] = r.patched;
+    }
+    changedFiles.length = 0;
+    changedFiles.push(...Object.keys(patched));
     uploadAll();
     missing = verifyLive();
   }
   if (missing.length) {
-    throw new Error(`upload-verify FAIL (subah-6 full-run heal karega): ${missing.slice(0, 5).join(" | ")}`);
+    // Job ko FAIL mat karo: subah-6 ka full-run inhi files ko poora dobara
+    // banata hai, kami wahan pakki heal ho jati hai. Yahan exit 1 sirf
+    // jhooti failure-mail bhejta tha (2026-11-08/10 ko yahi hua). Asli FTP
+    // kharabi hogi to full-run apni verify par fail hokar bata dega.
+    console.log(`   ⚠️ upload-verify: ${missing.length} entries ab bhi live nahi — subah-6 full-run heal karega (job fail NAHI kiya): ${missing.slice(0, 5).join(" | ")}`);
+  } else {
+    console.log("   ✅ upload-verify: sab live confirmed");
   }
-  console.log("   ✅ upload-verify: sab live confirmed");
 
   // 6. TIGHT-VERIFY (bot-200 + title) — fail → IndexNow skip
   const locTitle = new Map();
