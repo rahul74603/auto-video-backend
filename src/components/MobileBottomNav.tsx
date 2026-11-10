@@ -45,7 +45,7 @@ const MobileBottomNav = () => {
                             <div className={`p-1 rounded-xl transition-all ${active ? 'bg-blue-50 scale-110' : ''}`}>
                                 <Icon size={20} strokeWidth={active ? 2.5 : 2} />
                             </div>
-                            <span className={`text-[9px] tracking-wide ${active ? 'font-black' : 'font-bold'}`}>{label}</span>
+                            <span className={`text-[10px] tracking-wide ${active ? 'font-black' : 'font-bold'}`}>{label}</span>
                         </Link>
                     );
                 })}
