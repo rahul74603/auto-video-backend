@@ -68,20 +68,32 @@ function createSlug(title: string): string {
 }
 
 function formatDateForInput(dateStr?: string | null): string {
+    // ⚠️ 2026-11-10 fix: tareekh ko new Date() se padhna BAND kiya.
+    // "11 November 2026" jaisi shaklein browser IST aadhi-raat par
+    // parse karta tha aur toISOString() use UTC ke PICHLE din me
+    // badal deti thi — panel me tareekh ek din kam dikhti thi, jabki
+    // description (source se bani) sahi tareekh dikhati thi.
+    // Ab har shakl seedha string ke hisson se banti hai — koi
+    // timezone hisaab hi nahi, ek din ka gap aa hi nahi sakta.
     if (!dateStr) return '';
-    try {
-        const ddmmyyyy = dateStr.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
-        if (ddmmyyyy) {
-            return `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
-        }
-        const d = new Date(dateStr);
-        if (!isNaN(d.getTime())) {
-            return d.toISOString().split('T')[0];
-        }
-        return '';
-    } catch {
-        return '';
+    const s = String(dateStr).trim();
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    const dmy = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+    if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+    const months: Record<string, string> = {
+        jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+        jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+    };
+    const dMon = s.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\.?,?\s+(\d{4})$/);
+    if (dMon && months[dMon[2].slice(0, 3).toLowerCase()]) {
+        return `${dMon[3]}-${months[dMon[2].slice(0, 3).toLowerCase()]}-${dMon[1].padStart(2, '0')}`;
     }
+    const monD = s.match(/^([A-Za-z]+)\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})$/);
+    if (monD && months[monD[1].slice(0, 3).toLowerCase()]) {
+        return `${monD[3]}-${months[monD[1].slice(0, 3).toLowerCase()]}-${monD[2].padStart(2, '0')}`;
+    }
+    return '';
 }
 
 // =========================================================
