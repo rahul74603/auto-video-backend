@@ -213,6 +213,22 @@ async function main() {
   const args = parseArgs();
   const db = initializeFirebase();
   const summary = await runSeoIntelligenceRunner({ db, FieldValue: admin.firestore.FieldValue, args });
+  // 2026-11-10 wiring fix: Old Blog SEO Repair ka daily run pehle sirf
+  // Firebase Cloud Function (scheduledSEOMasterDaily, isDaily:true) me
+  // tha — functions deploy hi nahi hain, isiliye blogRepairStatus kabhi
+  // likha hi nahi gaya aur panel use hamesha red/"kabhi nahi chala"
+  // dikhata raha. Ye runner roz schedule par chalta hai, isiliye daily
+  // blog-repair (max 5, sirf proposals — public content nahi badalta)
+  // yahin se chalega. Fail ho to bhi upar wala scan safal rahega.
+  if (!args.dryRun && summary && summary.ok) {
+    try {
+      const { runDailyBlogRepairProposals } = require("./agents/seo_intelligence/orchestrator");
+      const repair = await runDailyBlogRepairProposals(db, admin.firestore.FieldValue, { limit: 5 });
+      console.log("Daily blog repair done:", JSON.stringify(repair || {}).slice(0, 300));
+    } catch (e) {
+      console.warn("Daily blog repair failed (non-fatal):", e.message);
+    }
+  }
   console.log(JSON.stringify({
     ok: summary.ok,
     dryRun: summary.dryRun,
