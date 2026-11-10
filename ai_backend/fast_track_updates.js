@@ -278,7 +278,8 @@ async function scrapePage(url) {
 // =========================================================
 async function generateFullFastTrackArticle(extracted, sourceText, category, title, apiKey) {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    // 2026-11-10: gemini-2.5-flash retire (404) — naya primary naam.
+    const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
     const facts = JSON.stringify({
         title,
@@ -318,7 +319,14 @@ Return ONLY clean HTML (no markdown, no \`\`\`). NO <h1>. Structure:
 6. Chhota conclusion <p>
 Target: 800-1500 meaningful words. Kam jankari ho to chhota likho — filler mat daalo.`;
 
-    const result = await model.generateContent(prompt);
+    let result;
+    try {
+        result = await model.generateContent(prompt);
+    } catch (e) {
+        // Primary model fail (naam retire/quota) to lite model par
+        const lite = genAI.getGenerativeModel({ model: "gemini-3.5-flash-lite" });
+        result = await lite.generateContent(prompt);
+    }
     let html = result.response.text()
         .replace(/```html/gi, '')
         .replace(/```/g, '')
@@ -353,7 +361,7 @@ IMPORTANT:
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
             const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+            const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash-lite" });
 
             const result = await model.generateContent(prompt);
             const text   = result.response.text()
