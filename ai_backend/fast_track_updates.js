@@ -335,6 +335,51 @@ Target: 800-1500 meaningful words. Kam jankari ho to chhota likho — filler mat
     return html;
 }
 
+// =========================================================
+// 🛡️ FALLBACK ARTICLE (2026-11-12) — articleHtml KABHI khaali save nahi hoga.
+// AI fail/empty/thin ho to verified fields se hi article banta hai.
+// Facts invent NAHI hote — sirf doc ke apne fields + generic steps.
+// =========================================================
+function ftWordCount(html) {
+    return String(html || '').replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
+}
+
+function ftEsc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function buildFallbackFastTrackArticleHtml({ title, org, category, updateDate, shortInfo, directLink }) {
+    const cat = String(category || '');
+    const rows = [];
+    if (org) rows.push(`<tr><td><strong>Organization</strong></td><td>${ftEsc(org)}</td></tr>`);
+    rows.push(`<tr><td><strong>Update</strong></td><td>${ftEsc(title)}</td></tr>`);
+    if (cat) rows.push(`<tr><td><strong>Category</strong></td><td>${ftEsc(cat)}</td></tr>`);
+    if (updateDate) rows.push(`<tr><td><strong>Update Date</strong></td><td>${ftEsc(updateDate)}</td></tr>`);
+    if (directLink) rows.push(`<tr><td><strong>Official Website</strong></td><td><a href="${ftEsc(directLink)}" target="_blank" rel="noopener">${ftEsc(directLink)}</a></td></tr>`);
+
+    let steps = '';
+    if (/admit/i.test(cat)) {
+        steps = `<h2>Admit Card Kaise Download Karein?</h2><ol><li>Sabse pehle official website par jayein (neeche link diya hai).</li><li>Admit Card / Test Admit Card section kholein aur is exam ka link chunein.</li><li>Apna application number aur date of birth darj karein.</li><li>Submit karke apni exam date, shift aur centre details check karein.</li><li>Admit card download karke saaf printout nikaal lein — exam centre par printed copy aur original photo ID anivaarya hai.</li></ol>`;
+    } else if (/result/i.test(cat)) {
+        steps = `<h2>Result Kaise Check Karein?</h2><ol><li>Sabse pehle official website par jayein (neeche link diya hai).</li><li>Result section me is exam ka link kholein.</li><li>Apna roll number / application number aur date of birth darj karein.</li><li>Apna result screen par dekhein aur PDF/printout surakshit rakh lein.</li><li>Aage ki prakriya (document verification / next stage) ki jaankari official notice me dhyaan se padhein.</li></ol>`;
+    } else if (/answer/i.test(cat)) {
+        steps = `<h2>Answer Key Kaise Download Karein?</h2><ol><li>Sabse pehle official website par jayein (neeche link diya hai).</li><li>Answer Key section me is exam ka link kholein.</li><li>Login details (application number / date of birth) darj karein.</li><li>Apni answer key aur response sheet download karein.</li><li>Kisi prashn par aapatti ho to objection ki prakriya aur antim tithi official notice me dekhein.</li></ol>`;
+    } else {
+        steps = `<h2>Ye Update Kaise Dekhein?</h2><ol><li>Sabse pehle official website par jayein (neeche link diya hai).</li><li>Is update se sambandhit section/notification kholein.</li><li>Saari jaankari aur nirdesh dhyaan se padhein.</li><li>Zarurat pade to notification ka PDF/printout surakshit rakh lein.</li></ol>`;
+    }
+
+    const linkBlock = directLink
+        ? `<h2>महत्वपूर्ण लिंक</h2><p>👉 <a href="${ftEsc(directLink)}" target="_blank" rel="noopener"><strong>${ftEsc(title)} — Official Website</strong></a></p>`
+        : '';
+
+    return `<p>${ftEsc(shortInfo || title)}</p>`
+        + (org ? `<p><strong>${ftEsc(org)}</strong> ne ye update jaari kiya hai. Candidates se anurodh hai ki ve neeche di gayi jaankari dhyaan se padhein aur aage ki prakriya sirf official website se hi puri karein.</p>` : `<p>Candidates se anurodh hai ki ve neeche di gayi jaankari dhyaan se padhein aur aage ki prakriya sirf official website se hi puri karein.</p>`)
+        + `<h2>मुख्य जानकारी (Overview)</h2><table><tbody>${rows.join('')}</tbody></table>`
+        + steps
+        + linkBlock
+        + `<p><em>Note: Sabse sahi aur antim jaankari ke liye official website par jaari notification hi maanya hoga. StudyGyaan par hum aapko har naye update ki khabar sabse pehle dete rahenge.</em></p>`;
+}
+
 async function extractWithAI(linksText, category, title, apiKey, logger = console.log) {
     const MAX_RETRIES = 3;
 
@@ -554,13 +599,28 @@ async function runFastTrackLogic(logger = console.log, apiKey) {
             logger(`🔗 directLink: ${cleanDirectLink}`);
 
             // ✍️ FULL ARTICLE — fetch ke saath hi ready (Result/Admit Card style)
+            // 🛡️ 2026-11-12: AI fail/empty/thin => 1 retry => fallback (verified fields).
+            // articleHtml KABHI khaali save nahi hoga (Eric ka order).
             let articleHtml = '';
-            try {
-                articleHtml = await generateFullFastTrackArticle(extracted, linksText, category, finalTitle, apiKey);
-                const words = articleHtml.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
-                logger(`📝 Full article: ${words} words`);
-            } catch (artErr) {
-                logger(`⚠️ Article generation fail (item phir bhi banega): ${artErr.message}`);
+            for (let attempt = 1; attempt <= 2 && ftWordCount(articleHtml) < 120; attempt++) {
+                try {
+                    const got = await generateFullFastTrackArticle(extracted, linksText, category, finalTitle, apiKey);
+                    if (ftWordCount(got) > ftWordCount(articleHtml)) articleHtml = got;
+                    logger(`📝 Full article (attempt ${attempt}): ${ftWordCount(articleHtml)} words`);
+                } catch (artErr) {
+                    logger(`⚠️ Article generation fail (attempt ${attempt}): ${artErr.message}`);
+                }
+            }
+            if (ftWordCount(articleHtml) < 120) {
+                articleHtml = buildFallbackFastTrackArticleHtml({
+                    title: finalTitle,
+                    org: extracted.org || '',
+                    category,
+                    updateDate: extracted.updateDate || '',
+                    shortInfo: extracted.shortInfo || '',
+                    directLink: cleanDirectLink
+                });
+                logger(`🛡️ Fallback article use hua: ${ftWordCount(articleHtml)} words`);
             }
 
             await db.collection("fast_track").doc(finalSlug).set({
