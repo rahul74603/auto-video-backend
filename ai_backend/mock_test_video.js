@@ -20,6 +20,23 @@ const ffmpegPath = require('ffmpeg-static');
 const FormData = require('form-data');
 const V = require('./video_state');
 const socialExtra = require('./social_extra');
+
+// Video ki lambai (seconds) — ffmpeg ke -i output se (ffprobe binary
+// uplabdh nahi hota). Na mile to 0 (= pata nahi, normal flow chalega).
+function getVideoDurationSec(filePath) {
+    return new Promise((resolve) => {
+        try {
+            const p = spawn(ffmpegPath, ['-i', filePath]);
+            let err = '';
+            p.stderr.on('data', d => { err += d.toString(); });
+            p.on('error', () => resolve(0));
+            p.on('close', () => {
+                const m = err.match(/Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/);
+                resolve(m ? (parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseFloat(m[3])) : 0);
+            });
+        } catch (e) { resolve(0); }
+    });
+}
 const ttsEngine = require('./tts_engine');
 require("dotenv").config();
 
@@ -1293,6 +1310,8 @@ async function generateMockTestVideo(options = {}) {
             console.log('⏭️ Instagram / Threads skip — test upload.');
         } else if ((process.env.IG_USER_ID && process.env.FB_PAGE_TOKEN) || (process.env.THREADS_USER_ID && process.env.THREADS_ACCESS_TOKEN)) {
             const publicVideoUrl = await socialExtra.getPublicVideoUrl(finalVideoPath);
+            const durationSec = await getVideoDurationSec(finalVideoPath);
+            console.log(`🎬 Video duration: ${Math.round(durationSec)}s`);
             if (publicVideoUrl) {
                 if (process.env.IG_USER_ID && process.env.FB_PAGE_TOKEN) {
                     try {
@@ -1303,7 +1322,7 @@ async function generateMockTestVideo(options = {}) {
                 }
                 if (process.env.THREADS_USER_ID && process.env.THREADS_ACCESS_TOKEN) {
                     try {
-                        await socialExtra.postToThreads({ videoUrl: publicVideoUrl, caption: seoDescription });
+                        await socialExtra.postToThreads({ videoUrl: publicVideoUrl, caption: seoDescription, durationSec, watchUrl: ytVideoId ? `https://youtu.be/${ytVideoId}` : '' });
                     } catch (thErr) {
                         console.log('⚠️ Threads fail:', thErr.response?.data?.error?.message || thErr.message);
                     }

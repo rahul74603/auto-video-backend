@@ -25,7 +25,14 @@ const THREADS_GRAPH = 'https://graph.threads.net/v1.0';
 const GH_API = 'https://api.github.com';
 const TEMP_RELEASE_TAG = 'sg-media-temp';
 const POLL_INTERVAL_MS = 5000;
-const POLL_TIMEOUT_MS = 120000; // ~2 min max wait (task limit)
+// Badi (lambi) video ko Meta ko fetch+process karne me samay lagta hai —
+// purani 2 min ki limit par 13-14 min ki mock-test videos hamesha time-out
+// ho jati thi (jobs ki chhoti videos isiliye chal jati thi). Ab per-platform:
+const POLL_TIMEOUT_IG_MS = 12 * 60 * 1000;      // Instagram: 10 min tak wait
+const POLL_TIMEOUT_THREADS_MS = 8 * 60 * 1000;  // Threads: 8 min tak wait
+// Threads video ki lambai limit ~5 min hai — isse lambi video ka container
+// ERROR ho jata hai, isliye lambi video par text-post fallback lagta hai.
+const THREADS_MAX_VIDEO_SEC = 290;
 
 // Aakhiri uploaded temp asset — cleanup ke liye yaad rakho.
 let lastTempAsset = null;
@@ -139,8 +146,8 @@ async function cleanupTempVideoAsset(assetId) {
 }
 
 // Container status poll — FINISHED tak wait, ERROR/timeout par throw.
-async function pollContainer(statusUrl, params, platformLabel) {
-    const deadline = Date.now() + POLL_TIMEOUT_MS;
+async function pollContainer(statusUrl, params, platformLabel, timeoutMs = POLL_TIMEOUT_THREADS_MS) {
+    const deadline = Date.now() + timeoutMs;
     let status = 'IN_PROGRESS';
     while (Date.now() < deadline) {
         await sleep(POLL_INTERVAL_MS);
@@ -181,7 +188,8 @@ async function postToInstagram({ videoUrl, caption }) {
     await pollContainer(
         `${FB_GRAPH}/${containerId}`,
         { fields: 'status_code', access_token: FB_PAGE_TOKEN },
-        'Instagram'
+        'Instagram',
+        POLL_TIMEOUT_IG_MS
     );
 
     const pubRes = await axios.post(`${FB_GRAPH}/${IG_USER_ID}/media_publish`, {
@@ -195,13 +203,46 @@ async function postToInstagram({ videoUrl, caption }) {
 // =========================================================
 // 🧵 THREADS VIDEO — apna token (THREADS_USER_ID + THREADS_ACCESS_TOKEN)
 // =========================================================
-async function postToThreads({ videoUrl, caption }) {
+async function postToThreads({ videoUrl, caption, durationSec = 0, watchUrl = '' }) {
     const THREADS_USER_ID = process.env.THREADS_USER_ID;
     const THREADS_ACCESS_TOKEN = process.env.THREADS_ACCESS_TOKEN;
     if (!THREADS_USER_ID || !THREADS_ACCESS_TOKEN) {
         console.log('⚠️ THREADS_USER_ID / THREADS_ACCESS_TOKEN नहीं मिला — Threads skip।');
         return null;
     }
+    // Lambi video (> ~5 min) Threads par VIDEO ban hi nahi sakti (platform
+    // limit) — uski jagah text post: title + YouTube link, taaki wahan
+    // khamoshi na ho. Text post ko public video URL nahi chahiye.
+    if (durationSec > THREADS_MAX_VIDEO_SEC) {
+        const firstLine = String(caption || '').split('\n')[0].slice(0, 300);
+        const text = trimCaptionLines(
+            [firstLine,
+             watchUrl ? `📺 Watch: ${watchUrl}` : '',
+             'StudyGyaan — Govt Jobs • Mock Tests • Study Material']
+                .filter(Boolean).join('\n'),
+            500
+        );
+        console.log(`🧵 Threads: video ${Math.round(durationSec)}s limit se lambi hai — text post bhej raha hun...`);
+        const tRes = await axios.post(`${THREADS_GRAPH}/${THREADS_USER_ID}/threads`, {
+            media_type: 'TEXT',
+            text,
+            access_token: THREADS_ACCESS_TOKEN
+        });
+        const tContainerId = tRes.data.id;
+        await pollContainer(
+            `${THREADS_GRAPH}/${tContainerId}`,
+            { fields: 'status', access_token: THREADS_ACCESS_TOKEN },
+            'Threads',
+            POLL_TIMEOUT_THREADS_MS
+        );
+        const tPub = await axios.post(`${THREADS_GRAPH}/${THREADS_USER_ID}/threads_publish`, {
+            creation_id: tContainerId,
+            access_token: THREADS_ACCESS_TOKEN
+        });
+        console.log('✅ Threads Text Post Live! ID: ' + tPub.data.id);
+        return tPub.data.id;
+    }
+
     if (!videoUrl) {
         console.log('⚠️ Public video URL नहीं है — Threads skip।');
         return null;
@@ -219,7 +260,8 @@ async function postToThreads({ videoUrl, caption }) {
     await pollContainer(
         `${THREADS_GRAPH}/${containerId}`,
         { fields: 'status', access_token: THREADS_ACCESS_TOKEN },
-        'Threads'
+        'Threads',
+        POLL_TIMEOUT_THREADS_MS
     );
 
     const pubRes = await axios.post(`${THREADS_GRAPH}/${THREADS_USER_ID}/threads_publish`, {
