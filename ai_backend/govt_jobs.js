@@ -1231,13 +1231,29 @@ exports.onJobPublishedNotify = onDocumentCreated("jobs/{jobId}")(async (snap, co
 // 3️⃣ CLI RUNNER
 // =========================================================
 exports.runJobScraper = async (maxJobs = 5) => {
+    // 2026-11-12 wiring fix #2: panel status YAHIN likho. Workflow
+    // (govt_jobs_scraper.yml) require() karke runJobScraper(5) bulata
+    // hai — require.main wala CLI path kabhi chalta hi nahi, isiliye
+    // 2026-11-10 wala status-write wahan hone ke bawjud
+    // system_configs/scraper_status doc kabhi bana hi nahi aur panel
+    // hamesha laal raha. Status-write fail ho to bhi run nahi rukega.
+    const writeStatus = async (fields) => {
+        try {
+            await db.collection("system_configs").doc("scraper_status").set({
+                lastRun: admin.firestore.FieldValue.serverTimestamp(),
+                ...fields,
+            }, { merge: true });
+        } catch (e) { console.warn("scraper status write failed:", e.message); }
+    };
     try {
         console.log("🤖 CLI Scraper Started...");
         const count = await scrapeGovtJobsLogic(maxJobs);
         console.log(`🎯 Done: ${count} jobs saved`);
+        await writeStatus({ status: "completed", lastCount: count });
         return count;
     } catch (error) {
         console.error("❌ CLI Failed:", error.message);
+        await writeStatus({ status: "error", lastError: error.message });
         throw error;
     }
 };
