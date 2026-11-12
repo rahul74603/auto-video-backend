@@ -324,7 +324,7 @@ const generateDailyMocks = async () => {
             throw new Error(`Gemini JSON parse fail: ${parsed.error?.message || "unknown"} | preview: ${parsed.preview}`);
         }
         const json = parsed.json;
-        const questions = normalizeMockQuestions(json.questions);
+        const questions = normalizeMockQuestions(json.questions).slice(0, totalQuestions); // 2026-11-12: cap — title me likhi ginti se zyada sawal save nahi honge
         if (!questions.length) {
             throw new Error("Gemini ne 0 valid questions diye — next run me dobara try hoga");
         }
@@ -354,7 +354,7 @@ const generateDailyMocks = async () => {
             requestedTopic: randomTopic,
             requestedBy: request ? "admin-request" : "auto-schedule",
             requestId: request ? request.id : null,
-            subject: requestCategory || "General Knowledge",
+            subject: requestCategory || String(randomTopic || "").split(" - ")[0].trim() || "General Knowledge", // 2026-11-12: category na ho to subject topic se bane, hamesha GK nahi
             type: "auto_generated",
             internalLinks: relatedLinks,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
