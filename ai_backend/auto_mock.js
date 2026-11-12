@@ -251,7 +251,7 @@ Generate exactly ${totalQuestions} high-quality, completely bilingual questions.
 
 // Model fallback chain: 2.5-flash-lite missing/dead ho to 2.0-flash try karo.
 // Pehle single model 404 deta to poora run fail ho jata tha.
-const MOCK_MODEL_CHAIN = ["gemini-2.5-flash-lite", "gemini-2.0-flash"];
+const MOCK_MODEL_CHAIN = ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-flash-latest", "gemini-3.5-flash-lite"];
 
 async function generateMockContent(genAI, prompt) {
     let lastError = null;
