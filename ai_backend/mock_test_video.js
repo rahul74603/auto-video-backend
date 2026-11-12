@@ -365,6 +365,8 @@ function generateMockTitle(subject, totalQuestions, topicTitle = '') {
         .replace(/\s+/g, ' ')
         .replace(/mock\s*test/gi, '')
         .replace(/quiz/gi, '')
+        .replace(/top\s*\d+\s*(questions?|mcqs?|q&a)?/gi, '') // 2026-11-12: title ke andar ki purani "Top N" ginti hatao — asal ginti questions.length se aayegi
+        .replace(/\s+/g, ' ')
         .trim();
 
     if (topicClean.length >= 8) {
@@ -993,6 +995,9 @@ async function generateMockTestVideo(options = {}) {
         const totalQuestions = mockData.questions.length;
         const subject = mockData.subject || "General Knowledge";
         const title = mockData.title || `${subject} ${totalQuestions} Q&A Mock Test`;
+        if (title && subject && !title.toLowerCase().includes(subject.toLowerCase().split(' ')[0])) {
+            console.log(`⚠️ MISMATCH: subject="${subject}" vs title="${title}" — slides use title subject`);
+        }
 
         console.log(`📚 Subject: ${subject} | Questions: ${totalQuestions}`);
 
