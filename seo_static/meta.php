@@ -91,6 +91,18 @@ if (isset($redirectMap[$first])) {
     // /govt-jobs bhej deta hai, isliye yahan kabhi aata hi nahi.
 }
 
+// ---------- Stale single-segment URLs → live hub (GSC canonical samples, 13 Nov 2026) ----------
+// /result aur /handwritten-premium bot ko 404 dete the — na sitemap me hain, na seo-meta me;
+// asal live routes /results aur /premium-notes hain (bot 200, 13 Nov verify). Bot-only 301:
+// aam users ko React app milti hai, unpar koi asar nahi. (GSC issue ke 2 sample URLs isi se band honge.)
+$staleRedirect = ['result' => 'results', 'handwritten-premium' => 'premium-notes'];
+if (!$isDetail && isset($staleRedirect[$first])) {
+    header('Location: ' . $SITE . '/' . $staleRedirect[$first], true, 301);
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('X-LiteSpeed-Cache-Control: no-cache');
+    exit;
+}
+
 // ---------- Legacy: bare /course -> asal listing /courses ----------
 if ($path === '/course') {
     header('Location: ' . $SITE . '/courses', true, 301);
