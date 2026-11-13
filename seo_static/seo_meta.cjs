@@ -409,14 +409,70 @@ function buildMetaFiles(colls, opts = {}) {
     } catch (e) { console.error("⚠️ seo_meta fast_track doc skip:", id, "-", e.message); }
   });
 
-  // ===== BAAKI PAGES: preview meta =====
+  // ===== BAAKI PAGES: preview meta + UNIQUE BODY (GSC canonical fix, 13 Nov 2026) =====
+  // Pehle addPage sirf title/desc deta tha, content bilkul nahi — isliye /material,
+  // /test, /course ke bot-page byte-identical shell the (13 Nov live check: do alag
+  // materials 17,367 bytes, text 5,473 — bilkul same) aur Google ek ko dusre ka
+  // duplicate-canonical chun raha tha (582 pages). Ab har page ko apna content:
+  // description (ho to), questions/topics/pdf-link (hon to — guarded, na hon to
+  // kuch nahi judta), same-type ke doosre pages ke links (category-match pehle),
+  // aur related jobs/updates — taaki koi do pages ek jaise na rahen.
+  const siblingPool = (rows) =>
+    (rows || [])
+      .filter(({ data }) => isIndexableDocument(data) && hasUsefulTitle(data))
+      .map(({ id, data }) => ({
+        slug: cleanSlug(data.slug, id),
+        title: stripHtml(data.title),
+        category: String(data.category || data.subject || "").toLowerCase(),
+      }));
+  const siblingPools = {
+    material: siblingPool([...(colls.study_materials || []), ...(colls.studyMaterials || [])]),
+    test: siblingPool(colls.mock_tests || []),
+    course: siblingPool(colls.courses || []),
+  };
+  const siblingBase = { material: "/material", test: "/test", course: "/course" };
+  const siblingLabel = { material: "Aur Study Material", test: "Aur Mock Tests", course: "Aur Courses" };
+  const siblingHtml = (type, selfSlug, category) => {
+    const pool = (siblingPools[type] || []).filter((p) => p.slug !== selfSlug);
+    if (!pool.length) return "";
+    const same = pool.filter((p) => category && p.category === category);
+    const rest = pool.filter((p) => !same.includes(p));
+    const picked = [...same, ...rest].slice(0, 5);
+    let html = `<h2>${esc(siblingLabel[type] || "Ye bhi dekhein")}</h2><ul>`;
+    picked.forEach((p) => { html += `<li><a href="${SITE}${siblingBase[type]}/${esc(p.slug)}">${esc(p.title)}</a></li>`; });
+    html += `</ul>`;
+    return html;
+  };
+  const questionsHtml = (data) => {
+    const qs = Array.isArray(data.questions) ? data.questions : [];
+    if (!qs.length) return "";
+    let items = "";
+    qs.slice(0, 10).forEach((q) => {
+      const text = typeof q === "string" ? q : (q && (q.question || q.q || q.text)) || "";
+      if (String(text).trim()) items += `<li>${esc(stripHtml(String(text)))}</li>`;
+    });
+    return items ? `<h2>Practice Questions</h2><ol>${items}</ol>` : "";
+  };
   const addPage = (path, data, imgField, type) => {
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+    const slug = String(path.split("/").pop() || "");
+    const title = stripHtml(data.title);
+    const descText = stripHtml(data.description || data.content || data.articleHtml || "");
+    const category = String(data.category || data.subject || "").toLowerCase();
+    let body = "";
+    if (descText) body += `<p>${esc(descText)}</p>`;
+    const topicList = Array.isArray(data.topics) ? data.topics.filter(Boolean).map(String) : [];
+    if (topicList.length) body += `<p>Topics: ${topicList.map((t) => esc(t)).join(", ")}</p>`;
+    body += questionsHtml(data);
+    if (data.pdfUrl || data.fileUrl) body += `<p><a href="${esc(data.pdfUrl || data.fileUrl)}">${esc(title)} — PDF Download</a></p>`;
+    body += siblingHtml(type, slug, category);
+    body += relatedHtml(slug, category);
     pages[path] = {
       t: truncate(data.seoTitle || data.title, 70),
-      d: truncate(data.metaDescription || stripHtml(data.description) || `${stripHtml(data.title)} - StudyGyaan`, 160),
+      d: truncate(data.metaDescription || descText || `${title} - StudyGyaan`, 160),
       img: resolveImg(path, data, imgField, type),
       type: "article",
+      content: body,
       ld: [],
     };
   };
