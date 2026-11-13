@@ -256,19 +256,30 @@ const MOCK_MODEL_CHAIN = ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-flash-
 async function generateMockContent(genAI, prompt) {
     let lastError = null;
     for (const modelName of MOCK_MODEL_CHAIN) {
-        try {
-            const model = genAI.getGenerativeModel({
-                model: modelName,
-                generationConfig: { maxOutputTokens: 8000, temperature: 0.4, responseMimeType: "application/json" },
-            });
-            const resp = await model.generateContent(prompt);
-            const text = resp.response?.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!text || !text.trim()) throw new Error("empty Gemini response");
-            console.log(`🤖 Model OK: ${modelName}`);
-            return text;
-        } catch (err) {
-            lastError = err;
-            console.warn(`⚠️ Model ${modelName} fail (${err.message}) — next try...`);
+        // 2026-11-13 fix: sirf response aana kaafi nahi — JSON parse bhi hona
+        // chahiye. Gemini kabhi-kabhi malformed JSON deta hai (unterminated
+        // string; run #665 aur 6 Nov wali fail yahi thi). Parse fail par wahi
+        // model ek baar retry, phir agla model — run tabhi fail hoga jab
+        // saare models parse-layak JSON dene me fail ho jayein.
+        for (let attempt = 1; attempt <= 2; attempt += 1) {
+            try {
+                const model = genAI.getGenerativeModel({
+                    model: modelName,
+                    generationConfig: { maxOutputTokens: 16000, temperature: 0.4, responseMimeType: "application/json" },
+                });
+                const resp = await model.generateContent(prompt);
+                const text = resp.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!text || !text.trim()) throw new Error("empty Gemini response");
+                const parsed = parseMockJson(text);
+                if (!parsed.ok) {
+                    throw new Error(`Gemini JSON parse fail: ${parsed.error?.message || "unknown"} | preview: ${parsed.preview}`);
+                }
+                console.log(`🤖 Model OK: ${modelName} (attempt ${attempt}, JSON valid)`);
+                return parsed.json;
+            } catch (err) {
+                lastError = err;
+                console.warn(`⚠️ Model ${modelName} attempt ${attempt} fail (${err.message}) — retry/next...`);
+            }
         }
     }
     throw lastError || new Error("All Gemini models failed");
@@ -318,12 +329,7 @@ const generateDailyMocks = async () => {
 
 
     try {
-        const text = await generateMockContent(genAI, prompt);
-        const parsed = parseMockJson(text);
-        if (!parsed.ok) {
-            throw new Error(`Gemini JSON parse fail: ${parsed.error?.message || "unknown"} | preview: ${parsed.preview}`);
-        }
-        const json = parsed.json;
+        const json = await generateMockContent(genAI, prompt);
         const questions = normalizeMockQuestions(json.questions).slice(0, totalQuestions); // 2026-11-12: cap — title me likhi ginti se zyada sawal save nahi honge
         if (!questions.length) {
             throw new Error("Gemini ne 0 valid questions diye — next run me dobara try hoga");
