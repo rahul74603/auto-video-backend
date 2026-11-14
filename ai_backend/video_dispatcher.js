@@ -530,7 +530,12 @@ async function processCandidate(candidate, ctx) {
             worker: 'github-dispatcher',
             maxAgeDays: ctx.maxAgeDays,
             shortsCutoffMs: ctx.shortsCutoffMs,
-            freshOnly: ctx.maxAgeDays > 0   // legacy content hard guard
+            freshOnly: ctx.maxAgeDays > 0,   // legacy content hard guard
+            // Targeted (--doc) run KHUD wahi dispatched run hai jiske liye
+            // legacy grace bana tha. video_maker ab generate_job/fasttrack_video
+            // par jagta hi nahi, isliye grace matlab apni hi video rok dena
+            // (14 Nov 2026: Jind/KSP/JSSC teeno isi se atki thi). Bypass karo.
+            legacyGraceMs: ctx.doc ? 0 : undefined
         });
     } catch (err) {
         // Infra-blip (tx-expired/contention) ek doc tak सीमित — poora run red
@@ -616,6 +621,7 @@ async function main() {
     const ctx = {
         db,
         runId,
+        doc: args.doc || '',
         maxAgeDays: args.maxAgeDays,
         shortsCutoffMs: args.shortsCutoffMs,
         privacyStatus: process.env.VIDEO_PRIVACY_STATUS || ''
