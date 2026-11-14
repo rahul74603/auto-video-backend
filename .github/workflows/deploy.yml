@@ -58,10 +58,12 @@ jobs:
           S_AGENT_ADMIN_TOKEN: ${{ secrets.AGENT_ADMIN_TOKEN }}
           S_ARTICLE_ADMIN_EMAILS: ${{ secrets.ARTICLE_ADMIN_EMAILS }}
           S_GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          S_GITHUB_OWNER: "rahul74603"
+          S_GITHUB_REPO: "auto-video-backend"
         run: node ../scripts/write-functions-env.cjs
 
       - name: Deploy Firebase Functions (v1 — Spark plan free)
-        run: firebase deploy --only functions:api,functions:serverSideMetaTags,functions:rssFeed,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemapCourses,functions:generateSitemapMaterials,functions:generateSitemap,functions:generateRss,functions:pingIndexNow,functions:bulkIndexNow,functions:recentUrls,functions:recentUrlsTxt --project studymaterial-406ad --non-interactive --force
+        run: firebase deploy --only functions:api,functions:serverSideMetaTags,functions:rssFeed,functions:generateSitemapIndex,functions:generateSitemapMain,functions:generateSitemapBlogs,functions:generateSitemapJobs,functions:generateSitemapTests,functions:generateSitemapStories,functions:generateSitemapUpdates,functions:generateSitemapNews,functions:generateSitemapCourses,functions:generateSitemapMaterials,functions:generateSitemap,functions:generateRss,functions:pingIndexNow,functions:bulkIndexNow,functions:recentUrls,functions:recentUrlsTxt,functions:onJobPublishedNotify,functions:onFastTrackApprovedSendTelegram --project studymaterial-406ad --non-interactive --force
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
           CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
