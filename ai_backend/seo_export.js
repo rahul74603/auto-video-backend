@@ -43,6 +43,20 @@ Object.defineProperty(exports, "api", {
   get() { return require("./index").api; },
 });
 
+// 🚀 Publish → turant video trigger (14 Nov 2026 restore): ye do v1 Firestore
+// trigger govt_jobs.js / fast_track_updates.js me bane the, lekin is entry
+// file (package.json main) se kabhi export hi nahi hue — isliye deploy list
+// me hote hue bhi "not defined in the provided module" fail hote rahe.
+// api ki tarah lazy getter: sirf inke apne container me heavy module load hoga.
+Object.defineProperty(exports, "onJobPublishedNotify", {
+  enumerable: false,
+  get() { return require("./govt_jobs").onJobPublishedNotify; },
+});
+Object.defineProperty(exports, "onFastTrackApprovedSendTelegram", {
+  enumerable: false,
+  get() { return require("./fast_track_updates").onFastTrackApprovedSendTelegram; },
+});
+
 exports.serverSideMetaTags = functions.https.onRequest(withCors((req, res) => handleMetaTags(req, res)));
 exports.rssFeed = functions.https.onRequest(withCors((req, res) => require("./newsFeed").rssFeed(req, res)));
 
