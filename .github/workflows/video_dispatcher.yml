@@ -204,7 +204,17 @@ jobs:
           # repository_dispatch → instant trigger, process immediately
           if [ -n "$IN_JOBDATA" ] && [ "$IN_JOBDATA" != "null" ] && [ "$IN_JOBDATA" != "" ]; then
             echo " Instant trigger (repository_dispatch) — processing immediately"
-            ARGS="--kind=all --limit=1 --max-age-days=0"
+            # 🎯 SIRF wahi doc jispar publish hua (Eric ka niyam, 14 Nov 2026):
+            # payload se doc id nikalo aur --doc se target karo. Bina iske scan
+            # purani pending cheez utha leta tha (14 Nov: Food Safety Officer
+            # ki purani video ban gayi thi, jabki publish UPSSSC ka hua tha).
+            DOC_ID=$(python3 -c "import os,json; d=json.loads(os.environ.get('IN_JOBDATA') or '{}'); print(d.get('id') or d.get('slug') or '')" 2>/dev/null || true)
+            if [ -n "$DOC_ID" ]; then
+              echo "🎯 Targeted doc: $DOC_ID"
+              ARGS="--kind=all --limit=1 --max-age-days=0 --doc=$DOC_ID"
+            else
+              ARGS="--kind=all --limit=1 --max-age-days=0"
+            fi
           elif [ "$IN_EVENT" = "schedule" ]; then
             # ⏰ Scheduled poll (Eric ka niyam, 14 Nov 2026): SIRF mock_test auto.
             # Jobs/fast-track ki video SIRF publish ke repository_dispatch par
