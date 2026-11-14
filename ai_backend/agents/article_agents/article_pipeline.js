@@ -496,63 +496,6 @@ function buildPublishPayload(draft, draftId) {
  * Review gate PHIR se lagta hai (assertPublishable) — console/telegram dono safe.
  * db + FieldValue parameter se lete hain (module unit-testable rehta hai).
  */
-/**
- * 🚀 Publish → TURANT video trigger (14 Nov 2026, Eric ke order par).
- * Dono publish raaste (Telegram ✅ + panel) isi publishDraftRecord se guzarte
- * hain — yahan se GitHub ko repository_dispatch bhejta hai, jise
- * video_dispatcher.yml pakad kar 30-60s me video banana shuru kar deta hai.
- * Token na ho to chup-chaap skip — 5-minute poller fallback hamesha rehta hai.
- * Fire-and-forget: publish ko kabhi block/fail NAHI karta.
- */
-function triggerVideoDispatchNonBlocking(collection, payload, docId) {
-  try {
-    const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || "";
-    if (!token) {
-      console.log("video-dispatch: GH_TOKEN missing — skip (5-min poller fallback active)");
-      return;
-    }
-    const owner = process.env.GITHUB_OWNER || "rahul74603";
-    const repo = process.env.GITHUB_REPO || "auto-video-backend";
-    const isJob = collection === "jobs";
-    const body = {
-      event_type: isJob ? "generate_job_video" : "generate_fasttrack_video",
-      client_payload: {
-        jobData: {
-          id: String(docId || ""),
-          slug: String((payload && payload.slug) || docId || ""),
-          title: String((payload && payload.title) || ""),
-          category: String((payload && (payload.category || payload.subject)) || "Default"),
-          type: isJob ? "JOB" : "FAST_TRACK"
-        }
-      }
-    };
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
-    fetch(`https://api.github.com/repos/${owner}/${repo}/dispatches`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-        "X-GitHub-Api-Version": "2022-11-28"
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    })
-      .then((res) => {
-        clearTimeout(timer);
-        if (res.status === 204) console.log(`🚀 video-dispatch: ${body.event_type} sent for ${docId}`);
-        else console.warn(`video-dispatch: GitHub status ${res.status} for ${docId}`);
-      })
-      .catch((e) => {
-        clearTimeout(timer);
-        console.warn("video-dispatch failed (poller fallback):", e.message);
-      });
-  } catch (e) {
-    console.warn("video-dispatch hook error (ignored):", e.message);
-  }
-}
-
 async function publishDraftRecord(db, FieldValue, draft, draftId) {
   assertPublishable(draft);
 
@@ -594,14 +537,6 @@ async function publishDraftRecord(db, FieldValue, draft, draftId) {
     triggerOptimizerNonBlocking(db, FieldValue, publishedDoc, collection);
   } catch { /* optimizer hook must never fail publish */ }
 
-  // 🚀 Turant video trigger — sirf PEHLE publish par (update par nahi).
-  // Dispatch fail ho jaye to bhi publish safal rehta hai; 5-min poller video bana dega.
-  if (!existing) {
-    try {
-      triggerVideoDispatchNonBlocking(collection, payload, targetId);
-    } catch { /* video hook must never fail publish */ }
-  }
-
   // ⭐ Publish ke turant baad draft DELETE — duplicate records nahi rehte.
   await db
     .collection(DRAFT_COLLECTION)
@@ -635,7 +570,6 @@ module.exports = {
   buildDraftRecord,
   assertPublishable,
   publishDraftRecord,
-  triggerVideoDispatchNonBlocking,
   buildJobPublishPayload,
   buildFastTrackPublishPayload,
   buildPublishPayload,
