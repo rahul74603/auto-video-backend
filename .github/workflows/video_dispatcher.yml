@@ -5,7 +5,8 @@ name: 🎬 Video Dispatcher (Firestore Poller)
 #
 #   Website/admin publishes  →  Firestore
 #   →  INSTANT trigger via repository_dispatch (within 30-60 seconds)
-#   →  OR scheduled poll every 5 minutes as safety net
+#   →  OR scheduled poll every 5 minutes (14 Nov 2026 se sirf mock_test ke liye;
+#      jobs/fast-track ki video SIRF publish-dispatch par banti hai)
 #   →  claims a pending JOB / FAST_TRACK / MOCK_TEST document (atomic)
 #   →  runs the EXISTING renderer (autoVideo.js / mock_test_video.js) with FFmpeg
 #   →  YouTube / Facebook / Telegram / Instagram / Threads
@@ -193,6 +194,7 @@ jobs:
           IN_LIMIT: ${{ github.event.inputs.limit }}
           IN_DRY:   ${{ github.event.inputs.dry_run }}
           IN_DOC:   ${{ github.event.inputs.doc }}
+          IN_EVENT: ${{ github.event_name }}
         run: |
           KIND="$IN_KIND"
           LIMIT="$IN_LIMIT"
@@ -203,6 +205,12 @@ jobs:
           if [ -n "$IN_JOBDATA" ] && [ "$IN_JOBDATA" != "null" ] && [ "$IN_JOBDATA" != "" ]; then
             echo " Instant trigger (repository_dispatch) — processing immediately"
             ARGS="--kind=all --limit=1 --max-age-days=0"
+          elif [ "$IN_EVENT" = "schedule" ]; then
+            # ⏰ Scheduled poll (Eric ka niyam, 14 Nov 2026): SIRF mock_test auto.
+            # Jobs/fast-track ki video SIRF publish ke repository_dispatch par
+            # banegi — poller unhe apne aap kabhi nahi uthayega.
+            echo "⏰ Scheduled poll — mock_test only (jobs/fast-track sirf publish par)"
+            ARGS="--kind=mock_test --limit=1"
           else
             ARGS="--kind=${KIND:-all} --limit=${LIMIT:-1}"
             if [ "$DRY" = "true" ]; then ARGS="$ARGS --dry-run"; fi
