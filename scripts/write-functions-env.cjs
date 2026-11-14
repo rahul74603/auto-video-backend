@@ -31,6 +31,8 @@ const KEYS = [
   ["AGENT_ADMIN_TOKEN", "S_AGENT_ADMIN_TOKEN"],
   ["ARTICLE_ADMIN_EMAILS", "S_ARTICLE_ADMIN_EMAILS"],
   ["GH_TOKEN", "S_GH_TOKEN"],
+  ["GITHUB_OWNER", "S_GITHUB_OWNER"],
+  ["GITHUB_REPO", "S_GITHUB_REPO"],
 ];
 
 function safeValue(rawValue) {
