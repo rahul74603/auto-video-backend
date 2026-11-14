@@ -423,7 +423,7 @@ function buildMetaFiles(colls, opts = {}) {
       .map(({ id, data }) => ({
         slug: cleanSlug(data.slug, id),
         title: stripHtml(data.title),
-        category: String(data.category || data.subject || "").toLowerCase(),
+        category: String(data.subject || data.category || "").toLowerCase(),
       }));
   const siblingPools = {
     material: siblingPool([...(colls.study_materials || []), ...(colls.studyMaterials || [])]),
@@ -459,13 +459,25 @@ function buildMetaFiles(colls, opts = {}) {
     const title = stripHtml(data.title);
     const descText = stripHtml(data.description || data.content || data.articleHtml || "");
     const category = String(data.category || data.subject || "").toLowerCase();
+    // 14 Nov 2026 FIX (bot-view ne pakda): materials ke docs me category
+    // SAB ki "ssc" hai, isliye sirf category se siblings/related chunne
+    // par do alag materials ko EK JAISA content milta tha (13-14 Nov dono
+    // pages 19,650 bytes, text 5,777 — bilkul ek jaise). Isliye:
+    // (a) subject ko pehchan banao — Maurya Empire vs Plant Kingdom alag hain;
+    // (b) har page par uska apna title/subject/file-link text jodo (sirf
+    // doc ke asal fields, kuch banawati nahi); (c) applyLink ko bhi file
+    // link mano (docs me pdfUrl/fileUrl nahi, applyLink hota hai).
+    const subject = stripHtml(data.subject || "");
+    const detailCat = String(data.subject || data.category || "").toLowerCase();
     let body = "";
     if (descText) body += `<p>${esc(descText)}</p>`;
+    body += `<p>${esc(title)} — ${esc(subject || category)} study material (${esc(category)}).${data.fileSize ? ` File type: ${esc(String(data.fileSize))}.` : ""}</p>`;
     const topicList = Array.isArray(data.topics) ? data.topics.filter(Boolean).map(String) : [];
     if (topicList.length) body += `<p>Topics: ${topicList.map((t) => esc(t)).join(", ")}</p>`;
     body += questionsHtml(data);
-    if (data.pdfUrl || data.fileUrl) body += `<p><a href="${esc(data.pdfUrl || data.fileUrl)}">${esc(title)} — PDF Download</a></p>`;
-    body += siblingHtml(type, slug, category);
+    const fileLink = data.pdfUrl || data.fileUrl || data.applyLink;
+    if (fileLink) body += `<p><a href="${esc(fileLink)}">${esc(title)} — PDF Download</a></p>`;
+    body += siblingHtml(type, slug, detailCat);
     body += relatedHtml(slug, category);
     pages[path] = {
       t: truncate(data.seoTitle || data.title, 70),
