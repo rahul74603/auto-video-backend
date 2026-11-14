@@ -5,12 +5,16 @@ name: 🎬 Auto Video Generator
 #   → repository_dispatch → this workflow → autoVideo.js → FFmpeg → YouTube
 #
 # The new billing-independent path is .github/workflows/video_dispatcher.yml.
+# 14 Nov 2026 (Eric ka niyam): generate_job_video / generate_fasttrack_video
+# ab SIRF video_dispatcher.yml sunta hai — dono ke ek saath jaagne se do alag
+# videos ban rahi thi (claim-lock sirf same-doc duplicate rokta hai). Ye legacy
+# workflow ab sirf generic generate_video par chalega (manual/external).
 # Both call ai_backend/video_state.js `claim()` before rendering, so if the old
 # Firebase trigger starts working again it can never create a duplicate video.
 
 on:
   repository_dispatch:
-    types: [generate_video, generate_job_video, generate_fasttrack_video]
+    types: [generate_video]
 
 # One render per content item; different items still run in parallel.
 concurrency:
