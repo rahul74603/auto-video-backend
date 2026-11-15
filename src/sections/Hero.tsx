@@ -48,11 +48,14 @@ const Hero = () => {
 
     return (
         <header
-            className="relative isolate overflow-hidden bg-slate-950 pt-10 md:pt-20 pb-[72px] md:pb-[80px] px-4 font-hindi"
+            className="relative isolate z-40 bg-slate-950 pt-10 md:pt-20 pb-[72px] md:pb-[80px] px-4 font-hindi"
             role="banner"
         >
-            {/* Glows */}
-            <div className="absolute inset-0 pointer-events-none select-none" aria-hidden="true">
+            {/* Glows — overflow-hidden SIRF is layer par hai: pehle ye pure header
+                par tha, isliye search ka dropdown header ke neeche wale kinare par
+                kat (clip ho) jata tha, khaaskar desktop par. Ab glow yahin simta
+                rahega aur dropdown aaram se header ke bahar tak khul sakega. */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none select-none" aria-hidden="true">
                 <div
                     className="absolute -top-24 left-1/2 -translate-x-1/2 w-[700px] h-[380px] rounded-full"
                     style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.18) 0%, transparent 70%)' }}
@@ -63,7 +66,7 @@ const Hero = () => {
                 />
             </div>
 
-            <div className="max-w-4xl mx-auto relative z-10 text-center">
+            <div className="max-w-4xl mx-auto relative z-30 text-center">
                 {/* 🛠️ Sarkari Tools pill — compact but lit */}
                 <a
                     href="https://studygyaan.in/tools/"
