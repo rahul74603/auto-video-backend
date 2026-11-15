@@ -672,6 +672,7 @@ async function generateFallbackImages() {
 function buildSearchIndex(colls) {
   const entries = [];
   const seen = new Set();
+  const seenDup = new Set();
   const clean = (v, max = 140) =>
     String(v || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
   function add(kind, path, data, extraParts) {
@@ -679,8 +680,8 @@ function buildSearchIndex(colls) {
     if (seen.has(path)) return;
     const title = clean(data.title || data.post_name, 160);
     if (title.length < 3) return;
-    seen.add(path);
     const extra = clean((extraParts || []).filter(Boolean).join(" · "));
+    seen.add(path);
     const item = { t: title, u: path, k: kind };
     if (extra) item.s = extra;
     entries.push({ item, d: toMillis(data) });
@@ -713,7 +714,18 @@ function buildSearchIndex(colls) {
     add("course", `/course/${data.slug || id}`, data, [data.category])
   );
   entries.sort((a, b) => b.d - a.d); // naye pehle — same score par frontend inhi ko upar rakhega
-  const items = entries.map((e) => e.item);
+  // Firestore me kuch cheezein do baar (alag slug/id se) padi hain — search me
+  // ek hi title+extra wala duplicate dikhe to kharab lagta hai, isliye sabse
+  // naya wala rakh kar baaki hata do. Dhyaan: sirf title same hona kaafi nahi —
+  // extra (org/category) bhi same hona chahiye, warna alag-alag asal posts
+  // (jaise do university ki "Assistant Professor" bharti) galti se chhup jayengi.
+  const items = [];
+  for (const e of entries) {
+    const dupKey = `${e.item.k}|${e.item.t.toLowerCase()}|${(e.item.s || "").toLowerCase()}`;
+    if (seenDup.has(dupKey)) continue;
+    seenDup.add(dupKey);
+    items.push(e.item);
+  }
   console.log(`   🔎 search-index.json: ${items.length} items`);
   return JSON.stringify({ v: 1, generated: new Date().toISOString(), count: items.length, items });
 }
