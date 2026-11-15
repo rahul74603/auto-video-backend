@@ -663,6 +663,61 @@ async function generateFallbackImages() {
   console.log(`   🖼️ Fallback thumbs: ${made}/${Object.keys(GENERIC).length}`);
 }
 
+// ---------- 🔎 Site Search Index ----------
+// Frontend ka search box Firestore par query NAHI karta (purana collectionGroup
+// wala tareeka fail/slow tha — live par har khoj 0 results deti thi). Ab roz ke
+// seo run me ek halka search-index.json banta hai (sirf title + path + type +
+// org/category/subject) jo FTP se site root par jata hai; browser use ek baar
+// load karke apne andar hi khojta hai — turant aur hamesha kaam karta hai.
+function buildSearchIndex(colls) {
+  const entries = [];
+  const seen = new Set();
+  const clean = (v, max = 140) =>
+    String(v || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+  function add(kind, path, data, extraParts) {
+    if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+    if (seen.has(path)) return;
+    const title = clean(data.title || data.post_name, 160);
+    if (title.length < 3) return;
+    seen.add(path);
+    const extra = clean((extraParts || []).filter(Boolean).join(" · "));
+    const item = { t: title, u: path, k: kind };
+    if (extra) item.s = extra;
+    entries.push({ item, d: toMillis(data) });
+  }
+  (colls.jobs || []).forEach(({ id, data }) => {
+    if ((data.type || "").toUpperCase() === "COURSE") return;
+    add("job", `/job/${data.slug || id}`, data, [
+      data.organization,
+      data.category,
+      data.location,
+      data.lastDate ? `Last Date: ${data.lastDate}` : "",
+    ]);
+  });
+  (colls.fast_track || []).forEach(({ id, data }) =>
+    add("update", `/update/${data.slug || id}`, data, [data.category])
+  );
+  (colls.blogs || []).forEach(({ id, data }) =>
+    add("blog", `/blog/${data.slug || id}`, data, [data.category])
+  );
+  (colls.mock_tests || []).forEach(({ id, data }) =>
+    add("test", `/test/${data.slug || id}`, data, [data.subject, data.category])
+  );
+  [...(colls.study_materials || []), ...(colls.studyMaterials || [])].forEach(({ id, data }) =>
+    add("material", `/material/${data.slug || id}`, data, [data.subject, data.category])
+  );
+  (colls.web_stories || []).forEach(({ id, data }) =>
+    add("story", `/web-stories/${data.slug || id}`, data, [data.category])
+  );
+  (colls.courses || []).forEach(({ id, data }) =>
+    add("course", `/course/${data.slug || id}`, data, [data.category])
+  );
+  entries.sort((a, b) => b.d - a.d); // naye pehle — same score par frontend inhi ko upar rakhega
+  const items = entries.map((e) => e.item);
+  console.log(`   🔎 search-index.json: ${items.length} items`);
+  return JSON.stringify({ v: 1, generated: new Date().toISOString(), count: items.length, items });
+}
+
 // ---------- Main ----------
 async function main() {
   const colls = await fetchCollections();
@@ -679,6 +734,13 @@ async function main() {
     Object.assign(files, buildMetaFiles(colls, { ogMap }));
   } catch (e) {
     console.error("⚠️ seo_meta build error (skip):", e.message);
+  }
+
+  // 🔎 Search index (site ke search box ke liye) — fail ho to baaki files par asar nahi
+  try {
+    files["search-index.json"] = buildSearchIndex(colls);
+  } catch (e) {
+    console.error("⚠️ search-index build error (skip):", e.message);
   }
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -712,4 +774,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { toMillis, safeImageUrl, normalizeSitemapUrl, buildAll };
+module.exports = { toMillis, safeImageUrl, normalizeSitemapUrl, buildAll, buildSearchIndex };
