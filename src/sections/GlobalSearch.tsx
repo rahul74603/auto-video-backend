@@ -125,7 +125,7 @@ const GlobalSearch = () => {
         <div
           id="search-results-dropdown"
           role="listbox"
-          className="absolute top-full left-0 right-0 mt-3 bg-white rounded-2xl shadow-2xl overflow-hidden border-2 border-slate-100 max-h-[60vh] overflow-y-auto z-50"
+          className="absolute top-full left-0 right-0 mt-3 bg-white rounded-2xl shadow-2xl overflow-hidden border-2 border-slate-100 max-h-[min(60vh,420px)] overflow-y-auto overscroll-contain touch-pan-y z-50"
         >
           {isSearching ? (
             <div className="p-8 text-center text-slate-500 flex flex-col items-center justify-center">
