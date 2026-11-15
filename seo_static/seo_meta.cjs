@@ -359,7 +359,7 @@ function buildMetaFiles(colls, opts = {}) {
       d: desc,
       img,
       type: "article",
-      content: expiredBanner + (data.description || "") + relatedHtml(slug, String(data.category || "").toLowerCase()),
+      content: expiredBanner + (data.articleHtml || data.description || "") + relatedHtml(slug, String(data.category || "").toLowerCase()),
       ld,
     };
     } catch (e) { console.error("⚠️ seo_meta jobs doc skip:", id, "-", e.message); }
@@ -372,7 +372,7 @@ function buildMetaFiles(colls, opts = {}) {
     const slug = cleanSlug(data.slug, id);
     const path = `/update/${slug}`;
     const title = data.seoTitle || data.title;
-    const body = data.description || data.content || "";
+    const body = data.articleHtml || data.description || data.content || "";
     const desc = truncate(data.metaDescription || stripHtml(body), 160);
     const img = data.imageUrl || DEFAULT_IMG;
     const posted = toIso(data.publishedAt || data.createdAt) || new Date().toISOString();
@@ -443,15 +443,46 @@ function buildMetaFiles(colls, opts = {}) {
     html += `</ul>`;
     return html;
   };
-  const questionsHtml = (data) => {
+  // 15 Nov 2026 FIX v3: Firestore ke saare mock_tests ka asal schema
+  // {qText, options, correctOption, qLogic} hai — purana code sirf
+  // question/q/text dhundhta tha, isliye EK BHI test page par bot ko
+  // sawal milte hi nahi the (saare 563 test pages khaali shell jaise
+  // the — yahi tests ke duplicate/thin-content ki asal jad hai).
+  // Ab: saare sawal + options + sahi jawab + explanation bot ko milega.
+  // correctOption ke teen roop mile (14,475 sawalo ka census):
+  // 0-based index ("0".."3"), akshar ("b"/"B"), ya seedha jawab-text.
+  const questionsHtml = (data, limit = 60) => {
     const qs = Array.isArray(data.questions) ? data.questions : [];
     if (!qs.length) return "";
     let items = "";
-    qs.slice(0, 10).forEach((q) => {
-      const text = typeof q === "string" ? q : (q && (q.question || q.q || q.text)) || "";
-      if (String(text).trim()) items += `<li>${esc(stripHtml(String(text)))}</li>`;
+    qs.slice(0, limit).forEach((q) => {
+      if (typeof q === "string") {
+        if (q.trim()) items += `<li><p>${esc(stripHtml(q))}</p></li>`;
+        return;
+      }
+      if (!q || typeof q !== "object") return;
+      const text = q.qText || q.question || q.q || q.text || "";
+      if (!String(text).trim()) return;
+      let html = `<li><p>${esc(stripHtml(String(text)))}</p>`;
+      const opts = Array.isArray(q.options) ? q.options.filter((o) => String(o ?? "").trim()) : [];
+      if (opts.length) {
+        html += `<ul>${opts.map((o, i) => `<li>${String.fromCharCode(65 + i)}. ${esc(stripHtml(String(o)))}</li>`).join("")}</ul>`;
+      }
+      const rawAns = q.correctOption ?? q.answer ?? q.correctAnswer ?? "";
+      let ans = "";
+      if (rawAns !== "" && rawAns != null) {
+        const s = String(rawAns).trim();
+        const idx = /^\d+$/.test(s) ? Number(s) : (/^[a-eA-E]$/.test(s) ? s.toUpperCase().charCodeAt(0) - 65 : -1);
+        if (idx >= 0 && opts[idx] != null) ans = `${String.fromCharCode(65 + idx)}. ${stripHtml(String(opts[idx]))}`;
+        else ans = stripHtml(s);
+      }
+      if (ans) html += `<p><strong>Answer: ${esc(ans)}</strong></p>`;
+      const logic = q.qLogic || q.explanation || q.solution || "";
+      if (String(logic).trim()) html += `<p>${esc(stripHtml(String(logic)))}</p>`;
+      html += `</li>`;
+      items += html;
     });
-    return items ? `<h2>Practice Questions</h2><ol>${items}</ol>` : "";
+    return items ? `<h2>Practice Questions with Answers</h2><ol>${items}</ol>` : "";
   };
   const addPage = (path, data, imgField, type) => {
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
@@ -554,6 +585,10 @@ function buildMetaFiles(colls, opts = {}) {
   // Pehle stories ko sirf preview meta milta tha → thin content → Discover/Web-Stories
   // surface pe koi baat nahi. Ab bots ko cover + saare slides ka text + CTA +
   // doosri stories ke links + Article schema milta hai.
+  const testBySlug = {};
+  (colls.mock_tests || []).forEach(({ id, data }) => {
+    testBySlug[cleanSlug(data.slug, id)] = data;
+  });
   const storyPool = (colls.web_stories || [])
     .filter(({ data }) => isIndexableDocument(data) && hasUsefulTitle(data))
     .map(({ id, data }) => ({
@@ -597,6 +632,23 @@ function buildMetaFiles(colls, opts = {}) {
     if (data.applyLink) {
       body += `<p>🔗 <a href="${esc(data.applyLink)}">${esc(title)} — full details yahan padhein</a></p>`;
     }
+    // 15 Nov 2026 FIX v3: mock-test wali stories ki slides lagbhag ek
+    // jaisi template hoti hain — asal alag content unke linked test ke
+    // sawal hain. applyLink / slide ke ctaLink se test slug nikaal kar
+    // usi test ke pehle 10 sawal+jawab yahan jodo, taaki har story ka
+    // bot-content apna ho.
+    try {
+      const linkCandidates = [data.applyLink, ...slides.map((s) => s && s.ctaLink)].filter(Boolean).map(String);
+      let linkedTest = null;
+      for (const l of linkCandidates) {
+        const m = l.match(/\/test\/([^/?#]+)/);
+        if (m) { linkedTest = testBySlug[decodeURIComponent(m[1])] || null; if (linkedTest) break; }
+      }
+      if (linkedTest) {
+        const qh = questionsHtml(linkedTest, 10);
+        if (qh) body += qh;
+      }
+    } catch (e) { /* story-test link optional */ }
     // internal links: doosri stories + hub + related jobs/updates
     const others = storyPool.filter((p) => p.slug !== slug).slice(0, 5);
     body += `<h2>Aur Web Stories</h2><ul>`;
