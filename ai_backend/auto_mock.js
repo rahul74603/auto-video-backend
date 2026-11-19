@@ -1,5 +1,5 @@
 const admin = require("firebase-admin");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { generateText } = require("./ai_provider");
 const axios = require("axios");
 // ⚠️ googleapis ko top-level require MAT karo — auto-mocktest workflow me ye
 // package kabhi install hi nahi hota tha, jisse MODULE_NOT_FOUND crash hota tha
@@ -249,40 +249,33 @@ Generate exactly ${totalQuestions} high-quality, completely bilingual questions.
 `;
 }
 
-// Model fallback chain: 2.5-flash-lite missing/dead ho to 2.0-flash try karo.
-// Pehle single model 404 deta to poora run fail ho jata tha.
-const MOCK_MODEL_CHAIN = ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-flash-latest", "gemini-3.5-flash-lite"];
+// 2026-11-19: AI chain ab shared ai_provider.js se — Gemini fail ya
+// prepay-band ho to Groq (free) apne aap sambhalta hai (shartein:
+// system_configs/scraper_flags.groqChain === true + GROQ_API_KEY env).
+// Naam-suchi sirf sandarbh ke liye hai (test bhi ise padhta hai) — asal
+// model-chunav ai_provider ke andar hota hai.
+// JSON-parse wala retry yahi bacha hai (2026-11-13 ka gate: malformed
+// JSON par ek baar dobara koshish, phir hi fail).
+const MOCK_MODEL_CHAIN = ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-flash-latest", "gemini-3.5-flash-lite", "openai/gpt-oss-120b", "openai/gpt-oss-20b"];
 
-async function generateMockContent(genAI, prompt) {
+async function generateMockContent(prompt) {
     let lastError = null;
-    for (const modelName of MOCK_MODEL_CHAIN) {
-        // 2026-11-13 fix: sirf response aana kaafi nahi — JSON parse bhi hona
-        // chahiye. Gemini kabhi-kabhi malformed JSON deta hai (unterminated
-        // string; run #665 aur 6 Nov wali fail yahi thi). Parse fail par wahi
-        // model ek baar retry, phir agla model — run tabhi fail hoga jab
-        // saare models parse-layak JSON dene me fail ho jayein.
-        for (let attempt = 1; attempt <= 2; attempt += 1) {
-            try {
-                const model = genAI.getGenerativeModel({
-                    model: modelName,
-                    generationConfig: { maxOutputTokens: 16000, temperature: 0.4, responseMimeType: "application/json" },
-                });
-                const resp = await model.generateContent(prompt);
-                const text = resp.response?.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (!text || !text.trim()) throw new Error("empty Gemini response");
-                const parsed = parseMockJson(text);
-                if (!parsed.ok) {
-                    throw new Error(`Gemini JSON parse fail: ${parsed.error?.message || "unknown"} | preview: ${parsed.preview}`);
-                }
-                console.log(`🤖 Model OK: ${modelName} (attempt ${attempt}, JSON valid)`);
-                return parsed.json;
-            } catch (err) {
-                lastError = err;
-                console.warn(`⚠️ Model ${modelName} attempt ${attempt} fail (${err.message}) — retry/next...`);
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+            const text = await generateText({ prompt, jsonMode: true, maxTokens: 16000 });
+            if (!text || !text.trim()) throw new Error("empty AI response");
+            const parsed = parseMockJson(text);
+            if (!parsed.ok) {
+                throw new Error(`AI JSON parse fail: ${parsed.error?.message || "unknown"} | preview: ${parsed.preview}`);
             }
+            console.log(`🤖 AI OK (attempt ${attempt}, JSON valid)`);
+            return parsed.json;
+        } catch (err) {
+            lastError = err;
+            console.warn(`⚠️ AI attempt ${attempt} fail (${err.message}) — retry...`);
         }
     }
-    throw lastError || new Error("All Gemini models failed");
+    throw lastError || new Error("All AI providers failed");
 }
 
 // =========================================================
@@ -318,18 +311,17 @@ const generateDailyMocks = async () => {
     }
     console.log(`🔥 SEO Generation Started: ${randomTopic}`);
 
-    if (!process.env.GEMINI_API_KEY) {
-        const msg = "GEMINI_API_KEY secret missing — mock test nahi ban sakta";
+    if (!process.env.GEMINI_API_KEY && !process.env.GROQ_API_KEY) {
+        const msg = "GEMINI_API_KEY aur GROQ_API_KEY dono missing — mock test nahi ban sakta";
         console.error("❌", msg);
         if (request) await markMockRequest(request.ref, { status: "failed", error: msg });
         return false;
     }
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const prompt = buildMockPrompt(randomTopic, totalQuestions);
 
 
     try {
-        const json = await generateMockContent(genAI, prompt);
+        const json = await generateMockContent(prompt);
         const questions = normalizeMockQuestions(json.questions).slice(0, totalQuestions); // 2026-11-12: cap — title me likhi ginti se zyada sawal save nahi honge
         if (!questions.length) {
             throw new Error("Gemini ne 0 valid questions diye — next run me dobara try hoga");

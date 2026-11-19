@@ -2,7 +2,6 @@ require("dotenv").config();
 const admin = require("firebase-admin");
 const axios = require("axios");
 const { google } = require("googleapis");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 const crypto = require("crypto");
 const sharp = require("sharp"); // ✅ WebP conversion ke liye
 // 🌟 v4 DISCOVER-FIRST: trend scout queue + Discover-safe titles + grounding
@@ -14,6 +13,7 @@ const {
 } = require("./blog_discover");
 // 💓 P0-4: har run ka outcome Firestore heartbeat me (zero-output mystery solve)
 const { buildHeartbeatPayload, writeHeartbeat } = require("./blog_heartbeat");
+const { generateText } = require("./ai_provider");
 
 // =========================================================
 // 🔐 1. FIREBASE & AUTH INITIALIZATION
@@ -47,7 +47,6 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 // bucket hata diya — Firebase Storage Spark pe band, ab cpanel_storage.js use hota hai
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // =========================================================
 // 📚 2. MASTER TOPICS POOL
@@ -517,11 +516,6 @@ async function generateSmartInternalLinks(category, keywords, topic) {
             return [];
         }
 
-        const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash-lite",
-            generationConfig: { temperature: 0.5, maxOutputTokens: 2048 }
-        });
-
         const resourcesJson = JSON.stringify({
             blogs: allResources.blogs.slice(0, 15),
             jobs: allResources.jobs.slice(0, 10),
@@ -541,8 +535,7 @@ Select 5-8 most relevant. Use EXACT URLs from above. Do NOT create or modify URL
 Return ONLY JSON array:
 [{"title":"exact title","url":"exact url unchanged","type":"blog/job/mockTest","reason":"Hindi mein relevance"}]`;
 
-        const result = await model.generateContent(linkPrompt);
-        const responseText = result.response.text();
+        const responseText = await generateText({ prompt: linkPrompt, jsonMode: true, maxTokens: 2048 });
         const cleaned = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
 
@@ -965,8 +958,8 @@ async function fetchGroundingSources(sources, maxSources = 3) {
 // 🤖 9. AI CONTENT GENERATOR - DISCOVER-FIRST (v4)
 // =========================================================
 
-// Best model pehle, quota/429 pe lite fallback — quality kabhi compromise nahi
-const BLOG_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+// 2026-11-19: model chunna ab ai_provider chain ka kaam hai (neeche dekho) —
+    // Gemini fail/prepay-band par Groq (free) apne aap sambhalta hai.
 
 async function generateAdvancedBlogContent(category, topic, writingStyle, structure, trendContext = null, retryCount = 0) {
     try {
@@ -1051,30 +1044,26 @@ JSON FORMAT:
   "sourcesCited": ["source URL 1", "source URL 2"]
 }`;
 
-        // Best model pehle, fail pe lite fallback — har model pe content validate
+        // Provider chain (Gemini 4 models + Groq 2 models) — 2 koshishon me
+        // content validate hota hai (900+ asal shabd), pehle wala hi gate.
         let blogData = null;
         let lastErr = null;
-        for (const modelName of BLOG_MODELS) {
+        for (let attempt = 1; attempt <= 2; attempt += 1) {
             try {
-                const model = genAI.getGenerativeModel({
-                    model: modelName,
-                    generationConfig: { temperature: 0.85, topP: 0.95, topK: 64, maxOutputTokens: 12000 }
-                });
-                console.log(`🤖 Generating with ${modelName}...`);
-                const result = await model.generateContent(prompt);
-                const responseText = result.response.text();
+                console.log(`🤖 Generating (ai-chain attempt ${attempt})...`);
+                const responseText = await generateText({ prompt, jsonMode: true, maxTokens: 12000 });
                 console.log("🔍 Parsing AI response...");
                 blogData = cleanJsonResponse(responseText);
                 const words = blogData ? stripWords(blogData.content) : 0;
                 if (!blogData || !blogData.content || words < 900) {
                     throw new Error(`insufficient content (${words} words)`);
                 }
-                console.log(`✅ ${modelName}: ${words} real words`);
+                console.log(`✅ ai-chain: ${words} real words`);
                 break;
             } catch (e) {
                 lastErr = e;
                 blogData = null;
-                console.log(`⚠️ ${modelName} fail: ${String(e.message).slice(0, 120)} — next model...`);
+                console.log(`⚠️ ai-chain attempt ${attempt} fail: ${String(e.message).slice(0, 120)} — retry...`);
             }
         }
 
