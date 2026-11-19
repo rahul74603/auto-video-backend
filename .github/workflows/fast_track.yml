@@ -80,6 +80,7 @@ jobs:
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: node fast_track_updates.js
 
       - name: ☁️ Legacy Cloud Function fallback (optional, may be unavailable on Spark)
