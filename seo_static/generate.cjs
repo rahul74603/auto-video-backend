@@ -417,6 +417,13 @@ function buildAll(colls, ogMap = {}) {
   let updatesXml = XML_HEAD + URLSET_OPEN;
   colls.fast_track.forEach(({ id, data }) => {
     if (!isIndexableDocument(data) || !hasUsefulTitle(data)) return;
+    // 🪶 THIN-UPDATE GUARD (2026-11-20): articleHtml nahi aur description bhi
+    // 300 chars se kam = bot ke liye asal content hi nahi. Aise updates sitemap
+    // se bahar — page users ke liye live rahega, sirf Google ko "index karo"
+    // wala ishara band hoga (census: 565/838 published updates is dayre me).
+    const artLen = String(data.articleHtml || "").trim().length;
+    const descLen = String(data.description || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().length;
+    if (artLen === 0 && descLen < 300) return;
     const slug = safeXml(data.slug || id);
     const lastmod = getIsoDate(data.updatedAt || data.publishedAt || data.createdAt, now);
     const e = urlEntry({ loc: `${WEBSITE_URL}/update/${slug}`, lastmod, freq: "daily", priority: "0.8" });
