@@ -27,6 +27,40 @@ function truncate(s, n) {
   s = String(s || "").trim();
   return s.length <= n ? s : s.slice(0, n - 1).trimEnd() + "…";
 }
+// 🏷️ Title cap (SiteOne audit 2026-11-20: 380 pages ke title 60+ chars the) —
+// 58 chars par word-boundary cut, taaki search result me title pura dikhe.
+function capTitle(t) {
+  t = String(t || "").replace(/\s+/g, " ").trim();
+  if (t.length <= 58) return t;
+  let cut = t.slice(0, 58);
+  const sp = cut.lastIndexOf(" ");
+  if (sp > 30) cut = cut.slice(0, sp);
+  return cut.replace(/[\s\|\-:–—,;.!?]+$/, "").trim() || t.slice(0, 58).trim();
+}
+
+// 🔽 Content ke andar ke <h1> → <h2>: page ka ekmatra H1 meta.php title se
+// banata hai; articleHtml/content me ghusa dusra H1 "multiple H1" flaw tha.
+function demoteH1(html) {
+  return String(html || "").replace(/<h1(?=[\s>])/gi, "<h2").replace(/<\/h1\s*>/gi, "</h2>");
+}
+
+// 📝 Description fallback: khaali/chhoti (<40) description content ke pehle
+// hisse se bane; content bhi na ho to title-based template (kabhi khaali nahi).
+function deriveDesc(e) {
+  const text = stripHtml(e.content || "").replace(/\s+/g, " ").trim();
+  if (text.length >= 40) {
+    let cut = text.slice(0, 157);
+    const dot = cut.lastIndexOf(". ");
+    if (dot > 60) cut = cut.slice(0, dot + 1);
+    else {
+      const sp = cut.lastIndexOf(" ");
+      if (sp > 60) cut = cut.slice(0, sp);
+    }
+    return cut.trim();
+  }
+  return truncate(`${e.t} — StudyGyaan par iski poori jaankari padho: eligibility, important dates, vacancy details, syllabus aur apply karne ka seedha tareeka.`, 160);
+}
+
 
 // P0-3: DB image paths me Windows backslash / relative path — meta.php ke
 // og:image + JSON img fields ke liye absolute https banao (generate.cjs twin).
@@ -980,9 +1014,21 @@ function buildMetaFiles(colls, opts = {}) {
         seen.set(key, n + 1);
         if (n > 0) {
           const suffix = ` (${path.split("/").pop().slice(0, 18)}…)`;
-          e.t = truncate(String(e.t) + suffix, 70);
+          e.t = truncate(String(e.t) + suffix, 58);
         }
       }
+    }
+  }
+
+  // 🏷️ TITLE/DESC/H1 FINALIZE (2026-11-20, SiteOne audit): har entry par —
+  // (1) title cap 58, (2) content ke <h1> demote, (3) khaali/chhoti description
+  // content/template se bhari jaye. Redirect entries skip.
+  for (const map of [jobs, updates, pages, stories]) {
+    for (const e of Object.values(map)) {
+      if (!e || e.redirect) continue;
+      if (e.t) e.t = capTitle(e.t);
+      if (e.content) e.content = demoteH1(e.content);
+      if (String(e.d || "").trim().length < 40) e.d = deriveDesc(e);
     }
   }
 
