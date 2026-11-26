@@ -49,7 +49,7 @@ async function postToFacebook(message, linkUrl, options = {}) {
     }
   }
 
-  const url = `https://graph.facebook.com/v19.0/${creds.pageId}/feed`;
+  const url = `https://graph.facebook.com/v25.0/${creds.pageId}/feed`;
 
   try {
     const response = await axios.post(url, {

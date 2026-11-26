@@ -42,7 +42,7 @@ async function postToInstagram(caption, imageUrl) {
   try {
     // Step 1: Create container
     const containerRes = await axios.post(
-      `https://graph.facebook.com/v19.0/${creds.igAccountId}/media`,
+      `https://graph.facebook.com/v25.0/${creds.igAccountId}/media`,
       {
         image_url: imageUrl,
         caption: caption.slice(0, 2200), // IG caption limit 2200
@@ -55,7 +55,7 @@ async function postToInstagram(caption, imageUrl) {
 
     // Step 2: Publish
     const publishRes = await axios.post(
-      `https://graph.facebook.com/v19.0/${creds.igAccountId}/media_publish`,
+      `https://graph.facebook.com/v25.0/${creds.igAccountId}/media_publish`,
       {
         creation_id: creationId,
         access_token: creds.pageToken
