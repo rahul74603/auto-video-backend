@@ -7,7 +7,7 @@ async function postToFacebook(message, linkUrl) {
         return;
     }
 
-    const url = `https://graph.facebook.com/v19.0/${PAGE_ID}/feed`;
+    const url = `https://graph.facebook.com/v25.0/${PAGE_ID}/feed`;
     const payload = {
         message: message,
         link: linkUrl,

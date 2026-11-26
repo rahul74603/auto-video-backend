@@ -84,7 +84,7 @@ async function uploadToFacebook(videoPath, description) {
 
     try {
         const initRes = await axios.post(
-            `https://graph.facebook.com/v19.0/${FB_PAGE_ID}/video_reels`,
+            `https://graph.facebook.com/v25.0/${FB_PAGE_ID}/video_reels`,
             {
                 upload_phase: 'start',
                 access_token: FB_PAGE_TOKEN
@@ -105,7 +105,7 @@ async function uploadToFacebook(videoPath, description) {
         });
 
         await axios.post(
-            `https://graph.facebook.com/v19.0/${FB_PAGE_ID}/video_reels`,
+            `https://graph.facebook.com/v25.0/${FB_PAGE_ID}/video_reels`,
             {
                 upload_phase: 'finish',
                 video_id:     fbVideoId,
@@ -129,7 +129,7 @@ async function uploadToFacebook(videoPath, description) {
             formData.append('description', description);
 
             const fbRes = await axios.post(
-                `https://graph.facebook.com/v19.0/${FB_PAGE_ID}/videos`,
+                `https://graph.facebook.com/v25.0/${FB_PAGE_ID}/videos`,
                 formData,
                 { headers: formData.getHeaders() }
             );

@@ -139,7 +139,7 @@ async function uploadToFacebook(videoPath, description) {
     formData.append('description', description);
     try {
         const fbRes = await axios.post(
-            `https://graph.facebook.com/v19.0/${FB_PAGE_ID}/videos`,
+            `https://graph.facebook.com/v25.0/${FB_PAGE_ID}/videos`,
             formData,
             { headers: formData.getHeaders() }
         );

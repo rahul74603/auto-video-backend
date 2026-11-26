@@ -20,7 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
-const FB_GRAPH = 'https://graph.facebook.com/v19.0';
+const FB_GRAPH = 'https://graph.facebook.com/v25.0';
 const THREADS_GRAPH = 'https://graph.threads.net/v1.0';
 const GH_API = 'https://api.github.com';
 const TEMP_RELEASE_TAG = 'sg-media-temp';
