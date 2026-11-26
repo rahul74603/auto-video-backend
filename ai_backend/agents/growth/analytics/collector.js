@@ -205,7 +205,7 @@ async function collectFacebook(videoId, opts = {}) {
     try {
         const axios = require('axios');
         const res = await axios.get(
-            `https://graph.facebook.com/v19.0/${videoId}?fields=views,likes,comments,shares`,
+            `https://graph.facebook.com/v25.0/${videoId}?fields=views,likes,comments,shares`,
             { params: { access_token: token }, timeout: 10000 }
         );
         const data = res.data || {};
@@ -228,7 +228,7 @@ async function collectInstagram(videoId, opts = {}) {
     try {
         const axios = require('axios');
         const res = await axios.get(
-            `https://graph.facebook.com/v19.0/${videoId}?fields=like_count,comments_count,share_count,play_count`,
+            `https://graph.facebook.com/v25.0/${videoId}?fields=like_count,comments_count,share_count,play_count`,
             { params: { access_token: token }, timeout: 10000 }
         );
         const data = res.data || {};
