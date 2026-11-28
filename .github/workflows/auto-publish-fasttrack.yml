@@ -1,0 +1,45 @@
+name: ⏰ Fast Track Auto-Publish (har 4 ghante)
+
+# Eric ka order (2026-11-28): panel se manual publish bhool jata hai,
+# isliye fast_track drafts har 4 ghante apne aap publish honge.
+# Script panel wala hi kaam karta hai (status draft -> published +
+# publishedAt); uske baad Firestore trigger Telegram + video khud
+# bhejta hai. Draft na ho to run chup-chaap safal khatam hota hai.
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: fasttrack-auto-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  auto-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ai_backend
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ai_backend/package-lock.json
+
+      - name: 🔧 Install dependencies
+        run: npm ci
+
+      - name: ⏰ Auto-publish fast_track drafts
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+        run: node auto_publish_fasttrack.js
